@@ -1,0 +1,2007 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Control Equipos GTE</title>
+<link rel="manifest" id="manifest-link">
+<meta name="theme-color" content="#134B70">
+<style>
+:root{
+  --bg-0:#ffffff;
+  --bg-1:#f7f9fa;
+  --bg-2:#f0f2f6;
+  --bg-3:#e4e8ec;
+  --line:#dde2e7;
+  --line-soft:#eceff2;
+  --text-0:#134B70;
+  --text-1:#4d7089;
+  --text-2:#8a99a6;
+  --accent:#1B8E9E;
+  --accent-dim:#bfe3e8;
+  --accent-bg:#e2f3f5;
+  --jac-blue:#134B70;
+  --ok:#1a9d63;
+  --ok-bg:#e2f7ec;
+  --warn:#b8790c;
+  --warn-bg:#fbf0d9;
+  --danger:#d63b3b;
+  --danger-bg:#fbe6e6;
+  --mono:'SF Mono',Consolas,'Roboto Mono',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html,body{height:100%;margin:0;}
+body{
+  background:var(--bg-0);color:var(--text-0);font-family:var(--sans);
+  font-size:15px;overflow:hidden;
+}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;font-size:15px;}
+
+/* ---------- Pantalla de acceso ---------- */
+#auth-gate{
+  position:fixed;inset:0;background:var(--bg-2);display:flex;align-items:center;justify-content:center;
+  z-index:100;padding:20px;
+}
+#espera-aprobacion{
+  position:fixed;inset:0;background:var(--bg-2);display:none;align-items:center;justify-content:center;
+  z-index:100;padding:20px;
+}
+.auth-card{
+  width:100%;max-width:380px;background:var(--bg-0);border-radius:16px;border:1px solid var(--line);
+  padding:32px 24px;box-shadow:0 8px 40px rgba(19,75,112,.14);
+}
+.auth-logo{
+  width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,var(--jac-blue),var(--accent));
+  color:#fff;font-weight:700;font-size:18px;display:flex;align-items:center;justify-content:center;margin-bottom:16px;
+}
+.auth-card h1{font-size:19px;margin:0 0 4px;color:var(--text-0);}
+.auth-sub{font-size:13px;color:var(--text-2);margin:0 0 22px;}
+.auth-error{background:var(--danger-bg);color:var(--danger);font-size:12.5px;padding:8px 12px;border-radius:8px;margin-bottom:12px;}
+
+.usuario-row{
+  display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line-soft);
+}
+.usuario-row-info{flex:1;min-width:0;}
+.usuario-row-nombre{font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.usuario-row-email{font-size:11.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.usuario-row select{font-size:12.5px;padding:5px 6px;flex-shrink:0;width:auto;}
+#app{height:100%;position:relative;background:var(--bg-0);}
+#app.oculto{display:none !important;}
+.pane-list{height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;background:var(--bg-0);position:relative;}
+.pane-detail{display:none;}
+.pane-detail-empty{display:none;}
+
+.topbar{
+  flex-shrink:0;padding:14px 16px 10px;border-bottom:1px solid var(--line);
+  display:flex;justify-content:space-between;align-items:center;
+  background:linear-gradient(90deg,var(--jac-blue) 0%,var(--accent) 100%);
+}
+.topbar .brand{display:flex;flex-direction:column;gap:2px;}
+.topbar .brand b{font-size:16px;font-weight:600;color:#fff;}
+.topbar .brand span{font-size:12px;font-family:var(--mono);color:#fff;opacity:.85;}
+.sync-badge{
+  display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 10px;border-radius:20px;
+  background:var(--ok-bg);color:var(--ok);white-space:nowrap;border:1px solid transparent;
+}
+.sync-badge.offline{background:var(--danger-bg);color:var(--danger);}
+.sync-badge.pending{background:var(--warn-bg);color:var(--warn);}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor;}
+
+.search-row{padding:12px 16px 0;flex-shrink:0;display:flex;gap:8px;}
+.search-box{flex:1;}
+.view-toggle{
+  flex-shrink:0;width:38px;height:38px;border-radius:10px;background:var(--bg-2);
+  border:1px solid var(--line);font-size:16px;display:flex;align-items:center;justify-content:center;
+  color:var(--text-1);
+}
+.view-toggle.active{background:var(--accent-bg);border-color:var(--accent-dim);color:var(--accent);}
+.search-box{
+  display:flex;align-items:center;gap:8px;background:var(--bg-2);border:1px solid var(--line);
+  border-radius:10px;padding:9px 12px;
+}
+.search-box input{background:none;border:none;outline:none;color:var(--text-0);width:100%;font-size:14px;}
+.search-box input::placeholder{color:var(--text-2);}
+.search-icon{color:var(--text-2);font-size:14px;flex-shrink:0;}
+
+.chips{display:flex;flex-wrap:wrap;gap:6px;padding:8px 16px;flex-shrink:0;}
+
+.filtros-bar{display:flex;gap:6px;padding:8px 16px 0;flex-shrink:0;}
+.filtro-toggle{
+  flex:1;font-size:12.5px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);
+  background:var(--bg-2);color:var(--text-1);display:flex;justify-content:center;align-items:center;
+  gap:4px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;
+}
+.filtro-toggle .fchev{font-size:10px;transition:transform .15s ease;flex-shrink:0;}
+.filtro-toggle.open .fchev{transform:rotate(180deg);}
+.filtro-toggle.activo{background:var(--accent-bg);border-color:var(--accent-dim);color:var(--accent);font-weight:600;}
+.chips-panel{display:none;flex-shrink:0;}
+.chips-panel.open{display:block;}
+.chip{
+  font-size:12.5px;padding:5px 12px;border-radius:20px;white-space:nowrap;border:1px solid var(--line);
+  color:var(--text-1);background:var(--bg-2);flex-shrink:0;
+}
+.chip.active{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-dim);}
+
+.list{flex:1;overflow-y:auto;padding:4px 16px 90px;}
+
+/* ---------- Vista de arbol jerarquico (estilo jerarquia SAP) ---------- */
+.tree-group{margin-bottom:2px;}
+.tree-group-header{
+  display:flex;align-items:center;gap:8px;padding:9px 6px;cursor:pointer;border-radius:6px;
+}
+.tree-group-header:active{background:var(--bg-2);}
+.tree-chevron{
+  flex-shrink:0;width:16px;height:16px;color:var(--text-2);transition:transform .15s ease;
+  display:flex;align-items:center;justify-content:center;
+}
+.tree-group.open > .tree-group-header .tree-chevron{transform:rotate(90deg);}
+.tree-folder-icon{flex-shrink:0;font-size:14px;}
+.tree-group-title{font-size:13.5px;font-weight:600;color:var(--text-0);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.tree-group-count{font-size:11.5px;color:var(--text-2);background:var(--bg-2);padding:1px 8px;border-radius:20px;flex-shrink:0;}
+.tree-children{display:none;padding-left:22px;border-left:1px solid var(--line-soft);margin-left:14px;}
+.tree-group.open > .tree-children{display:block;}
+.tree-children .tree-children{padding-left:16px;}
+.tree-leaf{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:9px 6px 9px 4px;cursor:pointer;border-radius:6px;
+}
+.tree-leaf:active{background:var(--bg-2);}
+.tree-leaf-main{min-width:0;}
+.tree-leaf-code{font-family:var(--mono);font-size:11.5px;color:var(--text-2);}
+.tree-leaf-desc{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.eq-card{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:12px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer;
+}
+.eq-card:active{background:var(--bg-2);}
+.eq-main{min-width:0;}
+.eq-code{font-family:var(--mono);font-size:13px;color:var(--text-2);}
+.eq-desc{font-size:14.5px;font-weight:500;margin:2px 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.eq-loc{font-size:12.5px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.badge{font-size:11.5px;padding:3px 9px;border-radius:20px;white-space:nowrap;flex-shrink:0;font-weight:500;}
+.badge-Operando{background:var(--ok-bg);color:var(--ok);}
+.badge-Disponible{background:var(--warn-bg);color:var(--warn);}
+.badge-Stand{background:var(--warn-bg);color:var(--warn);}
+.badge-No{background:var(--danger-bg);color:var(--danger);}
+.badge-Taller{background:var(--danger-bg);color:var(--danger);}
+.badge-Dado{background:var(--bg-3);color:var(--text-2);}
+.badge-pendiente{background:var(--accent-bg);color:var(--accent);}
+
+.empty, .loading{text-align:center;color:var(--text-2);padding:60px 20px;font-size:13.5px;}
+
+.fab{
+  position:absolute;right:16px;bottom:80px;width:52px;height:52px;border-radius:50%;
+  background:var(--accent);color:#fff;border:none;font-size:26px;display:flex;
+  align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.4);z-index:5;
+}
+
+.navbar{
+  flex-shrink:0;display:flex;border-top:1px solid var(--line);background:var(--bg-1);
+  position:absolute;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;
+}
+.navbar .nav-item{
+  flex:1;text-align:center;padding:9px 0 8px;color:var(--text-2);font-size:10.5px;
+  display:flex;flex-direction:column;align-items:center;gap:3px;border:none;background:none;
+}
+.navbar .nav-item.active{color:var(--accent);}
+.navbar .nav-item svg{width:20px;height:20px;}
+
+/* ---------- Panels (ficha, formularios) ---------- */
+.panel{
+  position:fixed;inset:0;background:var(--bg-0);z-index:20;display:flex;flex-direction:column;
+  max-width:520px;margin:0 auto;transform:translateX(100%);transition:transform .22s ease;
+}
+.panel.open{transform:translateX(0);}
+.panel-header{
+  flex-shrink:0;display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);
+  background:var(--bg-1);
+}
+.panel-header h2{font-size:15.5px;font-weight:600;margin:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.icon-btn{background:none;border:none;color:var(--text-0);font-size:20px;padding:4px;display:flex;}
+.panel-body{flex:1;overflow-y:auto;padding:16px;}
+
+.section-label{font-size:12px;font-weight:600;color:var(--text-2);text-transform:uppercase;letter-spacing:.04em;margin:18px 0 8px;}
+.section-label:first-child{margin-top:0;}
+.kv-table{width:100%;border-collapse:collapse;font-size:13.5px;}
+.kv-table td{padding:6px 0;border-bottom:1px solid var(--line-soft);}
+.kv-table td:first-child{color:var(--text-2);width:44%;}
+.kv-table td:last-child{text-align:right;font-weight:500;}
+
+.field{margin-bottom:16px;}
+.field label{display:block;font-size:13px;color:var(--text-1);margin-bottom:6px;}
+.field select, .field textarea, .field input{
+  width:100%;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;
+  color:var(--text-0);padding:10px 12px;outline:none;
+}
+.field select:focus, .field textarea:focus, .field input:focus{border-color:var(--accent-dim);}
+.field textarea{resize:vertical;min-height:70px;}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.seg button{
+  padding:9px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1);font-size:13.5px;
+}
+.seg button.active{background:var(--accent-bg);border-color:var(--accent-dim);color:var(--accent);}
+
+.btn-primary{
+  width:100%;padding:12px;border-radius:9px;border:none;background:var(--accent);color:#fff;
+  font-weight:600;font-size:14.5px;
+}
+.btn-primary:disabled{opacity:.4;}
+.btn-secondary{
+  width:100%;padding:11px;border-radius:9px;border:1px solid var(--line);background:var(--bg-2);
+  color:var(--text-0);font-size:14px;margin-top:8px;
+}
+.hint-box{
+  display:flex;gap:8px;background:var(--accent-bg);color:var(--accent);border-radius:8px;
+  padding:10px 12px;font-size:12.5px;margin-bottom:16px;
+}
+
+.timeline{position:relative;padding-left:16px;}
+.tl-item{position:relative;padding-bottom:16px;border-left:2px solid var(--line);padding-left:14px;margin-left:2px;}
+.tl-item:last-child{border-color:transparent;}
+.tl-dot{position:absolute;left:-6px;top:2px;width:9px;height:9px;border-radius:50%;background:var(--text-2);}
+.tl-dot.ok{background:var(--ok);}
+.tl-dot.pend{background:var(--warn);}
+.tl-title{font-size:13.5px;margin:0;}
+.tl-meta{font-size:11.5px;color:var(--text-2);margin:2px 0 4px;}
+.tl-badge{font-size:11px;padding:2px 8px;border-radius:20px;}
+
+.toast{
+  position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--bg-3);
+  color:var(--text-0);padding:10px 18px;border-radius:20px;font-size:13px;z-index:50;
+  box-shadow:0 4px 14px rgba(0,0,0,.4);border:1px solid var(--line);opacity:0;transition:opacity .2s;
+  pointer-events:none;max-width:80%;text-align:center;
+}
+.toast.show{opacity:1;}
+
+/* ---------- Resumen gerencial ---------- */
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:22px;}
+.kpi-card{
+  background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:14px;
+  text-align:left;
+}
+.kpi-card:active{background:var(--bg-3);}
+.kpi-value{font-size:26px;font-weight:700;color:var(--jac-blue);line-height:1;}
+.kpi-label{font-size:12px;color:var(--text-2);margin-top:6px;}
+.kpi-card.kpi-warn .kpi-value{color:var(--warn);}
+.kpi-card.kpi-danger .kpi-value{color:var(--danger);}
+.kpi-card.kpi-ok .kpi-value{color:var(--ok);}
+
+.bar-row{display:flex;align-items:center;gap:10px;margin-bottom:11px;width:100%;background:none;border:none;padding:0;text-align:left;}
+.bar-label{width:118px;font-size:12.5px;color:var(--text-1);flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.bar-track{flex:1;background:var(--bg-2);border-radius:6px;height:20px;position:relative;overflow:hidden;}
+.bar-fill{height:100%;border-radius:6px;transition:width .3s ease;}
+.bar-count{width:32px;text-align:right;font-size:12.5px;font-weight:600;flex-shrink:0;color:var(--text-0);}
+
+/* ============================================================
+   RESPONSIVO: tablet / escritorio -> layout de dos columnas
+   (lista a la izquierda, ficha/formularios a la derecha, en vez
+   de la columna angosta centrada que usa el celular)
+   ============================================================ */
+@media (min-width: 860px){
+  html,body{overflow:auto;}
+  body{display:flex;align-items:center;justify-content:center;padding:24px 0;background:var(--bg-2);}
+  #app{
+    display:flex;flex-direction:row;height:min(860px,92vh);width:min(1100px,94vw);
+    border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(19,75,112,.14);
+    border:1px solid var(--line);
+  }
+  .pane-list{max-width:400px;min-width:340px;flex-shrink:0;border-right:1px solid var(--line);}
+  .pane-detail{
+    display:flex;flex:1;position:relative;background:var(--bg-1);overflow:hidden;
+  }
+  .pane-detail-empty{
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+    text-align:center;color:var(--text-2);font-size:14px;padding:40px;flex:1;
+  }
+  .pane-detail-empty .empty-illustration{font-size:42px;opacity:.45;}
+  .pane-detail.has-open .pane-detail-empty{display:none;}
+  .panel{
+    position:absolute;inset:0;max-width:none;margin:0;transform:none !important;
+    opacity:0;pointer-events:none;transition:opacity .15s ease;z-index:1;
+  }
+  .panel.open{opacity:1;pointer-events:auto;z-index:2;}
+  .fab{box-shadow:0 4px 14px rgba(19,75,112,.25);}
+}
+
+@media (min-width: 1300px){
+  #app{width:1100px;}
+}
+</style>
+</head>
+<body>
+
+<!-- ===== Pantalla de acceso (login / registro) ===== -->
+<div id="auth-gate">
+  <div class="auth-card">
+    <div class="auth-logo">JAC</div>
+    <h1>Control Equipos GTE</h1>
+    <p class="auth-sub">Inicia sesión con tu cuenta de JAC Engineering</p>
+
+    <div id="auth-form-login">
+      <div class="field"><label>Correo</label><input id="auth-email" type="email" placeholder="nombre@jacengineering.com"/></div>
+      <div class="field"><label>Contraseña</label><input id="auth-password" type="password" placeholder="••••••••"/></div>
+      <div id="auth-error" class="auth-error" style="display:none"></div>
+      <button class="btn-primary" id="btn-login">Iniciar sesión</button>
+      <button class="btn-secondary" id="btn-ir-registro">Crear una cuenta nueva</button>
+    </div>
+
+    <div id="auth-form-registro" style="display:none">
+      <div class="field"><label>Nombre completo</label><input id="reg-nombre" placeholder="Ej. Jaime Córdoba"/></div>
+      <div class="field"><label>Correo</label><input id="reg-email" type="email" placeholder="nombre@jacengineering.com"/></div>
+      <div class="field"><label>Contraseña</label><input id="reg-password" type="password" placeholder="Mínimo 6 caracteres"/></div>
+      <div id="reg-error" class="auth-error" style="display:none"></div>
+      <button class="btn-primary" id="btn-registrar">Crear cuenta</button>
+      <button class="btn-secondary" id="btn-ir-login">Ya tengo cuenta</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Pantalla de espera de aprobacion ===== -->
+<div id="espera-aprobacion">
+  <div class="auth-card">
+    <div class="auth-logo">&#9203;</div>
+    <h1>Cuenta creada, pendiente de aprobación</h1>
+    <p class="auth-sub">Un administrador debe aprobar tu acceso antes de que puedas ver y editar los equipos. Avísale a Jaime Córdoba que ya te registraste.</p>
+    <button class="btn-primary" id="btn-revisar-de-nuevo">Ya me aprobaron, revisar de nuevo</button>
+    <button class="btn-secondary" id="btn-cerrar-sesion-espera">Cerrar sesión</button>
+  </div>
+</div>
+
+<div id="app" class="oculto">
+<div class="pane-list">
+
+  <div class="topbar">
+    <div class="brand">
+      <b>Control Equipos GTE</b>
+      <span id="campo-actual">Todos los campos</span>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
+      <div class="sync-badge" id="sync-badge"><span class="dot"></span><span id="sync-text">Conectado</span></div>
+      <button id="btn-usuario-topbar" style="background:none;border:none;color:#fff;font-size:11px;opacity:.85;padding:0;display:flex;align-items:center;gap:3px">
+        &#128100; <span id="usuario-topbar-texto">Sin identificar</span>
+      </button>
+    </div>
+  </div>
+
+  <div class="search-row">
+    <div class="search-box">
+      <span class="search-icon">&#128269;</span>
+      <input id="search-input" placeholder="Buscar por código, serie o descripción" />
+    </div>
+    <button class="view-toggle" id="btn-vista" title="Cambiar vista">
+      <span id="vista-icon">&#128194;</span>
+    </button>
+    <button class="view-toggle" id="btn-exportar" title="Exportar a Excel (Resumen + Detalle)">
+      &#11015;&#65039;
+    </button>
+  </div>
+
+  <div class="filtros-bar">
+    <button class="filtro-toggle" data-grupo="campo">Campo <span class="fchev">&#9662;</span></button>
+    <button class="filtro-toggle" data-grupo="estado">Estado <span class="fchev">&#9662;</span></button>
+    <button class="filtro-toggle" data-grupo="tipo">Tipo <span class="fchev">&#9662;</span></button>
+  </div>
+  <div class="chips-panel" id="panel-chips-campo"><div class="chips" id="chips-campo"></div></div>
+  <div class="chips-panel" id="panel-chips-estado"><div class="chips" id="chips-estado"></div></div>
+  <div class="chips-panel" id="panel-chips-tipo"><div class="chips" id="chips-tipo"></div></div>
+
+  <div class="list" id="lista-equipos">
+    <div class="loading">Cargando equipos...</div>
+  </div>
+
+  <button class="fab" id="btn-fab" title="Equipo nuevo">+</button>
+
+  <div class="navbar">
+    <button class="nav-item active" data-tab="inicio">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>
+      Inicio
+    </button>
+    <button class="nav-item" data-tab="resumen">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
+      Resumen
+    </button>
+    <button class="nav-item" data-tab="pendientes">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+      Pendientes
+    </button>
+    <button class="nav-item" data-tab="perfil">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
+      Perfil
+    </button>
+  </div>
+</div>
+
+<div class="pane-detail">
+  <div class="pane-detail-empty" id="pane-detail-empty">
+    <div class="empty-illustration">&#128203;</div>
+    <p>Selecciona un equipo de la lista para ver su ficha,<br>o usa el botón "+" para registrar uno nuevo.</p>
+  </div>
+
+
+<!-- ===== Panel: Ficha de equipo ===== -->
+<div class="panel" id="panel-ficha">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-ficha')">&#8592;</button>
+    <h2 id="ficha-titulo">Equipo</h2>
+    <span class="badge" id="ficha-estado-badge"></span>
+  </div>
+  <div class="panel-body">
+    <div class="section-label" style="display:flex;justify-content:space-between;align-items:center">
+      <span>Datos técnicos</span>
+      <button id="btn-editar-datos" style="background:none;border:none;color:var(--accent);font-size:12.5px;font-weight:600;padding:2px 4px;">&#9998; Editar</button>
+    </div>
+    <table class="kv-table" id="ficha-tabla"></table>
+
+    <div id="ficha-hint" style="display:none" class="hint-box">
+      &#9888;&#65039; <span id="ficha-hint-text"></span>
+    </div>
+
+    <div class="section-label">Historial de movimientos</div>
+    <div class="timeline" id="ficha-historial"><div class="loading">Cargando historial...</div></div>
+  </div>
+  <div style="padding:14px 16px;border-top:1px solid var(--line);background:var(--bg-1)">
+    <button class="btn-primary" id="btn-registrar-cambio">Registrar cambio</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Editar / completar datos tecnicos ===== -->
+<div class="panel" id="panel-editar">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-editar')">&#10005;</button>
+    <h2>Editar datos técnicos</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box">&#8505;&#65039; Estos cambios quedan registrados para reportarse a quien actualiza SAP, con fecha y usuario — no se sobrescriben sin dejar rastro como en Excel.</div>
+    <div class="field"><label>Descripción</label><input id="e-desc" list="dl-descripciones"/></div>
+    <div class="field">
+      <label>Tipo</label>
+      <select id="e-tipo">
+        <option value="">Sin clasificar</option>
+        <option value="Electrico">Eléctrico</option>
+        <option value="Instrumentacion">Instrumentación</option>
+        <option value="Mecanico">Mecánico</option>
+        <option value="Otro">Otro</option>
+      </select>
+    </div>
+    <div class="field"><label>Marca</label><input id="e-marca" list="dl-marcas"/></div>
+    <div class="field"><label>Modelo</label><input id="e-modelo" list="dl-modelos"/></div>
+    <div class="field"><label>Número de serie</label><input id="e-serie"/></div>
+    <div class="field"><label>Ubicación técnica SAP</label><input id="e-ubicaciontecnica" placeholder="Ej. GTEC-PF-PUTN-CHZ-CYC-SEXT-UPZOSTBY"/></div>
+    <div class="hint-box">&#128161; El estado operativo y la ubicación actual (dónde está físicamente hoy) se cambian desde "Registrar cambio" en la ficha — quedan con motivo e historial, porque son cambios que ocurren en el tiempo, no correcciones de datos fijos.</div>
+    <button class="btn-primary" id="btn-guardar-editar">Guardar datos</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Registrar cambio ===== -->
+<div class="panel" id="panel-cambio">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-cambio')">&#10005;</button>
+    <h2>Registrar cambio</h2>
+  </div>
+  <div class="panel-body">
+    <div class="field">
+      <label>Equipo</label>
+      <div id="cambio-equipo-nombre" style="font-size:14px;font-weight:500;"></div>
+    </div>
+    <div class="field">
+      <label>Tipo de cambio</label>
+      <div class="seg">
+        <button type="button" class="seg-tipo active" data-tipo="cambio_estado">Estado</button>
+        <button type="button" class="seg-tipo" data-tipo="cambio_ubicacion">Ubicación</button>
+      </div>
+    </div>
+    <div class="field" id="campo-estado-nuevo">
+      <label>Nuevo estado operativo</label>
+      <select id="select-estado">
+        <option>Operando</option>
+        <option>Disponible</option>
+        <option>No disponible</option>
+        <option>Stand by</option>
+        <option>Taller externo</option>
+        <option>Dado de baja</option>
+      </select>
+    </div>
+    <div class="field" id="campo-ubicacion-nueva" style="display:none">
+      <label>Nueva ubicación</label>
+      <input id="input-ubicacion" list="dl-ubicaciones" placeholder="Ej. PAD CYC 09, Taller MTTO CYC..." />
+    </div>
+    <div class="field">
+      <label>Motivo</label>
+      <textarea id="input-motivo" placeholder="Ej. Falla de chasis, se envía a reparación con proveedor"></textarea>
+    </div>
+    <div class="hint-box">
+      &#8505;&#65039; Este cambio queda pendiente de reflejarse en SAP hasta el próximo contraste con el IH08.
+    </div>
+    <button class="btn-primary" id="btn-guardar-cambio">Guardar cambio</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Equipo nuevo ===== -->
+<div class="panel" id="panel-nuevo">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-nuevo')">&#10005;</button>
+    <h2>Registrar equipo nuevo</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box">&#8505;&#65039; Este equipo no tiene código SAP todavía. Se le asigna un ID interno y queda como solicitud de alta.</div>
+    <div class="field"><label>Descripción</label><input id="n-desc" list="dl-descripciones" placeholder="Ej. Variador de frecuencia 520KVA"/></div>
+    <div class="field"><label>Marca</label><input id="n-marca" list="dl-marcas"/></div>
+    <div class="field"><label>Modelo</label><input id="n-modelo" list="dl-modelos"/></div>
+    <div class="field"><label>Número de serie</label><input id="n-serie"/></div>
+    <div class="field">
+      <label>Campo</label>
+      <select id="n-campo"></select>
+    </div>
+    <div class="field"><label>Ubicación actual</label><input id="n-ubicacion" list="dl-ubicaciones" placeholder="Ej. PAD CYC 05"/></div>
+    <button class="btn-primary" id="btn-guardar-nuevo">Registrar equipo</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Pendientes ===== -->
+<!-- ===== Panel: Resumen gerencial ===== -->
+<div class="panel" id="panel-resumen">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-resumen')">&#8592;</button>
+    <h2>Resumen</h2>
+  </div>
+  <div class="panel-body" id="resumen-body">
+    <div class="loading">Cargando...</div>
+  </div>
+</div>
+
+<!-- ===== Panel: Perfil / sesion ===== -->
+<div class="panel" id="panel-perfil">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-perfil')">&#8592;</button>
+    <h2>Perfil</h2>
+  </div>
+  <div class="panel-body">
+    <div class="section-label">Tu cuenta</div>
+    <div id="perfil-actual" style="padding:14px;background:var(--bg-2);border-radius:8px;margin-bottom:10px;font-size:14px;font-weight:600"></div>
+    <button class="btn-secondary" id="btn-cerrar-sesion">Cerrar sesión</button>
+
+    <div id="perfil-admin-seccion" style="display:none;margin-top:24px">
+      <div class="section-label">Gestión de usuarios (solo admin)</div>
+      <div id="perfil-lista-usuarios"></div>
+    </div>
+  </div>
+</div>
+
+<div class="panel" id="panel-pendientes">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-pendientes')">&#8592;</button>
+    <h2 id="pendientes-titulo">Pendientes</h2>
+  </div>
+  <div class="panel-body" id="pendientes-lista">
+    <div class="loading">Cargando...</div>
+  </div>
+</div>
+
+</div>
+</div>
+
+<datalist id="dl-descripciones"></datalist>
+<datalist id="dl-marcas"></datalist>
+<datalist id="dl-modelos"></datalist>
+<datalist id="dl-ubicaciones"></datalist>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script>
+/* ============================================================
+   CONFIGURACION
+   ============================================================ */
+const SUPABASE_URL = "https://cxprmbnjnnldqyzaqsvf.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg";
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+/* ============================================================
+   MANIFEST (PWA instalable, incrustado como Blob para que todo
+   quede en un solo archivo HTML)
+   ============================================================ */
+const manifest = {
+  name: "Control Equipos GTE",
+  short_name: "Equipos GTE",
+  start_url: ".",
+  display: "standalone",
+  background_color: "#ffffff",
+  theme_color: "#134B70",
+  icons: [{
+    src: "data:image/svg+xml," + encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect width="100" height="100" rx="20" fill="%23134B70"/><text x="50" y="62" font-size="42" text-anchor="middle" fill="%231B8E9E" font-family="sans-serif" font-weight="bold">JAC</text></svg>'
+    ),
+    sizes: "100x100",
+    type: "image/svg+xml"
+  }]
+};
+document.getElementById("manifest-link").href =
+  "data:application/manifest+json," + encodeURIComponent(JSON.stringify(manifest));
+
+/* ============================================================
+   ESTADO GLOBAL
+   ============================================================ */
+let equipos = [];
+let campos = [];
+let filtroTexto = "";
+let filtroCampo = null;
+let filtroEstado = null;
+let filtroSinCodigo = false;
+let filtroTipo = null;
+let vistaArbol = false;
+let arbolExpandido = new Set();
+let equipoSeleccionado = null;
+const ESTADOS = ["Operando", "Disponible", "No disponible", "Stand by", "Taller externo", "Dado de baja"];
+const TIPOS_EQUIPO = ["Electrico", "Instrumentacion", "Mecanico", "Otro"];
+const TIPOS_EQUIPO_LABEL = { Electrico: "Eléctrico", Instrumentacion: "Instrumentación", Mecanico: "Mecánico", Otro: "Otro" };
+const CACHE_KEY = "equipos_gte_cache_v1";
+
+/* ============================================================
+   UTILIDADES
+   ============================================================ */
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2200);
+}
+
+function badgeClase(estado) {
+  if (!estado) return "badge-pendiente";
+  const key = estado.split(" ")[0];
+  return "badge-" + key;
+}
+
+function actualizarEstadoConexion() {
+  const badge = document.getElementById("sync-badge");
+  const text = document.getElementById("sync-text");
+  const pendientes = colaOffline.length;
+  if (!navigator.onLine) {
+    badge.className = "sync-badge offline";
+    text.textContent = pendientes ? `Sin conexión (${pendientes} por guardar)` : "Sin conexión";
+  } else if (pendientes) {
+    badge.className = "sync-badge pending";
+    text.textContent = `Sincronizando ${pendientes}...`;
+  } else {
+    badge.className = "sync-badge";
+    text.textContent = "Conectado";
+  }
+}
+window.addEventListener("online", () => { actualizarEstadoConexion(); sincronizarColaOffline(); });
+window.addEventListener("offline", actualizarEstadoConexion);
+
+function abrirPanel(id) {
+  document.querySelectorAll(".panel.open").forEach(p => { if (p.id !== id) p.classList.remove("open"); });
+  document.getElementById(id).classList.add("open");
+  const pd = document.querySelector(".pane-detail");
+  if (pd) pd.classList.add("has-open");
+}
+function cerrarPanel(id) {
+  document.getElementById(id).classList.remove("open");
+  const quedaAlgunoAbierto = document.querySelectorAll(".panel.open").length > 0;
+  const pd = document.querySelector(".pane-detail");
+  if (pd && !quedaAlgunoAbierto) pd.classList.remove("has-open");
+}
+
+/* ============================================================
+   CARGA DE DATOS
+   ============================================================ */
+async function cargarCampos() {
+  const { data, error } = await sb.from("campos_catalogo").select("*").order("codigo");
+  if (!error && data) campos = data;
+}
+
+async function cargarEquipos() {
+  const lista = document.getElementById("lista-equipos");
+  try {
+    // Supabase limita cada consulta a 1000 filas por defecto. Con 10.000+
+    // equipos hay que paginar con .range() hasta traerlos todos, o si no
+    // se veria solo una fraccion sin ningun aviso de que falta el resto.
+    let todos = [];
+    let desde = 0;
+    const TAMANO_PAGINA = 1000;
+    while (true) {
+      const { data, error } = await sb
+        .from("equipos")
+        .select("*")
+        .order("descripcion")
+        .range(desde, desde + TAMANO_PAGINA - 1);
+      if (error) throw error;
+      if (!data || !data.length) break;
+      todos = todos.concat(data);
+      if (data.length < TAMANO_PAGINA) break;
+      desde += TAMANO_PAGINA;
+    }
+    equipos = todos;
+    try {
+      localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
+    } catch (e) {
+      console.warn("No se pudo guardar cache local (posiblemente muy grande):", e);
+    }
+    actualizarEstadoConexion();
+  } catch (e) {
+    const cache = localStorage.getItem(CACHE_KEY);
+    if (cache) {
+      equipos = JSON.parse(cache);
+      toast("Sin conexión: mostrando datos guardados localmente");
+    } else {
+      lista.innerHTML = '<div class="empty">No se pudo cargar. Verifica tu conexión.</div>';
+      return;
+    }
+  }
+  renderChipsCampo();
+  renderLista();
+  construirAutocompletado();
+}
+
+/* ---- Autocompletado: sugiere valores ya usados para estandarizar datos ---- */
+function construirAutocompletado() {
+  const listasPorId = {
+    "dl-descripciones": "descripcion",
+    "dl-marcas": "marca",
+    "dl-modelos": "modelo",
+    "dl-ubicaciones": "ubicacion_actual",
+  };
+  Object.entries(listasPorId).forEach(([idDatalist, campo]) => {
+    const valores = new Set();
+    equipos.forEach(e => {
+      const v = e[campo];
+      if (v && String(v).trim()) valores.add(String(v).trim());
+    });
+    const datalist = document.getElementById(idDatalist);
+    datalist.innerHTML = [...valores].sort().slice(0, 500)
+      .map(v => `<option value="${v.replace(/"/g, "&quot;")}"></option>`).join("");
+  });
+}
+
+function cerrarPanelesFiltro() {
+  document.querySelectorAll(".chips-panel").forEach(p => p.classList.remove("open"));
+  document.querySelectorAll(".filtro-toggle").forEach(b => b.classList.remove("open"));
+}
+
+function renderChipsCampo() {
+  const cont = document.getElementById("chips-campo");
+  const codigosUsados = [...new Set(equipos.map(e => e.campo_codigo).filter(Boolean))].sort();
+  cont.innerHTML = "";
+  const todos = document.createElement("span");
+  todos.className = "chip" + (filtroCampo === null ? " active" : "");
+  todos.textContent = "Todos los campos";
+  todos.onclick = () => { filtroCampo = null; renderChipsCampo(); renderLista(); document.getElementById("campo-actual").textContent = "Todos los campos"; cerrarPanelesFiltro(); };
+  cont.appendChild(todos);
+  codigosUsados.forEach(codigo => {
+    const nombre = (campos.find(c => c.codigo === codigo) || {}).nombre || codigo;
+    const chip = document.createElement("span");
+    chip.className = "chip" + (filtroCampo === codigo ? " active" : "");
+    chip.textContent = codigo;
+    chip.onclick = () => {
+      filtroCampo = codigo;
+      renderChipsCampo();
+      renderLista();
+      document.getElementById("campo-actual").textContent = nombre + " (" + codigo + ")";
+      cerrarPanelesFiltro();
+    };
+    cont.appendChild(chip);
+  });
+
+  const contEstado = document.getElementById("chips-estado");
+  contEstado.innerHTML = "";
+  const todosEstado = document.createElement("span");
+  todosEstado.className = "chip" + (filtroEstado === null ? " active" : "");
+  todosEstado.textContent = "Todos los estados";
+  todosEstado.onclick = () => { filtroEstado = null; renderChipsCampo(); renderLista(); cerrarPanelesFiltro(); };
+  contEstado.appendChild(todosEstado);
+  ESTADOS.forEach(estado => {
+    const chip = document.createElement("span");
+    chip.className = "chip" + (filtroEstado === estado ? " active" : "");
+    chip.textContent = estado;
+    chip.onclick = () => { filtroEstado = estado; renderChipsCampo(); renderLista(); cerrarPanelesFiltro(); };
+    contEstado.appendChild(chip);
+  });
+
+  const contTipo = document.getElementById("chips-tipo");
+  contTipo.innerHTML = "";
+  const todosTipo = document.createElement("span");
+  todosTipo.className = "chip" + (filtroTipo === null ? " active" : "");
+  todosTipo.textContent = "Todos los tipos";
+  todosTipo.onclick = () => { filtroTipo = null; renderChipsCampo(); renderLista(); cerrarPanelesFiltro(); };
+  contTipo.appendChild(todosTipo);
+  TIPOS_EQUIPO.forEach(tipo => {
+    const chip = document.createElement("span");
+    chip.className = "chip" + (filtroTipo === tipo ? " active" : "");
+    chip.textContent = TIPOS_EQUIPO_LABEL[tipo];
+    chip.onclick = () => { filtroTipo = tipo; renderChipsCampo(); renderLista(); cerrarPanelesFiltro(); };
+    contTipo.appendChild(chip);
+  });
+
+  actualizarEtiquetasFiltro();
+}
+
+function actualizarEtiquetasFiltro() {
+  const btnCampo = document.querySelector('.filtro-toggle[data-grupo="campo"]');
+  const nombreCampo = filtroCampo ? ((campos.find(c => c.codigo === filtroCampo) || {}).nombre || filtroCampo) : null;
+  btnCampo.innerHTML = (filtroCampo ? `Campo: ${nombreCampo}` : "Campo") + ' <span class="fchev">&#9662;</span>';
+  btnCampo.classList.toggle("activo", !!filtroCampo);
+
+  const btnEstado = document.querySelector('.filtro-toggle[data-grupo="estado"]');
+  btnEstado.innerHTML = (filtroEstado ? `Estado: ${filtroEstado}` : "Estado") + ' <span class="fchev">&#9662;</span>';
+  btnEstado.classList.toggle("activo", !!filtroEstado);
+
+  const btnTipo = document.querySelector('.filtro-toggle[data-grupo="tipo"]');
+  btnTipo.innerHTML = (filtroTipo ? `Tipo: ${TIPOS_EQUIPO_LABEL[filtroTipo]}` : "Tipo") + ' <span class="fchev">&#9662;</span>';
+  btnTipo.classList.toggle("activo", !!filtroTipo);
+}
+
+document.querySelectorAll(".filtro-toggle").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const grupo = btn.dataset.grupo;
+    const panel = document.getElementById("panel-chips-" + grupo);
+    const yaAbierto = panel.classList.contains("open");
+    document.querySelectorAll(".chips-panel").forEach(p => p.classList.remove("open"));
+    document.querySelectorAll(".filtro-toggle").forEach(b => b.classList.remove("open"));
+    if (!yaAbierto) {
+      panel.classList.add("open");
+      btn.classList.add("open");
+    }
+  });
+});
+
+function obtenerFiltrados() {
+  const texto = filtroTexto.trim().toLowerCase();
+  return equipos.filter(e => {
+    if (filtroCampo && e.campo_codigo !== filtroCampo) return false;
+    if (filtroEstado && e.estado_operativo !== filtroEstado) return false;
+    if (filtroTipo && e.tipo_equipo !== filtroTipo) return false;
+    if (filtroSinCodigo && e.codigo_sap) return false;
+    if (texto) {
+      const campo = [e.codigo_sap, e.id_interno, e.descripcion, e.numero_serie]
+        .filter(Boolean).join(" ").toLowerCase();
+      if (!campo.includes(texto)) return false;
+    }
+    return true;
+  });
+}
+
+function renderLista() {
+  const cont = document.getElementById("lista-equipos");
+  if (vistaArbol) { renderArbol(cont); return; }
+
+  const filtrados = obtenerFiltrados();
+
+  if (!filtrados.length) {
+    cont.innerHTML = '<div class="empty">No hay equipos que coincidan con el filtro.</div>';
+    return;
+  }
+
+  cont.innerHTML = "";
+  if (filtrados.length > 300) {
+    const aviso = document.createElement("div");
+    aviso.className = "empty";
+    aviso.style.padding = "10px 4px";
+    aviso.style.fontSize = "12px";
+    aviso.textContent = `Mostrando 300 de ${filtrados.length} resultados. Usa el buscador, los filtros, o cambia a vista de árbol para navegar más fácil.`;
+    cont.appendChild(aviso);
+  }
+  filtrados.slice(0, 300).forEach(e => {
+    const card = document.createElement("div");
+    card.className = "eq-card";
+    const codigoMostrar = e.codigo_sap || e.id_interno;
+    card.innerHTML = `
+      <div class="eq-main">
+        <div class="eq-code">${codigoMostrar}${e.codigo_sap ? "" : " · sin código SAP"}</div>
+        <div class="eq-desc">${e.descripcion || "(sin descripción)"}</div>
+        <div class="eq-loc">${e.ubicacion_actual || e.ubicacion_tecnica_sap || "Ubicación no registrada"}</div>
+      </div>
+      <span class="badge ${badgeClase(e.estado_operativo)}">${e.estado_operativo || "—"}</span>
+    `;
+    card.onclick = () => abrirFicha(e);
+    cont.appendChild(card);
+  });
+}
+
+/* ---- Vista jerarquica: Campo > Instalacion/Pozo > Equipo (estilo Jhon Diaz) ---- */
+function parseUbicacion(ut) {
+  if (!ut) return null;
+  const p = ut.split("-");
+  return {
+    contrato: p[3] || null,
+    campo: p[4] || null,
+    instalacion: p[5] || null,
+    final: p[6] || null,
+  };
+}
+
+function renderArbol(cont) {
+  const filtrados = obtenerFiltrados();
+  if (!filtrados.length) {
+    cont.innerHTML = '<div class="empty">No hay equipos que coincidan con el filtro.</div>';
+    return;
+  }
+
+  // Agrupar: campo_codigo -> instalacion (o "Sin ubicación SAP") -> lista de equipos
+  const arbol = {};
+  filtrados.forEach(e => {
+    const campoKey = e.campo_codigo || "Sin campo";
+    const ubic = parseUbicacion(e.ubicacion_tecnica_sap);
+    const instKey = ubic && ubic.instalacion ? ubic.instalacion : "Sin ubicación SAP";
+    arbol[campoKey] = arbol[campoKey] || {};
+    arbol[campoKey][instKey] = arbol[campoKey][instKey] || [];
+    arbol[campoKey][instKey].push(e);
+  });
+
+  cont.innerHTML = "";
+  Object.keys(arbol).sort().forEach(campoKey => {
+    const nombreCampo = (campos.find(c => c.codigo === campoKey) || {}).nombre || campoKey;
+    const subgrupos = arbol[campoKey];
+    const totalCampo = Object.values(subgrupos).reduce((a, arr) => a + arr.length, 0);
+    const keyCampo = "campo:" + campoKey;
+
+    const grupoCampo = document.createElement("div");
+    grupoCampo.className = "tree-group" + (arbolExpandido.has(keyCampo) ? " open" : "");
+    grupoCampo.innerHTML = `
+      <div class="tree-group-header" data-key="${keyCampo}">
+        <span class="tree-chevron">&#9656;</span>
+        <span class="tree-folder-icon">&#128193;</span>
+        <span class="tree-group-title">${nombreCampo} (${campoKey})</span>
+        <span class="tree-group-count">${totalCampo}</span>
+      </div>
+      <div class="tree-children" id="tc-${CSS.escape(keyCampo)}"></div>
+    `;
+    cont.appendChild(grupoCampo);
+
+    const childrenCampo = grupoCampo.querySelector(".tree-children");
+    Object.keys(subgrupos).sort().forEach(instKey => {
+      const equiposInst = subgrupos[instKey];
+      const keyInst = keyCampo + "|inst:" + instKey;
+
+      const grupoInst = document.createElement("div");
+      grupoInst.className = "tree-group" + (arbolExpandido.has(keyInst) ? " open" : "");
+      grupoInst.innerHTML = `
+        <div class="tree-group-header" data-key="${keyInst}">
+          <span class="tree-chevron">&#9656;</span>
+          <span class="tree-folder-icon">&#128205;</span>
+          <span class="tree-group-title">${instKey}</span>
+          <span class="tree-group-count">${equiposInst.length}</span>
+        </div>
+        <div class="tree-children"></div>
+      `;
+      childrenCampo.appendChild(grupoInst);
+
+    const childrenInst = grupoInst.querySelector(".tree-children");
+
+    // Las hojas (equipos individuales) solo se construyen la primera vez
+    // que se abre esa carpeta - con 10.000+ equipos, construir todo de
+    // una sola vez haria que la vista de arbol se sintiera lenta.
+      const poblarHojas = () => {
+        if (childrenInst.dataset.poblado) return;
+        childrenInst.dataset.poblado = "1";
+        equiposInst.forEach(e => {
+          const codigoMostrar = e.codigo_sap || e.id_interno;
+          const hoja = document.createElement("div");
+          hoja.className = "tree-leaf";
+          hoja.innerHTML = `
+            <div class="tree-leaf-main">
+              <div class="tree-leaf-code">${codigoMostrar}</div>
+              <div class="tree-leaf-desc">${e.descripcion || "(sin descripción)"}</div>
+            </div>
+            <span class="badge ${badgeClase(e.estado_operativo)}">${e.estado_operativo || "—"}</span>
+          `;
+          hoja.onclick = () => abrirFicha(e);
+          childrenInst.appendChild(hoja);
+        });
+      };
+      grupoInst._poblarHojas = poblarHojas;
+      if (arbolExpandido.has(keyInst)) poblarHojas();
+    });
+  });
+
+  cont.querySelectorAll(".tree-group-header").forEach(header => {
+    header.onclick = () => {
+      const key = header.dataset.key;
+      const grupo = header.parentElement;
+      if (arbolExpandido.has(key)) {
+        arbolExpandido.delete(key);
+        grupo.classList.remove("open");
+      } else {
+        arbolExpandido.add(key);
+        grupo.classList.add("open");
+        if (grupo._poblarHojas) grupo._poblarHojas();
+      }
+    };
+  });
+}
+
+/* ---- Exportar a Excel: hoja de Resumen/KPIs + hoja de Detalle ---- */
+function descripcionFiltroActual() {
+  const partes = [];
+  partes.push(filtroCampo ? `Campo: ${filtroCampo}` : "Campo: todos");
+  partes.push(filtroTipo ? `Tipo: ${TIPOS_EQUIPO_LABEL[filtroTipo]}` : "Tipo: todos");
+  partes.push(filtroEstado ? `Estado: ${filtroEstado}` : "Estado: todos");
+  if (filtroSinCodigo) partes.push("Solo sin código SAP");
+  if (filtroTexto.trim()) partes.push(`Búsqueda: "${filtroTexto.trim()}"`);
+  return partes.join("  ·  ");
+}
+
+document.getElementById("btn-exportar").onclick = () => {
+  const filtrados = obtenerFiltrados();
+  if (!filtrados.length) { toast("No hay equipos que coincidan con el filtro actual"); return; }
+
+  // ---- Calculos de KPI sobre el subconjunto EXPORTADO (respeta el filtro) ----
+  const total = filtrados.length;
+  const porEstado = {};
+  filtrados.forEach(e => {
+    const es = e.estado_operativo || "Sin estado";
+    porEstado[es] = (porEstado[es] || 0) + 1;
+  });
+  const porCampo = {};
+  filtrados.forEach(e => {
+    const c = e.campo_codigo || "Sin campo";
+    porCampo[c] = (porCampo[c] || 0) + 1;
+  });
+  const pendientesSync = filtrados.filter(e => e.estado_sincronizacion === "pendiente_actualizar_sap").length;
+  const pendientesVerificar = filtrados.filter(e => e.estado_sincronizacion === "pendiente_verificar_campo").length;
+  const sinCodigo = filtrados.filter(e => !e.codigo_sap).length;
+
+  const barraTexto = (n, max, ancho = 24) => {
+    const llenas = Math.max(1, Math.round((n / max) * ancho));
+    return "█".repeat(llenas) + "░".repeat(Math.max(0, ancho - llenas));
+  };
+  const maxEstadoExp = Math.max(...Object.values(porEstado), 1);
+  const maxCampoExp = Math.max(...Object.values(porCampo), 1);
+
+  const filasResumen = [
+    ["CONTROL EQUIPOS GTE — RESUMEN GERENCIAL"],
+    ["Generado", new Date().toLocaleString("es-CO")],
+    ["Filtro aplicado", descripcionFiltroActual()],
+    [],
+    ["INDICADOR", "VALOR"],
+    ["Total de equipos", total],
+    ["Pendientes de actualizar en SAP", pendientesSync],
+    ["Pendientes de verificar en campo", pendientesVerificar],
+    ["Sin código SAP (solicitudes de alta)", sinCodigo],
+    [],
+    ["EQUIPOS POR ESTADO OPERATIVO"],
+    ["Estado", "Cantidad", "% del total", "Gráfico"],
+  ];
+  Object.entries(porEstado).sort((a, b) => b[1] - a[1]).forEach(([estado, n]) => {
+    filasResumen.push([estado, n, (n / total * 100).toFixed(1) + "%", barraTexto(n, maxEstadoExp)]);
+  });
+  filasResumen.push([]);
+  filasResumen.push(["EQUIPOS POR CAMPO"]);
+  filasResumen.push(["Campo", "Cantidad", "% del total", "Gráfico"]);
+  Object.entries(porCampo).sort((a, b) => b[1] - a[1]).forEach(([campo, n]) => {
+    const nombre = (campos.find(c => c.codigo === campo) || {}).nombre || campo;
+    filasResumen.push([`${nombre} (${campo})`, n, (n / total * 100).toFixed(1) + "%", barraTexto(n, maxCampoExp)]);
+  });
+
+  const wsResumen = XLSX.utils.aoa_to_sheet(filasResumen);
+  wsResumen["!cols"] = [{ wch: 38 }, { wch: 16 }, { wch: 12 }, { wch: 26 }];
+
+  const columnasDetalle = [
+    ["codigo_sap", "Código SAP"],
+    ["id_interno", "ID interno"],
+    ["descripcion", "Descripción"],
+    ["tipo_equipo", "Tipo"],
+    ["marca", "Marca"],
+    ["modelo", "Modelo"],
+    ["numero_serie", "Número de serie"],
+    ["campo_codigo", "Campo"],
+    ["ubicacion_actual", "Ubicación actual"],
+    ["ubicacion_tecnica_sap", "Ubicación técnica SAP"],
+    ["estado_operativo", "Estado operativo"],
+    ["estado_sincronizacion", "Estado de sincronización"],
+    ["equipo_superior_sap", "Equipo superior SAP"],
+  ];
+  const filasDetalle = [columnasDetalle.map(([, etiqueta]) => etiqueta)];
+  filtrados.forEach(e => {
+    filasDetalle.push(columnasDetalle.map(([campo]) => e[campo] ?? ""));
+  });
+  const wsDetalle = XLSX.utils.aoa_to_sheet(filasDetalle);
+  wsDetalle["!cols"] = columnasDetalle.map(() => ({ wch: 20 }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen");
+  XLSX.utils.book_append_sheet(wb, wsDetalle, "Detalle");
+
+  const fecha = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `equipos_gte_${fecha}.xlsx`);
+  toast(`Exportados ${total} equipos (Resumen + Detalle)`);
+};
+
+document.getElementById("btn-vista").onclick = () => {
+  vistaArbol = !vistaArbol;
+  document.getElementById("btn-vista").classList.toggle("active", vistaArbol);
+  document.getElementById("vista-icon").innerHTML = vistaArbol ? "&#9776;" : "&#128194;";
+  renderLista();
+};
+
+document.getElementById("search-input").addEventListener("input", (ev) => {
+  filtroTexto = ev.target.value;
+  renderLista();
+});
+
+/* ============================================================
+   FICHA DE EQUIPO
+   ============================================================ */
+async function abrirFicha(equipo) {
+  equipoSeleccionado = equipo;
+  document.getElementById("ficha-titulo").textContent = equipo.codigo_sap
+    ? equipo.codigo_sap + " · " + (equipo.descripcion || "")
+    : equipo.id_interno + " · " + (equipo.descripcion || "");
+  const badge = document.getElementById("ficha-estado-badge");
+  badge.textContent = equipo.estado_operativo || "—";
+  badge.className = "badge " + badgeClase(equipo.estado_operativo);
+
+  const filas = [
+    ["Tipo", TIPOS_EQUIPO_LABEL[equipo.tipo_equipo] || "Sin clasificar"],
+    ["Marca", equipo.marca],
+    ["Modelo", equipo.modelo],
+    ["Número de serie", equipo.numero_serie],
+    ["Campo", equipo.campo_codigo],
+    ["Ubicación técnica SAP", equipo.ubicacion_tecnica_sap],
+    ["Ubicación actual", equipo.ubicacion_actual],
+    ["Equipo superior SAP", equipo.equipo_superior_sap],
+    ["Último contraste SAP", equipo.fecha_ultimo_contraste_sap],
+  ];
+  document.getElementById("ficha-tabla").innerHTML = filas
+    .filter(([, v]) => v)
+    .map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`)
+    .join("");
+
+  const hint = document.getElementById("ficha-hint");
+  if (!equipo.codigo_sap) {
+    hint.style.display = "flex";
+    document.getElementById("ficha-hint-text").textContent =
+      "Este equipo aún no tiene código SAP. Está registrado como solicitud de alta.";
+  } else if (equipo.estado_sincronizacion === "pendiente_actualizar_sap") {
+    hint.style.display = "flex";
+    document.getElementById("ficha-hint-text").textContent =
+      "Este equipo tiene cambios pendientes de reflejarse en SAP.";
+  } else {
+    hint.style.display = "none";
+  }
+
+  abrirPanel("panel-ficha");
+  cargarHistorial(equipo.id);
+}
+
+async function cargarHistorial(equipoId) {
+  const cont = document.getElementById("ficha-historial");
+  cont.innerHTML = '<div class="loading">Cargando historial...</div>';
+  const { data, error } = await sb
+    .from("movimientos")
+    .select("*, usuarios(nombre)")
+    .eq("equipo_id", equipoId)
+    .order("fecha_registro", { ascending: false });
+
+  if (error || !data || !data.length) {
+    cont.innerHTML = '<div class="empty">Sin movimientos registrados todavía.</div>';
+    return;
+  }
+  cont.innerHTML = data.map(m => {
+    const esOk = m.estado_conciliacion === "confirmado_en_sap" || m.estado_conciliacion === "aprobado";
+    const dotClass = esOk ? "ok" : (m.estado_conciliacion === "pendiente" ? "pend" : "");
+    const titulo = m.tipo_movimiento === "cambio_ubicacion"
+      ? `Ubicación: ${m.ubicacion_anterior || "—"} → ${m.ubicacion_nueva || "—"}`
+      : `Estado: ${m.estado_anterior || "—"} → ${m.estado_nuevo || "—"}`;
+    const fecha = (m.fecha_registro || "").toString().slice(0, 10);
+    const autor = m.usuarios?.nombre || "Sin identificar";
+    return `
+      <div class="tl-item">
+        <div class="tl-dot ${dotClass}"></div>
+        <p class="tl-title">${titulo}</p>
+        <p class="tl-meta">${fecha} · ${autor}${m.motivo ? " · " + m.motivo : ""}</p>
+        <span class="tl-badge ${badgeClase(m.estado_conciliacion === "confirmado_en_sap" || m.estado_conciliacion === "aprobado" ? "Operando" : "Disponible")}">${m.estado_conciliacion}</span>
+      </div>`;
+  }).join("");
+}
+
+/* ============================================================
+   COLA OFFLINE: guarda cambios localmente cuando no hay señal,
+   y los sincroniza solos cuando vuelve la conexión
+   ============================================================ */
+const COLA_KEY = "equipos_gte_cola_offline";
+let colaOffline = JSON.parse(localStorage.getItem(COLA_KEY) || "[]");
+
+function guardarCola() {
+  localStorage.setItem(COLA_KEY, JSON.stringify(colaOffline));
+  actualizarEstadoConexion();
+}
+
+function encolar(tipo, payload) {
+  colaOffline.push({ id: Date.now() + "-" + Math.random().toString(36).slice(2), tipo, payload, intentos: 0 });
+  guardarCola();
+}
+
+let sincronizando = false;
+async function sincronizarColaOffline() {
+  if (sincronizando || !navigator.onLine || !colaOffline.length) return;
+  sincronizando = true;
+  const pendientesRestantes = [];
+  for (const item of colaOffline) {
+    try {
+      await ejecutarOperacion(item.tipo, item.payload);
+    } catch (e) {
+      item.intentos = (item.intentos || 0) + 1;
+      if (item.intentos < 5) pendientesRestantes.push(item);
+      console.warn("No se pudo sincronizar, se reintentará:", item, e);
+    }
+  }
+  colaOffline = pendientesRestantes;
+  guardarCola();
+  if (colaOffline.length === 0) {
+    toast("Todo sincronizado con Supabase");
+    await cargarEquipos();
+  }
+}
+
+// Ejecuta contra Supabase el mismo tipo de operacion que se hizo localmente
+async function ejecutarOperacion(tipo, payload) {
+  if (tipo === "movimiento") {
+    const { error: e1 } = await sb.from("movimientos").insert(payload.movimiento);
+    if (e1) throw e1;
+    const { error: e2 } = await sb.from("equipos").update(payload.cambiosEquipo).eq("id", payload.equipoId);
+    if (e2) throw e2;
+  } else if (tipo === "equipo_nuevo") {
+    const { error } = await sb.from("equipos").insert(payload.equipo);
+    if (error) throw error;
+    // buscamos el id real recien creado por id_interno para la solicitud de alta
+    const { data: eq } = await sb.from("equipos").select("id").eq("id_interno", payload.equipo.id_interno).single();
+    if (eq) await sb.from("solicitudes_alta").insert({ equipo_id: eq.id, estado_solicitud: "pendiente" });
+  } else if (tipo === "editar_datos") {
+    const { error: e1 } = await sb.from("equipos").update(payload.cambios).eq("id", payload.equipoId);
+    if (e1) throw e1;
+    if (payload.registrosPendientes && payload.registrosPendientes.length) {
+      const { error: e2 } = await sb.from("campos_pendientes").insert(payload.registrosPendientes);
+      if (e2) throw e2;
+    }
+  }
+}
+
+// Intenta ejecutar de una vez; si falla (o si ya sabemos que no hay señal),
+// lo encola y aplica el cambio de forma optimista en la copia local
+async function intentarOEncolar(tipo, payload, aplicarLocal) {
+  if (navigator.onLine) {
+    try {
+      await ejecutarOperacion(tipo, payload);
+      return true; // se guardo directo en Supabase
+    } catch (e) {
+      console.warn("Fallo al guardar en linea, se encola:", e);
+    }
+  }
+  encolar(tipo, payload);
+  if (aplicarLocal) aplicarLocal();
+  return false; // quedo pendiente en la cola
+}
+
+setInterval(() => { if (navigator.onLine) sincronizarColaOffline(); }, 30000);
+
+/* ============================================================
+   REGISTRAR CAMBIO
+   ============================================================ */
+document.getElementById("btn-editar-datos").onclick = () => {
+  if (!equipoSeleccionado) return;
+  document.getElementById("e-desc").value = equipoSeleccionado.descripcion || "";
+  document.getElementById("e-tipo").value = equipoSeleccionado.tipo_equipo || "";
+  document.getElementById("e-marca").value = equipoSeleccionado.marca || "";
+  document.getElementById("e-modelo").value = equipoSeleccionado.modelo || "";
+  document.getElementById("e-serie").value = equipoSeleccionado.numero_serie || "";
+  document.getElementById("e-ubicaciontecnica").value = equipoSeleccionado.ubicacion_tecnica_sap || "";
+  abrirPanel("panel-editar");
+};
+
+document.getElementById("btn-guardar-editar").onclick = async () => {
+  if (!equipoSeleccionado) return;
+  const btn = document.getElementById("btn-guardar-editar");
+  btn.disabled = true; btn.textContent = "Guardando...";
+
+  const nuevos = {
+    descripcion: document.getElementById("e-desc").value.trim() || null,
+    tipo_equipo: document.getElementById("e-tipo").value || null,
+    marca: document.getElementById("e-marca").value.trim() || null,
+    modelo: document.getElementById("e-modelo").value.trim() || null,
+    numero_serie: document.getElementById("e-serie").value.trim() || null,
+    ubicacion_tecnica_sap: document.getElementById("e-ubicaciontecnica").value.trim() || null,
+  };
+
+  const cambios = {};
+  const registrosPendientes = [];
+  Object.entries(nuevos).forEach(([campo, valorNuevo]) => {
+    if (campo === "descripcion" && !valorNuevo) return; // la descripción no puede quedar vacía
+    const valorAnterior = equipoSeleccionado[campo] || null;
+    if (valorNuevo !== valorAnterior) {
+      cambios[campo] = valorNuevo;
+      registrosPendientes.push({
+        equipo_id: equipoSeleccionado.id,
+        campo,
+        valor_sap: valorAnterior,
+        valor_propuesto: valorNuevo,
+        estado: "pendiente",
+      });
+    }
+  });
+
+  if (!Object.keys(cambios).length) {
+    toast("No hay cambios para guardar");
+    btn.disabled = false; btn.textContent = "Guardar datos";
+    return;
+  }
+
+  try {
+    cambios.estado_sincronizacion = "pendiente_actualizar_sap";
+    const guardadoDirecto = await intentarOEncolar(
+      "editar_datos",
+      { cambios, registrosPendientes, equipoId: equipoSeleccionado.id },
+      () => {
+        Object.assign(equipoSeleccionado, cambios);
+        const idx = equipos.findIndex(e => e.id === equipoSeleccionado.id);
+        if (idx >= 0) Object.assign(equipos[idx], cambios);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
+      }
+    );
+    toast(guardadoDirecto ? "Datos actualizados" : "Sin conexión: guardado en el dispositivo, se sincronizará solo");
+    cerrarPanel("panel-editar");
+    cerrarPanel("panel-ficha");
+    if (guardadoDirecto) await cargarEquipos(); else renderLista();
+  } catch (e) {
+    toast("No se pudo guardar (revisa tu conexión)");
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.textContent = "Guardar datos";
+  }
+};
+
+document.getElementById("btn-registrar-cambio").onclick = () => {
+  if (!equipoSeleccionado) return;
+  document.getElementById("cambio-equipo-nombre").textContent =
+    (equipoSeleccionado.codigo_sap || equipoSeleccionado.id_interno) + " · " + (equipoSeleccionado.descripcion || "");
+  document.getElementById("select-estado").value = equipoSeleccionado.estado_operativo || "Operando";
+  document.getElementById("input-ubicacion").value = equipoSeleccionado.ubicacion_actual || "";
+  document.getElementById("input-motivo").value = "";
+  seleccionarTipoCambio("cambio_estado");
+  abrirPanel("panel-cambio");
+};
+
+let tipoCambioActual = "cambio_estado";
+function seleccionarTipoCambio(tipo) {
+  tipoCambioActual = tipo;
+  document.querySelectorAll(".seg-tipo").forEach(b => b.classList.toggle("active", b.dataset.tipo === tipo));
+  document.getElementById("campo-estado-nuevo").style.display = tipo === "cambio_estado" ? "block" : "none";
+  document.getElementById("campo-ubicacion-nueva").style.display = tipo === "cambio_ubicacion" ? "block" : "none";
+}
+document.querySelectorAll(".seg-tipo").forEach(b => {
+  b.onclick = () => seleccionarTipoCambio(b.dataset.tipo);
+});
+
+document.getElementById("btn-guardar-cambio").onclick = async () => {
+  if (!equipoSeleccionado) return;
+  const motivo = document.getElementById("input-motivo").value.trim();
+  if (!motivo) { toast("Escribe un motivo para el cambio"); return; }
+
+  const btn = document.getElementById("btn-guardar-cambio");
+  btn.disabled = true; btn.textContent = "Guardando...";
+
+  const esEstado = tipoCambioActual === "cambio_estado";
+  const nuevoEstado = esEstado ? document.getElementById("select-estado").value : equipoSeleccionado.estado_operativo;
+  const nuevaUbicacion = esEstado ? equipoSeleccionado.ubicacion_actual : document.getElementById("input-ubicacion").value.trim();
+
+  const movimiento = {
+    equipo_id: equipoSeleccionado.id,
+    tipo_movimiento: tipoCambioActual,
+    estado_anterior: esEstado ? equipoSeleccionado.estado_operativo : null,
+    estado_nuevo: esEstado ? nuevoEstado : null,
+    ubicacion_anterior: esEstado ? null : equipoSeleccionado.ubicacion_actual,
+    ubicacion_nueva: esEstado ? null : nuevaUbicacion,
+    motivo,
+    estado_conciliacion: "pendiente",
+    usuario_id: usuarioActual ? usuarioActual.id : null,
+  };
+  const cambiosEquipo = { estado_sincronizacion: "pendiente_actualizar_sap" };
+  if (esEstado) cambiosEquipo.estado_operativo = nuevoEstado;
+  else cambiosEquipo.ubicacion_actual = nuevaUbicacion;
+
+  try {
+    const guardadoDirecto = await intentarOEncolar(
+      "movimiento",
+      { movimiento, cambiosEquipo, equipoId: equipoSeleccionado.id },
+      () => {
+        // Aplica el cambio de inmediato en la copia local, para que se vea reflejado
+        // aunque todavia no se haya sincronizado con Supabase
+        Object.assign(equipoSeleccionado, cambiosEquipo);
+        const idx = equipos.findIndex(e => e.id === equipoSeleccionado.id);
+        if (idx >= 0) Object.assign(equipos[idx], cambiosEquipo);
+        localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
+      }
+    );
+    toast(guardadoDirecto ? "Cambio guardado" : "Sin conexión: guardado en el dispositivo, se sincronizará solo");
+    cerrarPanel("panel-cambio");
+    cerrarPanel("panel-ficha");
+    if (guardadoDirecto) await cargarEquipos(); else renderLista();
+  } catch (e) {
+    toast("No se pudo guardar");
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.textContent = "Guardar cambio";
+  }
+};
+
+/* ============================================================
+   EQUIPO NUEVO
+   ============================================================ */
+document.getElementById("btn-fab").onclick = () => {
+  const sel = document.getElementById("n-campo");
+  sel.innerHTML = campos.map(c => `<option value="${c.codigo}">${c.nombre} (${c.codigo})</option>`).join("");
+  ["n-desc", "n-marca", "n-modelo", "n-serie", "n-ubicacion"].forEach(id => document.getElementById(id).value = "");
+  abrirPanel("panel-nuevo");
+};
+
+document.getElementById("btn-guardar-nuevo").onclick = async () => {
+  const descripcion = document.getElementById("n-desc").value.trim();
+  if (!descripcion) { toast("Escribe una descripción"); return; }
+
+  const btn = document.getElementById("btn-guardar-nuevo");
+  btn.disabled = true; btn.textContent = "Guardando...";
+
+  const idInterno = "JAC-WEB-" + Date.now();
+  const nuevo = {
+    codigo_sap: null,
+    id_interno: idInterno,
+    descripcion,
+    marca: document.getElementById("n-marca").value.trim() || null,
+    modelo: document.getElementById("n-modelo").value.trim() || null,
+    numero_serie: document.getElementById("n-serie").value.trim() || null,
+    campo_codigo: document.getElementById("n-campo").value || null,
+    ubicacion_actual: document.getElementById("n-ubicacion").value.trim() || null,
+    estado_operativo: "Disponible",
+    estado_sincronizacion: "pendiente_actualizar_sap",
+    origen: "nuevo_sin_registrar",
+  };
+
+  try {
+    const guardadoDirecto = await intentarOEncolar(
+      "equipo_nuevo",
+      { equipo: nuevo },
+      () => {
+        equipos.push({ ...nuevo, id: "local-" + idInterno });
+        localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
+      }
+    );
+    toast(guardadoDirecto ? "Equipo registrado, pendiente de alta en SAP" : "Sin conexión: guardado en el dispositivo, se sincronizará solo");
+    cerrarPanel("panel-nuevo");
+    if (guardadoDirecto) await cargarEquipos(); else { renderChipsCampo(); renderLista(); }
+  } catch (e) {
+    toast("No se pudo registrar el equipo");
+    console.error(e);
+  } finally {
+    btn.disabled = false; btn.textContent = "Registrar equipo";
+  }
+};
+
+/* ============================================================
+   TAB: PENDIENTES + RESUMEN
+   ============================================================ */
+document.querySelectorAll(".nav-item").forEach(btn => {
+  btn.onclick = async () => {
+    document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    if (btn.dataset.tab === "pendientes") {
+      abrirPanel("panel-pendientes");
+      cargarPendientes();
+    } else if (btn.dataset.tab === "resumen") {
+      abrirPanel("panel-resumen");
+      renderResumen();
+    } else if (btn.dataset.tab === "perfil") {
+      abrirPanel("panel-perfil");
+      cargarPanelPerfil();
+      document.querySelector('[data-tab="inicio"]').classList.add("active");
+    }
+  };
+});
+
+/* ============================================================
+   AUTENTICACION REAL (Supabase Auth) + ROLES
+   ============================================================ */
+let usuarioActual = null; // { id, auth_user_id, nombre, email, rol }
+let sesionSupabase = null;
+
+function mostrarAuthGate() {
+  document.getElementById("auth-gate").style.display = "flex";
+  document.getElementById("espera-aprobacion").style.display = "none";
+  document.getElementById("app").classList.add("oculto");
+}
+function ocultarAuthGate() {
+  document.getElementById("auth-gate").style.display = "none";
+  document.getElementById("app").classList.remove("oculto");
+}
+
+function mostrarErrorAuth(idContenedor, mensaje) {
+  const el = document.getElementById(idContenedor);
+  el.textContent = mensaje;
+  el.style.display = "block";
+}
+function ocultarErrorAuth(idContenedor) {
+  document.getElementById(idContenedor).style.display = "none";
+}
+
+document.getElementById("btn-ir-registro").onclick = () => {
+  document.getElementById("auth-form-login").style.display = "none";
+  document.getElementById("auth-form-registro").style.display = "block";
+};
+document.getElementById("btn-ir-login").onclick = () => {
+  document.getElementById("auth-form-registro").style.display = "none";
+  document.getElementById("auth-form-login").style.display = "block";
+};
+
+document.getElementById("btn-login").onclick = async () => {
+  ocultarErrorAuth("auth-error");
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-password").value;
+  if (!email || !password) { mostrarErrorAuth("auth-error", "Escribe tu correo y contraseña"); return; }
+  const btn = document.getElementById("btn-login");
+  btn.disabled = true; btn.textContent = "Ingresando...";
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  btn.disabled = false; btn.textContent = "Iniciar sesión";
+  if (error) { mostrarErrorAuth("auth-error", "Correo o contraseña incorrectos."); return; }
+  await manejarSesionActiva(data.session);
+};
+
+document.getElementById("btn-registrar").onclick = async () => {
+  ocultarErrorAuth("reg-error");
+  const nombre = document.getElementById("reg-nombre").value.trim();
+  const email = document.getElementById("reg-email").value.trim();
+  const password = document.getElementById("reg-password").value;
+  if (!nombre || !email || !password) { mostrarErrorAuth("reg-error", "Completa todos los campos"); return; }
+  if (password.length < 6) { mostrarErrorAuth("reg-error", "La contraseña debe tener al menos 6 caracteres"); return; }
+  const btn = document.getElementById("btn-registrar");
+  btn.disabled = true; btn.textContent = "Creando cuenta...";
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) {
+    mostrarErrorAuth("reg-error", error.message.includes("already registered") ? "Ese correo ya tiene una cuenta." : "No se pudo crear la cuenta.");
+    btn.disabled = false; btn.textContent = "Crear cuenta";
+    return;
+  }
+  // Crea el perfil en la tabla usuarios: INACTIVO hasta que un admin lo apruebe
+  if (data.user) {
+    await sb.from("usuarios").insert({
+      nombre, email, rol: "tecnico", activo: false, auth_user_id: data.user.id,
+    });
+  }
+  btn.disabled = false; btn.textContent = "Crear cuenta";
+  if (data.session) {
+    await manejarSesionActiva(data.session);
+  } else {
+    mostrarErrorAuth("reg-error", "Cuenta creada. Revisa tu correo para confirmarla y luego inicia sesión.");
+  }
+};
+
+document.getElementById("btn-cerrar-sesion").onclick = async () => {
+  await sb.auth.signOut();
+  usuarioActual = null;
+  location.reload();
+};
+
+document.getElementById("btn-cerrar-sesion-espera").onclick = async () => {
+  await sb.auth.signOut();
+  usuarioActual = null;
+  location.reload();
+};
+
+document.getElementById("btn-revisar-de-nuevo").onclick = async () => {
+  const { data } = await sb.auth.getSession();
+  if (data.session) await manejarSesionActiva(data.session);
+};
+
+async function manejarSesionActiva(session) {
+  sesionSupabase = session;
+  let { data: perfil } = await sb.from("usuarios").select("*").eq("auth_user_id", session.user.id).maybeSingle();
+  if (!perfil) {
+    // Cuenta de auth existe pero sin fila en usuarios (caso raro) -> crearla, inactiva
+    const { data: creado } = await sb.from("usuarios").insert({
+      nombre: session.user.email, email: session.user.email, rol: "tecnico", activo: false,
+      auth_user_id: session.user.id,
+    }).select().single();
+    perfil = creado;
+  }
+  usuarioActual = perfil ? {
+    id: perfil.id, auth_user_id: perfil.auth_user_id, nombre: perfil.nombre,
+    email: perfil.email, rol: perfil.rol, activo: perfil.activo,
+  } : { id: null, nombre: session.user.email, email: session.user.email, rol: "tecnico", activo: false };
+
+  if (!usuarioActual.activo) {
+    document.getElementById("auth-gate").style.display = "none";
+    document.getElementById("espera-aprobacion").style.display = "flex";
+    document.getElementById("app").classList.add("oculto");
+    return;
+  }
+  document.getElementById("espera-aprobacion").style.display = "none";
+  ocultarAuthGate();
+  actualizarBadgePerfil();
+  await inicializarApp();
+}
+
+function actualizarBadgePerfil() {
+  const label = document.getElementById("perfil-actual");
+  if (label) {
+    label.innerHTML = usuarioActual
+      ? `${usuarioActual.nombre}<br><span style="font-weight:400;font-size:12px;color:var(--text-2)">${usuarioActual.email || ""} · ${usuarioActual.rol}</span>`
+      : "Sin identificar";
+  }
+  const topbarTexto = document.getElementById("usuario-topbar-texto");
+  if (topbarTexto) topbarTexto.textContent = usuarioActual ? usuarioActual.nombre.split(" ")[0] : "Sin identificar";
+}
+
+document.getElementById("btn-usuario-topbar").onclick = () => {
+  abrirPanel("panel-perfil");
+  cargarPanelPerfil();
+};
+
+async function cargarPanelPerfil() {
+  actualizarBadgePerfil();
+  const seccionAdmin = document.getElementById("perfil-admin-seccion");
+  if (usuarioActual && usuarioActual.rol === "admin") {
+    seccionAdmin.style.display = "block";
+    const cont = document.getElementById("perfil-lista-usuarios");
+    cont.innerHTML = '<div class="loading">Cargando...</div>';
+    const { data, error } = await sb.from("usuarios").select("*").order("activo").order("nombre");
+    if (error || !data) { cont.innerHTML = '<div class="empty">No se pudo cargar.</div>'; return; }
+
+    const pendientes = data.filter(u => !u.activo);
+    const activos = data.filter(u => u.activo);
+
+    let html = "";
+    if (pendientes.length) {
+      html += `<div class="section-label" style="color:var(--warn)">Pendientes de aprobar (${pendientes.length})</div>`;
+      pendientes.forEach(u => {
+        html += `
+        <div class="usuario-row">
+          <div class="usuario-row-info">
+            <div class="usuario-row-nombre">${u.nombre}</div>
+            <div class="usuario-row-email">${u.email || ""}</div>
+          </div>
+          <button data-aprobar-usuario="${u.id}" style="background:var(--ok-bg);border-color:var(--ok);color:var(--ok);font-size:12px;padding:6px 10px;flex-shrink:0">Aprobar</button>
+        </div>`;
+      });
+    }
+
+    html += `<div class="section-label">Usuarios activos (${activos.length})</div>`;
+    activos.forEach(u => {
+      html += `
+      <div class="usuario-row">
+        <div class="usuario-row-info">
+          <div class="usuario-row-nombre">${u.nombre}</div>
+          <div class="usuario-row-email">${u.email || ""}</div>
+        </div>
+        <select data-usuario-id="${u.id}">
+          <option value="tecnico" ${u.rol === "tecnico" ? "selected" : ""}>Técnico</option>
+          <option value="supervisor" ${u.rol === "supervisor" ? "selected" : ""}>Supervisor</option>
+          <option value="admin" ${u.rol === "admin" ? "selected" : ""}>Admin</option>
+        </select>
+        ${u.auth_user_id !== usuarioActual.auth_user_id ? `<button data-desactivar-usuario="${u.id}" title="Quitar acceso" style="background:var(--danger-bg);border-color:var(--danger);color:var(--danger);font-size:12px;padding:6px 8px;flex-shrink:0">&#10005;</button>` : ""}
+      </div>`;
+    });
+
+    cont.innerHTML = html;
+
+    cont.querySelectorAll("[data-aprobar-usuario]").forEach(btn => {
+      btn.onclick = async () => {
+        const { error } = await sb.from("usuarios").update({ activo: true }).eq("id", btn.dataset.aprobarUsuario);
+        toast(error ? "No se pudo aprobar" : "Usuario aprobado, ya puede entrar");
+        cargarPanelPerfil();
+      };
+    });
+    cont.querySelectorAll("[data-desactivar-usuario]").forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm("¿Quitar el acceso a este usuario?")) return;
+        const { error } = await sb.from("usuarios").update({ activo: false }).eq("id", btn.dataset.desactivarUsuario);
+        toast(error ? "No se pudo actualizar" : "Acceso retirado");
+        cargarPanelPerfil();
+      };
+    });
+    cont.querySelectorAll("select[data-usuario-id]").forEach(sel => {
+      sel.onchange = async () => {
+        const { error } = await sb.from("usuarios").update({ rol: sel.value }).eq("id", sel.dataset.usuarioId);
+        toast(error ? "No se pudo actualizar el rol" : "Rol actualizado");
+      };
+    });
+  } else {
+    seccionAdmin.style.display = "none";
+  }
+}
+
+async function cargarPendientes() {
+  const titulo = document.getElementById("pendientes-titulo");
+  const esSupervisor = usuarioActual && (usuarioActual.rol === "supervisor" || usuarioActual.rol === "admin");
+  titulo.textContent = esSupervisor ? "Aprobaciones" : "Pendientes de sincronizar";
+  if (esSupervisor) {
+    await cargarPanelAprobacion();
+  } else {
+    await cargarPendientesTecnico();
+  }
+}
+
+async function cargarPendientesTecnico() {
+  const cont = document.getElementById("pendientes-lista");
+  cont.innerHTML = '<div class="loading">Cargando...</div>';
+  const { data, error } = await sb
+    .from("equipos")
+    .select("*")
+    .eq("estado_sincronizacion", "pendiente_actualizar_sap")
+    .order("descripcion");
+  if (error || !data || !data.length) {
+    cont.innerHTML = '<div class="empty">No hay equipos pendientes de sincronizar. 🎉</div>';
+    return;
+  }
+  cont.innerHTML = data.map(e => `
+    <div class="eq-card" style="border-bottom:1px solid var(--line-soft)">
+      <div class="eq-main">
+        <div class="eq-code">${e.codigo_sap || e.id_interno}</div>
+        <div class="eq-desc">${e.descripcion || ""}</div>
+        <div class="eq-loc">${e.ubicacion_actual || ""}</div>
+      </div>
+      <span class="badge ${badgeClase(e.estado_operativo)}">${e.estado_operativo || "—"}</span>
+    </div>`).join("");
+}
+
+/* ---- Panel de aprobacion para supervisor/admin ---- */
+async function cargarPanelAprobacion() {
+  const cont = document.getElementById("pendientes-lista");
+  cont.innerHTML = '<div class="loading">Cargando...</div>';
+
+  const [movs, comps, altas] = await Promise.all([
+    sb.from("movimientos").select("*, equipos(descripcion, codigo_sap, id_interno), usuarios(nombre)")
+      .eq("estado_conciliacion", "pendiente").order("fecha_registro", { ascending: false }),
+    sb.from("campos_pendientes").select("*, equipos(descripcion, codigo_sap, id_interno)")
+      .eq("estado", "pendiente").order("fecha_deteccion", { ascending: false }),
+    sb.from("solicitudes_alta").select("*, equipos(descripcion, codigo_sap, id_interno, marca, modelo, numero_serie)")
+      .eq("estado_solicitud", "pendiente").order("fecha_solicitud", { ascending: false }),
+  ]);
+
+  const totalPendientes = (movs.data?.length || 0) + (comps.data?.length || 0) + (altas.data?.length || 0);
+  if (!totalPendientes) {
+    cont.innerHTML = '<div class="empty">No hay nada pendiente de aprobar. 🎉</div>';
+    return;
+  }
+
+  let html = `<div class="kpi-grid" style="margin-bottom:16px">
+    <div class="kpi-card"><div class="kpi-value">${movs.data?.length || 0}</div><div class="kpi-label">Movimientos</div></div>
+    <div class="kpi-card"><div class="kpi-value">${altas.data?.length || 0}</div><div class="kpi-label">Altas nuevas</div></div>
+    <div class="kpi-card" style="grid-column:span 2"><div class="kpi-value">${comps.data?.length || 0}</div><div class="kpi-label">Complementos de información</div></div>
+  </div>`;
+
+  if (movs.data?.length) {
+    html += '<div class="section-label">Movimientos</div>';
+    movs.data.forEach(m => {
+      const eq = m.equipos || {};
+      const titulo = m.tipo_movimiento === "cambio_ubicacion"
+        ? `${m.ubicacion_anterior || "—"} → ${m.ubicacion_nueva || "—"}`
+        : `${m.estado_anterior || "—"} → ${m.estado_nuevo || "—"}`;
+      html += filaAprobacion({
+        idTabla: "movimientos", idCampo: "estado_conciliacion", id: m.id,
+        codigo: eq.codigo_sap || eq.id_interno, desc: `${eq.descripcion || ""} · ${titulo}`,
+        meta: `${(m.fecha_registro || "").toString().slice(0, 10)} · ${m.usuarios?.nombre || "Sin identificar"}${m.motivo ? " · " + m.motivo : ""}`,
+      });
+    });
+  }
+
+  if (altas.data?.length) {
+    html += '<div class="section-label">Solicitudes de alta</div>';
+    altas.data.forEach(a => {
+      const eq = a.equipos || {};
+      html += filaAprobacion({
+        idTabla: "solicitudes_alta", idCampo: "estado_solicitud", id: a.id, valorAprobado: "aprobada", valorRechazado: "rechazada",
+        codigo: eq.id_interno, desc: eq.descripcion || "",
+        meta: `${eq.marca || ""} ${eq.modelo || ""} · Serie ${eq.numero_serie || "—"}`,
+      });
+    });
+  }
+
+  if (comps.data?.length) {
+    html += '<div class="section-label">Complementos de información</div>';
+    comps.data.forEach(c => {
+      const eq = c.equipos || {};
+      html += filaAprobacion({
+        idTabla: "campos_pendientes", idCampo: "estado", id: c.id,
+        codigo: eq.codigo_sap || eq.id_interno, desc: `${eq.descripcion || ""} · ${c.campo}`,
+        meta: `"${c.valor_sap || "vacío"}" → "${c.valor_propuesto}"`,
+      });
+    });
+  }
+
+  cont.innerHTML = html;
+
+  cont.querySelectorAll("[data-aprobar]").forEach(btn => {
+    btn.onclick = () => resolverAprobacion(btn.dataset, true);
+  });
+  cont.querySelectorAll("[data-rechazar]").forEach(btn => {
+    btn.onclick = () => resolverAprobacion(btn.dataset, false);
+  });
+}
+
+function filaAprobacion({ idTabla, idCampo, id, codigo, desc, meta, valorAprobado = "aprobado", valorRechazado = "rechazado" }) {
+  return `
+    <div class="eq-card" style="border-bottom:1px solid var(--line-soft);align-items:flex-start">
+      <div class="eq-main">
+        <div class="eq-code">${codigo || ""}</div>
+        <div class="eq-desc" style="white-space:normal">${desc}</div>
+        <div class="eq-loc" style="white-space:normal">${meta}</div>
+      </div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button data-rechazar data-tabla="${idTabla}" data-campo="${idCampo}" data-id="${id}" data-valor="${valorRechazado}"
+          style="padding:6px 8px;background:var(--danger-bg);border-color:var(--danger)"><span style="color:var(--danger)">&#10005;</span></button>
+        <button data-aprobar data-tabla="${idTabla}" data-campo="${idCampo}" data-id="${id}" data-valor="${valorAprobado}"
+          style="padding:6px 8px;background:var(--ok-bg);border-color:var(--ok)"><span style="color:var(--ok)">&#10003;</span></button>
+      </div>
+    </div>`;
+}
+
+async function resolverAprobacion(ds) {
+  const { tabla, campo, id, valor } = ds;
+  const { error } = await sb.from(tabla).update({ [campo]: valor }).eq("id", id);
+  if (error) { toast("No se pudo actualizar"); console.error(error); return; }
+  toast(valor.startsWith("aprob") ? "Aprobado" : "Rechazado");
+  await cargarPanelAprobacion();
+}
+
+/* ---- Colores para las barras, reutilizando la semántica de los badges ---- */
+function colorEstado(estado) {
+  if (estado === "Operando") return "var(--ok)";
+  if (estado === "Disponible" || estado === "Stand by") return "var(--warn)";
+  if (estado === "No disponible" || estado === "Taller externo") return "var(--danger)";
+  return "var(--text-2)";
+}
+
+/* ---- Lleva a Inicio con un filtro ya aplicado (drill-down real, no solo el numero) ---- */
+function irAInicioFiltrado({ campo = null, estado = null, sinCodigo = false } = {}) {
+  filtroCampo = campo;
+  filtroEstado = estado;
+  filtroSinCodigo = sinCodigo;
+  document.getElementById("campo-actual").textContent = campo
+    ? `${(campos.find(c => c.codigo === campo) || {}).nombre || campo} (${campo})`
+    : "Todos los campos";
+  renderChipsCampo();
+  renderLista();
+  cerrarPanel("panel-resumen");
+  cerrarPanel("panel-pendientes");
+  document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+  document.querySelector('[data-tab="inicio"]').classList.add("active");
+}
+
+function renderResumen() {
+  const cont = document.getElementById("resumen-body");
+  const filtrados = obtenerFiltrados();
+  if (!filtrados.length) {
+    cont.innerHTML = '<div class="empty">No hay equipos que coincidan con el filtro actual.</div>';
+    return;
+  }
+
+  const hayFiltro = filtroCampo || filtroEstado || filtroTipo || filtroSinCodigo || filtroTexto.trim();
+
+  const total = filtrados.length;
+  const porEstado = {};
+  filtrados.forEach(e => {
+    const es = e.estado_operativo || "Sin estado";
+    porEstado[es] = (porEstado[es] || 0) + 1;
+  });
+  const pendientesSync = filtrados.filter(e => e.estado_sincronizacion === "pendiente_actualizar_sap").length;
+  const sinCodigo = filtrados.filter(e => !e.codigo_sap).length;
+
+  const porCampo = {};
+  filtrados.forEach(e => {
+    const c = e.campo_codigo || "Sin campo";
+    porCampo[c] = (porCampo[c] || 0) + 1;
+  });
+  const camposOrdenados = Object.entries(porCampo).sort((a, b) => b[1] - a[1]);
+  const maxCampo = Math.max(...camposOrdenados.map(([, n]) => n), 1);
+  const maxEstado = Math.max(...Object.values(porEstado), 1);
+
+  let html = "";
+  if (hayFiltro) {
+    html += `<div class="hint-box" style="justify-content:space-between;align-items:center">
+      <span>&#128269; Mostrando solo: ${descripcionFiltroActual()}</span>
+      <button id="btn-quitar-filtro-resumen" style="background:none;border:none;color:var(--accent);font-weight:600;font-size:12px;flex-shrink:0;">Quitar</button>
+    </div>`;
+  }
+
+  const kpis = [
+    { label: "Total de equipos", value: total, filtro: {} },
+    { label: "Operando", value: porEstado["Operando"] || 0, clase: "kpi-ok", filtro: { estado: "Operando" } },
+    { label: "Disponibles", value: porEstado["Disponible"] || 0, clase: "kpi-warn", filtro: { estado: "Disponible" } },
+    { label: "No disponibles", value: porEstado["No disponible"] || 0, clase: "kpi-danger", filtro: { estado: "No disponible" } },
+    { label: "Pendientes de sync. SAP", value: pendientesSync, clase: "kpi-warn", filtro: null },
+    { label: "Sin código SAP (altas)", value: sinCodigo, clase: "kpi-danger", filtro: { sinCodigo: true } },
+  ];
+
+  html += '<div class="section-label">Indicadores generales</div><div class="kpi-grid">';
+  kpis.forEach((k, i) => {
+    html += `<button class="kpi-card ${k.clase || ""}" data-kpi="${i}">
+      <div class="kpi-value">${k.value}</div>
+      <div class="kpi-label">${k.label}</div>
+    </button>`;
+  });
+  html += "</div>";
+
+  html += '<div class="section-label">Equipos por estado operativo</div>';
+  Object.entries(porEstado).sort((a, b) => b[1] - a[1]).forEach(([estado, n]) => {
+    const pct = Math.round((n / maxEstado) * 100);
+    html += `<button class="bar-row" data-estado="${estado}">
+      <span class="bar-label">${estado}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${pct}%;background:${colorEstado(estado)}"></span></span>
+      <span class="bar-count">${n}</span>
+    </button>`;
+  });
+
+  html += '<div class="section-label">Equipos por campo</div>';
+  camposOrdenados.forEach(([codigo, n]) => {
+    const pct = Math.round((n / maxCampo) * 100);
+    const nombre = (campos.find(c => c.codigo === codigo) || {}).nombre || codigo;
+    html += `<button class="bar-row" data-campo="${codigo}">
+      <span class="bar-label" title="${nombre}">${codigo}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${pct}%;background:var(--jac-blue)"></span></span>
+      <span class="bar-count">${n}</span>
+    </button>`;
+  });
+
+  cont.innerHTML = html;
+
+  cont.querySelectorAll("[data-kpi]").forEach(btn => {
+    const k = kpis[Number(btn.dataset.kpi)];
+    btn.onclick = () => {
+      if (k.filtro === null) { irAInicioFiltrado({}); toast("Revisa la pestaña Pendientes para el detalle"); document.querySelector('[data-tab="pendientes"]').click(); return; }
+      irAInicioFiltrado(k.filtro);
+    };
+  });
+  cont.querySelectorAll("[data-estado]").forEach(btn => {
+    btn.onclick = () => irAInicioFiltrado({ estado: btn.dataset.estado });
+  });
+  cont.querySelectorAll("[data-campo]").forEach(btn => {
+    btn.onclick = () => irAInicioFiltrado({ campo: btn.dataset.campo });
+  });
+
+  const btnQuitar = document.getElementById("btn-quitar-filtro-resumen");
+  if (btnQuitar) {
+    btnQuitar.onclick = () => {
+      filtroCampo = null; filtroEstado = null; filtroTipo = null; filtroSinCodigo = false; filtroTexto = "";
+      document.getElementById("search-input").value = "";
+      renderResumen();
+    };
+  }
+}
+
+/* ============================================================
+   INICIO
+   ============================================================ */
+async function inicializarApp() {
+  actualizarEstadoConexion();
+  await cargarCampos();
+  await cargarEquipos();
+  await sincronizarColaOffline();
+}
+
+(async function arrancar() {
+  const { data } = await sb.auth.getSession();
+  if (data.session) {
+    await manejarSesionActiva(data.session);
+  } else {
+    mostrarAuthGate();
+  }
+})();
+
+sb.auth.onAuthStateChange((_event, session) => {
+  if (!session) { mostrarAuthGate(); }
+});
+
+// Habilita el modo offline completo (abrir la app sin nada de señal).
+// Solo funciona cuando la app esta publicada en una direccion https real
+// (Render, Netlify, etc.) -- los navegadores no permiten esto para
+// archivos abiertos directamente desde el computador (file://).
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  navigator.serviceWorker.register("./service-worker.js").catch(err => {
+    console.warn("No se pudo registrar el service worker:", err);
+  });
+}
+</script>
+</body>
+</html>
