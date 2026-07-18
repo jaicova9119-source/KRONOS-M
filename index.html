@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <title>Control de Activos · GTE</title>
-<link rel="manifest" id="manifest-link">
+<link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#134B70">
 
 <!-- Icono en pestaña del navegador -->
@@ -265,6 +265,26 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 }
 
 .timeline{position:relative;padding-left:16px;}
+
+.ih08-count{
+  padding:8px 14px;border-radius:10px;font-size:13px;font-weight:600;background:var(--bg-2);
+}
+.ih08-count.ok{background:var(--ok-bg);color:var(--ok);}
+.ih08-count.warn{background:var(--warn-bg);color:var(--warn);}
+.ih08-count.danger{background:var(--danger-bg);color:var(--danger);}
+.ih08-grupo{margin-bottom:18px;}
+.ih08-grupo-titulo{font-size:13px;font-weight:700;margin-bottom:8px;}
+.ih08-item{
+  padding:10px 12px;background:var(--bg-2);border-radius:8px;margin-bottom:6px;font-size:13px;
+}
+.ih08-item .ih08-item-titulo{font-weight:600;margin-bottom:2px;}
+.ih08-item .ih08-item-detalle{color:var(--text-2);font-size:12px;}
+.ih08-mapeo-fila{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:8px 0;border-bottom:1px solid var(--line);
+}
+.ih08-mapeo-fila label{font-size:13px;flex-shrink:0;}
+.ih08-mapeo-fila select{max-width:60%;}
 .tl-item{position:relative;padding-bottom:16px;border-left:2px solid var(--line);padding-left:14px;margin-left:2px;}
 .tl-item:last-child{border-color:transparent;}
 .tl-dot{position:absolute;left:-6px;top:2px;width:9px;height:9px;border-radius:50%;background:var(--text-2);}
@@ -605,6 +625,8 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="perfil-admin-seccion" style="display:none;margin-top:24px">
       <div class="section-label">Gestión de usuarios (solo admin)</div>
       <div id="perfil-lista-usuarios"></div>
+      <div class="section-label" style="margin-top:24px">Sincronización con SAP</div>
+      <button class="btn-secondary" onclick="abrirPanel('panel-ih08')">Contraste con IH08</button>
     </div>
   </div>
 </div>
@@ -616,6 +638,37 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
   <div class="panel-body" id="pendientes-lista">
     <div class="loading">Cargando...</div>
+  </div>
+</div>
+
+<div class="panel" id="panel-ih08">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-ih08')">&#8592;</button>
+    <h2>Contraste con IH08</h2>
+  </div>
+  <div class="panel-body">
+    <div id="ih08-paso-carga">
+      <p class="hint-box">Sube el archivo que exportas de SAP (t-code IH08, en Excel o CSV). La app lo compara equipo por equipo contra lo que ya tienes registrado.</p>
+      <div class="field">
+        <label>Archivo IH08</label>
+        <input type="file" id="ih08-input-archivo" accept=".xlsx,.xls,.csv"/>
+      </div>
+    </div>
+
+    <div id="ih08-paso-mapeo" style="display:none;margin-top:20px">
+      <div class="section-label">¿Qué columna del archivo corresponde a cada dato?</div>
+      <p class="hint-box">Solo la primera vez (o si cambia el formato). Se guarda para las próximas cargas.</p>
+      <div id="ih08-campos-mapeo"></div>
+      <button class="btn-primary" style="margin-top:14px" onclick="confirmarMapeoIH08()">Confirmar y contrastar</button>
+    </div>
+
+    <div id="ih08-resultado" style="display:none;margin-top:20px">
+      <div class="section-label">Resultado del contraste</div>
+      <div id="ih08-resumen" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px"></div>
+      <div id="ih08-grupos"></div>
+      <button class="btn-primary" id="ih08-btn-aplicar" style="margin-top:16px;display:none" onclick="aplicarSincronizacionesIH08()">Aplicar sincronizaciones automáticas</button>
+      <button class="btn-secondary" style="margin-top:10px" onclick="reiniciarIH08()">Cargar otro archivo</button>
+    </div>
   </div>
 </div>
 
@@ -640,25 +693,9 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-/* ============================================================
-   MANIFEST (PWA instalable, incrustado como Blob para que todo
-   quede en un solo archivo HTML)
-   ============================================================ */
-const manifest = {
-  name: "Control de Activos - GTE",
-  short_name: "Activos GTE",
-  start_url: ".",
-  display: "standalone",
-  background_color: "#ffffff",
-  theme_color: "#134B70",
-  icons: [
-    { src: "./icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-    { src: "./icons/icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-    { src: "./icons/icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" }
-  ]
-};
-document.getElementById("manifest-link").href =
-  "data:application/manifest+json," + encodeURIComponent(JSON.stringify(manifest));
+/* El manifest ahora vive en un archivo real: ./manifest.json
+   (antes se generaba aquí como data URI, pero eso impedía que
+   los navegadores resolvieran bien las rutas de los íconos) */
 
 /* ============================================================
    ESTADO GLOBAL
@@ -2045,6 +2082,259 @@ async function inicializarApp() {
   await cargarCampos();
   await cargarEquipos();
   await sincronizarColaOffline();
+}
+
+/* ============================================================
+   CONTRASTE CON IH08 (SAP)
+   Carga el reporte que exporta SAP, lo compara equipo por equipo
+   contra la tabla "equipos", y:
+   - si un cambio pendiente en la app ya quedó reflejado en SAP,
+     lo marca como sincronizado automáticamente
+   - si SAP muestra algo distinto y no hay ningún cambio pendiente
+     que lo explique, lo deja como discrepancia para que un admin
+     lo revise a mano
+   ============================================================ */
+
+const IH08_MAPEO_KEY = "equipos_gte_ih08_mapeo";
+
+const IH08_CAMPOS = [
+  { key: "codigo_sap", label: "Código de equipo SAP", requerido: true, pistas: ["equipo", "codigo", "código"] },
+  { key: "descripcion", label: "Descripción", requerido: false, pistas: ["denominac", "descrip"] },
+  { key: "marca", label: "Marca", requerido: false, pistas: ["marca", "fabricante"] },
+  { key: "modelo", label: "Modelo", requerido: false, pistas: ["modelo"] },
+  { key: "numero_serie", label: "Número de serie", requerido: false, pistas: ["serie"] },
+  { key: "campo_codigo", label: "Campo / centro", requerido: false, pistas: ["campo", "centro"] },
+  { key: "ubicacion_tecnica_sap", label: "Ubicación técnica SAP", requerido: false, pistas: ["ubicac"] },
+  { key: "equipo_superior_sap", label: "Equipo superior", requerido: false, pistas: ["superior", "padre"] },
+  { key: "estado_operativo", label: "Estado operativo", requerido: false, pistas: ["estado"] },
+];
+
+let ih08FilasCrudas = [];
+let ih08Headers = [];
+let ih08Resultado = null;
+
+function reiniciarIH08() {
+  ih08FilasCrudas = [];
+  ih08Headers = [];
+  ih08Resultado = null;
+  document.getElementById("ih08-input-archivo").value = "";
+  document.getElementById("ih08-paso-carga").style.display = "";
+  document.getElementById("ih08-paso-mapeo").style.display = "none";
+  document.getElementById("ih08-resultado").style.display = "none";
+}
+
+document.getElementById("ih08-input-archivo").addEventListener("change", async (e) => {
+  const archivo = e.target.files[0];
+  if (!archivo) return;
+  try {
+    const buffer = await archivo.arrayBuffer();
+    const libro = XLSX.read(buffer, { type: "array" });
+    const hoja = libro.Sheets[libro.SheetNames[0]];
+    const filas = XLSX.utils.sheet_to_json(hoja, { defval: "" });
+    if (!filas.length) {
+      toast("El archivo no tiene filas de datos");
+      return;
+    }
+    ih08FilasCrudas = filas;
+    ih08Headers = Object.keys(filas[0]);
+    mostrarMapeoIH08();
+  } catch (err) {
+    console.error(err);
+    toast("No se pudo leer el archivo. ¿Es un Excel o CSV válido?");
+  }
+});
+
+function mostrarMapeoIH08() {
+  let mapeoGuardado = {};
+  try { mapeoGuardado = JSON.parse(localStorage.getItem(IH08_MAPEO_KEY) || "{}"); } catch (e) {}
+
+  const cont = document.getElementById("ih08-campos-mapeo");
+  cont.innerHTML = IH08_CAMPOS.map(campo => {
+    const guardado = mapeoGuardado[campo.key];
+    const sugerido = ih08Headers.includes(guardado)
+      ? guardado
+      : (ih08Headers.find(h => campo.pistas.some(p => h.toLowerCase().includes(p))) || "");
+    const opciones = ["<option value=''>-- no disponible --</option>"]
+      .concat(ih08Headers.map(h => `<option value="${h}" ${h === sugerido ? "selected" : ""}>${h}</option>`));
+    return `
+      <div class="ih08-mapeo-fila">
+        <label>${campo.label}${campo.requerido ? " *" : ""}</label>
+        <select data-campo-ih08="${campo.key}">${opciones.join("")}</select>
+      </div>`;
+  }).join("");
+
+  document.getElementById("ih08-paso-carga").style.display = "none";
+  document.getElementById("ih08-paso-mapeo").style.display = "";
+  document.getElementById("ih08-resultado").style.display = "none";
+}
+
+async function confirmarMapeoIH08() {
+  const mapeo = {};
+  document.querySelectorAll("[data-campo-ih08]").forEach(sel => {
+    mapeo[sel.dataset.campoIh08] = sel.value;
+  });
+  if (!mapeo.codigo_sap) {
+    toast("Falta indicar cuál columna es el código de equipo SAP");
+    return;
+  }
+  localStorage.setItem(IH08_MAPEO_KEY, JSON.stringify(mapeo));
+
+  const filasNormalizadas = ih08FilasCrudas.map(fila => {
+    const obj = {};
+    IH08_CAMPOS.forEach(campo => {
+      const col = mapeo[campo.key];
+      obj[campo.key] = col ? String(fila[col] ?? "").trim() : "";
+    });
+    return obj;
+  }).filter(f => f.codigo_sap);
+
+  await contrastarIH08(filasNormalizadas);
+}
+
+async function contrastarIH08(filasSap) {
+  toast("Contrastando " + filasSap.length + " equipos con SAP...");
+
+  const { data: pendientes } = await sb
+    .from("movimientos")
+    .select("*")
+    .eq("estado_conciliacion", "pendiente");
+  const pendientesPorEquipo = new Map();
+  (pendientes || []).forEach(m => {
+    if (!pendientesPorEquipo.has(m.equipo_id)) pendientesPorEquipo.set(m.equipo_id, []);
+    pendientesPorEquipo.get(m.equipo_id).push(m);
+  });
+
+  const equiposPorCodigo = new Map();
+  equipos.forEach(e => { if (e.codigo_sap) equiposPorCodigo.set(String(e.codigo_sap).trim(), e); });
+
+  const resultado = { ok: [], sincronizados: [], discrepancias: [], nuevosEnSap: [], noEnSap: [] };
+  const codigosVistos = new Set();
+
+  for (const fila of filasSap) {
+    codigosVistos.add(fila.codigo_sap);
+    const eq = equiposPorCodigo.get(fila.codigo_sap);
+    if (!eq) {
+      resultado.nuevosEnSap.push(fila);
+      continue;
+    }
+    const diffs = [];
+    if (fila.estado_operativo && eq.estado_operativo !== fila.estado_operativo) {
+      diffs.push({ campo: "estado_operativo", label: "Estado operativo", app: eq.estado_operativo, sap: fila.estado_operativo });
+    }
+    if (fila.ubicacion_tecnica_sap && eq.ubicacion_tecnica_sap !== fila.ubicacion_tecnica_sap) {
+      diffs.push({ campo: "ubicacion_tecnica_sap", label: "Ubicación técnica SAP", app: eq.ubicacion_tecnica_sap, sap: fila.ubicacion_tecnica_sap });
+    }
+    if (!diffs.length) {
+      resultado.ok.push(eq);
+      continue;
+    }
+    const pendientesEquipo = pendientesPorEquipo.get(eq.id) || [];
+    const movimientosQueExplican = [];
+    const explicaTodo = diffs.every(d => {
+      const mov = pendientesEquipo.find(m =>
+        (d.campo === "estado_operativo" && m.tipo_movimiento === "cambio_estado" && m.estado_nuevo === d.sap) ||
+        (d.campo === "ubicacion_tecnica_sap" && m.tipo_movimiento === "cambio_ubicacion" && m.ubicacion_nueva === d.sap)
+      );
+      if (mov) movimientosQueExplican.push(mov);
+      return !!mov;
+    });
+    if (explicaTodo) {
+      resultado.sincronizados.push({ eq, diffs, movimientos: movimientosQueExplican });
+    } else {
+      resultado.discrepancias.push({ eq, diffs });
+    }
+  }
+
+  equipos.forEach(e => {
+    if (e.codigo_sap && !codigosVistos.has(String(e.codigo_sap).trim())) {
+      resultado.noEnSap.push(e);
+    }
+  });
+
+  ih08Resultado = resultado;
+  mostrarResultadoIH08(resultado);
+}
+
+function mostrarResultadoIH08(r) {
+  document.getElementById("ih08-paso-mapeo").style.display = "none";
+  const resumen = document.getElementById("ih08-resumen");
+  resumen.innerHTML = `
+    <span class="ih08-count ok">${r.ok.length} sin cambios</span>
+    <span class="ih08-count ok">${r.sincronizados.length} sincronizados automáticamente</span>
+    <span class="ih08-count danger">${r.discrepancias.length} discrepancias</span>
+    <span class="ih08-count warn">${r.nuevosEnSap.length} nuevos en SAP</span>
+    <span class="ih08-count warn">${r.noEnSap.length} no aparecen en este IH08</span>
+  `;
+
+  const grupos = document.getElementById("ih08-grupos");
+  const seccion = (titulo, items, render) => {
+    if (!items.length) return "";
+    return `<div class="ih08-grupo"><div class="ih08-grupo-titulo">${titulo}</div>${items.map(render).join("")}</div>`;
+  };
+
+  grupos.innerHTML =
+    seccion("⚠️ Discrepancias (necesitan revisión manual)", r.discrepancias, d => `
+      <div class="ih08-item">
+        <div class="ih08-item-titulo">${d.eq.descripcion || d.eq.id_interno}</div>
+        <div class="ih08-item-detalle">${d.diffs.map(x => `${x.label}: app dice "${x.app || "—"}", SAP dice "${x.sap}"`).join(" · ")}</div>
+      </div>`) +
+    seccion("🔄 Se sincronizarán automáticamente", r.sincronizados, s => `
+      <div class="ih08-item">
+        <div class="ih08-item-titulo">${s.eq.descripcion || s.eq.id_interno}</div>
+        <div class="ih08-item-detalle">${s.diffs.map(x => `${x.label} → ${x.sap}`).join(" · ")}</div>
+      </div>`) +
+    seccion("🆕 Aparecen en SAP pero no están en la app", r.nuevosEnSap, f => `
+      <div class="ih08-item">
+        <div class="ih08-item-titulo">${f.descripcion || f.codigo_sap}</div>
+        <div class="ih08-item-detalle">Código SAP: ${f.codigo_sap}</div>
+      </div>`) +
+    seccion("❓ Están en la app pero no aparecieron en este IH08", r.noEnSap, e => `
+      <div class="ih08-item">
+        <div class="ih08-item-titulo">${e.descripcion || e.id_interno}</div>
+        <div class="ih08-item-detalle">Código SAP: ${e.codigo_sap}</div>
+      </div>`);
+
+  if (!grupos.innerHTML) {
+    grupos.innerHTML = '<div class="empty">Todo coincide, no hay nada que revisar. 🎉</div>';
+  }
+
+  document.getElementById("ih08-btn-aplicar").style.display = r.sincronizados.length ? "" : "none";
+  document.getElementById("ih08-resultado").style.display = "";
+}
+
+async function aplicarSincronizacionesIH08() {
+  if (!ih08Resultado || !ih08Resultado.sincronizados.length) return;
+  const hoy = new Date().toISOString().slice(0, 10);
+  const btn = document.getElementById("ih08-btn-aplicar");
+  btn.disabled = true;
+  btn.textContent = "Aplicando...";
+
+  for (const s of ih08Resultado.sincronizados) {
+    const cambios = { estado_sincronizacion: "sincronizado", fecha_ultimo_contraste_sap: hoy };
+    s.diffs.forEach(d => { cambios[d.campo] = d.sap; });
+    await sb.from("equipos").update(cambios).eq("id", s.eq.id);
+    for (const m of s.movimientos) {
+      await sb.from("movimientos").update({ estado_conciliacion: "confirmado_en_sap" }).eq("id", m.id);
+    }
+  }
+
+  await sb.from("cargas_ih08").insert({
+    usuario_id: usuarioActual ? usuarioActual.id : null,
+    fecha_carga: hoy,
+    total_filas: ih08Resultado.ok.length + ih08Resultado.sincronizados.length + ih08Resultado.discrepancias.length + ih08Resultado.nuevosEnSap.length,
+    total_sincronizados: ih08Resultado.sincronizados.length,
+    total_discrepancias: ih08Resultado.discrepancias.length,
+    total_nuevos_sap: ih08Resultado.nuevosEnSap.length,
+    total_no_en_sap: ih08Resultado.noEnSap.length,
+  }).select().then(({ error }) => {
+    if (error) console.warn("No se pudo registrar el resumen de carga (revisa columnas de cargas_ih08):", error);
+  });
+
+  toast(ih08Resultado.sincronizados.length + " equipos sincronizados con SAP");
+  btn.textContent = "Aplicar sincronizaciones automáticas";
+  btn.style.display = "none";
+  btn.disabled = false;
+  await cargarEquipos();
 }
 
 (async function arrancar() {
