@@ -1938,10 +1938,24 @@ document.querySelectorAll(".nav-item").forEach(btn => {
    ============================================================ */
 async function cargarMateriales() {
   const lista = document.getElementById("lista-materiales");
+  lista.innerHTML = '<div class="loading">Cargando materiales...</div>';
   try {
-    const { data, error } = await sb.from("v_materiales_estado").select("*").order("codigo_sap");
-    if (error) throw error;
-    materialesData = data || [];
+    // Supabase limita cada consulta a un maximo de filas (tipicamente 1000).
+    // Como esta vista tiene mas de 12.000 registros, hay que traerla en paginas
+    // hasta agotar los resultados, o se pierden silenciosamente los codigos
+    // que quedan fuera de la primera pagina.
+    const PAGINA = 1000;
+    let desde = 0;
+    let todos = [];
+    while (true) {
+      const { data, error } = await sb.from("v_materiales_estado")
+        .select("*").order("codigo_sap").range(desde, desde + PAGINA - 1);
+      if (error) throw error;
+      todos = todos.concat(data || []);
+      if (!data || data.length < PAGINA) break;
+      desde += PAGINA;
+    }
+    materialesData = todos;
 
     // Poblar filtro de centros (unicos, ordenados)
     const selCentro = document.getElementById("mat-filtro-centro");
