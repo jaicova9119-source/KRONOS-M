@@ -52,9 +52,29 @@
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;margin:0;}
+
+/* ---------- Barra superior Kronos-M (siempre visible, encima de ambos modulos) ---------- */
+#kronos-topbar{
+  position:fixed;top:0;left:0;right:0;height:46px;z-index:40;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 14px;background:var(--jac-blue);border-bottom:1px solid rgba(255,255,255,.12);
+}
+.kronos-brand{color:#fff;font-weight:700;font-size:14.5px;letter-spacing:.03em;}
+.kronos-brand .kronos-dot{color:var(--accent);}
+#selector-modulo{
+  background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);
+  border-radius:8px;padding:6px 10px;font-size:12.5px;font-weight:500;
+}
+#selector-modulo option{color:var(--text-0);}
+
+/* Cada boton del navbar declara a que modulo pertenece via data-modulo;
+   el navbar en si lleva una clase que decide cual grupo se ve. */
+.navbar .nav-item[data-modulo]{display:none;}
+.navbar.modulo-activos .nav-item[data-modulo="activos"]{display:flex;}
+.navbar.modulo-materiales .nav-item[data-modulo="materiales"]{display:flex;}
 body{
   background:var(--bg-0);color:var(--text-0);font-family:var(--sans);
-  font-size:15px;overflow:hidden;
+  font-size:15px;overflow:hidden;padding-top:46px;
 }
 button{font-family:inherit;cursor:pointer;}
 input,select,textarea{font-family:inherit;font-size:15px;}
@@ -267,7 +287,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
 /* ---------- Panels (ficha, formularios) ---------- */
 .panel{
-  position:fixed;inset:0;background:var(--bg-0);z-index:20;display:flex;flex-direction:column;
+  position:fixed;top:46px;left:0;right:0;bottom:0;background:var(--bg-0);z-index:20;display:flex;flex-direction:column;
   max-width:520px;margin:0 auto;transform:translateX(100%);transition:transform .22s ease;
 }
 .panel.open{transform:translateX(0);}
@@ -380,7 +400,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   html,body{overflow:hidden;}
   body{background:var(--bg-2);}
   #app{
-    display:flex;flex-direction:row;height:100vh;width:100vw;
+    display:flex;flex-direction:row;height:calc(100vh - 46px);width:100vw;
     padding-left:84px;box-sizing:border-box;
   }
   .pane-list{max-width:400px;min-width:340px;flex-shrink:0;border-right:1px solid var(--line);}
@@ -403,7 +423,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
   /* Sidebar fijo a la izquierda (reemplaza la barra inferior de tabs) */
   .navbar{
-    position:fixed;left:0;top:0;bottom:0;width:84px;max-width:none;margin:0;
+    position:fixed;left:0;top:46px;bottom:0;width:84px;max-width:none;margin:0;
     flex-direction:column;justify-content:flex-start;align-items:stretch;
     padding:18px 0 0;gap:4px;border-top:none;border-right:1px solid var(--line);
     background:var(--bg-1);z-index:30;
@@ -468,6 +488,14 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
 </div>
 
+<div id="kronos-topbar">
+  <div class="kronos-brand">KRONOS<span class="kronos-dot">·</span>M</div>
+  <select id="selector-modulo">
+    <option value="activos">Gestión de Activos</option>
+    <option value="materiales">Gestión de Materiales</option>
+  </select>
+</div>
+
 <div id="app" class="oculto">
 <div class="pane-list">
 
@@ -513,24 +541,34 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <button class="fab" id="btn-fab" title="Equipo nuevo">+</button>
 </div>
 
-<div class="navbar">
-  <button class="nav-item active" data-tab="inicio">
+<div class="navbar modulo-activos" id="navbar-principal">
+  <button class="nav-item active" data-tab="inicio" data-modulo="activos">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>
     Inicio
   </button>
-  <button class="nav-item" data-tab="resumen">
+  <button class="nav-item" data-tab="resumen" data-modulo="activos">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
     Resumen
   </button>
-  <button class="nav-item" data-tab="pendientes">
+  <button class="nav-item" data-tab="pendientes" data-modulo="activos">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     Pendientes
   </button>
-  <button class="nav-item nav-item-separador" data-tab="materiales">
+
+  <button class="nav-item" data-tab="materiales" data-modulo="materiales">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-5 9 5-9 5-9-5z"/><path d="M3 9v6l9 5 9-5V9"/></svg>
-    Materiales
+    Buscar
   </button>
-  <button class="nav-item" data-tab="perfil">
+  <button class="nav-item" data-tab="materiales-resumen" data-modulo="materiales">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
+    Resumen
+  </button>
+  <button class="nav-item" data-tab="carrito" data-modulo="materiales">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>
+    Carrito
+  </button>
+
+  <button class="nav-item nav-item-separador" data-tab="perfil">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
     Perfil
   </button>
@@ -797,7 +835,17 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="section-label">Datos del catálogo (aplican a todos los centros de este material)</div>
     <div class="field"><label>Número de parte</label><input id="pe-numero-parte"/></div>
     <div class="field"><label>Nombre técnico</label><input id="pe-nombre-tecnico"/></div>
-    <div class="field"><label>Categoría</label><input id="pe-categoria"/></div>
+    <div class="field">
+      <label>Categoría</label>
+      <select id="pe-categoria">
+        <option value="ELECTRICIDAD">Electricidad</option>
+        <option value="MECANICA">Mecánica</option>
+        <option value="INSTRUMENTACION">Instrumentación</option>
+        <option value="VFD">VFD</option>
+        <option value="PRODUCCION">Producción</option>
+        <option value="OTRO">Otro</option>
+      </select>
+    </div>
 
     <div class="section-label">Parámetros de este centro</div>
     <div class="hint-box">&#8505;&#65039; Estos valores definen cuándo este material se marca Crítico, Bajo, OK o Sobrestock en este centro.</div>
@@ -860,7 +908,17 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="cfg-form-material" style="display:none;margin-top:10px">
       <div class="section-label">Datos del catálogo (aplican a todos los centros)</div>
       <div class="field"><label>Descripción</label><input id="cfg-descripcion" disabled/></div>
-      <div class="field"><label>Categoría</label><input id="cfg-categoria"/></div>
+      <div class="field">
+        <label>Categoría</label>
+        <select id="cfg-categoria">
+          <option value="ELECTRICIDAD">Electricidad</option>
+          <option value="MECANICA">Mecánica</option>
+          <option value="INSTRUMENTACION">Instrumentación</option>
+          <option value="VFD">VFD</option>
+          <option value="PRODUCCION">Producción</option>
+          <option value="OTRO">Otro</option>
+        </select>
+      </div>
       <div class="field"><label>Número de parte</label><input id="cfg-numero-parte"/></div>
       <div class="field"><label>Nombre técnico</label><input id="cfg-nombre-tecnico"/></div>
 
@@ -954,8 +1012,49 @@ let cfgMaterialActual = null;
 const CARRITO_KEY = "solped_carrito_v1";
 let carritoSolped = JSON.parse(localStorage.getItem(CARRITO_KEY) || "[]");
 
+/* ---------- Selector de modulo (Kronos-M) ---------- */
+const MODULO_KEY = "kronos_modulo_activo";
+let moduloActivo = localStorage.getItem(MODULO_KEY) || "activos";
+
+function aplicarModulo(modulo, irVistaDefault = true) {
+  moduloActivo = modulo;
+  localStorage.setItem(MODULO_KEY, modulo);
+
+  const navbar = document.getElementById("navbar-principal");
+  navbar.classList.remove("modulo-activos", "modulo-materiales");
+  navbar.classList.add("modulo-" + modulo);
+  document.getElementById("selector-modulo").value = modulo;
+
+  document.querySelectorAll(".panel.open").forEach(p => p.classList.remove("open"));
+  document.querySelector(".pane-detail")?.classList.remove("has-open");
+  document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+
+  if (!irVistaDefault) return;
+
+  const app = document.getElementById("app");
+  if (modulo === "activos") {
+    app.classList.remove("modulo-completo");
+    document.querySelector('[data-tab="inicio"]').classList.add("active");
+  } else {
+    app.classList.add("modulo-completo");
+    document.querySelector('[data-tab="materiales"]').classList.add("active");
+    abrirPanel("panel-materiales");
+    cargarMateriales();
+  }
+}
+
+document.getElementById("selector-modulo").addEventListener("change", (e) => {
+  aplicarModulo(e.target.value);
+});
+
 function fmtCOP(n) {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n || 0);
+}
+
+function setCategoriaSelect(selectId, valor) {
+  const sel = document.getElementById(selectId);
+  const opciones = [...sel.options].map(o => o.value);
+  sel.value = opciones.includes((valor || "").toUpperCase().trim()) ? valor.toUpperCase().trim() : "OTRO";
 }
 
 /* ============================================================
@@ -1824,6 +1923,12 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     } else if (btn.dataset.tab === "materiales") {
       abrirPanel("panel-materiales");
       cargarMateriales();
+    } else if (btn.dataset.tab === "materiales-resumen") {
+      abrirPanel("panel-materiales-resumen");
+      renderResumenMateriales();
+    } else if (btn.dataset.tab === "carrito") {
+      abrirPanel("panel-carrito");
+      renderCarrito();
     }
   };
 });
@@ -1981,7 +2086,7 @@ document.getElementById("mat-btn-editar-parametros").onclick = () => {
   if (!materialActual) return;
   document.getElementById("pe-numero-parte").value = materialActual.numero_parte || "";
   document.getElementById("pe-nombre-tecnico").value = materialActual.nombre_tecnico || "";
-  document.getElementById("pe-categoria").value = materialActual.categoria || "";
+  setCategoriaSelect("pe-categoria", materialActual.categoria);
   document.getElementById("pe-minimo").value = materialActual.stock_minimo;
   document.getElementById("pe-maximo").value = materialActual.stock_maximo;
   document.getElementById("pe-leadtime").value = materialActual.lead_time_dias;
@@ -2091,6 +2196,8 @@ function renderResumenMateriales() {
       document.querySelectorAll("#mat-estado-chips .estado-chip").forEach(c => {
         c.classList.toggle("active", c.dataset.estado === filtroEstadoMat);
       });
+      document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
+      document.querySelector('[data-tab="materiales"]').classList.add("active");
       abrirPanel("panel-materiales");
       renderListaMateriales();
     };
@@ -2142,7 +2249,7 @@ function seleccionarMaterialConfig(material) {
   document.getElementById("cfg-resultados").innerHTML = "";
   document.getElementById("cfg-buscar").value = material.codigo_sap + " · " + material.descripcion;
   document.getElementById("cfg-descripcion").value = material.descripcion;
-  document.getElementById("cfg-categoria").value = material.categoria || "";
+  setCategoriaSelect("cfg-categoria", material.categoria);
   document.getElementById("cfg-numero-parte").value = material.numero_parte || "";
   document.getElementById("cfg-nombre-tecnico").value = material.nombre_tecnico || "";
 
@@ -2892,6 +2999,7 @@ async function inicializarApp() {
   await sincronizarColaOffline();
   actualizarBadgeCarrito();
   renderCarrito();
+  aplicarModulo(moduloActivo);
 }
 
 /* ============================================================
