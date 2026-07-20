@@ -195,6 +195,56 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 .badge-Taller{background:var(--danger-bg);color:var(--danger);}
 .badge-Dado{background:var(--bg-3);color:var(--text-2);}
 .badge-pendiente{background:var(--accent-bg);color:var(--accent);}
+.badge-CRITICO{background:var(--danger-bg);color:var(--danger);}
+.badge-BAJO{background:var(--warn-bg);color:var(--warn);}
+.badge-OK{background:var(--ok-bg);color:var(--ok);}
+.badge-SOBRESTOCK{background:var(--accent-bg);color:var(--accent);}
+.badge-SIN{background:var(--bg-3);color:var(--text-2);}
+
+/* ---------- Materiales / Min-Max ---------- */
+.mat-card{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:12px 4px;border-bottom:1px solid var(--line-soft);cursor:pointer;
+}
+.mat-card:active{background:var(--bg-2);}
+.mat-main{min-width:0;}
+.mat-code{font-family:var(--mono);font-size:13px;color:var(--text-2);}
+.mat-desc{font-size:14.5px;font-weight:500;margin:2px 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mat-meta{font-size:12.5px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.mat-stock{font-size:11.5px;color:var(--text-2);margin-top:2px;font-family:var(--mono);}
+.mat-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;}
+
+.estado-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 8px;flex-shrink:0;}
+.estado-chip{
+  font-size:12px;padding:6px 11px;border-radius:20px;white-space:nowrap;border:1px solid var(--line);
+  color:var(--text-1);background:var(--bg-2);
+}
+.estado-chip.active{background:var(--jac-blue);color:#fff;border-color:var(--jac-blue);}
+
+.cart-fab-badge{
+  position:absolute;top:-4px;right:-4px;background:var(--danger);color:#fff;font-size:10px;
+  min-width:16px;height:16px;border-radius:20px;display:flex;align-items:center;justify-content:center;
+  padding:0 4px;font-weight:700;
+}
+.carrito-row{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:12px 0;border-bottom:1px solid var(--line-soft);
+}
+.carrito-row-main{min-width:0;flex:1;}
+.carrito-row-desc{font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.carrito-row-meta{font-size:11.5px;color:var(--text-2);}
+.carrito-qty{
+  width:56px;text-align:center;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;
+  padding:6px 2px;font-size:13.5px;
+}
+.carrito-remove{background:none;border:none;color:var(--danger);font-size:18px;padding:2px 4px;}
+.solped-grupo{
+  background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px;
+}
+.solped-grupo-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
+.solped-grupo-num{font-family:var(--mono);font-weight:600;font-size:13px;}
+.solped-grupo-meta{font-size:12px;color:var(--text-2);margin-top:2px;}
+.solped-item-line{font-size:12.5px;color:var(--text-1);padding:3px 0;border-top:1px solid var(--line-soft);}
 
 .empty, .loading{text-align:center;color:var(--text-2);padding:60px 20px;font-size:13.5px;}
 
@@ -466,6 +516,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
       Pendientes
     </button>
+    <button class="nav-item" data-tab="materiales">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-5 9 5-9 5-9-5z"/><path d="M3 9v6l9 5 9-5V9"/></svg>
+      Materiales
+    </button>
     <button class="nav-item" data-tab="perfil">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 4-6 8-6s8 2 8 6"/></svg>
       Perfil
@@ -672,6 +726,106 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
 </div>
 
+<!-- ===== Panel: Materiales (lista + filtros) ===== -->
+<div class="panel" id="panel-materiales">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-materiales')">&#8592;</button>
+    <h2>Materiales</h2>
+    <button class="icon-btn" style="position:relative" onclick="abrirPanel('panel-carrito')">
+      &#128722;<span class="cart-fab-badge" id="carrito-badge" style="display:none">0</span>
+    </button>
+  </div>
+  <div class="panel-body" style="padding:0" id="materiales-contenedor">
+    <div class="search-row" style="padding:12px 16px 8px">
+      <div class="search-box"><span class="search-icon">&#128269;</span><input id="mat-buscar" placeholder="Código, descripción, parte..."/></div>
+    </div>
+    <div class="filtros-bar" style="padding:0 16px 8px">
+      <select id="mat-filtro-centro" style="flex:1;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
+        <option value="">Todos los centros</option>
+      </select>
+    </div>
+    <div class="estado-chips" id="mat-estado-chips">
+      <button class="estado-chip active" data-estado="">Todos</button>
+      <button class="estado-chip" data-estado="CRITICO">Crítico</button>
+      <button class="estado-chip" data-estado="BAJO">Bajo</button>
+      <button class="estado-chip" data-estado="OK">OK</button>
+      <button class="estado-chip" data-estado="SOBRESTOCK">Sobrestock</button>
+      <button class="estado-chip" data-estado="SIN">Sin configurar</button>
+    </div>
+    <div class="list" style="padding-top:4px" id="lista-materiales">
+      <div class="loading">Cargando materiales...</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Panel: Ficha de material ===== -->
+<div class="panel" id="panel-material-ficha">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-material-ficha')">&#8592;</button>
+    <h2 id="mat-ficha-titulo">Material</h2>
+    <span class="badge" id="mat-ficha-badge"></span>
+  </div>
+  <div class="panel-body">
+    <table class="kv-table" id="mat-ficha-tabla"></table>
+    <div class="field" style="margin-top:18px">
+      <label>Cantidad a solicitar</label>
+      <input type="number" id="mat-ficha-cantidad" min="1" value="1"/>
+    </div>
+    <button class="btn-primary" id="mat-btn-agregar-carrito">&#128722; Agregar a SOLPED</button>
+    <button class="btn-secondary" id="mat-btn-editar-parametros" style="display:none">&#9998; Editar parámetros min-max</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Editar parametros min-max (admin/supervisor) ===== -->
+<div class="panel" id="panel-material-editar">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-material-editar')">&#10005;</button>
+    <h2>Editar parámetros</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box">&#8505;&#65039; Estos valores definen cuándo este material se marca Crítico, Bajo, OK o Sobrestock en este centro.</div>
+    <div class="field"><label>Stock mínimo</label><input type="number" id="pe-minimo"/></div>
+    <div class="field"><label>Stock máximo</label><input type="number" id="pe-maximo"/></div>
+    <div class="field"><label>Lead time (días)</label><input type="number" id="pe-leadtime"/></div>
+    <div class="field">
+      <label>Criticidad</label>
+      <select id="pe-criticidad"><option value="A">A</option><option value="B">B</option><option value="C">C</option></select>
+    </div>
+    <div class="field"><label>Consumo promedio mensual</label><input type="number" id="pe-consumo"/></div>
+    <div class="field"><label>Proveedor</label><input id="pe-proveedor"/></div>
+    <div class="field"><label>Observaciones</label><textarea id="pe-observaciones"></textarea></div>
+    <button class="btn-primary" id="pe-btn-guardar">Guardar parámetros</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Carrito SOLPED ===== -->
+<div class="panel" id="panel-carrito">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-carrito')">&#8592;</button>
+    <h2>Carrito SOLPED</h2>
+    <button class="icon-btn" style="font-size:13px" onclick="abrirPanel('panel-solped-historial');cargarSolpedHistorial();">Historial</button>
+  </div>
+  <div class="panel-body">
+    <div id="carrito-vacio" class="empty" style="display:none">Tu carrito está vacío.<br>Agrega materiales desde la lista.</div>
+    <div id="carrito-lista"></div>
+    <div class="hint-box" style="margin-top:16px">
+      <span>Total: <b id="carrito-total">$0</b></span>
+    </div>
+    <button class="btn-primary" id="btn-generar-solped">Generar SOLPED</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Historial SOLPED ===== -->
+<div class="panel" id="panel-solped-historial">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-solped-historial')">&#8592;</button>
+    <h2>Historial de SOLPEDs</h2>
+  </div>
+  <div class="panel-body" id="solped-historial-lista">
+    <div class="loading">Cargando...</div>
+  </div>
+</div>
+
 </div>
 </div>
 
@@ -714,6 +868,18 @@ const ESTADOS = ["Operando", "Disponible", "No disponible", "Stand by", "Taller 
 const TIPOS_EQUIPO = ["Electrico", "Instrumentacion", "Mecanico", "Otro"];
 const TIPOS_EQUIPO_LABEL = { Electrico: "Eléctrico", Instrumentacion: "Instrumentación", Mecanico: "Mecánico", Otro: "Otro" };
 const CACHE_KEY = "equipos_gte_cache_v1";
+
+/* ---------- Materiales / Min-Max ---------- */
+let materialesData = [];
+let filtroEstadoMat = "";
+let filtroCentroMat = "";
+let materialActual = null;
+const CARRITO_KEY = "solped_carrito_v1";
+let carritoSolped = JSON.parse(localStorage.getItem(CARRITO_KEY) || "[]");
+
+function fmtCOP(n) {
+  return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n || 0);
+}
 
 /* ============================================================
    UTILIDADES
@@ -1568,9 +1734,330 @@ document.querySelectorAll(".nav-item").forEach(btn => {
       abrirPanel("panel-perfil");
       cargarPanelPerfil();
       document.querySelector('[data-tab="inicio"]').classList.add("active");
+    } else if (btn.dataset.tab === "materiales") {
+      abrirPanel("panel-materiales");
+      cargarMateriales();
     }
   };
 });
+
+/* ============================================================
+   MODULO: MATERIALES / MIN-MAX
+   ============================================================ */
+async function cargarMateriales() {
+  const lista = document.getElementById("lista-materiales");
+  try {
+    const { data, error } = await sb.from("v_materiales_estado").select("*").order("codigo_sap");
+    if (error) throw error;
+    materialesData = data || [];
+
+    // Poblar filtro de centros (unicos, ordenados)
+    const selCentro = document.getElementById("mat-filtro-centro");
+    const centrosUnicos = [...new Map(materialesData.map(m => [m.centro, m.centro_nombre || m.centro])).entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]));
+    selCentro.innerHTML = '<option value="">Todos los centros</option>' +
+      centrosUnicos.map(([c, nombre]) => `<option value="${c}">${c} · ${nombre}</option>`).join("");
+
+    actualizarBadgeCarrito();
+    renderListaMateriales();
+  } catch (e) {
+    lista.innerHTML = '<div class="empty">Error cargando materiales: ' + e.message + '</div>';
+  }
+}
+
+function renderListaMateriales() {
+  const lista = document.getElementById("lista-materiales");
+  const texto = (document.getElementById("mat-buscar").value || "").toLowerCase().trim();
+
+  let filtrados = materialesData.filter(m => {
+    if (filtroCentroMat && m.centro !== filtroCentroMat) return false;
+    if (filtroEstadoMat) {
+      const key = (m.estado || "").split(" ")[0];
+      if (key !== filtroEstadoMat) return false;
+    }
+    if (texto) {
+      const campo = `${m.codigo_sap} ${m.descripcion} ${m.numero_parte || ""} ${m.nombre_tecnico || ""}`.toLowerCase();
+      if (!campo.includes(texto)) return false;
+    }
+    return true;
+  });
+
+  const prioridad = { CRITICO: 0, BAJO: 1, "SIN CONFIGURAR": 2, SOBRESTOCK: 3, OK: 4 };
+  filtrados.sort((a, b) => (prioridad[a.estado] ?? 9) - (prioridad[b.estado] ?? 9));
+
+  if (!filtrados.length) {
+    lista.innerHTML = '<div class="empty">No hay materiales que coincidan con el filtro actual.</div>';
+    return;
+  }
+
+  lista.innerHTML = filtrados.slice(0, 300).map((m, i) => `
+    <div class="mat-card" data-idx="${materialesData.indexOf(m)}">
+      <div class="mat-main">
+        <div class="mat-code">${m.codigo_sap} · ${m.centro}</div>
+        <div class="mat-desc">${m.descripcion}</div>
+        <div class="mat-meta">${m.nombre_tecnico || m.numero_parte || ""}</div>
+        <div class="mat-stock">Stock: ${Math.round(m.stock_actual)} (min ${Math.round(m.stock_minimo)} / max ${Math.round(m.stock_maximo)})</div>
+      </div>
+      <div class="mat-side">
+        <span class="badge ${badgeClase(m.estado)}">${m.estado}</span>
+      </div>
+    </div>
+  `).join("");
+
+  lista.querySelectorAll(".mat-card").forEach(card => {
+    card.onclick = () => abrirFichaMaterial(materialesData[parseInt(card.dataset.idx)]);
+  });
+}
+
+document.getElementById("mat-buscar").addEventListener("input", renderListaMateriales);
+document.getElementById("mat-filtro-centro").addEventListener("change", (e) => {
+  filtroCentroMat = e.target.value;
+  renderListaMateriales();
+});
+document.querySelectorAll("#mat-estado-chips .estado-chip").forEach(chip => {
+  chip.onclick = () => {
+    document.querySelectorAll("#mat-estado-chips .estado-chip").forEach(c => c.classList.remove("active"));
+    chip.classList.add("active");
+    filtroEstadoMat = chip.dataset.estado;
+    renderListaMateriales();
+  };
+});
+
+function abrirFichaMaterial(m) {
+  materialActual = m;
+  document.getElementById("mat-ficha-titulo").textContent = m.descripcion;
+  const badge = document.getElementById("mat-ficha-badge");
+  badge.textContent = m.estado;
+  badge.className = "badge " + badgeClase(m.estado);
+
+  const precioUnit = m.stock_actual > 0 ? (m.valor_stock / m.stock_actual) : 0;
+  document.getElementById("mat-ficha-tabla").innerHTML = `
+    <tr><td>Código SAP</td><td>${m.codigo_sap}</td></tr>
+    <tr><td>Centro</td><td>${m.centro} · ${m.centro_nombre || ""}</td></tr>
+    <tr><td>Número de parte</td><td>${m.numero_parte || "—"}</td></tr>
+    <tr><td>Nombre técnico</td><td>${m.nombre_tecnico || "—"}</td></tr>
+    <tr><td>Unidad</td><td>${m.unidad || "UND"}</td></tr>
+    <tr><td>Proveedor</td><td>${m.proveedor || "Por configurar"}</td></tr>
+    <tr><td>Criticidad</td><td>${m.criticidad || "—"}</td></tr>
+    <tr><td>Stock actual</td><td>${Math.round(m.stock_actual)}</td></tr>
+    <tr><td>Mínimo / Máximo</td><td>${Math.round(m.stock_minimo)} / ${Math.round(m.stock_maximo)}</td></tr>
+    <tr><td>Lead time</td><td>${m.lead_time_dias} días</td></tr>
+    <tr><td>Consumo prom. mensual</td><td>${m.consumo_prom_mensual}</td></tr>
+    <tr><td>Valor stock</td><td>${fmtCOP(m.valor_stock)}</td></tr>
+    <tr><td>Precio unitario aprox.</td><td>${fmtCOP(precioUnit)}</td></tr>
+  `;
+
+  document.getElementById("mat-ficha-cantidad").value = Math.max(1, Math.round(m.cantidad_sugerida_compra) || 1);
+
+  const btnEditar = document.getElementById("mat-btn-editar-parametros");
+  const puedeEditar = usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+  btnEditar.style.display = puedeEditar ? "block" : "none";
+
+  abrirPanel("panel-material-ficha");
+}
+
+document.getElementById("mat-btn-agregar-carrito").onclick = () => {
+  if (!materialActual) return;
+  const cantidad = parseInt(document.getElementById("mat-ficha-cantidad").value) || 1;
+  const precioUnit = materialActual.stock_actual > 0 ? (materialActual.valor_stock / materialActual.stock_actual) : 0;
+
+  const existente = carritoSolped.find(i => i.codigo_sap === materialActual.codigo_sap && i.centro === materialActual.centro);
+  if (existente) {
+    existente.cantidad += cantidad;
+  } else {
+    carritoSolped.push({
+      codigo_sap: materialActual.codigo_sap,
+      descripcion: materialActual.descripcion,
+      nombre_tecnico: materialActual.nombre_tecnico,
+      centro: materialActual.centro,
+      centro_nombre: materialActual.centro_nombre,
+      cantidad: cantidad,
+      unidad: materialActual.unidad || "UND",
+      precio_unitario: precioUnit,
+      criticidad: materialActual.criticidad,
+      proveedor: materialActual.proveedor
+    });
+  }
+  guardarCarrito();
+  toast("Agregado al carrito SOLPED");
+};
+
+document.getElementById("mat-btn-editar-parametros").onclick = () => {
+  if (!materialActual) return;
+  document.getElementById("pe-minimo").value = materialActual.stock_minimo;
+  document.getElementById("pe-maximo").value = materialActual.stock_maximo;
+  document.getElementById("pe-leadtime").value = materialActual.lead_time_dias;
+  document.getElementById("pe-criticidad").value = materialActual.criticidad || "B";
+  document.getElementById("pe-consumo").value = materialActual.consumo_prom_mensual;
+  document.getElementById("pe-proveedor").value = materialActual.proveedor || "";
+  document.getElementById("pe-observaciones").value = materialActual.observaciones || "";
+  abrirPanel("panel-material-editar");
+};
+
+document.getElementById("pe-btn-guardar").onclick = async () => {
+  if (!materialActual) return;
+  const btn = document.getElementById("pe-btn-guardar");
+  btn.disabled = true; btn.textContent = "Guardando...";
+  try {
+    const { error } = await sb.from("parametros_stock").update({
+      stock_minimo: parseFloat(document.getElementById("pe-minimo").value) || 0,
+      stock_maximo: parseFloat(document.getElementById("pe-maximo").value) || 0,
+      lead_time_dias: parseInt(document.getElementById("pe-leadtime").value) || 30,
+      criticidad: document.getElementById("pe-criticidad").value,
+      consumo_prom_mensual: parseFloat(document.getElementById("pe-consumo").value) || 0,
+      proveedor: document.getElementById("pe-proveedor").value || "POR CONFIGURAR",
+      observaciones: document.getElementById("pe-observaciones").value || null,
+      updated_at: new Date().toISOString()
+    }).eq("codigo_sap", materialActual.codigo_sap).eq("centro", materialActual.centro);
+
+    if (error) throw error;
+    toast("Parámetros actualizados");
+    cerrarPanel("panel-material-editar");
+    cerrarPanel("panel-material-ficha");
+    cargarMateriales();
+  } catch (e) {
+    toast("Error guardando: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Guardar parámetros";
+  }
+};
+
+/* ---------- Carrito SOLPED ---------- */
+function guardarCarrito() {
+  localStorage.setItem(CARRITO_KEY, JSON.stringify(carritoSolped));
+  actualizarBadgeCarrito();
+  renderCarrito();
+}
+
+function actualizarBadgeCarrito() {
+  const badge = document.getElementById("carrito-badge");
+  const n = carritoSolped.reduce((acc, i) => acc + 1, 0);
+  if (n > 0) { badge.style.display = "flex"; badge.textContent = n; }
+  else { badge.style.display = "none"; }
+}
+
+function renderCarrito() {
+  const cont = document.getElementById("carrito-lista");
+  const vacio = document.getElementById("carrito-vacio");
+  if (!carritoSolped.length) {
+    vacio.style.display = "block";
+    cont.innerHTML = "";
+    document.getElementById("carrito-total").textContent = fmtCOP(0);
+    return;
+  }
+  vacio.style.display = "none";
+  cont.innerHTML = carritoSolped.map((item, idx) => `
+    <div class="carrito-row">
+      <div class="carrito-row-main">
+        <div class="carrito-row-desc">${item.descripcion}</div>
+        <div class="carrito-row-meta">${item.codigo_sap} · ${item.centro} · ${fmtCOP(item.precio_unitario)} c/u</div>
+      </div>
+      <input type="number" min="1" class="carrito-qty" data-idx="${idx}" value="${item.cantidad}"/>
+      <button class="carrito-remove" data-idx="${idx}">&#10005;</button>
+    </div>
+  `).join("");
+
+  cont.querySelectorAll(".carrito-qty").forEach(inp => {
+    inp.onchange = () => {
+      carritoSolped[parseInt(inp.dataset.idx)].cantidad = parseInt(inp.value) || 1;
+      guardarCarrito();
+    };
+  });
+  cont.querySelectorAll(".carrito-remove").forEach(btn => {
+    btn.onclick = () => {
+      carritoSolped.splice(parseInt(btn.dataset.idx), 1);
+      guardarCarrito();
+    };
+  });
+
+  const total = carritoSolped.reduce((acc, i) => acc + i.cantidad * i.precio_unitario, 0);
+  document.getElementById("carrito-total").textContent = fmtCOP(total);
+}
+
+document.getElementById("btn-generar-solped").onclick = async () => {
+  if (!carritoSolped.length) { toast("El carrito está vacío"); return; }
+  const btn = document.getElementById("btn-generar-solped");
+  btn.disabled = true; btn.textContent = "Generando...";
+  try {
+    const anio = new Date().getFullYear();
+    const { data: existentes } = await sb.from("solped_historico")
+      .select("solped_numero")
+      .ilike("solped_numero", `SOLPED-${anio}-%`);
+
+    let maxNum = 0;
+    (existentes || []).forEach(r => {
+      const n = parseInt((r.solped_numero || "").split("-").pop());
+      if (!isNaN(n) && n > maxNum) maxNum = n;
+    });
+    const numeroSolped = `SOLPED-${anio}-${String(maxNum + 1).padStart(3, "0")}`;
+    const ahora = new Date().toISOString();
+
+    const filas = carritoSolped.map(item => ({
+      solped_numero: numeroSolped,
+      fecha: ahora,
+      codigo_sap: item.codigo_sap,
+      descripcion: item.descripcion,
+      nombre_tecnico: item.nombre_tecnico,
+      centro: item.centro,
+      centro_nombre: item.centro_nombre,
+      cantidad_solicitada: item.cantidad,
+      unidad: item.unidad,
+      precio_unitario: item.precio_unitario,
+      valor_total: item.cantidad * item.precio_unitario,
+      criticidad: item.criticidad,
+      proveedor: item.proveedor,
+      solicitado_por: (usuarioActual && usuarioActual.nombre) || "—",
+      estado: "PENDIENTE",
+      origen: "MANUAL"
+    }));
+
+    const { error } = await sb.from("solped_historico").insert(filas);
+    if (error) throw error;
+
+    toast(numeroSolped + " generada (" + filas.length + " materiales)");
+    carritoSolped = [];
+    guardarCarrito();
+    cerrarPanel("panel-carrito");
+  } catch (e) {
+    toast("Error generando SOLPED: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Generar SOLPED";
+  }
+};
+
+/* ---------- Historial SOLPED ---------- */
+async function cargarSolpedHistorial() {
+  const cont = document.getElementById("solped-historial-lista");
+  try {
+    const { data, error } = await sb.from("solped_historico").select("*").order("fecha", { ascending: false });
+    if (error) throw error;
+    if (!data || !data.length) {
+      cont.innerHTML = '<div class="empty">Aún no se han generado SOLPEDs.</div>';
+      return;
+    }
+    const grupos = {};
+    data.forEach(r => {
+      if (!grupos[r.solped_numero]) grupos[r.solped_numero] = [];
+      grupos[r.solped_numero].push(r);
+    });
+    cont.innerHTML = Object.entries(grupos).map(([numero, items]) => {
+      const total = items.reduce((acc, i) => acc + (i.valor_total || 0), 0);
+      const fecha = new Date(items[0].fecha).toLocaleString("es-CO");
+      return `
+        <div class="solped-grupo">
+          <div class="solped-grupo-header">
+            <span class="solped-grupo-num">${numero}</span>
+            <span class="badge badge-pendiente">${items[0].estado}</span>
+          </div>
+          <div class="solped-grupo-meta">${fecha} · ${items[0].solicitado_por || ""} · ${fmtCOP(total)}</div>
+          ${items.map(i => `<div class="solped-item-line">${i.cantidad_solicitada} ${i.unidad} · ${i.descripcion} (${i.centro})</div>`).join("")}
+        </div>
+      `;
+    }).join("");
+  } catch (e) {
+    cont.innerHTML = '<div class="empty">Error cargando historial: ' + e.message + '</div>';
+  }
+}
 
 /* ============================================================
    AUTENTICACION REAL (Supabase Auth) + ROLES
@@ -2082,6 +2569,8 @@ async function inicializarApp() {
   await cargarCampos();
   await cargarEquipos();
   await sincronizarColaOffline();
+  actualizarBadgeCarrito();
+  renderCarrito();
 }
 
 /* ============================================================
