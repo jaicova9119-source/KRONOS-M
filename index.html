@@ -792,6 +792,9 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <select id="mat-filtro-centro" style="flex:1;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
         <option value="">Todos los centros</option>
       </select>
+      <select id="mat-filtro-categoria" style="flex:1;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
+        <option value="">Todas las áreas</option>
+      </select>
     </div>
     <div class="estado-chips" id="mat-estado-chips">
       <button class="estado-chip active" data-estado="">Todos</button>
@@ -1006,6 +1009,7 @@ const CACHE_KEY = "equipos_gte_cache_v1";
 let materialesData = [];
 let filtroEstadoMat = "";
 let filtroCentroMat = "";
+let filtroCategoriaMat = "";
 let materialActual = null;
 let centrosConocidos = []; // [[codigo, nombre], ...]
 let cfgMaterialActual = null;
@@ -1965,6 +1969,16 @@ async function cargarMateriales() {
       centrosUnicos.map(([c, nombre]) => `<option value="${c}">${c} · ${nombre}</option>`).join("");
     centrosConocidos = centrosUnicos;
 
+    // Poblar filtro de categoria/area (usa las categorias que realmente existen en los datos)
+    const LABEL_CATEGORIA = {
+      ELECTRICIDAD: "Electricidad", MECANICA: "Mecánica", INSTRUMENTACION: "Instrumentación",
+      VFD: "VFD", PRODUCCION: "Producción", OTRO: "Otro"
+    };
+    const selCategoria = document.getElementById("mat-filtro-categoria");
+    const categoriasUnicas = [...new Set(materialesData.map(m => m.categoria).filter(Boolean))].sort();
+    selCategoria.innerHTML = '<option value="">Todas las áreas</option>' +
+      categoriasUnicas.map(c => `<option value="${c}">${LABEL_CATEGORIA[c] || c}</option>`).join("");
+
     // Autocompletado de proveedores ya registrados (evita variaciones del mismo proveedor)
     const proveedoresUnicos = [...new Set(materialesData.map(m => m.proveedor).filter(p => p && p !== "POR CONFIGURAR"))].sort();
     document.getElementById("dl-proveedores").innerHTML = proveedoresUnicos.map(p => `<option value="${p}">`).join("");
@@ -1985,6 +1999,7 @@ function renderListaMateriales() {
 
   let filtrados = materialesData.filter(m => {
     if (filtroCentroMat && m.centro !== filtroCentroMat) return false;
+    if (filtroCategoriaMat && m.categoria !== filtroCategoriaMat) return false;
     if (filtroEstadoMat) {
       const key = (m.estado || "").split(" ")[0];
       if (key !== filtroEstadoMat) return false;
@@ -2026,6 +2041,10 @@ function renderListaMateriales() {
 document.getElementById("mat-buscar").addEventListener("input", renderListaMateriales);
 document.getElementById("mat-filtro-centro").addEventListener("change", (e) => {
   filtroCentroMat = e.target.value;
+  renderListaMateriales();
+});
+document.getElementById("mat-filtro-categoria").addEventListener("change", (e) => {
+  filtroCategoriaMat = e.target.value;
   renderListaMateriales();
 });
 document.querySelectorAll("#mat-estado-chips .estado-chip").forEach(chip => {
