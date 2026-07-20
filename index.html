@@ -411,6 +411,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   .navbar .nav-item{padding:11px 0 10px;font-size:10.5px;border-radius:10px;margin:0 8px;width:calc(100% - 16px);}
   .navbar .nav-item.active{background:var(--accent-bg);}
   .navbar .nav-item svg{width:21px;height:21px;}
+  .navbar .nav-item-separador{border-top:1px solid var(--line);margin-top:10px;padding-top:20px;}
 }
 
 </style>
@@ -525,7 +526,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
     Pendientes
   </button>
-  <button class="nav-item" data-tab="materiales">
+  <button class="nav-item nav-item-separador" data-tab="materiales">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-5 9 5-9 5-9-5z"/><path d="M3 9v6l9 5 9-5V9"/></svg>
     Materiales
   </button>
@@ -739,6 +740,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <div class="panel-header">
     <button class="icon-btn" onclick="cerrarPanel('panel-materiales')">&#8592;</button>
     <h2>Materiales</h2>
+    <button class="icon-btn" id="btn-ir-config-minmax" style="display:none;font-size:18px" onclick="abrirPanel('panel-config-minmax')">&#9881;&#65039;</button>
     <button class="icon-btn" style="position:relative" onclick="abrirPanel('panel-carrito')">
       &#128722;<span class="cart-fab-badge" id="carrito-badge" style="display:none">0</span>
     </button>
@@ -834,6 +836,52 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
 </div>
 
+<!-- ===== Panel: Configuración Min-Max (búsqueda + creación, admin/supervisor) ===== -->
+<div class="panel" id="panel-config-minmax">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-config-minmax')">&#8592;</button>
+    <h2>Configuración Min-Max</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box">&#8505;&#65039; Busca cualquier material del catálogo, aunque no tenga aún parámetros configurados en algún centro, y créalos o edítalos aquí.</div>
+
+    <div class="search-row" style="padding:0 0 10px">
+      <div class="search-box"><span class="search-icon">&#128269;</span><input id="cfg-buscar" placeholder="Código SAP o descripción..."/></div>
+    </div>
+    <div id="cfg-resultados"></div>
+
+    <div id="cfg-form-material" style="display:none;margin-top:10px">
+      <div class="section-label">Datos del catálogo (aplican a todos los centros)</div>
+      <div class="field"><label>Descripción</label><input id="cfg-descripcion" disabled/></div>
+      <div class="field"><label>Categoría</label><input id="cfg-categoria"/></div>
+      <div class="field"><label>Número de parte</label><input id="cfg-numero-parte"/></div>
+      <div class="field"><label>Nombre técnico</label><input id="cfg-nombre-tecnico"/></div>
+
+      <div class="section-label">Centro a configurar</div>
+      <div class="field">
+        <label>Centro</label>
+        <select id="cfg-centro"></select>
+      </div>
+      <div class="field"><label>O escribe un centro nuevo (código SAP)</label><input id="cfg-centro-manual" placeholder="Ej. C045"/></div>
+
+      <div id="cfg-aviso-existente" class="hint-box" style="display:none"></div>
+
+      <div class="field"><label>Stock mínimo</label><input type="number" id="cfg-minimo" value="0"/></div>
+      <div class="field"><label>Stock máximo</label><input type="number" id="cfg-maximo" value="0"/></div>
+      <div class="field"><label>Lead time (días)</label><input type="number" id="cfg-leadtime" value="30"/></div>
+      <div class="field">
+        <label>Criticidad</label>
+        <select id="cfg-criticidad"><option value="A">A</option><option value="B" selected>B</option><option value="C">C</option></select>
+      </div>
+      <div class="field"><label>Consumo promedio mensual</label><input type="number" id="cfg-consumo" value="0"/></div>
+      <div class="field"><label>Proveedor</label><input id="cfg-proveedor" value="POR CONFIGURAR"/></div>
+      <div class="field"><label>Observaciones</label><textarea id="cfg-observaciones"></textarea></div>
+
+      <button class="btn-primary" id="cfg-btn-guardar">Guardar configuración</button>
+    </div>
+  </div>
+</div>
+
 </div>
 </div>
 
@@ -882,6 +930,8 @@ let materialesData = [];
 let filtroEstadoMat = "";
 let filtroCentroMat = "";
 let materialActual = null;
+let centrosConocidos = []; // [[codigo, nombre], ...]
+let cfgMaterialActual = null;
 const CARRITO_KEY = "solped_carrito_v1";
 let carritoSolped = JSON.parse(localStorage.getItem(CARRITO_KEY) || "[]");
 
@@ -1733,6 +1783,11 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     document.querySelectorAll(".nav-item").forEach(b => b.classList.remove("active"));
     btn.classList.add("active");
 
+    // Cierra cualquier panel que haya quedado abierto de otro modulo,
+    // para que nunca se vean superpuestos (ej. Materiales encima de Inicio).
+    document.querySelectorAll(".panel.open").forEach(p => p.classList.remove("open"));
+    document.querySelector(".pane-detail")?.classList.remove("has-open");
+
     const app = document.getElementById("app");
     if (btn.dataset.tab === "inicio") app.classList.remove("modulo-completo");
     else app.classList.add("modulo-completo");
@@ -1770,6 +1825,10 @@ async function cargarMateriales() {
       .sort((a, b) => a[0].localeCompare(b[0]));
     selCentro.innerHTML = '<option value="">Todos los centros</option>' +
       centrosUnicos.map(([c, nombre]) => `<option value="${c}">${c} · ${nombre}</option>`).join("");
+    centrosConocidos = centrosUnicos;
+
+    const puedeConfigurar = usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+    document.getElementById("btn-ir-config-minmax").style.display = puedeConfigurar ? "flex" : "none";
 
     actualizarBadgeCarrito();
     renderListaMateriales();
@@ -1932,6 +1991,151 @@ document.getElementById("pe-btn-guardar").onclick = async () => {
     toast("Error guardando: " + e.message);
   } finally {
     btn.disabled = false; btn.textContent = "Guardar parámetros";
+  }
+};
+
+/* ---------- Configuración Min-Max (búsqueda + creación) ---------- */
+let cfgBuscarTimeout = null;
+document.getElementById("cfg-buscar").addEventListener("input", (e) => {
+  clearTimeout(cfgBuscarTimeout);
+  const texto = e.target.value.trim();
+  document.getElementById("cfg-form-material").style.display = "none";
+  if (texto.length < 2) { document.getElementById("cfg-resultados").innerHTML = ""; return; }
+  cfgBuscarTimeout = setTimeout(() => buscarMaterialesConfig(texto), 350);
+});
+
+async function buscarMaterialesConfig(texto) {
+  const cont = document.getElementById("cfg-resultados");
+  cont.innerHTML = '<div class="loading">Buscando...</div>';
+  try {
+    const { data, error } = await sb.from("materiales")
+      .select("*")
+      .or(`codigo_sap.ilike.%${texto}%,descripcion.ilike.%${texto}%,numero_parte.ilike.%${texto}%`)
+      .limit(20);
+    if (error) throw error;
+    if (!data || !data.length) {
+      cont.innerHTML = '<div class="empty">Sin resultados.</div>';
+      return;
+    }
+    cont.innerHTML = data.map((m, i) => `
+      <div class="mat-card" data-idx="${i}">
+        <div class="mat-main">
+          <div class="mat-code">${m.codigo_sap}</div>
+          <div class="mat-desc">${m.descripcion}</div>
+          <div class="mat-meta">${m.nombre_tecnico || m.numero_parte || ""}</div>
+        </div>
+      </div>
+    `).join("");
+    cont.querySelectorAll(".mat-card").forEach((card, i) => {
+      card.onclick = () => seleccionarMaterialConfig(data[i]);
+    });
+  } catch (e) {
+    cont.innerHTML = '<div class="empty">Error buscando: ' + e.message + '</div>';
+  }
+}
+
+function seleccionarMaterialConfig(material) {
+  cfgMaterialActual = material;
+  document.getElementById("cfg-resultados").innerHTML = "";
+  document.getElementById("cfg-buscar").value = material.codigo_sap + " · " + material.descripcion;
+  document.getElementById("cfg-descripcion").value = material.descripcion;
+  document.getElementById("cfg-categoria").value = material.categoria || "";
+  document.getElementById("cfg-numero-parte").value = material.numero_parte || "";
+  document.getElementById("cfg-nombre-tecnico").value = material.nombre_tecnico || "";
+
+  const selCentro = document.getElementById("cfg-centro");
+  selCentro.innerHTML = '<option value="">Selecciona un centro...</option>' +
+    centrosConocidos.map(([c, nombre]) => `<option value="${c}">${c} · ${nombre}</option>`).join("");
+  document.getElementById("cfg-centro-manual").value = "";
+  resetearCamposCfg();
+
+  document.getElementById("cfg-form-material").style.display = "block";
+}
+
+document.getElementById("cfg-centro").addEventListener("change", cargarParametroCfgExistente);
+document.getElementById("cfg-centro-manual").addEventListener("input", cargarParametroCfgExistente);
+
+function resetearCamposCfg() {
+  document.getElementById("cfg-minimo").value = 0;
+  document.getElementById("cfg-maximo").value = 0;
+  document.getElementById("cfg-leadtime").value = 30;
+  document.getElementById("cfg-criticidad").value = "B";
+  document.getElementById("cfg-consumo").value = 0;
+  document.getElementById("cfg-proveedor").value = "POR CONFIGURAR";
+  document.getElementById("cfg-observaciones").value = "";
+  document.getElementById("cfg-aviso-existente").style.display = "none";
+}
+
+async function cargarParametroCfgExistente() {
+  if (!cfgMaterialActual) return;
+  const centro = (document.getElementById("cfg-centro-manual").value || document.getElementById("cfg-centro").value || "").trim();
+  if (!centro) { resetearCamposCfg(); return; }
+
+  const aviso = document.getElementById("cfg-aviso-existente");
+  try {
+    const { data, error } = await sb.from("parametros_stock")
+      .select("*").eq("codigo_sap", cfgMaterialActual.codigo_sap).eq("centro", centro).maybeSingle();
+    if (error) throw error;
+
+    if (data) {
+      document.getElementById("cfg-minimo").value = data.stock_minimo;
+      document.getElementById("cfg-maximo").value = data.stock_maximo;
+      document.getElementById("cfg-leadtime").value = data.lead_time_dias;
+      document.getElementById("cfg-criticidad").value = data.criticidad;
+      document.getElementById("cfg-consumo").value = data.consumo_prom_mensual;
+      document.getElementById("cfg-proveedor").value = data.proveedor;
+      document.getElementById("cfg-observaciones").value = data.observaciones || "";
+      aviso.style.display = "flex";
+      aviso.innerHTML = "&#9998; Ya existe configuración para este centro — se actualizará al guardar.";
+    } else {
+      resetearCamposCfg();
+      aviso.style.display = "flex";
+      aviso.innerHTML = "&#10024; Este material no tiene parámetros en este centro todavía — se creará uno nuevo al guardar.";
+    }
+  } catch (e) {
+    toast("Error consultando parámetros: " + e.message);
+  }
+}
+
+document.getElementById("cfg-btn-guardar").onclick = async () => {
+  if (!cfgMaterialActual) return;
+  const centro = (document.getElementById("cfg-centro-manual").value || document.getElementById("cfg-centro").value || "").trim();
+  if (!centro) { toast("Selecciona o escribe un centro"); return; }
+
+  const btn = document.getElementById("cfg-btn-guardar");
+  btn.disabled = true; btn.textContent = "Guardando...";
+  try {
+    // 1. Datos de catalogo (aplican a todos los centros de este codigo)
+    const { error: errMat } = await sb.from("materiales").update({
+      categoria: document.getElementById("cfg-categoria").value || "SIN CATEGORIA",
+      numero_parte: document.getElementById("cfg-numero-parte").value || null,
+      nombre_tecnico: document.getElementById("cfg-nombre-tecnico").value || null,
+      updated_at: new Date().toISOString()
+    }).eq("codigo_sap", cfgMaterialActual.codigo_sap);
+    if (errMat) throw errMat;
+
+    // 2. Parametros especificos del centro (crea si no existe, actualiza si ya existe)
+    const { error: errParam } = await sb.from("parametros_stock").upsert({
+      codigo_sap: cfgMaterialActual.codigo_sap,
+      centro: centro,
+      centro_nombre: (centrosConocidos.find(c => c[0] === centro) || [centro, ""])[1],
+      stock_minimo: parseFloat(document.getElementById("cfg-minimo").value) || 0,
+      stock_maximo: parseFloat(document.getElementById("cfg-maximo").value) || 0,
+      lead_time_dias: parseInt(document.getElementById("cfg-leadtime").value) || 30,
+      criticidad: document.getElementById("cfg-criticidad").value,
+      consumo_prom_mensual: parseFloat(document.getElementById("cfg-consumo").value) || 0,
+      proveedor: document.getElementById("cfg-proveedor").value || "POR CONFIGURAR",
+      observaciones: document.getElementById("cfg-observaciones").value || null,
+      updated_at: new Date().toISOString()
+    }, { onConflict: "codigo_sap,centro" });
+    if (errParam) throw errParam;
+
+    toast("Configuración guardada para " + cfgMaterialActual.codigo_sap + " · " + centro);
+    cargarMateriales();
+  } catch (e) {
+    toast("Error guardando: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Guardar configuración";
   }
 };
 
