@@ -233,6 +233,13 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   display:flex;justify-content:space-between;align-items:center;gap:10px;
   padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:13px;
 }
+.rutina-row{
+  display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:10px 0;border-bottom:1px solid var(--line-soft);font-size:13px;
+}
+.rutina-row-main{min-width:0;}
+.rutina-row-nombre{font-weight:600;}
+.rutina-row-meta{font-size:11.5px;color:var(--text-2);}
 .doc-componente-main{min-width:0;}
 .doc-componente-desc{font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .doc-componente-meta{font-size:11.5px;color:var(--text-2);}
@@ -1045,6 +1052,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <button class="btn-secondary" id="doc-btn-eliminar" style="display:none;width:44px;flex-shrink:0;margin-top:0;padding:0">&#128465;</button>
     </div>
 
+    <div id="doc-rutinas-seccion" style="display:none">
+      <div class="section-label">Rutinas de mantenimiento</div>
+      <div id="doc-rutinas-ficha-lista"></div>
+    </div>
+
     <div id="doc-componentes-seccion" style="display:none">
       <div class="section-label">Componentes / repuestos relacionados</div>
       <div class="hint-box">&#128295; Cruce en vivo contra Materiales: si el stock actual no alcanza para lo que pide este documento, se marca "Insuficiente".</div>
@@ -1072,7 +1084,31 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       </select>
     </div>
     <div class="field"><label>Tipo de equipo (opcional)</label><input id="doc-nuevo-tipo-equipo" placeholder="Ej. Variador de frecuencia" list="dl-tipos-equipo"/></div>
-    <div class="field"><label>Frecuencia de mantenimiento en horas (opcional)</label><input type="number" id="doc-nuevo-frecuencia" placeholder="Ej. 8000"/></div>
+    <div class="section-label">Rutinas de mantenimiento (opcional)</div>
+    <div class="hint-box">&#8987; Un documento puede tener varias rutinas (ej. Trimestral, Anual, o cada 8000 horas), cada una con su propio tiempo de ejecución.</div>
+    <div id="doc-rutinas-agregadas"></div>
+    <div class="field"><label>Nombre de la rutina</label><input id="rutina-nombre" placeholder="Ej. Trimestral, Anual, 8000 horas..."/></div>
+    <div class="seg" id="rutina-tipo-toggle">
+      <button type="button" class="active" data-tipo="PERIODO">Por periodo</button>
+      <button type="button" data-tipo="HORAS">Por horas de operación</button>
+    </div>
+    <div class="field" id="rutina-campo-periodo">
+      <label>Periodo</label>
+      <select id="rutina-periodo">
+        <option value="MENSUAL">Mensual</option>
+        <option value="BIMESTRAL">Bimestral</option>
+        <option value="TRIMESTRAL">Trimestral</option>
+        <option value="SEMESTRAL">Semestral</option>
+        <option value="ANUAL">Anual</option>
+        <option value="OTRO">Otro</option>
+      </select>
+    </div>
+    <div class="field" id="rutina-campo-horas" style="display:none">
+      <label>Cada cuántas horas de operación</label>
+      <input type="number" id="rutina-valor-horas" placeholder="Ej. 8000"/>
+    </div>
+    <div class="field"><label>Tiempo de ejecución (horas, opcional)</label><input type="number" id="rutina-tiempo-ejecucion" placeholder="Ej. 4"/></div>
+    <button type="button" class="btn-secondary" id="btn-agregar-rutina">+ Agregar rutina</button>
     <div class="field"><label>Descripción / palabras clave</label><textarea id="doc-nuevo-descripcion"></textarea></div>
 
     <div class="section-label">Archivo</div>
@@ -2728,6 +2764,7 @@ let documentosData = [];
 let filtroCategoriaDoc = "";
 let documentoActual = null;
 let componentesNuevoDoc = []; // [{codigo_sap, descripcion, cantidad_requerida}]
+let rutinasNuevoDoc = []; // [{nombre_rutina, tipo_frecuencia, valor_horas, periodo, tiempo_ejecucion_horas}]
 let archivoSeleccionadoDoc = null;
 
 const LABEL_CATEGORIA_DOC = {
@@ -2786,7 +2823,7 @@ function renderListaDocumentos() {
       <div class="mat-main">
         <span class="doc-card-cat">${LABEL_CATEGORIA_DOC[d.categoria] || d.categoria}</span>
         <div class="mat-desc">${d.titulo}</div>
-        <div class="mat-meta">${d.tipo_equipo ? d.tipo_equipo + (d.frecuencia_horas ? ' · ' + d.frecuencia_horas + 'h' : '') : ''}</div>
+        <div class="mat-meta">${d.tipo_equipo || ''}</div>
       </div>
     </div>
   `).join("");
@@ -2809,7 +2846,6 @@ async function abrirFichaDocumento(doc) {
   document.getElementById("doc-ficha-tabla").innerHTML = `
     <tr><td>Categoría</td><td>${LABEL_CATEGORIA_DOC[doc.categoria] || doc.categoria}</td></tr>
     <tr><td>Tipo de equipo</td><td>${doc.tipo_equipo || "—"}</td></tr>
-    <tr><td>Frecuencia de mantenimiento</td><td>${doc.frecuencia_horas ? doc.frecuencia_horas + " horas" : "—"}</td></tr>
     <tr><td>Descripción</td><td>${doc.descripcion || "—"}</td></tr>
     <tr><td>Origen del archivo</td><td>${doc.archivo_path ? "Subido a la plataforma" : "Enlace externo"}</td></tr>
     <tr><td>Cargado por</td><td>${doc.creado_por || "—"}</td></tr>
@@ -2820,6 +2856,7 @@ async function abrirFichaDocumento(doc) {
   document.getElementById("doc-btn-editar").style.display = puedeEliminar ? "flex" : "none";
 
   abrirPanel("panel-documento-ficha");
+  await cargarRutinasFicha(doc.id);
   await cargarComponentesFicha(doc.id);
 }
 
@@ -2894,11 +2931,13 @@ async function prepararFormularioDocumento(doc = null) {
   document.getElementById("doc-nuevo-titulo").value = doc ? doc.titulo : "";
   document.getElementById("doc-nuevo-categoria").value = doc ? doc.categoria : "MANUAL";
   document.getElementById("doc-nuevo-tipo-equipo").value = doc ? (doc.tipo_equipo || "") : "";
-  document.getElementById("doc-nuevo-frecuencia").value = doc ? (doc.frecuencia_horas || "") : "";
   document.getElementById("doc-nuevo-descripcion").value = doc ? (doc.descripcion || "") : "";
   document.getElementById("doc-nuevo-enlace").value = doc ? (doc.enlace_externo || "") : "";
   document.getElementById("doc-comp-buscar").value = "";
   document.getElementById("doc-comp-resultados").innerHTML = "";
+  document.getElementById("rutina-nombre").value = "";
+  document.getElementById("rutina-valor-horas").value = "";
+  document.getElementById("rutina-tiempo-ejecucion").value = "";
   archivoSeleccionadoDoc = null;
   document.getElementById("doc-input-archivo").value = "";
 
@@ -2923,12 +2962,29 @@ async function prepararFormularioDocumento(doc = null) {
       toast("No se pudieron cargar los componentes existentes: " + e.message);
       componentesNuevoDoc = [];
     }
+
+    try {
+      const { data: rutinasExistentes, error: errRutinas } = await sb.from("documento_rutinas")
+        .select("nombre_rutina, tipo_frecuencia, valor_horas, periodo, tiempo_ejecucion_horas").eq("documento_id", doc.id);
+      if (errRutinas) throw errRutinas;
+      rutinasNuevoDoc = rutinasExistentes || [];
+    } catch (e) {
+      toast("No se pudieron cargar las rutinas existentes: " + e.message);
+      rutinasNuevoDoc = [];
+    }
   } else {
     componentesNuevoDoc = [];
+    rutinasNuevoDoc = [];
   }
 
   renderArchivoElegido();
   renderComponentesAgregados();
+  renderRutinasAgregadas();
+  document.querySelectorAll("#rutina-tipo-toggle button").forEach(b => b.classList.remove("active"));
+  document.querySelector('#rutina-tipo-toggle button[data-tipo="PERIODO"]').classList.add("active");
+  rutinaTipoActual = "PERIODO";
+  document.getElementById("rutina-campo-periodo").style.display = "block";
+  document.getElementById("rutina-campo-horas").style.display = "none";
 }
 
 function editarDocumentoActual() {
@@ -3025,6 +3081,92 @@ function renderComponentesAgregados() {
   });
 }
 
+/* ---------- Rutinas de mantenimiento (dentro del formulario) ---------- */
+const LABEL_PERIODO = {
+  MENSUAL: "Mensual", BIMESTRAL: "Bimestral", TRIMESTRAL: "Trimestral",
+  SEMESTRAL: "Semestral", ANUAL: "Anual", OTRO: "Otro"
+};
+let rutinaTipoActual = "PERIODO";
+
+document.querySelectorAll("#rutina-tipo-toggle button").forEach(btn => {
+  btn.onclick = () => {
+    document.querySelectorAll("#rutina-tipo-toggle button").forEach(b => b.classList.remove("active"));
+    btn.classList.add("active");
+    rutinaTipoActual = btn.dataset.tipo;
+    document.getElementById("rutina-campo-periodo").style.display = rutinaTipoActual === "PERIODO" ? "block" : "none";
+    document.getElementById("rutina-campo-horas").style.display = rutinaTipoActual === "HORAS" ? "block" : "none";
+  };
+});
+
+document.getElementById("btn-agregar-rutina").onclick = () => {
+  const nombre = document.getElementById("rutina-nombre").value.trim();
+  if (!nombre) { toast("Ponle un nombre a la rutina (ej. Trimestral)"); return; }
+
+  const rutina = {
+    nombre_rutina: nombre,
+    tipo_frecuencia: rutinaTipoActual,
+    valor_horas: rutinaTipoActual === "HORAS" ? (parseFloat(document.getElementById("rutina-valor-horas").value) || null) : null,
+    periodo: rutinaTipoActual === "PERIODO" ? document.getElementById("rutina-periodo").value : null,
+    tiempo_ejecucion_horas: parseFloat(document.getElementById("rutina-tiempo-ejecucion").value) || null
+  };
+  if (rutina.tipo_frecuencia === "HORAS" && !rutina.valor_horas) {
+    toast("Indica cada cuántas horas de operación aplica esta rutina");
+    return;
+  }
+
+  rutinasNuevoDoc.push(rutina);
+  renderRutinasAgregadas();
+
+  document.getElementById("rutina-nombre").value = "";
+  document.getElementById("rutina-valor-horas").value = "";
+  document.getElementById("rutina-tiempo-ejecucion").value = "";
+};
+
+function renderRutinasAgregadas() {
+  const cont = document.getElementById("doc-rutinas-agregadas");
+  if (!rutinasNuevoDoc.length) { cont.innerHTML = ""; return; }
+  cont.innerHTML = rutinasNuevoDoc.map((r, idx) => `
+    <div class="rutina-row">
+      <div class="rutina-row-main">
+        <div class="rutina-row-nombre">${r.nombre_rutina}</div>
+        <div class="rutina-row-meta">
+          ${r.tipo_frecuencia === "HORAS" ? "Cada " + r.valor_horas + " horas" : LABEL_PERIODO[r.periodo] || r.periodo}
+          ${r.tiempo_ejecucion_horas ? " · dura " + r.tiempo_ejecucion_horas + "h" : ""}
+        </div>
+      </div>
+      <button class="carrito-remove" data-idx="${idx}">&#10005;</button>
+    </div>
+  `).join("");
+  cont.querySelectorAll(".carrito-remove").forEach(btn => {
+    btn.onclick = () => { rutinasNuevoDoc.splice(parseInt(btn.dataset.idx), 1); renderRutinasAgregadas(); };
+  });
+}
+
+async function cargarRutinasFicha(documentoId) {
+  const seccion = document.getElementById("doc-rutinas-seccion");
+  const cont = document.getElementById("doc-rutinas-ficha-lista");
+  try {
+    const { data, error } = await sb.from("documento_rutinas").select("*").eq("documento_id", documentoId);
+    if (error) throw error;
+    if (!data || !data.length) { seccion.style.display = "none"; return; }
+    seccion.style.display = "block";
+    cont.innerHTML = data.map(r => `
+      <div class="rutina-row">
+        <div class="rutina-row-main">
+          <div class="rutina-row-nombre">${r.nombre_rutina}</div>
+          <div class="rutina-row-meta">
+            ${r.tipo_frecuencia === "HORAS" ? "Cada " + r.valor_horas + " horas" : LABEL_PERIODO[r.periodo] || r.periodo}
+            ${r.tiempo_ejecucion_horas ? " · dura " + r.tiempo_ejecucion_horas + "h" : ""}
+          </div>
+        </div>
+      </div>
+    `).join("");
+  } catch (e) {
+    seccion.style.display = "block";
+    cont.innerHTML = '<div class="empty">Error cargando rutinas: ' + e.message + '</div>';
+  }
+}
+
 document.getElementById("doc-btn-guardar").onclick = async () => {
   const titulo = document.getElementById("doc-nuevo-titulo").value.trim();
   const enlace = document.getElementById("doc-nuevo-enlace").value.trim();
@@ -3064,7 +3206,6 @@ document.getElementById("doc-btn-guardar").onclick = async () => {
       titulo,
       categoria: document.getElementById("doc-nuevo-categoria").value,
       tipo_equipo: document.getElementById("doc-nuevo-tipo-equipo").value || null,
-      frecuencia_horas: parseInt(document.getElementById("doc-nuevo-frecuencia").value) || null,
       descripcion: document.getElementById("doc-nuevo-descripcion").value || null,
       archivo_path: archivoPath,
       archivo_nombre: archivoNombre,
@@ -3078,9 +3219,11 @@ document.getElementById("doc-btn-guardar").onclick = async () => {
       if (errUpd) throw errUpd;
       documentoId = documentoEditandoId;
 
-      // Reemplazar por completo los componentes (mas simple y seguro que calcular el diff)
+      // Reemplazar por completo componentes y rutinas (mas simple y seguro que calcular el diff)
       const { error: errDelComp } = await sb.from("documento_componentes").delete().eq("documento_id", documentoId);
       if (errDelComp) throw errDelComp;
+      const { error: errDelRut } = await sb.from("documento_rutinas").delete().eq("documento_id", documentoId);
+      if (errDelRut) throw errDelRut;
     } else {
       payload.creado_por = (usuarioActual && usuarioActual.nombre) || null;
       const { data: docInsertado, error: errDoc } = await sb.from("documentos").insert(payload).select().single();
@@ -3096,6 +3239,19 @@ document.getElementById("doc-btn-guardar").onclick = async () => {
       }));
       const { error: errComp } = await sb.from("documento_componentes").insert(filas);
       if (errComp) throw errComp;
+    }
+
+    if (rutinasNuevoDoc.length) {
+      const filasRutinas = rutinasNuevoDoc.map(r => ({
+        documento_id: documentoId,
+        nombre_rutina: r.nombre_rutina,
+        tipo_frecuencia: r.tipo_frecuencia,
+        valor_horas: r.valor_horas,
+        periodo: r.periodo,
+        tiempo_ejecucion_horas: r.tiempo_ejecucion_horas
+      }));
+      const { error: errRut } = await sb.from("documento_rutinas").insert(filasRutinas);
+      if (errRut) throw errRut;
     }
 
     toast(editando ? "Documento actualizado" : "Documento guardado");
