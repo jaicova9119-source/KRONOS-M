@@ -996,6 +996,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <div class="panel-header">
     <button class="icon-btn" onclick="volverAMateriales()">&#8592;</button>
     <h2>Resumen de Materiales</h2>
+    <button class="icon-btn" id="btn-exportar-resumen-mat" title="Exportar a Excel">&#128190;</button>
   </div>
   <div class="panel-body">
     <div class="filtros-bar" style="padding:0 0 14px">
@@ -2474,6 +2475,105 @@ document.getElementById("resumen-filtro-categoria").addEventListener("change", (
   document.getElementById("mat-filtro-categoria").value = filtroCategoriaMat;
   renderResumenMateriales();
 });
+
+function descripcionFiltroMat() {
+  const selCentro = document.getElementById("resumen-filtro-centro");
+  const selCategoria = document.getElementById("resumen-filtro-categoria");
+  const partes = [];
+  if (filtroCentroMat) partes.push(`Centro: ${selCentro.selectedOptions[0]?.text || filtroCentroMat}`);
+  if (filtroCategoriaMat) partes.push(`Área: ${selCategoria.selectedOptions[0]?.text || filtroCategoriaMat}`);
+  return partes.length ? partes.join(" · ") : "Todos los centros y áreas";
+}
+
+document.getElementById("btn-exportar-resumen-mat").onclick = () => {
+  const datos = materialesData.filter(m =>
+    (!filtroCentroMat || m.centro === filtroCentroMat) &&
+    (!filtroCategoriaMat || m.categoria === filtroCategoriaMat)
+  );
+
+  if (!datos.length) {
+    toast("No hay materiales para exportar con este filtro");
+    return;
+  }
+
+  const porEstado = {};
+  let valorTotal = 0;
+  datos.forEach(m => {
+    const key = (m.estado || "SIN CONFIGURAR").split(" ")[0];
+    porEstado[key] = (porEstado[key] || 0) + 1;
+    valorTotal += m.valor_stock || 0;
+  });
+
+  const criticosPorCentro = {};
+  datos.filter(m => m.estado === "CRITICO").forEach(m => {
+    criticosPorCentro[m.centro] = (criticosPorCentro[m.centro] || 0) + 1;
+  });
+  const topCentros = Object.entries(criticosPorCentro).sort((a, b) => b[1] - a[1]);
+  const maxCriticoExp = Math.max(...topCentros.map(([, n]) => n), 1);
+
+  const barraTexto = (n, max, ancho = 24) => {
+    const llenas = Math.max(1, Math.round((n / max) * ancho));
+    return "█".repeat(llenas) + "░".repeat(Math.max(0, ancho - llenas));
+  };
+
+  const etiquetasEstado = {
+    CRITICO: "Críticos", BAJO: "Bajo", OK: "OK", SOBRESTOCK: "Sobrestock", SIN: "Sin configurar",
+  };
+
+  const filasResumen = [
+    ["KRONOS·M — RESUMEN DE MATERIALES"],
+    ["Generado", new Date().toLocaleString("es-CO")],
+    ["Filtro aplicado", descripcionFiltroMat()],
+    [],
+    ["INDICADOR", "VALOR"],
+    ["Total de configuraciones", datos.length],
+    ["Valor total del stock (COP)", valorTotal],
+    [],
+    ["MATERIALES POR ESTADO"],
+    ["Estado", "Cantidad", "% del total"],
+  ];
+  Object.entries(porEstado).sort((a, b) => b[1] - a[1]).forEach(([estado, n]) => {
+    filasResumen.push([etiquetasEstado[estado] || estado, n, (n / datos.length * 100).toFixed(1) + "%"]);
+  });
+  filasResumen.push([]);
+  filasResumen.push(["CENTROS CON MÁS MATERIALES CRÍTICOS"]);
+  filasResumen.push(["Centro", "Cantidad", "Gráfico"]);
+  topCentros.forEach(([centro, n]) => {
+    filasResumen.push([centro, n, barraTexto(n, maxCriticoExp)]);
+  });
+
+  const wsResumen = XLSX.utils.aoa_to_sheet(filasResumen);
+  wsResumen["!cols"] = [{ wch: 34 }, { wch: 18 }, { wch: 14 }];
+
+  const columnasDetalle = [
+    ["codigo_sap", "Código SAP"],
+    ["descripcion", "Descripción"],
+    ["centro", "Centro"],
+    ["centro_nombre", "Nombre centro"],
+    ["categoria", "Área/Categoría"],
+    ["unidad", "Unidad"],
+    ["proveedor", "Proveedor"],
+    ["stock_actual", "Stock actual"],
+    ["stock_minimo", "Mínimo"],
+    ["stock_maximo", "Máximo"],
+    ["estado", "Estado"],
+    ["valor_stock", "Valor stock (COP)"],
+  ];
+  const filasDetalle = [columnasDetalle.map(([, etiqueta]) => etiqueta)];
+  datos.forEach(m => {
+    filasDetalle.push(columnasDetalle.map(([campo]) => m[campo] ?? ""));
+  });
+  const wsDetalle = XLSX.utils.aoa_to_sheet(filasDetalle);
+  wsDetalle["!cols"] = columnasDetalle.map(() => ({ wch: 20 }));
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen");
+  XLSX.utils.book_append_sheet(wb, wsDetalle, "Detalle");
+
+  const fecha = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `materiales_resumen_gte_${fecha}.xlsx`);
+  toast(`Exportados ${datos.length} materiales (Resumen + Detalle)`);
+};
 
 /* ---------- Configuración Min-Max (búsqueda + creación) ---------- */
 let cfgBuscarTimeout = null;
