@@ -1146,6 +1146,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
 <script>
 /* ============================================================
    CONFIGURACION
@@ -2485,7 +2486,7 @@ function descripcionFiltroMat() {
   return partes.length ? partes.join(" · ") : "Todos los centros y áreas";
 }
 
-document.getElementById("btn-exportar-resumen-mat").onclick = () => {
+document.getElementById("btn-exportar-resumen-mat").onclick = async () => {
   const datos = materialesData.filter(m =>
     (!filtroCentroMat || m.centro === filtroCentroMat) &&
     (!filtroCategoriaMat || m.categoria === filtroCategoriaMat)
@@ -2496,83 +2497,169 @@ document.getElementById("btn-exportar-resumen-mat").onclick = () => {
     return;
   }
 
-  const porEstado = {};
-  let valorTotal = 0;
-  datos.forEach(m => {
-    const key = (m.estado || "SIN CONFIGURAR").split(" ")[0];
-    porEstado[key] = (porEstado[key] || 0) + 1;
-    valorTotal += m.valor_stock || 0;
-  });
+  const btnExport = document.getElementById("btn-exportar-resumen-mat");
+  btnExport.disabled = true;
 
-  const criticosPorCentro = {};
-  datos.filter(m => m.estado === "CRITICO").forEach(m => {
-    criticosPorCentro[m.centro] = (criticosPorCentro[m.centro] || 0) + 1;
-  });
-  const topCentros = Object.entries(criticosPorCentro).sort((a, b) => b[1] - a[1]);
-  const maxCriticoExp = Math.max(...topCentros.map(([, n]) => n), 1);
+  try {
+    const porEstado = {};
+    let valorTotal = 0;
+    datos.forEach(m => {
+      const key = (m.estado || "SIN CONFIGURAR").split(" ")[0];
+      porEstado[key] = (porEstado[key] || 0) + 1;
+      valorTotal += m.valor_stock || 0;
+    });
 
-  const barraTexto = (n, max, ancho = 24) => {
-    const llenas = Math.max(1, Math.round((n / max) * ancho));
-    return "█".repeat(llenas) + "░".repeat(Math.max(0, ancho - llenas));
-  };
+    const criticosPorCentro = {};
+    datos.filter(m => m.estado === "CRITICO").forEach(m => {
+      criticosPorCentro[m.centro] = (criticosPorCentro[m.centro] || 0) + 1;
+    });
+    const topCentros = Object.entries(criticosPorCentro).sort((a, b) => b[1] - a[1]);
+    const maxCriticoExp = Math.max(...topCentros.map(([, n]) => n), 1);
 
-  const etiquetasEstado = {
-    CRITICO: "Críticos", BAJO: "Bajo", OK: "OK", SOBRESTOCK: "Sobrestock", SIN: "Sin configurar",
-  };
+    const barraTexto = (n, max, ancho = 24) => {
+      const llenas = Math.max(1, Math.round((n / max) * ancho));
+      return "█".repeat(llenas) + "░".repeat(Math.max(0, ancho - llenas));
+    };
 
-  const filasResumen = [
-    ["KRONOS·M — RESUMEN DE MATERIALES"],
-    ["Generado", new Date().toLocaleString("es-CO")],
-    ["Filtro aplicado", descripcionFiltroMat()],
-    [],
-    ["INDICADOR", "VALOR"],
-    ["Total de configuraciones", datos.length],
-    ["Valor total del stock (COP)", valorTotal],
-    [],
-    ["MATERIALES POR ESTADO"],
-    ["Estado", "Cantidad", "% del total"],
-  ];
-  Object.entries(porEstado).sort((a, b) => b[1] - a[1]).forEach(([estado, n]) => {
-    filasResumen.push([etiquetasEstado[estado] || estado, n, (n / datos.length * 100).toFixed(1) + "%"]);
-  });
-  filasResumen.push([]);
-  filasResumen.push(["CENTROS CON MÁS MATERIALES CRÍTICOS"]);
-  filasResumen.push(["Centro", "Cantidad", "Gráfico"]);
-  topCentros.forEach(([centro, n]) => {
-    filasResumen.push([centro, n, barraTexto(n, maxCriticoExp)]);
-  });
+    const etiquetasEstado = {
+      CRITICO: "Críticos", BAJO: "Bajo", OK: "OK", SOBRESTOCK: "Sobrestock", SIN: "Sin configurar",
+    };
 
-  const wsResumen = XLSX.utils.aoa_to_sheet(filasResumen);
-  wsResumen["!cols"] = [{ wch: 34 }, { wch: 18 }, { wch: 14 }];
+    // Colores de relleno por estado (mismo criterio visual en toda la hoja Detalle)
+    const coloresEstado = {
+      CRITICO: "FFF8D7DA",   // rojo claro
+      BAJO: "FFFFF3CD",      // ámbar claro
+      OK: "FFD4EDDA",        // verde claro
+      SOBRESTOCK: "FFD1ECF1", // azul claro
+      SIN: "FFE2E3E5",       // gris claro
+    };
+    const colorTextoEstado = {
+      CRITICO: "FF842029", BAJO: "FF856404", OK: "FF155724", SOBRESTOCK: "FF0C5460", SIN: "FF41464B",
+    };
 
-  const columnasDetalle = [
-    ["codigo_sap", "Código SAP"],
-    ["descripcion", "Descripción"],
-    ["centro", "Centro"],
-    ["centro_nombre", "Nombre centro"],
-    ["categoria", "Área/Categoría"],
-    ["unidad", "Unidad"],
-    ["proveedor", "Proveedor"],
-    ["stock_actual", "Stock actual"],
-    ["stock_minimo", "Mínimo"],
-    ["stock_maximo", "Máximo"],
-    ["estado", "Estado"],
-    ["valor_stock", "Valor stock (COP)"],
-  ];
-  const filasDetalle = [columnasDetalle.map(([, etiqueta]) => etiqueta)];
-  datos.forEach(m => {
-    filasDetalle.push(columnasDetalle.map(([campo]) => m[campo] ?? ""));
-  });
-  const wsDetalle = XLSX.utils.aoa_to_sheet(filasDetalle);
-  wsDetalle["!cols"] = columnasDetalle.map(() => ({ wch: 20 }));
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Kronos-M";
+    wb.created = new Date();
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen");
-  XLSX.utils.book_append_sheet(wb, wsDetalle, "Detalle");
+    /* ---------- Hoja Resumen ---------- */
+    const wsResumen = wb.addWorksheet("Resumen");
+    wsResumen.columns = [{ width: 34 }, { width: 18 }, { width: 26 }];
 
-  const fecha = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `materiales_resumen_gte_${fecha}.xlsx`);
-  toast(`Exportados ${datos.length} materiales (Resumen + Detalle)`);
+    const filaTitulo = wsResumen.addRow(["KRONOS·M — RESUMEN DE MATERIALES"]);
+    filaTitulo.font = { bold: true, size: 13, color: { argb: "FF134B70" } };
+    wsResumen.addRow(["Generado", new Date().toLocaleString("es-CO")]);
+    wsResumen.addRow(["Filtro aplicado", descripcionFiltroMat()]);
+    wsResumen.addRow([]);
+
+    const filaEncIndicador = wsResumen.addRow(["INDICADOR", "VALOR"]);
+    filaEncIndicador.font = { bold: true };
+    wsResumen.addRow(["Total de configuraciones", datos.length]);
+    wsResumen.addRow(["Valor total del stock (COP)", valorTotal]);
+    wsResumen.addRow([]);
+
+    const filaTituloEstado = wsResumen.addRow(["MATERIALES POR ESTADO"]);
+    filaTituloEstado.font = { bold: true };
+    const filaEncEstado = wsResumen.addRow(["Estado", "Cantidad", "% del total"]);
+    filaEncEstado.font = { bold: true };
+    Object.entries(porEstado).sort((a, b) => b[1] - a[1]).forEach(([estado, n]) => {
+      const fila = wsResumen.addRow([etiquetasEstado[estado] || estado, n, (n / datos.length * 100).toFixed(1) + "%"]);
+      const color = coloresEstado[estado];
+      if (color) {
+        fila.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+        fila.getCell(1).font = { color: { argb: colorTextoEstado[estado] } };
+      }
+    });
+    wsResumen.addRow([]);
+    const filaTituloCentros = wsResumen.addRow(["CENTROS CON MÁS MATERIALES CRÍTICOS"]);
+    filaTituloCentros.font = { bold: true };
+    const filaEncCentros = wsResumen.addRow(["Centro", "Cantidad", "Gráfico"]);
+    filaEncCentros.font = { bold: true };
+    topCentros.forEach(([centro, n]) => {
+      wsResumen.addRow([centro, n, barraTexto(n, maxCriticoExp)]);
+    });
+
+    /* ---------- Hoja Detalle ---------- */
+    const columnasDetalle = [
+      { key: "codigo_sap", header: "Código SAP", width: 14 },
+      { key: "descripcion", header: "Descripción", width: 40 },
+      { key: "numero_parte", header: "Número de parte", width: 22 },
+      { key: "nombre_tecnico", header: "Nombre técnico", width: 26 },
+      { key: "centro", header: "Centro", width: 10 },
+      { key: "centro_nombre", header: "Nombre centro", width: 24 },
+      { key: "categoria", header: "Área/Categoría", width: 16 },
+      { key: "unidad", header: "Unidad", width: 10 },
+      { key: "proveedor", header: "Proveedor", width: 22 },
+      { key: "stock_actual", header: "Stock actual", width: 12 },
+      { key: "stock_minimo", header: "Mínimo", width: 10 },
+      { key: "stock_maximo", header: "Máximo", width: 10 },
+      { key: "estado", header: "Estado", width: 14 },
+      { key: "valor_stock", header: "Valor stock (COP)", width: 18 },
+    ];
+    const wsDetalle = wb.addWorksheet("Detalle");
+    wsDetalle.columns = columnasDetalle;
+
+    datos.forEach(m => {
+      wsDetalle.addRow({
+        codigo_sap: m.codigo_sap ?? "",
+        descripcion: m.descripcion ?? "",
+        numero_parte: m.numero_parte ?? "",
+        nombre_tecnico: m.nombre_tecnico ?? "",
+        centro: m.centro ?? "",
+        centro_nombre: m.centro_nombre ?? "",
+        categoria: m.categoria ?? "",
+        unidad: m.unidad ?? "",
+        proveedor: m.proveedor || "Sin asignar",
+        stock_actual: m.stock_actual ?? "",
+        stock_minimo: m.stock_minimo ?? "",
+        stock_maximo: m.stock_maximo ?? "",
+        estado: m.estado ?? "",
+        valor_stock: m.valor_stock ?? 0,
+      });
+    });
+
+    // Encabezado: negrilla, fondo de marca y texto blanco
+    const filaEncDetalle = wsDetalle.getRow(1);
+    filaEncDetalle.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    filaEncDetalle.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF134B70" } };
+    filaEncDetalle.alignment = { vertical: "middle" };
+
+    // Filtro desplegable en cada columna del encabezado
+    wsDetalle.autoFilter = {
+      from: { row: 1, column: 1 },
+      to: { row: 1, column: columnasDetalle.length },
+    };
+    wsDetalle.views = [{ state: "frozen", ySplit: 1 }];
+
+    // Color de fila según estado (crítico, bajo, ok, sobrestock, sin configurar)
+    datos.forEach((m, i) => {
+      const key = (m.estado || "SIN CONFIGURAR").split(" ")[0];
+      const color = coloresEstado[key];
+      if (!color) return;
+      const fila = wsDetalle.getRow(i + 2);
+      fila.eachCell({ includeEmpty: true }, (celda) => {
+        celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+      });
+    });
+
+    const fecha = new Date().toISOString().slice(0, 10);
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `materiales_resumen_gte_${fecha}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+
+    toast(`Exportados ${datos.length} materiales (Resumen + Detalle)`);
+  } catch (e) {
+    console.error(e);
+    toast("Error al generar el Excel");
+  } finally {
+    btnExport.disabled = false;
+  }
 };
 
 /* ---------- Configuración Min-Max (búsqueda + creación) ---------- */
