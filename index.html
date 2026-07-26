@@ -18,13 +18,13 @@
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kronos-m.onrender.com/">
 <meta property="og:title" content="KRONOS·M">
-<meta property="og:description" content="Gran Tierra Energy · Gestión integral de mantenimiento">
+<meta property="og:description" content="JAC Engineering · Plataforma de gestión de mantenimiento">
 <meta property="og:image" content="https://kronos-m.onrender.com/icons/social-preview.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="KRONOS·M">
-<meta name="twitter:description" content="Gran Tierra Energy · Gestión integral de mantenimiento">
+<meta name="twitter:description" content="JAC Engineering · Plataforma de gestión de mantenimiento">
 <meta name="twitter:image" content="https://kronos-m.onrender.com/icons/social-preview.png">
 <style>
 :root{
@@ -308,7 +308,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
 .navbar{
   flex-shrink:0;display:flex;border-top:1px solid var(--line);background:var(--bg-1);
-  position:absolute;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;
+  position:absolute;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;height:58px;z-index:25;
 }
 .navbar .nav-item{
   flex:1;text-align:center;padding:9px 0 8px;color:var(--text-2);font-size:10.5px;
@@ -319,7 +319,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
 /* ---------- Panels (ficha, formularios) ---------- */
 .panel{
-  position:fixed;top:46px;left:0;right:0;bottom:0;background:var(--bg-0);z-index:20;display:flex;flex-direction:column;
+  position:fixed;top:46px;left:0;right:0;bottom:58px;background:var(--bg-0);z-index:20;display:flex;flex-direction:column;
   max-width:520px;margin:0 auto;transform:translateX(100%);transition:transform .22s ease;
 }
 .panel.open{transform:translateX(0);}
@@ -482,7 +482,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       </div>
       <h1>KRONOS<span style="color:var(--accent-dim)">·</span>M</h1>
     </div>
-    <p class="auth-sub">Gran Tierra Energy · Gestión integral de mantenimiento</p>
+    <p class="auth-sub">JAC Engineering · Plataforma de gestión de mantenimiento</p>
 
     <div id="auth-form-login">
       <div class="field"><label>Correo</label><input id="auth-email" type="email"/></div>
@@ -505,7 +505,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <p class="auth-footer">
     Desarrollado por <a href="https://jacengineering.com.co" target="_blank" rel="noopener">JAC Engineering SAS</a><br>
     <a href="mailto:proyectos@jacengineering.com.co">proyectos@jacengineering.com.co</a> · <a href="tel:+573112721760">+57 311 272 1760</a><br>
-    KRONOS·M v1.0 · Configurado para GTE / SAP
+    KRONOS·M v1.0 · Compatible con SAP
   </p>
 </div>
 
@@ -1654,7 +1654,7 @@ document.getElementById("btn-exportar").onclick = () => {
   const maxCampoExp = Math.max(...Object.values(porCampo), 1);
 
   const filasResumen = [
-    ["CONTROL EQUIPOS GTE — RESUMEN GERENCIAL"],
+    ["CONTROL DE EQUIPOS — RESUMEN GERENCIAL"],
     ["Generado", new Date().toLocaleString("es-CO")],
     ["Filtro aplicado", descripcionFiltroActual()],
     [],
@@ -1707,7 +1707,7 @@ document.getElementById("btn-exportar").onclick = () => {
   XLSX.utils.book_append_sheet(wb, wsDetalle, "Detalle");
 
   const fecha = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `equipos_gte_${fecha}.xlsx`);
+  XLSX.writeFile(wb, `equipos_kronos_${fecha}.xlsx`);
   toast(`Exportados ${total} equipos (Resumen + Detalle)`);
 };
 
@@ -2647,7 +2647,7 @@ document.getElementById("btn-exportar-resumen-mat").onclick = async () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `materiales_resumen_gte_${fecha}.xlsx`;
+    a.download = `materiales_resumen_kronos_${fecha}.xlsx`;
     document.body.appendChild(a);
     a.click();
     a.remove();
