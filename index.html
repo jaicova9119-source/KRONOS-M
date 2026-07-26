@@ -2302,6 +2302,7 @@ document.getElementById("mat-btn-agregar-carrito").onclick = () => {
     carritoSolped.push({
       codigo_sap: materialActual.codigo_sap,
       descripcion: materialActual.descripcion,
+      numero_parte: materialActual.numero_parte,
       nombre_tecnico: materialActual.nombre_tecnico,
       centro: materialActual.centro,
       centro_nombre: materialActual.centro_nombre,
@@ -2344,7 +2345,10 @@ document.getElementById("pe-btn-guardar").onclick = async () => {
     }).eq("codigo_sap", materialActual.codigo_sap);
     if (errMat) throw errMat;
 
-    const { error } = await sb.from("parametros_stock").update({
+    const { error } = await sb.from("parametros_stock").upsert({
+      codigo_sap: materialActual.codigo_sap,
+      centro: materialActual.centro,
+      centro_nombre: materialActual.centro_nombre || "",
       stock_minimo: parseFloat(document.getElementById("pe-minimo").value) || 0,
       stock_maximo: parseFloat(document.getElementById("pe-maximo").value) || 0,
       lead_time_dias: parseInt(document.getElementById("pe-leadtime").value) || 30,
@@ -2353,7 +2357,7 @@ document.getElementById("pe-btn-guardar").onclick = async () => {
       proveedor: document.getElementById("pe-proveedor").value || "POR CONFIGURAR",
       observaciones: document.getElementById("pe-observaciones").value || null,
       updated_at: new Date().toISOString()
-    }).eq("codigo_sap", materialActual.codigo_sap).eq("centro", materialActual.centro);
+    }, { onConflict: "codigo_sap,centro" });
 
     if (error) throw error;
 
@@ -2882,6 +2886,7 @@ document.getElementById("btn-generar-solped").onclick = async () => {
       fecha: ahora,
       codigo_sap: item.codigo_sap,
       descripcion: item.descripcion,
+      numero_parte: item.numero_parte,
       nombre_tecnico: item.nombre_tecnico,
       centro: item.centro,
       centro_nombre: item.centro_nombre,
@@ -2910,12 +2915,14 @@ document.getElementById("btn-generar-solped").onclick = async () => {
   }
 };
 
-/* ---------- Historial SOLPED ---------- */
+let solpedHistorialData = [];
+
 async function cargarSolpedHistorial() {
   const cont = document.getElementById("solped-historial-lista");
   try {
     const { data, error } = await sb.from("solped_historico").select("*").order("fecha", { ascending: false });
     if (error) throw error;
+    solpedHistorialData = data || [];
     if (!data || !data.length) {
       cont.innerHTML = '<div class="empty">Aún no se han generado SOLPEDs.</div>';
       return;
@@ -2932,7 +2939,10 @@ async function cargarSolpedHistorial() {
         <div class="solped-grupo">
           <div class="solped-grupo-header">
             <span class="solped-grupo-num">${numero}</span>
-            <span class="badge badge-pendiente">${items[0].estado}</span>
+            <span style="display:flex;align-items:center;gap:8px">
+              <span class="badge badge-pendiente">${items[0].estado}</span>
+              <button class="icon-btn" style="font-size:16px" title="Exportar a Excel" onclick="exportarSolpedExcel('${numero}')">&#128190;</button>
+            </span>
           </div>
           <div class="solped-grupo-meta">${fecha} · ${items[0].solicitado_por || ""} · ${fmtCOP(total)}</div>
           ${items.map(i => `<div class="solped-item-line">${i.cantidad_solicitada} ${i.unidad} · ${i.descripcion} (${i.centro})</div>`).join("")}
@@ -2941,6 +2951,103 @@ async function cargarSolpedHistorial() {
     }).join("");
   } catch (e) {
     cont.innerHTML = '<div class="empty">Error cargando historial: ' + e.message + '</div>';
+  }
+}
+
+async function exportarSolpedExcel(numero) {
+  const items = solpedHistorialData.filter(i => i.solped_numero === numero);
+  if (!items.length) { toast("No se encontraron ítems para " + numero); return; }
+
+  try {
+    const coloresCriticidad = { A: "FFF8D7DA", B: "FFFFF3CD", C: "FFE2E3E5" };
+
+    const wb = new ExcelJS.Workbook();
+    wb.creator = "Kronos-M";
+    wb.created = new Date();
+    const ws = wb.addWorksheet("SOLPED");
+
+    ws.mergeCells("A1:C1");
+    ws.getCell("A1").value = "SOLICITUD DE PEDIDO (SOLPED)";
+    ws.getCell("A1").font = { bold: true, size: 14, color: { argb: "FF134B70" } };
+
+    ws.getCell("A2").value = "Número";
+    ws.getCell("B2").value = numero;
+    ws.getCell("A3").value = "Fecha";
+    ws.getCell("B3").value = new Date(items[0].fecha).toLocaleString("es-CO");
+    ws.getCell("A4").value = "Solicitado por";
+    ws.getCell("B4").value = items[0].solicitado_por || "—";
+    ws.getCell("A5").value = "Estado";
+    ws.getCell("B5").value = items[0].estado || "PENDIENTE";
+    ["A2", "A3", "A4", "A5"].forEach(c => ws.getCell(c).font = { bold: true });
+
+    const columnasDetalle = [
+      { key: "n", header: "Ítem", width: 6 },
+      { key: "codigo_sap", header: "Código SAP", width: 14 },
+      { key: "descripcion", header: "Descripción", width: 40 },
+      { key: "numero_parte", header: "Número de parte", width: 22 },
+      { key: "nombre_tecnico", header: "Nombre técnico", width: 26 },
+      { key: "centro", header: "Centro", width: 10 },
+      { key: "proveedor", header: "Proveedor sugerido", width: 24 },
+      { key: "cantidad_solicitada", header: "Cantidad", width: 10 },
+      { key: "unidad", header: "Unidad", width: 10 },
+      { key: "precio_unitario", header: "Precio unitario (COP)", width: 18 },
+      { key: "valor_total", header: "Valor total (COP)", width: 18 },
+      { key: "criticidad", header: "Criticidad", width: 10 },
+    ];
+
+    const filaEncTabla = 7;
+    columnasDetalle.forEach((col, i) => {
+      const celda = ws.getRow(filaEncTabla).getCell(i + 1);
+      celda.value = col.header;
+      celda.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF134B70" } };
+      ws.getColumn(i + 1).width = col.width;
+    });
+
+    items.forEach((it, idx) => {
+      const fila = ws.getRow(filaEncTabla + 1 + idx);
+      fila.getCell(1).value = idx + 1;
+      fila.getCell(2).value = it.codigo_sap || "";
+      fila.getCell(3).value = it.descripcion || "";
+      fila.getCell(4).value = it.numero_parte || "";
+      fila.getCell(5).value = it.nombre_tecnico || "";
+      fila.getCell(6).value = it.centro || "";
+      fila.getCell(7).value = it.proveedor && it.proveedor !== "POR CONFIGURAR" ? it.proveedor : "Sin asignar";
+      fila.getCell(8).value = it.cantidad_solicitada || 0;
+      fila.getCell(9).value = it.unidad || "";
+      fila.getCell(10).value = it.precio_unitario || 0;
+      fila.getCell(11).value = it.valor_total || 0;
+      fila.getCell(12).value = it.criticidad || "";
+      const color = coloresCriticidad[it.criticidad];
+      if (color) {
+        fila.eachCell({ includeEmpty: true }, (celda) => {
+          celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
+        });
+      }
+    });
+
+    const filaTotal = ws.getRow(filaEncTabla + 1 + items.length + 1);
+    filaTotal.getCell(10).value = "TOTAL";
+    filaTotal.getCell(10).font = { bold: true };
+    filaTotal.getCell(11).value = items.reduce((acc, i) => acc + (i.valor_total || 0), 0);
+    filaTotal.getCell(11).font = { bold: true };
+
+    ws.autoFilter = { from: { row: filaEncTabla, column: 1 }, to: { row: filaEncTabla, column: columnasDetalle.length } };
+    ws.views = [{ state: "frozen", ySplit: filaEncTabla }];
+
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${numero}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast(numero + " exportada");
+  } catch (e) {
+    toast("Error exportando: " + e.message);
   }
 }
 
