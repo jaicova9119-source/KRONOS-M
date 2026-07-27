@@ -1033,7 +1033,6 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <div class="panel-header">
     <button class="icon-btn" onclick="volverAMateriales()">&#8592;</button>
     <h2>Resumen de Materiales</h2>
-    <button class="icon-btn" id="btn-exportar-resumen-mat" title="Generar reporte de inventario en Excel">&#128190;</button>
   </div>
   <div class="panel-body">
     <div class="filtros-bar" style="padding:0 0 14px">
@@ -2556,41 +2555,6 @@ function descripcionFiltroMat() {
   return partes.length ? partes.join(" · ") : "Todos los centros y áreas";
 }
 
-/* El icono de exportar del panel Resumen genera el mismo reporte completo,
-   tomando los filtros que esten activos en pantalla. Antes generaba un
-   archivo distinto (dos hojas, sin prioridad), y tener dos reportes
-   diferentes se prestaba a confusion. */
-document.getElementById("btn-exportar-resumen-mat").onclick = async () => {
-  const btnExport = document.getElementById("btn-exportar-resumen-mat");
-  const datos = materialesData.filter(m =>
-    (!filtroCentroMat || m.centro === filtroCentroMat) &&
-    (!filtroCategoriaMat || m.categoria === filtroCategoriaMat)
-  );
-  if (!datos.length) {
-    toast("No hay materiales para exportar con este filtro");
-    return;
-  }
-
-  btnExport.disabled = true;
-  try {
-    const corteISO = corteDesdeDatos(datos);
-    const etiqueta = LABEL_CATEGORIA_MAT[filtroCategoriaMat] || filtroCategoriaMat;
-    const wb = construirLibroReporte(datos, {
-      titulo: filtroCategoriaMat
-        ? `CONTROL DE INVENTARIO  \u00b7  ${String(etiqueta).toUpperCase()}`
-        : "CONTROL DE INVENTARIO",
-      alcance: descripcionFiltroMat(),
-      corte: new Date(corteISO + "T12:00:00"),
-    });
-    await descargarLibro(wb, `Reporte_Inventario${filtroCategoriaMat ? "_" + filtroCategoriaMat : ""}_${corteISO}.xlsx`);
-    toast(`Reporte generado \u00b7 ${datos.length} materiales`);
-  } catch (e) {
-    console.error(e);
-    toast("Error al generar el reporte");
-  } finally {
-    btnExport.disabled = false;
-  }
-};
 
 /* ============================================================
    REPORTE DE INVENTARIO  ·  Excel multihoja
@@ -3218,7 +3182,7 @@ async function prepararReporteInventario() {
 
   selCat.innerHTML = '<option value="">Todas las áreas</option>' +
     categoriasConocidas.map(c => `<option value="${c}">${LABEL_CATEGORIA_MAT[c] || c}</option>`).join("");
-  selCat.value = categoriasConocidas.includes("VFD") ? "VFD" : (filtroCategoriaMat || "");
+  selCat.value = filtroCategoriaMat || "";
 
   selCen.innerHTML = '<option value="">Todos los centros</option>' +
     centrosConocidos.map(([c, nombre]) => `<option value="${c}">${c} · ${nombre}</option>`).join("");
@@ -3281,8 +3245,21 @@ async function descargarReporteInventario() {
   }
 }
 
-document.getElementById("rep-categoria").addEventListener("change", actualizarPrevioReporte);
-document.getElementById("rep-centro").addEventListener("change", actualizarPrevioReporte);
+/* Los filtros del reporte son los mismos del modulo, no un estado aparte:
+   lo que elijas aqui queda reflejado en Buscar y en Resumen, igual que
+   entre esos dos. Asi el archivo siempre corresponde a lo que ves. */
+document.getElementById("rep-categoria").addEventListener("change", (e) => {
+  filtroCategoriaMat = e.target.value;
+  document.getElementById("mat-filtro-categoria").value = filtroCategoriaMat;
+  document.getElementById("resumen-filtro-categoria").value = filtroCategoriaMat;
+  actualizarPrevioReporte();
+});
+document.getElementById("rep-centro").addEventListener("change", (e) => {
+  filtroCentroMat = e.target.value;
+  document.getElementById("mat-filtro-centro").value = filtroCentroMat;
+  document.getElementById("resumen-filtro-centro").value = filtroCentroMat;
+  actualizarPrevioReporte();
+});
 document.getElementById("rep-btn-generar").onclick = descargarReporteInventario;
 
 
