@@ -1067,8 +1067,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <select id="rep-categoria"></select>
     </div>
     <div class="field">
-      <label>Centro / bodega</label>
-      <select id="rep-centro"></select>
+      <label>Centros / bodegas</label>
+      <div style="display:flex;gap:8px;margin-bottom:6px">
+        <button class="btn-secondary" style="flex:1;padding:6px" onclick="marcarCentrosReporte(true)">Todos</button>
+        <button class="btn-secondary" style="flex:1;padding:6px" onclick="marcarCentrosReporte(false)">Ninguno</button>
+      </div>
+      <div id="rep-centros" style="border:1px solid var(--line);border-radius:9px;padding:6px 8px;max-height:220px;overflow:auto"></div>
     </div>
     <div class="field">
       <label>Fecha de corte de los datos</label>
@@ -2622,6 +2626,13 @@ const REP_IZQ = { horizontal: "left", vertical: "middle" };
 
 function repNum(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
 
+/* El nombre tecnico lo escribe una persona; la descripcion viene de SAP.
+   Si falta el nombre tecnico se muestra la descripcion, y la celda queda
+   marcada en gris para que se vea cual esta sin curar. */
+function repNombre(m) {
+  return String(m.nombre_tecnico ?? "").trim() || m.descripcion || "";
+}
+
 function repCobertura(m) {
   const min = repNum(m.stock_minimo);
   return min > 0 ? repNum(m.stock_actual) / min : 0;
@@ -2720,7 +2731,8 @@ function construirLibroReporte(materiales, opciones = {}) {
     if (!mapaCons.has(k)) {
       mapaCons.set(k, {
         codigo_sap: k,
-        nombre: m.nombre_tecnico || m.descripcion || "",
+        numero_parte: String(m.numero_parte ?? "").trim(),
+        nombre: repNombre(m),
         criticidad: m.criticidad || "",
         proveedor: m.proveedor || "Sin asignar",
         centros: [], existencia: 0, minimo: 0, pedir: 0,
@@ -2768,18 +2780,19 @@ function construirLibroReporte(materiales, opciones = {}) {
   repTitulo(wsPed, "MATERIALES A PEDIR  ·  ordenados por prioridad de reposición",
     `Prioridad: criticidad (A > B > C), luego menor cobertura, luego mayor cantidad   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 11);
   repEncabezado(wsPed, F, [
-    { h: "Prio.", w: 6 }, { h: "Código", w: 11 }, { h: "Centro", w: 8 },
-    { h: "Nombre técnico", w: 46 }, { h: "Crit.", w: 6 }, { h: "Existencia", w: 11 },
+    { h: "Prio.", w: 6 }, { h: "Código", w: 11 }, { h: "N° parte", w: 15 },
+    { h: "Centro", w: 8 }, { h: "Nombre técnico", w: 42 }, { h: "Crit.", w: 6 },
+    { h: "Existencia", w: 11 },
     { h: "Mínimo", w: 9 }, { h: "Máximo", w: 9 }, { h: "Cobertura", w: 11 },
     { h: "A pedir", w: 10 }, { h: "Proveedor", w: 22 },
   ]);
   pedirOrd.forEach((m, i) => {
     const r = F + 1 + i;
     const vals = [
-      i + 1, String(m.codigo_sap ?? ""), m.centro || "",
-      m.nombre_tecnico || m.descripcion || "", m.criticidad || "",
+      i + 1, String(m.codigo_sap ?? ""), String(m.numero_parte ?? "").trim(),
+      m.centro || "", repNombre(m), m.criticidad || "",
       repNum(m.stock_actual), repNum(m.stock_minimo), repNum(m.stock_maximo),
-      { formula: `IFERROR(F${r}/G${r},0)`, result: repCobertura(m) },
+      { formula: `IFERROR(G${r}/H${r},0)`, result: repCobertura(m) },
       repNum(m.cantidad_sugerida_compra), m.proveedor || "Sin asignar",
     ];
     vals.forEach((v, j) => {
@@ -2787,18 +2800,21 @@ function construirLibroReporte(materiales, opciones = {}) {
       c.value = v;
       c.font = repFuente(10);
       c.border = REP_BORDE;
-      c.alignment = (j === 3 || j === 10) ? REP_IZQ : REP_CEN;
+      c.alignment = (j === 4 || j === 11) ? REP_IZQ : REP_CEN;
     });
     wsPed.getCell(r, 2).numFmt = "@";
-    [6, 7, 8, 10].forEach(col => { wsPed.getCell(r, col).numFmt = "#,##0"; });
-    wsPed.getCell(r, 9).numFmt = "0%";
+    wsPed.getCell(r, 3).numFmt = "@";
+    if (!String(m.numero_parte ?? "").trim()) wsPed.getCell(r, 3).fill = repRelleno(REP_C.fGris);
+    if (!String(m.nombre_tecnico ?? "").trim()) wsPed.getCell(r, 5).font = repFuente(10, false, REP_C.gris);
+    [7, 8, 9, 11].forEach(col => { wsPed.getCell(r, col).numFmt = "#,##0"; });
+    wsPed.getCell(r, 10).numFmt = "0%";
     const cc = { A: REP_C.rojo, B: REP_C.naranja, C: REP_C.gris }[m.criticidad] || REP_C.gris;
-    wsPed.getCell(r, 5).font = repFuente(10, true, cc);
-    wsPed.getCell(r, 10).font = repFuente(10, true);
-    wsPed.getCell(r, 10).fill = repRelleno(REP_C.fNaranja);
+    wsPed.getCell(r, 6).font = repFuente(10, true, cc);
+    wsPed.getCell(r, 11).font = repFuente(10, true);
+    wsPed.getCell(r, 11).fill = repRelleno(REP_C.fNaranja);
     if (repNum(m.stock_actual) === 0) {
-      wsPed.getCell(r, 6).font = repFuente(10, true, REP_C.rojo);
-      wsPed.getCell(r, 6).fill = repRelleno(REP_C.fRojo);
+      wsPed.getCell(r, 7).font = repFuente(10, true, REP_C.rojo);
+      wsPed.getCell(r, 7).fill = repRelleno(REP_C.fRojo);
     }
     if (i < 10) {                     // los 10 que van en el cuerpo del correo
       wsPed.getCell(r, 1).font = repFuente(10, true, REP_C.blanco);
@@ -2806,9 +2822,9 @@ function construirLibroReporte(materiales, opciones = {}) {
     }
   });
   if (pedirOrd.length) {
-    wsPed.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPedir, column: 11 } };
+    wsPed.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPedir, column: 12 } };
     wsPed.addConditionalFormatting({
-      ref: `I${F + 1}:I${ultPedir}`,
+      ref: `J${F + 1}:J${ultPedir}`,
       rules: [{
         type: "colorScale", priority: 1,
         cfvo: [{ type: "num", value: 0 }, { type: "num", value: 0.5 }, { type: "num", value: 1 }],
@@ -2816,19 +2832,19 @@ function construirLibroReporte(materiales, opciones = {}) {
       }],
     });
     const rt = ultPedir + 2;
-    wsPed.getCell(rt, 9).value = "TOTAL";
-    wsPed.getCell(rt, 9).font = repFuente(10, true, REP_C.azul);
-    wsPed.getCell(rt, 9).alignment = REP_CEN;
-    const ct = wsPed.getCell(rt, 10);
-    ct.value = { formula: `SUM(J${F + 1}:J${ultPedir})`, result: totalUnidades };
+    wsPed.getCell(rt, 10).value = "TOTAL";
+    wsPed.getCell(rt, 10).font = repFuente(10, true, REP_C.azul);
+    wsPed.getCell(rt, 10).alignment = REP_CEN;
+    const ct = wsPed.getCell(rt, 11);
+    ct.value = { formula: `SUM(K${F + 1}:K${ultPedir})`, result: totalUnidades };
     ct.font = repFuente(11, true, REP_C.blanco);
     ct.fill = repRelleno(REP_C.azul);
     ct.alignment = REP_CEN;
     ct.numFmt = "#,##0";
-    wsPed.getCell(rt, 11).value = `unidades en ${pedirOrd.length} líneas`;
-    wsPed.getCell(rt, 11).font = repFuente(9, false, REP_C.gris);
+    wsPed.getCell(rt, 12).value = `unidades en ${pedirOrd.length} líneas`;
+    wsPed.getCell(rt, 12).font = repFuente(9, false, REP_C.gris);
   }
-  wsPed.views = [{ state: "frozen", xSplit: 4, ySplit: F }];
+  wsPed.views = [{ state: "frozen", xSplit: 5, ySplit: F }];
   repImpresion(wsPed, F, corteTxt);
 
   /* ============ Hoja 3: Consolidado por material ============ */
@@ -2836,49 +2852,50 @@ function construirLibroReporte(materiales, opciones = {}) {
   repTitulo(wsCon, "CONSOLIDADO POR MATERIAL  ·  suma de todos los centros",
     `Una línea por código SAP, para emitir la SOLPED sin duplicar códigos.   |   Corte de datos: ${corteTxt}`, 8);
   repEncabezado(wsCon, F, [
-    { h: "Código", w: 11 }, { h: "Nombre técnico", w: 46 }, { h: "Crit.", w: 6 },
-    { h: "Proveedor", w: 22 }, { h: "Centros", w: 22 }, { h: "Existencia", w: 11 },
-    { h: "Mínimo", w: 9 }, { h: "A pedir", w: 10 },
+    { h: "Código", w: 11 }, { h: "N° parte", w: 15 }, { h: "Nombre técnico", w: 42 },
+    { h: "Crit.", w: 6 }, { h: "Proveedor", w: 22 }, { h: "Centros", w: 22 },
+    { h: "Existencia", w: 11 }, { h: "Mínimo", w: 9 }, { h: "A pedir", w: 10 },
   ]);
   consolidado.forEach((x, i) => {
     const r = F + 1 + i;
     const vals = [
-      x.codigo_sap, x.nombre, x.criticidad, x.proveedor,
+      x.codigo_sap, x.numero_parte, x.nombre, x.criticidad, x.proveedor,
       [...new Set(x.centros)].sort().join(", "),
-      { formula: `SUMIF(${HP}!$B$${F + 1}:$B$${ultPedir},$A${r},${HP}!$F$${F + 1}:$F$${ultPedir})`, result: x.existencia },
-      { formula: `SUMIF(${HP}!$B$${F + 1}:$B$${ultPedir},$A${r},${HP}!$G$${F + 1}:$G$${ultPedir})`, result: x.minimo },
-      { formula: `SUMIF(${HP}!$B$${F + 1}:$B$${ultPedir},$A${r},${HP}!$J$${F + 1}:$J$${ultPedir})`, result: x.pedir },
+      { formula: `SUMIF(${HP}!$B$${F + 1}:$B$${ultPedir},$A${r},${HP}!$G$${F + 1}:$G$${ultPedir})`, result: x.existencia },
+      { formula: `SUMIF(${HP}!$B$${F + 1}:$B$${ultPedir},$A${r},${HP}!$H$${F + 1}:$H$${ultPedir})`, result: x.minimo },
+      { formula: `SUMIF(${HP}!$B$${F + 1}:$B$${ultPedir},$A${r},${HP}!$L$${F + 1}:$L$${ultPedir})`, result: x.pedir },
     ];
     vals.forEach((v, j) => {
       const c = wsCon.getCell(r, j + 1);
       c.value = v;
       c.font = repFuente(10);
       c.border = REP_BORDE;
-      c.alignment = (j === 1 || j === 3) ? REP_IZQ : REP_CEN;
+      c.alignment = (j === 2 || j === 4) ? REP_IZQ : REP_CEN;
     });
     wsCon.getCell(r, 1).numFmt = "@";
-    [6, 7, 8].forEach(col => { wsCon.getCell(r, col).numFmt = "#,##0"; });
+    wsCon.getCell(r, 2).numFmt = "@";
+    [7, 8, 9].forEach(col => { wsCon.getCell(r, col).numFmt = "#,##0"; });
     const cc = { A: REP_C.rojo, B: REP_C.naranja, C: REP_C.gris }[x.criticidad] || REP_C.gris;
-    wsCon.getCell(r, 3).font = repFuente(10, true, cc);
-    wsCon.getCell(r, 8).font = repFuente(10, true);
-    wsCon.getCell(r, 8).fill = repRelleno(REP_C.fNaranja);
+    wsCon.getCell(r, 4).font = repFuente(10, true, cc);
+    wsCon.getCell(r, 9).font = repFuente(10, true);
+    wsCon.getCell(r, 9).fill = repRelleno(REP_C.fNaranja);
   });
   if (consolidado.length) {
-    wsCon.autoFilter = { from: { row: F, column: 1 }, to: { row: ultCons, column: 8 } };
+    wsCon.autoFilter = { from: { row: F, column: 1 }, to: { row: ultCons, column: 9 } };
     const rt = ultCons + 2;
-    wsCon.getCell(rt, 5).value = `${consolidado.length} códigos únicos`;
-    wsCon.getCell(rt, 5).font = repFuente(9, false, REP_C.gris);
-    wsCon.getCell(rt, 7).value = "TOTAL";
-    wsCon.getCell(rt, 7).font = repFuente(10, true, REP_C.azul);
-    wsCon.getCell(rt, 7).alignment = REP_CEN;
-    const ct = wsCon.getCell(rt, 8);
-    ct.value = { formula: `SUM(H${F + 1}:H${ultCons})`, result: totalUnidades };
+    wsCon.getCell(rt, 6).value = `${consolidado.length} códigos únicos`;
+    wsCon.getCell(rt, 6).font = repFuente(9, false, REP_C.gris);
+    wsCon.getCell(rt, 8).value = "TOTAL";
+    wsCon.getCell(rt, 8).font = repFuente(10, true, REP_C.azul);
+    wsCon.getCell(rt, 8).alignment = REP_CEN;
+    const ct = wsCon.getCell(rt, 9);
+    ct.value = { formula: `SUM(I${F + 1}:I${ultCons})`, result: totalUnidades };
     ct.font = repFuente(11, true, REP_C.blanco);
     ct.fill = repRelleno(REP_C.azul);
     ct.alignment = REP_CEN;
     ct.numFmt = "#,##0";
   }
-  wsCon.views = [{ state: "frozen", xSplit: 2, ySplit: F }];
+  wsCon.views = [{ state: "frozen", xSplit: 3, ySplit: F }];
   repImpresion(wsCon, F, corteTxt);
 
   /* ============ Hoja 4: Detalle configurados ============ */
@@ -2886,18 +2903,18 @@ function construirLibroReporte(materiales, opciones = {}) {
   repTitulo(wsDet, "DETALLE DE MATERIALES CONFIGURADOS",
     `Materiales con parámetros mín-máx definidos.   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 10);
   repEncabezado(wsDet, F, [
-    { h: "Código", w: 11 }, { h: "Centro", w: 8 }, { h: "Nombre técnico", w: 46 },
-    { h: "Crit.", w: 6 }, { h: "Existencia", w: 11 }, { h: "Mínimo", w: 9 },
-    { h: "Máximo", w: 9 }, { h: "Cobertura", w: 11 }, { h: "Estado", w: 13 },
-    { h: "Proveedor", w: 22 },
+    { h: "Código", w: 11 }, { h: "N° parte", w: 15 }, { h: "Centro", w: 8 },
+    { h: "Descripción SAP", w: 38 }, { h: "Nombre técnico", w: 38 }, { h: "Crit.", w: 6 },
+    { h: "Existencia", w: 11 }, { h: "Mínimo", w: 9 }, { h: "Máximo", w: 9 },
+    { h: "Cobertura", w: 11 }, { h: "Estado", w: 13 }, { h: "Proveedor", w: 22 },
   ]);
   detOrd.forEach((m, i) => {
     const r = F + 1 + i;
     const vals = [
-      String(m.codigo_sap ?? ""), m.centro || "",
-      m.nombre_tecnico || m.descripcion || "", m.criticidad || "",
+      String(m.codigo_sap ?? ""), String(m.numero_parte ?? "").trim(), m.centro || "",
+      m.descripcion || "", String(m.nombre_tecnico ?? "").trim(), m.criticidad || "",
       repNum(m.stock_actual), repNum(m.stock_minimo), repNum(m.stock_maximo),
-      { formula: `IFERROR(E${r}/F${r},0)`, result: repCobertura(m) },
+      { formula: `IFERROR(G${r}/H${r},0)`, result: repCobertura(m) },
       (REP_ESTADO[m.estado] || {}).txt || m.estado || "",
       m.proveedor || "Sin asignar",
     ];
@@ -2906,23 +2923,26 @@ function construirLibroReporte(materiales, opciones = {}) {
       c.value = v;
       c.font = repFuente(10);
       c.border = REP_BORDE;
-      c.alignment = (j === 2 || j === 9) ? REP_IZQ : REP_CEN;
+      c.alignment = (j === 3 || j === 4 || j === 11) ? REP_IZQ : REP_CEN;
     });
     wsDet.getCell(r, 1).numFmt = "@";
-    [5, 6, 7].forEach(col => { wsDet.getCell(r, col).numFmt = "#,##0"; });
-    wsDet.getCell(r, 8).numFmt = "0%";
+    wsDet.getCell(r, 2).numFmt = "@";
+    if (!String(m.numero_parte ?? "").trim()) wsDet.getCell(r, 2).fill = repRelleno(REP_C.fGris);
+    if (!String(m.nombre_tecnico ?? "").trim()) wsDet.getCell(r, 5).fill = repRelleno(REP_C.fGris);
+    [7, 8, 9].forEach(col => { wsDet.getCell(r, col).numFmt = "#,##0"; });
+    wsDet.getCell(r, 10).numFmt = "0%";
     const cc = { A: REP_C.rojo, B: REP_C.naranja, C: REP_C.gris }[m.criticidad] || REP_C.gris;
-    wsDet.getCell(r, 4).font = repFuente(10, true, cc);
+    wsDet.getCell(r, 6).font = repFuente(10, true, cc);
     const est = REP_ESTADO[m.estado];
     if (est) {
-      wsDet.getCell(r, 9).font = repFuente(10, true, est.color);
-      wsDet.getCell(r, 9).fill = repRelleno(est.fondo);
+      wsDet.getCell(r, 11).font = repFuente(10, true, est.color);
+      wsDet.getCell(r, 11).fill = repRelleno(est.fondo);
     }
   });
   if (detOrd.length) {
-    wsDet.autoFilter = { from: { row: F, column: 1 }, to: { row: ultDet, column: 10 } };
+    wsDet.autoFilter = { from: { row: F, column: 1 }, to: { row: ultDet, column: 12 } };
     wsDet.addConditionalFormatting({
-      ref: `H${F + 1}:H${ultDet}`,
+      ref: `J${F + 1}:J${ultDet}`,
       rules: [{
         type: "colorScale", priority: 1,
         cfvo: [{ type: "num", value: 0 }, { type: "num", value: 0.5 }, { type: "num", value: 1 }],
@@ -2976,11 +2996,11 @@ function construirLibroReporte(materiales, opciones = {}) {
 
   const kpis = [
     { f: `COUNTA(${HD}!$A$${F + 1}:$A$${ultDet})`, v: detOrd.length, lab: "CONFIGURADOS", col: REP_C.azul },
-    { f: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Crítico")`, v: cuentaEstado("CRITICO"), lab: "CRÍTICO", col: REP_C.rojo },
-    { f: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Bajo")`, v: cuentaEstado("BAJO"), lab: "BAJO", col: REP_C.naranja },
-    { f: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"OK")`, v: cuentaEstado("OK"), lab: "OK", col: REP_C.verde },
+    { f: `COUNTIF(${HD}!$K$${F + 1}:$K$${ultDet},"Crítico")`, v: cuentaEstado("CRITICO"), lab: "CRÍTICO", col: REP_C.rojo },
+    { f: `COUNTIF(${HD}!$K$${F + 1}:$K$${ultDet},"Bajo")`, v: cuentaEstado("BAJO"), lab: "BAJO", col: REP_C.naranja },
+    { f: `COUNTIF(${HD}!$K$${F + 1}:$K$${ultDet},"OK")`, v: cuentaEstado("OK"), lab: "OK", col: REP_C.verde },
     { f: `COUNTA(${HP}!$B$${F + 1}:$B$${ultPedir})`, v: pedirOrd.length, lab: "LÍNEAS A PEDIR", col: REP_C.azul2 },
-    { f: `SUM(${HP}!$J$${F + 1}:$J$${ultPedir})`, v: totalUnidades, lab: "UNIDADES A PEDIR", col: REP_C.azul2 },
+    { f: `SUM(${HP}!$K$${F + 1}:$K$${ultPedir})`, v: totalUnidades, lab: "UNIDADES A PEDIR", col: REP_C.azul2 },
   ];
   kpis.forEach((k, i) => {
     const cv = wsRes.getCell(4, i + 1);
@@ -3024,10 +3044,10 @@ function construirLibroReporte(materiales, opciones = {}) {
   };
 
   const iEst = bloque("Distribución por estado", ["Estado", "Materiales", "Participación"], [
-    ["Crítico", { formula: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Crítico")`, result: cuentaEstado("CRITICO") }, null],
-    ["Bajo", { formula: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Bajo")`, result: cuentaEstado("BAJO") }, null],
-    ["OK", { formula: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"OK")`, result: cuentaEstado("OK") }, null],
-    ["Sobrestock", { formula: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Sobrestock")`, result: cuentaEstado("SOBRESTOCK") }, null],
+    ["Crítico", { formula: `COUNTIF(${HD}!$K$${F + 1}:$K$${ultDet},"Crítico")`, result: cuentaEstado("CRITICO") }, null],
+    ["Bajo", { formula: `COUNTIF(${HD}!$K$${F + 1}:$K$${ultDet},"Bajo")`, result: cuentaEstado("BAJO") }, null],
+    ["OK", { formula: `COUNTIF(${HD}!$K$${F + 1}:$K$${ultDet},"OK")`, result: cuentaEstado("OK") }, null],
+    ["Sobrestock", { formula: `COUNTIF(${HD}!$K$${F + 1}:$K$${ultDet},"Sobrestock")`, result: cuentaEstado("SOBRESTOCK") }, null],
     ["Total configurados", null, null],
   ]);
   const filaTotEst = iEst + 4;
@@ -3050,8 +3070,8 @@ function construirLibroReporte(materiales, opciones = {}) {
   const iCrit = bloque("Distribución por criticidad", ["Criticidad", "Materiales", "A pedir (unid.)"],
     ["A", "B", "C"].map(c => [
       { A: "A - alta", B: "B - media", C: "C - baja" }[c],
-      { formula: `COUNTIF(${HD}!$D$${F + 1}:$D$${ultDet},"${c}")`, result: cuentaCrit(c) },
-      { formula: `SUMIF(${HP}!$E$${F + 1}:$E$${ultPedir},"${c}",${HP}!$J$${F + 1}:$J$${ultPedir})`, result: unidadesCrit(c) },
+      { formula: `COUNTIF(${HD}!$F$${F + 1}:$F$${ultDet},"${c}")`, result: cuentaCrit(c) },
+      { formula: `SUMIF(${HP}!$F$${F + 1}:$F$${ultPedir},"${c}",${HP}!$K$${F + 1}:$K$${ultPedir})`, result: unidadesCrit(c) },
     ]));
   [REP_C.rojo, REP_C.naranja, REP_C.gris].forEach((col, i) => {
     wsRes.getCell(iCrit + i, 1).font = repFuente(10, true, col);
@@ -3069,12 +3089,12 @@ function construirLibroReporte(materiales, opciones = {}) {
       const enCentro = configurados.filter(m => m.centro === cen);
       return [
         cen, nom,
-        { formula: `COUNTIFS(${HD}!$B$${F + 1}:$B$${ultDet},$A${r},${HD}!$I$${F + 1}:$I$${ultDet},"Crítico")`,
+        { formula: `COUNTIFS(${HD}!$C$${F + 1}:$C$${ultDet},$A${r},${HD}!$K$${F + 1}:$K$${ultDet},"Crítico")`,
           result: enCentro.filter(m => m.estado === "CRITICO").length },
-        { formula: `COUNTIFS(${HD}!$B$${F + 1}:$B$${ultDet},$A${r},${HD}!$I$${F + 1}:$I$${ultDet},"Bajo")`,
+        { formula: `COUNTIFS(${HD}!$C$${F + 1}:$C$${ultDet},$A${r},${HD}!$K$${F + 1}:$K$${ultDet},"Bajo")`,
           result: enCentro.filter(m => m.estado === "BAJO").length },
-        { formula: `COUNTIF(${HD}!$B$${F + 1}:$B$${ultDet},$A${r})`, result: enCentro.length },
-        { formula: `SUMIF(${HP}!$C$${F + 1}:$C$${ultPedir},$A${r},${HP}!$J$${F + 1}:$J$${ultPedir})`,
+        { formula: `COUNTIF(${HD}!$C$${F + 1}:$C$${ultDet},$A${r})`, result: enCentro.length },
+        { formula: `SUMIF(${HP}!$D$${F + 1}:$D$${ultPedir},$A${r},${HP}!$K$${F + 1}:$K$${ultPedir})`,
           result: pedirOrd.filter(m => m.centro === cen).reduce((s, m) => s + repNum(m.cantidad_sugerida_compra), 0) },
       ];
     }));
@@ -3098,8 +3118,8 @@ function construirLibroReporte(materiales, opciones = {}) {
       const r = iProv + i;
       return [
         p,
-        { formula: `COUNTIF(${HP}!$K$${F + 1}:$K$${ultPedir},$A${r})`, result: v.lineas },
-        { formula: `SUMIF(${HP}!$K$${F + 1}:$K$${ultPedir},$A${r},${HP}!$J$${F + 1}:$J$${ultPedir})`, result: v.unidades },
+        { formula: `COUNTIF(${HP}!$L$${F + 1}:$L$${ultPedir},$A${r})`, result: v.lineas },
+        { formula: `SUMIF(${HP}!$L$${F + 1}:$L$${ultPedir},$A${r},${HP}!$K$${F + 1}:$K$${ultPedir})`, result: v.unidades },
       ];
     }));
   provOrd.forEach((_, i) => {
@@ -3139,6 +3159,8 @@ function construirLibroReporte(materiales, opciones = {}) {
     ["Estado: Sin configurar", "Sin stock mínimo definido, o stock máximo en cero."],
     ["Qué entra en A Pedir", "Los materiales en estado Crítico o Bajo. Un material en OK también arroja cantidad sugerida mayor que cero mientras no alcance el máximo, pero no requiere reposición y por eso no se lista."],
     ["Cantidad a pedir", "Stock máximo menos existencia actual, nunca negativa: repone hasta el máximo, no hasta el mínimo."],
+    ["Código y número de parte", "El código SAP identifica la compra; el número de parte identifica la pieza. Cuando dos códigos comparten número de parte son el mismo repuesto catalogado dos veces. Las celdas en gris son las que aún no tienen el dato registrado."],
+    ["Nombre técnico", "El escrito en la plataforma. Si está vacío, se muestra la descripción de SAP y la celda queda en gris."],
     ["Cobertura", "Existencia dividida entre el stock mínimo, en porcentaje. 0 % = sin stock; 100 % = justo en el mínimo. Sirve para distinguir urgencias dentro de un mismo estado."],
     ["", ""],
     ["Criticidad A", "La falla del componente detiene el equipo. Reposición prioritaria."],
@@ -3212,26 +3234,55 @@ async function prepararReporteInventario() {
     abrirPanel("panel-reporte-inventario");
   }
   const selCat = document.getElementById("rep-categoria");
-  const selCen = document.getElementById("rep-centro");
+  const cajaCentros = document.getElementById("rep-centros");
   const inpCorte = document.getElementById("rep-corte");
 
   selCat.innerHTML = '<option value="">Todas las áreas</option>' +
     categoriasConocidas.map(c => `<option value="${c}">${LABEL_CATEGORIA_MAT[c] || c}</option>`).join("");
   selCat.value = filtroCategoriaMat || "";
 
-  selCen.innerHTML = '<option value="">Todos los centros</option>' +
-    centrosConocidos.map(([c, nombre]) => `<option value="${c}">${c} · ${nombre}</option>`).join("");
-  selCen.value = filtroCentroMat || "";
+  // Centros con casillas: se pueden pedir varios a la vez. Arranca con el
+  // centro que tengas filtrado en pantalla, o con todos si no hay filtro.
+  cajaCentros.innerHTML = centrosConocidos.map(([c, nombre]) => `
+    <label style="display:flex;gap:8px;align-items:center;padding:4px 0;cursor:pointer">
+      <input type="checkbox" class="rep-centro-chk" value="${c}"
+             ${!filtroCentroMat || filtroCentroMat === c ? "checked" : ""}/>
+      <span class="mat-code">${c}</span>
+      <span class="mat-stock" style="min-width:0;flex:1">${nombre}</span>
+    </label>`).join("");
+  cajaCentros.querySelectorAll(".rep-centro-chk")
+    .forEach(chk => chk.addEventListener("change", actualizarPrevioReporte));
 
   inpCorte.value = corteDesdeDatos(materialesData);
   actualizarPrevioReporte();
 }
 
+function marcarCentrosReporte(valor) {
+  document.querySelectorAll(".rep-centro-chk").forEach(chk => { chk.checked = valor; });
+  actualizarPrevioReporte();
+}
+
+function centrosSeleccionadosReporte() {
+  return [...document.querySelectorAll(".rep-centro-chk:checked")].map(chk => chk.value);
+}
+
 function datosReporteSeleccionados() {
   const cat = document.getElementById("rep-categoria").value;
-  const cen = document.getElementById("rep-centro").value;
+  const centros = centrosSeleccionadosReporte();
+  const todos = centros.length === centrosConocidos.length;
   return materialesData.filter(m =>
-    (!cat || m.categoria === cat) && (!cen || m.centro === cen));
+    (!cat || m.categoria === cat) && (todos || centros.includes(m.centro)));
+}
+
+function alcanceReporte() {
+  const selCat = document.getElementById("rep-categoria");
+  const centros = centrosSeleccionadosReporte();
+  const partes = [];
+  partes.push(centros.length === centrosConocidos.length
+    ? "Todos los centros"
+    : (centros.length === 1 ? `Centro ${centros[0]}` : `Centros ${centros.join(", ")}`));
+  if (selCat.value) partes.push(`Área: ${selCat.selectedOptions[0].text}`);
+  return partes.join("   ·   ");
 }
 
 function actualizarPrevioReporte() {
@@ -3239,14 +3290,22 @@ function actualizarPrevioReporte() {
   const conf = datos.filter(m => m.estado && m.estado !== "SIN CONFIGURAR");
   const pedir = conf.filter(m =>
     ["CRITICO", "BAJO"].includes(m.estado) && Number(m.cantidad_sugerida_compra) > 0);
+  const sinParte = conf.filter(m => !m.numero_parte || !String(m.numero_parte).trim()).length;
   const prev = document.getElementById("rep-previo");
+  if (!centrosSeleccionadosReporte().length) {
+    prev.innerHTML = "Selecciona al menos un centro.";
+    return;
+  }
   prev.innerHTML = datos.length
     ? `${conf.length} configurados · ${pedir.length} líneas a pedir · ${datos.length - conf.length} pendientes por configurar`
+      + (sinParte ? `<br>${sinParte} sin número de parte registrado` : "")
     : "No hay materiales con esta selección.";
 }
 
 async function descargarReporteInventario() {
   const btn = document.getElementById("rep-btn-generar");
+  const centros = centrosSeleccionadosReporte();
+  if (!centros.length) { toast("Selecciona al menos un centro"); return; }
   const datos = datosReporteSeleccionados();
   if (!datos.length) { toast("No hay materiales con esta selección"); return; }
 
@@ -3254,11 +3313,6 @@ async function descargarReporteInventario() {
   btn.textContent = "Generando...";
   try {
     const selCat = document.getElementById("rep-categoria");
-    const selCen = document.getElementById("rep-centro");
-    const partes = [];
-    if (selCen.value) partes.push(selCen.selectedOptions[0].text);
-    if (selCat.value) partes.push(`Área: ${selCat.selectedOptions[0].text}`);
-
     const valorCorte = document.getElementById("rep-corte").value;
     const corte = valorCorte ? new Date(valorCorte + "T12:00:00") : new Date();
 
@@ -3266,11 +3320,13 @@ async function descargarReporteInventario() {
       titulo: selCat.value
         ? `CONTROL DE INVENTARIO  ·  ${(LABEL_CATEGORIA_MAT[selCat.value] || selCat.value).toUpperCase()}`
         : "CONTROL DE INVENTARIO",
-      alcance: partes.length ? partes.join(" · ") : "Todos los centros y áreas",
+      alcance: alcanceReporte(),
       corte,
     });
 
-    await descargarLibro(wb, `Reporte_Inventario${selCat.value ? "_" + selCat.value : ""}_${valorCorte || new Date().toISOString().slice(0, 10)}.xlsx`);
+    const sufijoCentro = centros.length === centrosConocidos.length
+      ? "" : "_" + centros.slice(0, 3).join("-");
+    await descargarLibro(wb, `Reporte_Inventario${selCat.value ? "_" + selCat.value : ""}${sufijoCentro}_${valorCorte || new Date().toISOString().slice(0, 10)}.xlsx`);
     toast("Reporte generado");
   } catch (e) {
     console.error(e);
@@ -3281,19 +3337,13 @@ async function descargarReporteInventario() {
   }
 }
 
-/* Los filtros del reporte son los mismos del modulo, no un estado aparte:
-   lo que elijas aqui queda reflejado en Buscar y en Resumen, igual que
-   entre esos dos. Asi el archivo siempre corresponde a lo que ves. */
+/* La categoria si se comparte con Buscar y Resumen. Los centros no: aqui
+   se pueden elegir varios y eso no cabe en el filtro unico del modulo, asi
+   que el alcance exacto queda impreso en el encabezado de cada hoja. */
 document.getElementById("rep-categoria").addEventListener("change", (e) => {
   filtroCategoriaMat = e.target.value;
   document.getElementById("mat-filtro-categoria").value = filtroCategoriaMat;
   document.getElementById("resumen-filtro-categoria").value = filtroCategoriaMat;
-  actualizarPrevioReporte();
-});
-document.getElementById("rep-centro").addEventListener("change", (e) => {
-  filtroCentroMat = e.target.value;
-  document.getElementById("mat-filtro-centro").value = filtroCentroMat;
-  document.getElementById("resumen-filtro-centro").value = filtroCentroMat;
   actualizarPrevioReporte();
 });
 document.getElementById("rep-btn-generar").onclick = descargarReporteInventario;
