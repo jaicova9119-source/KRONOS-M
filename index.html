@@ -221,6 +221,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 .badge-OK{background:var(--ok-bg);color:var(--ok);}
 .badge-SOBRESTOCK{background:var(--accent-bg);color:var(--accent);}
 .badge-SIN{background:var(--bg-3);color:var(--text-2);}
+.badge-EQUIVALENTE{background:var(--bg-3);color:var(--text-2);}
 .badge-DISPONIBLE{background:var(--ok-bg);color:var(--ok);}
 .badge-INSUFICIENTE{background:var(--danger-bg);color:var(--danger);}
 
@@ -599,6 +600,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <button class="nav-item" data-tab="reporte-inventario" data-modulo="materiales">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 17v-4M12 17v-6M16 17v-2"/></svg>
     Reporte
+  </button>
+  <button class="nav-item" data-tab="equivalencias" data-modulo="materiales">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="12" r="5"/><circle cx="16" cy="12" r="5"/></svg>
+    Equivalencias
   </button>
   <button class="nav-item" data-tab="carrito" data-modulo="materiales" style="position:relative">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>
@@ -1072,6 +1077,18 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <p class="hint-box">La fecha de corte es la del inventario cargado desde SAP, no la de hoy. Queda impresa en cada hoja del archivo.</p>
     <div id="rep-previo" class="hint-box" style="margin-top:12px"></div>
     <button class="btn-primary" id="rep-btn-generar" style="margin-top:14px">Generar Excel</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Equivalencias de materiales ===== -->
+<div class="panel" id="panel-equivalencias">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="volverAMateriales()">&#8592;</button>
+    <h2>Equivalencias</h2>
+  </div>
+  <div class="panel-body">
+    <p class="hint-box">Un mismo repuesto catalogado en SAP con varios codigos duplica el minimo y reparte la existencia, lo que hace que el sistema pida material que ya esta en la bodega. Aqui se revisan los pares sospechosos. Al agrupar, la existencia se suma y solo el codigo preferente conserva los parametros.</p>
+    <div id="equiv-body"><div class="loading">Cargando...</div></div>
   </div>
 </div>
 
@@ -2178,6 +2195,9 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     } else if (btn.dataset.tab === "reporte-inventario") {
       abrirPanel("panel-reporte-inventario");
       prepararReporteInventario();
+    } else if (btn.dataset.tab === "equivalencias") {
+      abrirPanel("panel-equivalencias");
+      cargarEquivalencias();
     } else if (btn.dataset.tab === "carrito") {
       abrirPanel("panel-carrito");
       renderCarrito();
@@ -2585,6 +2605,7 @@ const REP_ESTADO = {
   OK:                { txt: "OK",            color: REP_C.verde,   fondo: REP_C.fVerde },
   SOBRESTOCK:        { txt: "Sobrestock",    color: REP_C.azul2,   fondo: REP_C.fAzul },
   "SIN CONFIGURAR":  { txt: "Sin configurar", color: REP_C.gris,   fondo: REP_C.fGris },
+  EQUIVALENTE:       { txt: "Equivalente",   color: REP_C.gris,    fondo: REP_C.fGris },
 };
 
 const repFuente = (size = 10, bold = false, color = "FF000000") =>
@@ -3276,6 +3297,198 @@ document.getElementById("rep-centro").addEventListener("change", (e) => {
   actualizarPrevioReporte();
 });
 document.getElementById("rep-btn-generar").onclick = descargarReporteInventario;
+
+/* ============================================================
+   EQUIVALENCIAS DE MATERIALES
+   ------------------------------------------------------------
+   Un mismo repuesto catalogado en SAP bajo varios codigos hace
+   que el minimo se multiplique y que la existencia quede
+   repartida, lo que produce criticidad falsa. Aqui se revisan
+   los candidatos y se agrupan a mano: nunca automaticamente,
+   porque unir dos piezas que no son la misma es peor que
+   dejarlas separadas.
+   ============================================================ */
+
+let equivCandidatos = [];
+let equivGrupos = [];
+
+async function cargarEquivalencias() {
+  const cont = document.getElementById("equiv-body");
+  cont.innerHTML = '<div class="loading">Buscando candidatos...</div>';
+  try {
+    const [cand, grupos, miembros] = await Promise.all([
+      sb.from("v_equivalencias_candidatas").select("*")
+        .order("centros_en_conflicto", { ascending: false })
+        .order("origen").order("similitud", { ascending: false }).limit(300),
+      sb.from("grupos_material").select("*").order("aprobado_en", { ascending: false }),
+      sb.from("materiales").select("codigo_sap, nombre_tecnico, grupo_id").not("grupo_id", "is", null),
+    ]);
+    if (cand.error) throw cand.error;
+    if (grupos.error) throw grupos.error;
+    if (miembros.error) throw miembros.error;
+
+    equivCandidatos = cand.data || [];
+    equivGrupos = (grupos.data || []).map(g => ({
+      ...g,
+      miembros: (miembros.data || []).filter(m => m.grupo_id === g.id),
+    }));
+    renderEquivalencias();
+  } catch (e) {
+    console.error(e);
+    cont.innerHTML = `<div class="empty">No se pudo cargar: ${e.message}</div>`;
+  }
+}
+
+function equivFilaCodigo(codigo, nombre, stock, minimo, proveedor, idPar, marcado) {
+  return `
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--bg-2)">
+      <input type="radio" name="pref-${idPar}" value="${codigo}" ${marcado ? "checked" : ""} style="margin-top:3px;flex-shrink:0"/>
+      <span style="min-width:0;flex:1">
+        <span class="mat-code">${codigo}</span>
+        <span class="mat-desc" style="white-space:normal">${nombre || "(sin nombre técnico)"}</span>
+        <span class="mat-stock">Existencia ${Number(stock) || 0} · Mínimo configurado ${Number(minimo) || 0} · ${proveedor || "Sin proveedor"}</span>
+      </span>
+    </label>`;
+}
+
+function renderEquivalencias() {
+  const cont = document.getElementById("equiv-body");
+  let html = "";
+
+  html += `<div class="section-label">Candidatos por revisar (${equivCandidatos.length})</div>`;
+  if (!equivCandidatos.length) {
+    html += '<div class="empty">No hay candidatos pendientes.</div>';
+  } else {
+    equivCandidatos.forEach((c, i) => {
+      const fuerte = c.origen === "NUMERO DE PARTE";
+      const conflicto = Number(c.centros_en_conflicto) || 0;
+      html += `
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px;background:var(--bg-1)">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <span class="badge ${fuerte ? "badge-CRITICO" : "badge-BAJO"}">${c.origen}</span>
+          ${c.evidencia ? `<span class="mat-code">${c.evidencia}</span>` : ""}
+          ${!fuerte ? `<span class="mat-stock">similitud ${c.similitud}</span>` : ""}
+          ${c.categoria ? `<span class="mat-stock">${c.categoria}</span>` : ""}
+        </div>
+        ${conflicto > 0 ? `<div class="hint-box" style="margin:0 0 8px">&#9888;&#65039; En ${conflicto} centro${conflicto > 1 ? "s" : ""} ambos códigos tienen mínimo configurado: ahí el mínimo está duplicado.</div>` : ""}
+        <div class="mat-stock" style="margin-bottom:6px">Elige el código que se conserva para configurar y pedir:</div>
+        ${equivFilaCodigo(c.codigo_a, c.nombre_a, c.stock_a, c.minimo_a, c.proveedor_a, i, true)}
+        ${equivFilaCodigo(c.codigo_b, c.nombre_b, c.stock_b, c.minimo_b, c.proveedor_b, i, false)}
+        <div class="field" style="margin:8px 0 0">
+          <select id="equiv-tipo-${i}">
+            <option value="DUPLICADO">Duplicado · misma parte del mismo fabricante</option>
+            <option value="INTERCAMBIABLE">Intercambiable · partes distintas que se sustituyen</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn-primary" style="flex:1" onclick="agruparCandidato(${i})">Agrupar</button>
+          <button class="btn-secondary" style="flex:1" onclick="descartarCandidato(${i})">No son el mismo</button>
+        </div>
+      </div>`;
+    });
+  }
+
+  html += `<div class="section-label">Grupos aprobados (${equivGrupos.length})</div>`;
+  if (!equivGrupos.length) {
+    html += '<div class="empty">Todavía no has aprobado ninguna equivalencia.</div>';
+  } else {
+    equivGrupos.forEach(g => {
+      html += `
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="badge ${g.tipo === "DUPLICADO" ? "badge-CRITICO" : "badge-SOBRESTOCK"}">${g.tipo}</span>
+          ${g.numero_parte ? `<span class="mat-code">${g.numero_parte}</span>` : ""}
+        </div>
+        <div class="mat-desc" style="white-space:normal;margin-top:6px">${g.descripcion}</div>
+        <div class="mat-stock">Código preferente: <b>${g.codigo_preferente}</b> · Equivalentes: ${
+          g.miembros.filter(m => m.codigo_sap !== g.codigo_preferente).map(m => m.codigo_sap).join(", ") || "—"}</div>
+        ${g.criterio ? `<div class="mat-stock">${g.criterio}</div>` : ""}
+        <button class="btn-secondary" style="margin-top:9px" onclick="deshacerGrupo('${g.id}')">Deshacer agrupación</button>
+      </div>`;
+    });
+  }
+
+  cont.innerHTML = html;
+}
+
+async function agruparCandidato(i) {
+  const c = equivCandidatos[i];
+  const sel = document.querySelector(`input[name="pref-${i}"]:checked`);
+  if (!sel) { toast("Elige el código que se conserva"); return; }
+  const preferente = sel.value;
+  const tipo = document.getElementById(`equiv-tipo-${i}`).value;
+  const nombre = preferente === c.codigo_a ? c.nombre_a : c.nombre_b;
+
+  try {
+    // Si alguno de los dos ya pertenece a un grupo, se suma el otro a ese
+    // grupo en vez de crear uno nuevo. Asi funcionan las piezas con tres
+    // o mas codigos.
+    let grupoId = c.grupo_a || c.grupo_b || null;
+
+    if (!grupoId) {
+      const { data, error } = await sb.from("grupos_material").insert({
+        numero_parte: c.evidencia || null,
+        descripcion: nombre || `${c.codigo_a} / ${c.codigo_b}`,
+        codigo_preferente: preferente,
+        tipo,
+        criterio: c.origen === "NUMERO DE PARTE"
+          ? `Mismo número de parte del fabricante (${c.evidencia})`
+          : `Descripción equivalente, similitud ${c.similitud}`,
+      }).select("id").single();
+      if (error) throw error;
+      grupoId = data.id;
+    } else {
+      const { error } = await sb.from("grupos_material")
+        .update({ codigo_preferente: preferente }).eq("id", grupoId);
+      if (error) throw error;
+    }
+
+    const { error: errVinculo } = await sb.from("materiales")
+      .update({ grupo_id: grupoId }).in("codigo_sap", [c.codigo_a, c.codigo_b]);
+    if (errVinculo) throw errVinculo;
+
+    toast(`Agrupados ${c.codigo_a} y ${c.codigo_b} · se conserva ${preferente}`);
+    await cargarEquivalencias();
+    materialesData = [];   // obliga a releer con la existencia ya sumada
+  } catch (e) {
+    console.error(e);
+    toast("No se pudo agrupar: " + e.message);
+  }
+}
+
+async function descartarCandidato(i) {
+  const c = equivCandidatos[i];
+  const motivo = prompt(`¿Por qué ${c.codigo_a} y ${c.codigo_b} no son el mismo material?`, "");
+  if (motivo === null) return;
+  try {
+    const { error } = await sb.from("equivalencias_descartadas").insert({
+      codigo_a: c.codigo_a, codigo_b: c.codigo_b, motivo: motivo || null,
+    });
+    if (error) throw error;
+    toast("Par descartado");
+    await cargarEquivalencias();
+  } catch (e) {
+    console.error(e);
+    toast("No se pudo descartar: " + e.message);
+  }
+}
+
+async function deshacerGrupo(id) {
+  if (!confirm("Se desagrupan los códigos y cada uno vuelve a contar su existencia por separado. ¿Continuar?")) return;
+  try {
+    const { error: e1 } = await sb.from("materiales").update({ grupo_id: null }).eq("grupo_id", id);
+    if (e1) throw e1;
+    const { error: e2 } = await sb.from("grupos_material").delete().eq("id", id);
+    if (e2) throw e2;
+    toast("Agrupación deshecha");
+    await cargarEquivalencias();
+    materialesData = [];
+  } catch (e) {
+    console.error(e);
+    toast("No se pudo deshacer: " + e.message);
+  }
+}
+
 
 
 /* ---------- Configuración Min-Max (búsqueda + creación) ---------- */
