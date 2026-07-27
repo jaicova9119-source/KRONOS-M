@@ -775,6 +775,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <div id="perfil-lista-usuarios"></div>
       <div class="section-label" style="margin-top:24px">Sincronización con SAP</div>
       <button class="btn-secondary" onclick="abrirPanel('panel-ih08')">Contraste con IH08</button>
+      <button class="btn-secondary" style="margin-top:8px" onclick="abrirPanel('panel-carga-materiales')">Actualizar inventario de Materiales</button>
     </div>
   </div>
 </div>
@@ -816,6 +817,38 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <div id="ih08-grupos"></div>
       <button class="btn-primary" id="ih08-btn-aplicar" style="margin-top:16px;display:none" onclick="aplicarSincronizacionesIH08()">Aplicar sincronizaciones automáticas</button>
       <button class="btn-secondary" style="margin-top:10px" onclick="reiniciarIH08()">Cargar otro archivo</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Panel: Carga de inventario de Materiales (SAP) ===== -->
+<div class="panel" id="panel-carga-materiales">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-carga-materiales');reiniciarCargaMateriales();">&#8592;</button>
+    <h2>Actualizar inventario (SAP)</h2>
+  </div>
+  <div class="panel-body">
+    <div id="carga-mat-paso-carga">
+      <p class="hint-box">Sube el reporte de inventario que exportas de SAP (IAM u otro, en Excel). Kronos-M toma solo las columnas que necesita y actualiza el stock de Materiales.</p>
+      <div class="field">
+        <label>Archivo de inventario SAP</label>
+        <input type="file" id="carga-mat-input-archivo" accept=".xlsx,.xls,.csv"/>
+      </div>
+    </div>
+
+    <div id="carga-mat-paso-mapeo" style="display:none;margin-top:20px">
+      <div class="section-label">¿Qué columna del archivo corresponde a cada dato?</div>
+      <p class="hint-box">Solo la primera vez (o si cambia el formato del reporte). Se guarda para las próximas cargas.</p>
+      <div id="carga-mat-campos-mapeo"></div>
+      <button class="btn-primary" style="margin-top:14px" onclick="confirmarMapeoCargaMateriales()">Confirmar y revisar</button>
+    </div>
+
+    <div id="carga-mat-resultado" style="display:none;margin-top:20px">
+      <div class="section-label">Resumen antes de aplicar</div>
+      <div id="carga-mat-resumen" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px"></div>
+      <div id="carga-mat-grupos"></div>
+      <button class="btn-primary" id="carga-mat-btn-aplicar" style="margin-top:16px" onclick="aplicarCargaMateriales()">Aplicar carga</button>
+      <button class="btn-secondary" style="margin-top:10px" onclick="reiniciarCargaMateriales()">Cargar otro archivo</button>
     </div>
   </div>
 </div>
@@ -4325,6 +4358,219 @@ async function aplicarSincronizacionesIH08() {
   btn.style.display = "none";
   btn.disabled = false;
   await cargarEquipos();
+}
+
+/* ============================================================
+   CARGA DE INVENTARIO DE MATERIALES (SAP)
+   Sube el reporte de inventario (ej. IAM) que se descarga de SAP
+   cada mes, con mapeo de columnas configurable (igual que IH08).
+   Actualiza el catálogo (solo descripción/unidad) y reemplaza
+   por completo las existencias de los centros que trae el archivo.
+   Categoría, número de parte, nombre técnico y proveedor —que se
+   configuran a mano en Kronos-M— nunca se tocan desde aquí.
+   ============================================================ */
+
+const CARGA_MAT_MAPEO_KEY = "materiales_carga_sap_mapeo";
+
+const CARGA_MAT_CAMPOS = [
+  { key: "codigo_sap", label: "Código de material (SAP)", requerido: true, pistas: ["material"] },
+  { key: "descripcion", label: "Descripción", requerido: false, pistas: ["texto breve", "descrip"] },
+  { key: "centro", label: "Centro", requerido: true, pistas: ["centro"] },
+  { key: "centro_nombre", label: "Nombre del centro", requerido: false, pistas: ["nombre 1", "nombre centro"] },
+  { key: "ubicacion", label: "Ubicación / Storage Bin", requerido: false, pistas: ["storage bin", "ubicac"] },
+  { key: "unidad", label: "Unidad de medida", requerido: false, pistas: ["unidad medida", "unidad"] },
+  { key: "cantidad", label: "Cantidad (stock libre utilización)", requerido: true, pistas: ["libre utilizaci", "cantidad"] },
+  { key: "valor_unitario", label: "Valor unitario (COP)", requerido: false, pistas: ["unit value cop", "valor unit"] },
+  { key: "valor_total", label: "Valor total (COP)", requerido: false, pistas: ["valor libre util", "valor total"] },
+];
+
+let cargaMatFilasCrudas = [];
+let cargaMatHeaders = [];
+let cargaMatFilasNormalizadas = [];
+
+function reiniciarCargaMateriales() {
+  cargaMatFilasCrudas = [];
+  cargaMatHeaders = [];
+  cargaMatFilasNormalizadas = [];
+  document.getElementById("carga-mat-input-archivo").value = "";
+  document.getElementById("carga-mat-paso-carga").style.display = "";
+  document.getElementById("carga-mat-paso-mapeo").style.display = "none";
+  document.getElementById("carga-mat-resultado").style.display = "none";
+}
+
+document.getElementById("carga-mat-input-archivo").addEventListener("change", async (e) => {
+  const archivo = e.target.files[0];
+  if (!archivo) return;
+  try {
+    const buffer = await archivo.arrayBuffer();
+    const libro = XLSX.read(buffer, { type: "array" });
+    const hoja = libro.Sheets[libro.SheetNames[0]];
+    const filas = XLSX.utils.sheet_to_json(hoja, { defval: "" });
+    if (!filas.length) {
+      toast("El archivo no tiene filas de datos");
+      return;
+    }
+    cargaMatFilasCrudas = filas;
+    cargaMatHeaders = Object.keys(filas[0]);
+    mostrarMapeoCargaMateriales();
+  } catch (err) {
+    console.error(err);
+    toast("No se pudo leer el archivo. ¿Es un Excel o CSV válido?");
+  }
+});
+
+function mostrarMapeoCargaMateriales() {
+  let mapeoGuardado = {};
+  try { mapeoGuardado = JSON.parse(localStorage.getItem(CARGA_MAT_MAPEO_KEY) || "{}"); } catch (e) {}
+
+  const cont = document.getElementById("carga-mat-campos-mapeo");
+  cont.innerHTML = CARGA_MAT_CAMPOS.map(campo => {
+    const guardado = mapeoGuardado[campo.key];
+    const sugerido = cargaMatHeaders.includes(guardado)
+      ? guardado
+      : (cargaMatHeaders.find(h => campo.pistas.some(p => h.toLowerCase().includes(p))) || "");
+    const opciones = ["<option value=''>-- no disponible --</option>"]
+      .concat(cargaMatHeaders.map(h => `<option value="${h}" ${h === sugerido ? "selected" : ""}>${h}</option>`));
+    return `
+      <div class="ih08-mapeo-fila">
+        <label>${campo.label}${campo.requerido ? " *" : ""}</label>
+        <select data-campo-carga-mat="${campo.key}">${opciones.join("")}</select>
+      </div>`;
+  }).join("");
+
+  document.getElementById("carga-mat-paso-carga").style.display = "none";
+  document.getElementById("carga-mat-paso-mapeo").style.display = "";
+  document.getElementById("carga-mat-resultado").style.display = "none";
+}
+
+function numSap(v) {
+  if (v === null || v === undefined || v === "") return 0;
+  if (typeof v === "number") return v;
+  const n = parseFloat(String(v).replace(/,/g, "").trim());
+  return isNaN(n) ? 0 : n;
+}
+
+async function confirmarMapeoCargaMateriales() {
+  const mapeo = {};
+  document.querySelectorAll("[data-campo-carga-mat]").forEach(sel => {
+    mapeo[sel.dataset.campoCargaMat] = sel.value;
+  });
+  if (!mapeo.codigo_sap) { toast("Falta indicar cuál columna es el código de material"); return; }
+  if (!mapeo.centro) { toast("Falta indicar cuál columna es el centro"); return; }
+  localStorage.setItem(CARGA_MAT_MAPEO_KEY, JSON.stringify(mapeo));
+
+  const val = (fila, key) => { const col = mapeo[key]; return col ? fila[col] : ""; };
+
+  const filas = cargaMatFilasCrudas.map(fila => {
+    const codigo_sap = String(val(fila, "codigo_sap") || "").trim();
+    const centro = String(val(fila, "centro") || "").trim();
+    const cantidad = numSap(val(fila, "cantidad"));
+    let valor_unitario = numSap(val(fila, "valor_unitario"));
+    let valor_total = numSap(val(fila, "valor_total"));
+    if (!valor_total && valor_unitario) valor_total = cantidad * valor_unitario;
+    if (!valor_unitario && cantidad) valor_unitario = valor_total / cantidad;
+    return {
+      codigo_sap, centro,
+      descripcion: String(val(fila, "descripcion") || "").trim(),
+      centro_nombre: String(val(fila, "centro_nombre") || "").trim(),
+      ubicacion: String(val(fila, "ubicacion") || "").trim(),
+      unidad: String(val(fila, "unidad") || "").trim() || "UND",
+      cantidad, valor_unitario, valor_total,
+    };
+  }).filter(f => f.codigo_sap && f.centro);
+
+  if (!filas.length) {
+    toast("No se encontraron filas válidas (revisa el mapeo de código y centro)");
+    return;
+  }
+
+  mostrarResumenCargaMateriales(filas);
+}
+
+function mostrarResumenCargaMateriales(filas) {
+  cargaMatFilasNormalizadas = filas;
+  const materialesUnicos = new Set(filas.map(f => f.codigo_sap)).size;
+  const centros = [...new Set(filas.map(f => f.centro))].sort();
+  const valorTotal = filas.reduce((acc, f) => acc + f.valor_total, 0);
+
+  document.getElementById("carga-mat-paso-mapeo").style.display = "none";
+  document.getElementById("carga-mat-resumen").innerHTML = `
+    <span class="ih08-count ok">${filas.length} filas</span>
+    <span class="ih08-count ok">${materialesUnicos} materiales distintos</span>
+    <span class="ih08-count warn">${centros.length} centros</span>
+    <span class="ih08-count ok">${fmtCOP(valorTotal)} valor total</span>
+  `;
+  document.getElementById("carga-mat-grupos").innerHTML = `
+    <p class="hint-box">Al aplicar, se reemplaza por completo el inventario (existencias) de estos ${centros.length} centros: ${centros.join(", ")}.
+    El catálogo de materiales solo actualiza descripción y unidad — categoría, número de parte, nombre técnico y proveedor no se tocan, siguen siendo los que configuraste a mano.</p>
+  `;
+  document.getElementById("carga-mat-resultado").style.display = "";
+}
+
+async function aplicarCargaMateriales() {
+  if (!cargaMatFilasNormalizadas.length) return;
+  const btn = document.getElementById("carga-mat-btn-aplicar");
+  btn.disabled = true;
+  const filas = cargaMatFilasNormalizadas;
+  const centros = [...new Set(filas.map(f => f.centro))];
+  const hoy = new Date().toISOString().slice(0, 10);
+  const cargaId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+
+  try {
+    btn.textContent = "Actualizando catálogo...";
+    const catalogoPorCodigo = new Map();
+    filas.forEach(f => {
+      if (!catalogoPorCodigo.has(f.codigo_sap)) {
+        catalogoPorCodigo.set(f.codigo_sap, {
+          codigo_sap: f.codigo_sap,
+          descripcion: f.descripcion || "SIN DESCRIPCION",
+          unidad: f.unidad || "UND",
+          updated_at: new Date().toISOString(),
+        });
+      }
+    });
+    const catalogo = [...catalogoPorCodigo.values()];
+    for (let i = 0; i < catalogo.length; i += 500) {
+      const lote = catalogo.slice(i, i + 500);
+      const { error } = await sb.from("materiales").upsert(lote, { onConflict: "codigo_sap" });
+      if (error) throw error;
+      btn.textContent = `Actualizando catálogo... ${Math.min(i + 500, catalogo.length)}/${catalogo.length}`;
+    }
+
+    btn.textContent = "Limpiando existencias anteriores...";
+    const { error: errDelete } = await sb.from("existencias").delete().in("centro", centros);
+    if (errDelete) throw errDelete;
+
+    const filasExistencias = filas.map(f => ({
+      codigo_sap: f.codigo_sap,
+      centro: f.centro,
+      centro_nombre: f.centro_nombre || null,
+      ubicacion: f.ubicacion || null,
+      cantidad: f.cantidad,
+      unidad: f.unidad,
+      valor_unitario: f.valor_unitario,
+      valor_total: f.valor_total,
+      fecha_carga: hoy,
+      carga_id: cargaId,
+    }));
+    for (let i = 0; i < filasExistencias.length; i += 500) {
+      const lote = filasExistencias.slice(i, i + 500);
+      const { error } = await sb.from("existencias").insert(lote);
+      if (error) throw error;
+      btn.textContent = `Cargando existencias... ${Math.min(i + 500, filasExistencias.length)}/${filasExistencias.length}`;
+    }
+
+    toast(`Inventario actualizado: ${filas.length} filas en ${centros.length} centros`);
+    document.getElementById("carga-mat-resultado").style.display = "none";
+    reiniciarCargaMateriales();
+    cerrarPanel("panel-carga-materiales");
+    cargarMateriales();
+  } catch (e) {
+    toast("Error aplicando la carga: " + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Aplicar carga";
+  }
 }
 
 (async function arrancar() {
