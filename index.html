@@ -596,6 +596,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
     Resumen
   </button>
+  <button class="nav-item" data-tab="reporte-inventario" data-modulo="materiales">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 17v-4M12 17v-6M16 17v-2"/></svg>
+    Reporte
+  </button>
   <button class="nav-item" data-tab="carrito" data-modulo="materiales" style="position:relative">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>
     Carrito
@@ -1029,7 +1033,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <div class="panel-header">
     <button class="icon-btn" onclick="volverAMateriales()">&#8592;</button>
     <h2>Resumen de Materiales</h2>
-    <button class="icon-btn" id="btn-exportar-resumen-mat" title="Exportar a Excel">&#128190;</button>
+    <button class="icon-btn" id="btn-exportar-resumen-mat" title="Generar reporte de inventario en Excel">&#128190;</button>
   </div>
   <div class="panel-body">
     <div class="filtros-bar" style="padding:0 0 14px">
@@ -1043,6 +1047,32 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="materiales-resumen-body">
       <div class="loading">Cargando...</div>
     </div>
+  </div>
+</div>
+
+<!-- ===== Panel: Reporte de inventario ===== -->
+<div class="panel" id="panel-reporte-inventario">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="volverAMateriales()">&#8592;</button>
+    <h2>Reporte de inventario</h2>
+  </div>
+  <div class="panel-body">
+    <p class="hint-box">Genera el reporte en Excel: resumen con indicadores, materiales a pedir ordenados por prioridad, consolidado por codigo para la SOLPED, detalle completo y pendientes por configurar.</p>
+    <div class="field">
+      <label>Area / categoria</label>
+      <select id="rep-categoria"></select>
+    </div>
+    <div class="field">
+      <label>Centro / bodega</label>
+      <select id="rep-centro"></select>
+    </div>
+    <div class="field">
+      <label>Fecha de corte de los datos</label>
+      <input type="date" id="rep-corte"/>
+    </div>
+    <p class="hint-box">La fecha de corte es la del inventario cargado desde SAP, no la de hoy. Queda impresa en cada hoja del archivo.</p>
+    <div id="rep-previo" class="hint-box" style="margin-top:12px"></div>
+    <button class="btn-primary" id="rep-btn-generar" style="margin-top:14px">Generar Excel</button>
   </div>
 </div>
 
@@ -2146,6 +2176,9 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     } else if (btn.dataset.tab === "materiales-resumen") {
       abrirPanel("panel-materiales-resumen");
       renderResumenMateriales();
+    } else if (btn.dataset.tab === "reporte-inventario") {
+      abrirPanel("panel-reporte-inventario");
+      prepararReporteInventario();
     } else if (btn.dataset.tab === "carrito") {
       abrirPanel("panel-carrito");
       renderCarrito();
@@ -2523,181 +2556,735 @@ function descripcionFiltroMat() {
   return partes.length ? partes.join(" · ") : "Todos los centros y áreas";
 }
 
+/* El icono de exportar del panel Resumen genera el mismo reporte completo,
+   tomando los filtros que esten activos en pantalla. Antes generaba un
+   archivo distinto (dos hojas, sin prioridad), y tener dos reportes
+   diferentes se prestaba a confusion. */
 document.getElementById("btn-exportar-resumen-mat").onclick = async () => {
+  const btnExport = document.getElementById("btn-exportar-resumen-mat");
   const datos = materialesData.filter(m =>
     (!filtroCentroMat || m.centro === filtroCentroMat) &&
     (!filtroCategoriaMat || m.categoria === filtroCategoriaMat)
   );
-
   if (!datos.length) {
     toast("No hay materiales para exportar con este filtro");
     return;
   }
 
-  const btnExport = document.getElementById("btn-exportar-resumen-mat");
   btnExport.disabled = true;
-
   try {
-    const porEstado = {};
-    let valorTotal = 0;
-    datos.forEach(m => {
-      const key = (m.estado || "SIN CONFIGURAR").split(" ")[0];
-      porEstado[key] = (porEstado[key] || 0) + 1;
-      valorTotal += m.valor_stock || 0;
+    const corteISO = corteDesdeDatos(datos);
+    const etiqueta = LABEL_CATEGORIA_MAT[filtroCategoriaMat] || filtroCategoriaMat;
+    const wb = construirLibroReporte(datos, {
+      titulo: filtroCategoriaMat
+        ? `CONTROL DE INVENTARIO  \u00b7  ${String(etiqueta).toUpperCase()}`
+        : "CONTROL DE INVENTARIO",
+      alcance: descripcionFiltroMat(),
+      corte: new Date(corteISO + "T12:00:00"),
     });
-
-    const criticosPorCentro = {};
-    datos.filter(m => m.estado === "CRITICO").forEach(m => {
-      criticosPorCentro[m.centro] = (criticosPorCentro[m.centro] || 0) + 1;
-    });
-    const topCentros = Object.entries(criticosPorCentro).sort((a, b) => b[1] - a[1]);
-    const maxCriticoExp = Math.max(...topCentros.map(([, n]) => n), 1);
-
-    const barraTexto = (n, max, ancho = 24) => {
-      const llenas = Math.max(1, Math.round((n / max) * ancho));
-      return "█".repeat(llenas) + "░".repeat(Math.max(0, ancho - llenas));
-    };
-
-    const etiquetasEstado = {
-      CRITICO: "Críticos", BAJO: "Bajo", OK: "OK", SOBRESTOCK: "Sobrestock", SIN: "Sin configurar",
-    };
-
-    // Colores de relleno por estado (mismo criterio visual en toda la hoja Detalle)
-    const coloresEstado = {
-      CRITICO: "FFF8D7DA",   // rojo claro
-      BAJO: "FFFFF3CD",      // ámbar claro
-      OK: "FFD4EDDA",        // verde claro
-      SOBRESTOCK: "FFD1ECF1", // azul claro
-      SIN: "FFE2E3E5",       // gris claro
-    };
-    const colorTextoEstado = {
-      CRITICO: "FF842029", BAJO: "FF856404", OK: "FF155724", SOBRESTOCK: "FF0C5460", SIN: "FF41464B",
-    };
-
-    const wb = new ExcelJS.Workbook();
-    wb.creator = "Kronos-M";
-    wb.created = new Date();
-
-    /* ---------- Hoja Resumen ---------- */
-    const wsResumen = wb.addWorksheet("Resumen");
-    wsResumen.columns = [{ width: 34 }, { width: 18 }, { width: 26 }];
-
-    const filaTitulo = wsResumen.addRow(["KRONOS·M — RESUMEN DE MATERIALES"]);
-    filaTitulo.font = { bold: true, size: 13, color: { argb: "FF134B70" } };
-    wsResumen.addRow(["Generado", new Date().toLocaleString("es-CO")]);
-    wsResumen.addRow(["Filtro aplicado", descripcionFiltroMat()]);
-    wsResumen.addRow([]);
-
-    const filaEncIndicador = wsResumen.addRow(["INDICADOR", "VALOR"]);
-    filaEncIndicador.font = { bold: true };
-    wsResumen.addRow(["Total de configuraciones", datos.length]);
-    wsResumen.addRow(["Valor total del stock (COP)", valorTotal]);
-    wsResumen.addRow([]);
-
-    const filaTituloEstado = wsResumen.addRow(["MATERIALES POR ESTADO"]);
-    filaTituloEstado.font = { bold: true };
-    const filaEncEstado = wsResumen.addRow(["Estado", "Cantidad", "% del total"]);
-    filaEncEstado.font = { bold: true };
-    Object.entries(porEstado).sort((a, b) => b[1] - a[1]).forEach(([estado, n]) => {
-      const fila = wsResumen.addRow([etiquetasEstado[estado] || estado, n, (n / datos.length * 100).toFixed(1) + "%"]);
-      const color = coloresEstado[estado];
-      if (color) {
-        fila.getCell(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
-        fila.getCell(1).font = { color: { argb: colorTextoEstado[estado] } };
-      }
-    });
-    wsResumen.addRow([]);
-    const filaTituloCentros = wsResumen.addRow(["CENTROS CON MÁS MATERIALES CRÍTICOS"]);
-    filaTituloCentros.font = { bold: true };
-    const filaEncCentros = wsResumen.addRow(["Centro", "Cantidad", "Gráfico"]);
-    filaEncCentros.font = { bold: true };
-    topCentros.forEach(([centro, n]) => {
-      wsResumen.addRow([centro, n, barraTexto(n, maxCriticoExp)]);
-    });
-
-    /* ---------- Hoja Detalle ---------- */
-    const columnasDetalle = [
-      { key: "codigo_sap", header: "Código SAP", width: 14 },
-      { key: "descripcion", header: "Descripción", width: 40 },
-      { key: "numero_parte", header: "Número de parte", width: 22 },
-      { key: "nombre_tecnico", header: "Nombre técnico", width: 26 },
-      { key: "centro", header: "Centro", width: 10 },
-      { key: "centro_nombre", header: "Nombre centro", width: 24 },
-      { key: "categoria", header: "Área/Categoría", width: 16 },
-      { key: "unidad", header: "Unidad", width: 10 },
-      { key: "proveedor", header: "Proveedor", width: 22 },
-      { key: "stock_actual", header: "Stock actual", width: 12 },
-      { key: "stock_minimo", header: "Mínimo", width: 10 },
-      { key: "stock_maximo", header: "Máximo", width: 10 },
-      { key: "estado", header: "Estado", width: 14 },
-      { key: "valor_stock", header: "Valor stock (COP)", width: 18 },
-    ];
-    const wsDetalle = wb.addWorksheet("Detalle");
-    wsDetalle.columns = columnasDetalle;
-
-    datos.forEach(m => {
-      wsDetalle.addRow({
-        codigo_sap: m.codigo_sap ?? "",
-        descripcion: m.descripcion ?? "",
-        numero_parte: m.numero_parte ?? "",
-        nombre_tecnico: m.nombre_tecnico ?? "",
-        centro: m.centro ?? "",
-        centro_nombre: m.centro_nombre ?? "",
-        categoria: m.categoria ?? "",
-        unidad: m.unidad ?? "",
-        proveedor: m.proveedor || "Sin asignar",
-        stock_actual: m.stock_actual ?? "",
-        stock_minimo: m.stock_minimo ?? "",
-        stock_maximo: m.stock_maximo ?? "",
-        estado: m.estado ?? "",
-        valor_stock: m.valor_stock ?? 0,
-      });
-    });
-
-    // Encabezado: negrilla, fondo de marca y texto blanco
-    const filaEncDetalle = wsDetalle.getRow(1);
-    filaEncDetalle.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    filaEncDetalle.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF134B70" } };
-    filaEncDetalle.alignment = { vertical: "middle" };
-
-    // Filtro desplegable en cada columna del encabezado
-    wsDetalle.autoFilter = {
-      from: { row: 1, column: 1 },
-      to: { row: 1, column: columnasDetalle.length },
-    };
-    wsDetalle.views = [{ state: "frozen", ySplit: 1 }];
-
-    // Color de fila según estado (crítico, bajo, ok, sobrestock, sin configurar)
-    datos.forEach((m, i) => {
-      const key = (m.estado || "SIN CONFIGURAR").split(" ")[0];
-      const color = coloresEstado[key];
-      if (!color) return;
-      const fila = wsDetalle.getRow(i + 2);
-      fila.eachCell({ includeEmpty: true }, (celda) => {
-        celda.fill = { type: "pattern", pattern: "solid", fgColor: { argb: color } };
-      });
-    });
-
-    const fecha = new Date().toISOString().slice(0, 10);
-    const buffer = await wb.xlsx.writeBuffer();
-    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `materiales_resumen_kronos_${fecha}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-
-    toast(`Exportados ${datos.length} materiales (Resumen + Detalle)`);
+    await descargarLibro(wb, `Reporte_Inventario${filtroCategoriaMat ? "_" + filtroCategoriaMat : ""}_${corteISO}.xlsx`);
+    toast(`Reporte generado \u00b7 ${datos.length} materiales`);
   } catch (e) {
     console.error(e);
-    toast("Error al generar el Excel");
+    toast("Error al generar el reporte");
   } finally {
     btnExport.disabled = false;
   }
 };
+
+/* ============================================================
+   REPORTE DE INVENTARIO  ·  Excel multihoja
+   ------------------------------------------------------------
+   construirLibroReporte() es una funcion PURA: recibe los datos
+   y devuelve el libro de ExcelJS. No toca el DOM ni descarga
+   nada, para poder reutilizarla sin cambios dentro de la Edge
+   Function que enviara el reporte por correo.
+
+   No recalcula reglas de negocio: usa 'estado' y
+   'cantidad_sugerida_compra' tal como los entrega la vista
+   v_materiales_estado, para que el reporte diga exactamente lo
+   mismo que la pantalla.
+   ============================================================ */
+
+const REP_C = {
+  azul: "FF0C5292", azul2: "FF316CA1", blanco: "FFFFFFFF",
+  rojo: "FFC62828", naranja: "FFE08600", verde: "FF359E68", gris: "FF666666",
+  fRojo: "FFFFEBEE", fNaranja: "FFFFF3E0", fVerde: "FFE8F5E9",
+  fAzul: "FFE3F2FD", fGris: "FFF2F2F2", linea: "FFD9D9D9",
+};
+
+const REP_ORDEN_CRIT = { A: 0, B: 1, C: 2 };
+
+const REP_ESTADO = {
+  CRITICO:           { txt: "Crítico",       color: REP_C.rojo,    fondo: REP_C.fRojo },
+  BAJO:              { txt: "Bajo",          color: REP_C.naranja, fondo: REP_C.fNaranja },
+  OK:                { txt: "OK",            color: REP_C.verde,   fondo: REP_C.fVerde },
+  SOBRESTOCK:        { txt: "Sobrestock",    color: REP_C.azul2,   fondo: REP_C.fAzul },
+  "SIN CONFIGURAR":  { txt: "Sin configurar", color: REP_C.gris,   fondo: REP_C.fGris },
+};
+
+const repFuente = (size = 10, bold = false, color = "FF000000") =>
+  ({ name: "Arial", size, bold, color: { argb: color } });
+const repRelleno = (argb) => ({ type: "pattern", pattern: "solid", fgColor: { argb } });
+const REP_BORDE = {
+  top:    { style: "thin", color: { argb: REP_C.linea } },
+  left:   { style: "thin", color: { argb: REP_C.linea } },
+  bottom: { style: "thin", color: { argb: REP_C.linea } },
+  right:  { style: "thin", color: { argb: REP_C.linea } },
+};
+const REP_CEN = { horizontal: "center", vertical: "middle" };
+const REP_IZQ = { horizontal: "left", vertical: "middle" };
+
+function repNum(v) { const n = Number(v); return Number.isFinite(n) ? n : 0; }
+
+function repCobertura(m) {
+  const min = repNum(m.stock_minimo);
+  return min > 0 ? repNum(m.stock_actual) / min : 0;
+}
+
+function repFechaCorta(d) {
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  return `${dd}/${mm}/${d.getFullYear()}`;
+}
+
+/* --- Encabezado de hoja: titulo en fila 1, subtitulo en fila 2 --- */
+function repTitulo(ws, texto, subtexto, nCols) {
+  ws.mergeCells(1, 1, 1, nCols);
+  const t = ws.getCell(1, 1);
+  t.value = texto;
+  t.font = repFuente(13, true, REP_C.blanco);
+  t.fill = repRelleno(REP_C.azul);
+  t.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
+  ws.getRow(1).height = 26;
+
+  ws.mergeCells(2, 1, 2, nCols);
+  const s = ws.getCell(2, 1);
+  s.value = subtexto;
+  s.font = repFuente(9, false, REP_C.blanco);
+  s.fill = repRelleno(REP_C.azul2);
+  s.alignment = { horizontal: "left", vertical: "middle", indent: 1 };
+  ws.getRow(2).height = 16;
+}
+
+/* --- Fila de encabezados de tabla + anchos de columna --- */
+function repEncabezado(ws, fila, columnas) {
+  columnas.forEach((c, i) => {
+    const celda = ws.getCell(fila, i + 1);
+    celda.value = c.h;
+    celda.font = repFuente(10, true, REP_C.blanco);
+    celda.fill = repRelleno(REP_C.azul);
+    celda.alignment = REP_CEN;
+    celda.border = REP_BORDE;
+    ws.getColumn(i + 1).width = c.w;
+  });
+  ws.getRow(fila).height = 22;
+}
+
+/* --- Configuracion de impresion: horizontal, una pagina de ancho --- */
+function repImpresion(ws, filaEncabezado, corteTxt, horizontal = true) {
+  ws.pageSetup = {
+    orientation: horizontal ? "landscape" : "portrait",
+    fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+    printTitlesRow: `${filaEncabezado}:${filaEncabezado}`,
+    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+  };
+  ws.headerFooter = {
+    oddFooter: `&L&8Corte de datos: ${corteTxt}&R&8Página &P de &N`,
+  };
+}
+
+/* ============================================================
+   Constructor del libro
+   ============================================================ */
+function construirLibroReporte(materiales, opciones = {}) {
+  const {
+    titulo = "CONTROL DE INVENTARIO",
+    alcance = "Todos los centros y áreas",
+    corte = new Date(),
+    subtitulo = "Mantenimiento · Operación Putumayo",
+  } = opciones;
+
+  const corteTxt = repFechaCorta(corte instanceof Date ? corte : new Date(corte));
+
+  /* ---------- Particion de los datos ---------- */
+  const configurados = materiales.filter(m => m.estado && m.estado !== "SIN CONFIGURAR");
+  const pendientes   = materiales.filter(m => !m.estado || m.estado === "SIN CONFIGURAR");
+  const aPedir       = configurados.filter(m => repNum(m.cantidad_sugerida_compra) > 0);
+
+  // Prioridad: criticidad primero, luego menor cobertura, luego mayor cantidad
+  const porPrioridad = (a, b) =>
+    (REP_ORDEN_CRIT[a.criticidad] ?? 9) - (REP_ORDEN_CRIT[b.criticidad] ?? 9) ||
+    repCobertura(a) - repCobertura(b) ||
+    repNum(b.cantidad_sugerida_compra) - repNum(a.cantidad_sugerida_compra);
+
+  const pedirOrd = [...aPedir].sort(porPrioridad);
+  const detOrd   = [...configurados].sort(porPrioridad);
+
+  // Consolidado por codigo SAP (un material puede estar en varios centros)
+  const mapaCons = new Map();
+  pedirOrd.forEach(m => {
+    const k = String(m.codigo_sap ?? "");
+    if (!mapaCons.has(k)) {
+      mapaCons.set(k, {
+        codigo_sap: k,
+        nombre: m.nombre_tecnico || m.descripcion || "",
+        criticidad: m.criticidad || "",
+        proveedor: m.proveedor || "Sin asignar",
+        centros: [], existencia: 0, minimo: 0, pedir: 0,
+      });
+    }
+    const c = mapaCons.get(k);
+    c.centros.push(m.centro);
+    c.existencia += repNum(m.stock_actual);
+    c.minimo     += repNum(m.stock_minimo);
+    c.pedir      += repNum(m.cantidad_sugerida_compra);
+  });
+  const consolidado = [...mapaCons.values()].sort((a, b) =>
+    (REP_ORDEN_CRIT[a.criticidad] ?? 9) - (REP_ORDEN_CRIT[b.criticidad] ?? 9) || b.pedir - a.pedir);
+
+  // Pendientes por configurar, agrupados por centro
+  const mapaPend = new Map();
+  pendientes.forEach(m => mapaPend.set(m.centro, (mapaPend.get(m.centro) || 0) + 1));
+  const pendPorCentro = [...mapaPend.entries()].sort((a, b) => b[1] - a[1]);
+  const totalPend = pendientes.length;
+
+  // Totales precalculados (ExcelJS no evalua formulas: hay que darle el result)
+  const totalUnidades = pedirOrd.reduce((s, m) => s + repNum(m.cantidad_sugerida_compra), 0);
+  const cuentaEstado = (e) => configurados.filter(m => m.estado === e).length;
+  const cuentaCrit   = (c) => configurados.filter(m => m.criticidad === c).length;
+  const unidadesCrit = (c) => pedirOrd.filter(m => m.criticidad === c)
+                                      .reduce((s, m) => s + repNum(m.cantidad_sugerida_compra), 0);
+
+  const F = 3;                       // fila de encabezados de tabla
+  const ultPedir = F + pedirOrd.length;
+  const ultCons  = F + consolidado.length;
+  const ultDet   = F + detOrd.length;
+  const ultPend  = F + pendPorCentro.length;
+  const HP = "'A Pedir (SOLPED)'";   // referencias entre hojas
+  const HD = "'Detalle Configurados'";
+
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Kronos-M";
+  wb.created = new Date();
+
+  /* ============ Hoja 1: Resumen (se llena al final) ============ */
+  const wsRes = wb.addWorksheet("Resumen");
+
+  /* ============ Hoja 2: A Pedir (SOLPED) ============ */
+  const wsPed = wb.addWorksheet("A Pedir (SOLPED)");
+  repTitulo(wsPed, "MATERIALES A PEDIR  ·  ordenados por prioridad de reposición",
+    `Prioridad: criticidad (A > B > C), luego menor cobertura, luego mayor cantidad   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 11);
+  repEncabezado(wsPed, F, [
+    { h: "Prio.", w: 6 }, { h: "Código", w: 11 }, { h: "Centro", w: 8 },
+    { h: "Nombre técnico", w: 46 }, { h: "Crit.", w: 6 }, { h: "Existencia", w: 11 },
+    { h: "Mínimo", w: 9 }, { h: "Máximo", w: 9 }, { h: "Cobertura", w: 11 },
+    { h: "A pedir", w: 10 }, { h: "Proveedor", w: 22 },
+  ]);
+  pedirOrd.forEach((m, i) => {
+    const r = F + 1 + i;
+    const vals = [
+      i + 1, String(m.codigo_sap ?? ""), m.centro || "",
+      m.nombre_tecnico || m.descripcion || "", m.criticidad || "",
+      repNum(m.stock_actual), repNum(m.stock_minimo), repNum(m.stock_maximo),
+      { formula: `IFERROR(F${r}/G${r},0)`, result: repCobertura(m) },
+      repNum(m.cantidad_sugerida_compra), m.proveedor || "Sin asignar",
+    ];
+    vals.forEach((v, j) => {
+      const c = wsPed.getCell(r, j + 1);
+      c.value = v;
+      c.font = repFuente(10);
+      c.border = REP_BORDE;
+      c.alignment = (j === 3 || j === 10) ? REP_IZQ : REP_CEN;
+    });
+    wsPed.getCell(r, 2).numFmt = "@";
+    [6, 7, 8, 10].forEach(col => { wsPed.getCell(r, col).numFmt = "#,##0"; });
+    wsPed.getCell(r, 9).numFmt = "0%";
+    const cc = { A: REP_C.rojo, B: REP_C.naranja, C: REP_C.gris }[m.criticidad] || REP_C.gris;
+    wsPed.getCell(r, 5).font = repFuente(10, true, cc);
+    wsPed.getCell(r, 10).font = repFuente(10, true);
+    wsPed.getCell(r, 10).fill = repRelleno(REP_C.fNaranja);
+    if (repNum(m.stock_actual) === 0) {
+      wsPed.getCell(r, 6).font = repFuente(10, true, REP_C.rojo);
+      wsPed.getCell(r, 6).fill = repRelleno(REP_C.fRojo);
+    }
+    if (i < 10) {                     // los 10 que van en el cuerpo del correo
+      wsPed.getCell(r, 1).font = repFuente(10, true, REP_C.blanco);
+      wsPed.getCell(r, 1).fill = repRelleno(REP_C.azul);
+    }
+  });
+  if (pedirOrd.length) {
+    wsPed.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPedir, column: 11 } };
+    wsPed.addConditionalFormatting({
+      ref: `I${F + 1}:I${ultPedir}`,
+      rules: [{
+        type: "colorScale", priority: 1,
+        cfvo: [{ type: "num", value: 0 }, { type: "num", value: 0.5 }, { type: "num", value: 1 }],
+        color: [{ argb: "FFF8B4B4" }, { argb: "FFFFE0A3" }, { argb: "FFB7E1C4" }],
+      }],
+    });
+    const rt = ultPedir + 2;
+    wsPed.getCell(rt, 9).value = "TOTAL";
+    wsPed.getCell(rt, 9).font = repFuente(10, true, REP_C.azul);
+    wsPed.getCell(rt, 9).alignment = REP_CEN;
+    const ct = wsPed.getCell(rt, 10);
+    ct.value = { formula: `SUM(J${F + 1}:J${ultPedir})`, result: totalUnidades };
+    ct.font = repFuente(11, true, REP_C.blanco);
+    ct.fill = repRelleno(REP_C.azul);
+    ct.alignment = REP_CEN;
+    ct.numFmt = "#,##0";
+    wsPed.getCell(rt, 11).value = `unidades en ${pedirOrd.length} líneas`;
+    wsPed.getCell(rt, 11).font = repFuente(9, false, REP_C.gris);
+  }
+  wsPed.views = [{ state: "frozen", xSplit: 4, ySplit: F }];
+  repImpresion(wsPed, F, corteTxt);
+
+  /* ============ Hoja 3: Consolidado por material ============ */
+  const wsCon = wb.addWorksheet("Consolidado x Material");
+  repTitulo(wsCon, "CONSOLIDADO POR MATERIAL  ·  suma de todos los centros",
+    `Una línea por código SAP, para emitir la SOLPED sin duplicar códigos.   |   Corte de datos: ${corteTxt}`, 8);
+  repEncabezado(wsCon, F, [
+    { h: "Código", w: 11 }, { h: "Nombre técnico", w: 46 }, { h: "Crit.", w: 6 },
+    { h: "Proveedor", w: 22 }, { h: "Centros", w: 22 }, { h: "Existencia", w: 11 },
+    { h: "Mínimo", w: 9 }, { h: "A pedir", w: 10 },
+  ]);
+  consolidado.forEach((x, i) => {
+    const r = F + 1 + i;
+    const vals = [
+      x.codigo_sap, x.nombre, x.criticidad, x.proveedor,
+      [...new Set(x.centros)].sort().join(", "),
+      { formula: `SUMIF(${HP}!$B$${F + 1}:$B$${ultPedir},$A${r},${HP}!$F$${F + 1}:$F$${ultPedir})`, result: x.existencia },
+      { formula: `SUMIF(${HP}!$B$${F + 1}:$B$${ultPedir},$A${r},${HP}!$G$${F + 1}:$G$${ultPedir})`, result: x.minimo },
+      { formula: `SUMIF(${HP}!$B$${F + 1}:$B$${ultPedir},$A${r},${HP}!$J$${F + 1}:$J$${ultPedir})`, result: x.pedir },
+    ];
+    vals.forEach((v, j) => {
+      const c = wsCon.getCell(r, j + 1);
+      c.value = v;
+      c.font = repFuente(10);
+      c.border = REP_BORDE;
+      c.alignment = (j === 1 || j === 3) ? REP_IZQ : REP_CEN;
+    });
+    wsCon.getCell(r, 1).numFmt = "@";
+    [6, 7, 8].forEach(col => { wsCon.getCell(r, col).numFmt = "#,##0"; });
+    const cc = { A: REP_C.rojo, B: REP_C.naranja, C: REP_C.gris }[x.criticidad] || REP_C.gris;
+    wsCon.getCell(r, 3).font = repFuente(10, true, cc);
+    wsCon.getCell(r, 8).font = repFuente(10, true);
+    wsCon.getCell(r, 8).fill = repRelleno(REP_C.fNaranja);
+  });
+  if (consolidado.length) {
+    wsCon.autoFilter = { from: { row: F, column: 1 }, to: { row: ultCons, column: 8 } };
+    const rt = ultCons + 2;
+    wsCon.getCell(rt, 5).value = `${consolidado.length} códigos únicos`;
+    wsCon.getCell(rt, 5).font = repFuente(9, false, REP_C.gris);
+    wsCon.getCell(rt, 7).value = "TOTAL";
+    wsCon.getCell(rt, 7).font = repFuente(10, true, REP_C.azul);
+    wsCon.getCell(rt, 7).alignment = REP_CEN;
+    const ct = wsCon.getCell(rt, 8);
+    ct.value = { formula: `SUM(H${F + 1}:H${ultCons})`, result: totalUnidades };
+    ct.font = repFuente(11, true, REP_C.blanco);
+    ct.fill = repRelleno(REP_C.azul);
+    ct.alignment = REP_CEN;
+    ct.numFmt = "#,##0";
+  }
+  wsCon.views = [{ state: "frozen", xSplit: 2, ySplit: F }];
+  repImpresion(wsCon, F, corteTxt);
+
+  /* ============ Hoja 4: Detalle configurados ============ */
+  const wsDet = wb.addWorksheet("Detalle Configurados");
+  repTitulo(wsDet, "DETALLE DE MATERIALES CONFIGURADOS",
+    `Materiales con parámetros mín-máx definidos.   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 10);
+  repEncabezado(wsDet, F, [
+    { h: "Código", w: 11 }, { h: "Centro", w: 8 }, { h: "Nombre técnico", w: 46 },
+    { h: "Crit.", w: 6 }, { h: "Existencia", w: 11 }, { h: "Mínimo", w: 9 },
+    { h: "Máximo", w: 9 }, { h: "Cobertura", w: 11 }, { h: "Estado", w: 13 },
+    { h: "Proveedor", w: 22 },
+  ]);
+  detOrd.forEach((m, i) => {
+    const r = F + 1 + i;
+    const vals = [
+      String(m.codigo_sap ?? ""), m.centro || "",
+      m.nombre_tecnico || m.descripcion || "", m.criticidad || "",
+      repNum(m.stock_actual), repNum(m.stock_minimo), repNum(m.stock_maximo),
+      { formula: `IFERROR(E${r}/F${r},0)`, result: repCobertura(m) },
+      (REP_ESTADO[m.estado] || {}).txt || m.estado || "",
+      m.proveedor || "Sin asignar",
+    ];
+    vals.forEach((v, j) => {
+      const c = wsDet.getCell(r, j + 1);
+      c.value = v;
+      c.font = repFuente(10);
+      c.border = REP_BORDE;
+      c.alignment = (j === 2 || j === 9) ? REP_IZQ : REP_CEN;
+    });
+    wsDet.getCell(r, 1).numFmt = "@";
+    [5, 6, 7].forEach(col => { wsDet.getCell(r, col).numFmt = "#,##0"; });
+    wsDet.getCell(r, 8).numFmt = "0%";
+    const cc = { A: REP_C.rojo, B: REP_C.naranja, C: REP_C.gris }[m.criticidad] || REP_C.gris;
+    wsDet.getCell(r, 4).font = repFuente(10, true, cc);
+    const est = REP_ESTADO[m.estado];
+    if (est) {
+      wsDet.getCell(r, 9).font = repFuente(10, true, est.color);
+      wsDet.getCell(r, 9).fill = repRelleno(est.fondo);
+    }
+  });
+  if (detOrd.length) {
+    wsDet.autoFilter = { from: { row: F, column: 1 }, to: { row: ultDet, column: 10 } };
+    wsDet.addConditionalFormatting({
+      ref: `H${F + 1}:H${ultDet}`,
+      rules: [{
+        type: "colorScale", priority: 1,
+        cfvo: [{ type: "num", value: 0 }, { type: "num", value: 0.5 }, { type: "num", value: 1 }],
+        color: [{ argb: "FFF8B4B4" }, { argb: "FFFFE0A3" }, { argb: "FFB7E1C4" }],
+      }],
+    });
+  }
+  wsDet.views = [{ state: "frozen", xSplit: 3, ySplit: F }];
+  repImpresion(wsDet, F, corteTxt);
+
+  /* ============ Hoja 5: Pendientes por configurar ============ */
+  const wsPen = wb.addWorksheet("Pendientes Config");
+  repTitulo(wsPen, "MATERIALES PENDIENTES POR CONFIGURAR",
+    `Sin parámetros mín-máx: no entran en el cálculo de reposición.   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 3);
+  repEncabezado(wsPen, F, [
+    { h: "Centro", w: 12 }, { h: "Pendientes", w: 14 }, { h: "Participación", w: 14 },
+  ]);
+  pendPorCentro.forEach(([centro, n], i) => {
+    const r = F + 1 + i;
+    const vals = [
+      centro || "(sin centro)", n,
+      { formula: `IFERROR(B${r}/SUM($B$${F + 1}:$B$${ultPend}),0)`, result: totalPend ? n / totalPend : 0 },
+    ];
+    vals.forEach((v, j) => {
+      const c = wsPen.getCell(r, j + 1);
+      c.value = v;
+      c.font = repFuente(10);
+      c.border = REP_BORDE;
+      c.alignment = REP_CEN;
+    });
+    wsPen.getCell(r, 2).numFmt = "#,##0";
+    wsPen.getCell(r, 3).numFmt = "0.0%";
+  });
+  if (pendPorCentro.length) {
+    wsPen.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPend, column: 3 } };
+    const rt = ultPend + 2;
+    wsPen.getCell(rt, 1).value = "TOTAL";
+    wsPen.getCell(rt, 1).font = repFuente(10, true, REP_C.azul);
+    const ct = wsPen.getCell(rt, 2);
+    ct.value = { formula: `SUM(B${F + 1}:B${ultPend})`, result: totalPend };
+    ct.font = repFuente(11, true, REP_C.blanco);
+    ct.fill = repRelleno(REP_C.azul);
+    ct.alignment = REP_CEN;
+    ct.numFmt = "#,##0";
+  }
+  repImpresion(wsPen, F, corteTxt, false);
+
+  /* ============ Hoja 1 (contenido): Resumen ============ */
+  repTitulo(wsRes, titulo, `${subtitulo}   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 6);
+  wsRes.getRow(3).height = 8;
+
+  const kpis = [
+    { f: `COUNTA(${HD}!$A$${F + 1}:$A$${ultDet})`, v: detOrd.length, lab: "CONFIGURADOS", col: REP_C.azul },
+    { f: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Crítico")`, v: cuentaEstado("CRITICO"), lab: "CRÍTICO", col: REP_C.rojo },
+    { f: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Bajo")`, v: cuentaEstado("BAJO"), lab: "BAJO", col: REP_C.naranja },
+    { f: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"OK")`, v: cuentaEstado("OK"), lab: "OK", col: REP_C.verde },
+    { f: `COUNTA(${HP}!$B$${F + 1}:$B$${ultPedir})`, v: pedirOrd.length, lab: "LÍNEAS A PEDIR", col: REP_C.azul2 },
+    { f: `SUM(${HP}!$J$${F + 1}:$J$${ultPedir})`, v: totalUnidades, lab: "UNIDADES A PEDIR", col: REP_C.azul2 },
+  ];
+  kpis.forEach((k, i) => {
+    const cv = wsRes.getCell(4, i + 1);
+    cv.value = { formula: k.f, result: k.v };
+    cv.font = repFuente(20, true, k.col);
+    cv.alignment = REP_CEN;
+    cv.numFmt = "#,##0";
+    const cl = wsRes.getCell(5, i + 1);
+    cl.value = k.lab;
+    cl.font = repFuente(8, false, REP_C.gris);
+    cl.alignment = REP_CEN;
+    wsRes.getColumn(i + 1).width = 17;
+  });
+  wsRes.getRow(4).height = 30;
+
+  let f = 7;
+  const bloque = (tituloTxt, cabeceras, filas) => {
+    const ct = wsRes.getCell(f, 1);
+    ct.value = tituloTxt;
+    ct.font = repFuente(11, true, REP_C.azul);
+    cabeceras.forEach((h, i) => {
+      const c = wsRes.getCell(f + 1, i + 1);
+      c.value = h;
+      c.font = repFuente(10, true, REP_C.blanco);
+      c.fill = repRelleno(REP_C.azul);
+      c.alignment = REP_CEN;
+      c.border = REP_BORDE;
+    });
+    const inicio = f + 2;
+    filas.forEach((fila, i) => {
+      fila.forEach((v, j) => {
+        const c = wsRes.getCell(inicio + i, j + 1);
+        c.value = v;
+        c.font = repFuente(10);
+        c.border = REP_BORDE;
+        c.alignment = j === 0 ? REP_IZQ : REP_CEN;
+      });
+    });
+    f = inicio + filas.length + 1;
+    return inicio;
+  };
+
+  const iEst = bloque("Distribución por estado", ["Estado", "Materiales", "Participación"], [
+    ["Crítico", { formula: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Crítico")`, result: cuentaEstado("CRITICO") }, null],
+    ["Bajo", { formula: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Bajo")`, result: cuentaEstado("BAJO") }, null],
+    ["OK", { formula: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"OK")`, result: cuentaEstado("OK") }, null],
+    ["Sobrestock", { formula: `COUNTIF(${HD}!$I$${F + 1}:$I$${ultDet},"Sobrestock")`, result: cuentaEstado("SOBRESTOCK") }, null],
+    ["Total configurados", null, null],
+  ]);
+  const filaTotEst = iEst + 4;
+  ["CRITICO", "BAJO", "OK", "SOBRESTOCK"].forEach((e, i) => {
+    const est = REP_ESTADO[e];
+    wsRes.getCell(iEst + i, 1).font = repFuente(10, true, est.color);
+    const cp = wsRes.getCell(iEst + i, 3);
+    cp.value = { formula: `IFERROR(B${iEst + i}/$B$${filaTotEst},0)`, result: detOrd.length ? cuentaEstado(e) / detOrd.length : 0 };
+    cp.numFmt = "0.0%";
+    cp.font = repFuente(10);
+    cp.alignment = REP_CEN;
+  });
+  wsRes.getCell(filaTotEst, 1).font = repFuente(10, true);
+  const ctot = wsRes.getCell(filaTotEst, 2);
+  ctot.value = { formula: `SUM(B${iEst}:B${iEst + 3})`, result: detOrd.length };
+  ctot.font = repFuente(10, true);
+  ctot.numFmt = "#,##0";
+  ctot.alignment = REP_CEN;
+
+  const iCrit = bloque("Distribución por criticidad", ["Criticidad", "Materiales", "A pedir (unid.)"],
+    ["A", "B", "C"].map(c => [
+      { A: "A - alta", B: "B - media", C: "C - baja" }[c],
+      { formula: `COUNTIF(${HD}!$D$${F + 1}:$D$${ultDet},"${c}")`, result: cuentaCrit(c) },
+      { formula: `SUMIF(${HP}!$E$${F + 1}:$E$${ultPedir},"${c}",${HP}!$J$${F + 1}:$J$${ultPedir})`, result: unidadesCrit(c) },
+    ]));
+  [REP_C.rojo, REP_C.naranja, REP_C.gris].forEach((col, i) => {
+    wsRes.getCell(iCrit + i, 1).font = repFuente(10, true, col);
+    wsRes.getCell(iCrit + i, 2).numFmt = "#,##0";
+    wsRes.getCell(iCrit + i, 3).numFmt = "#,##0";
+  });
+
+  const centros = [...new Map(configurados.map(m => [m.centro, m.centro_nombre || m.centro])).entries()]
+    .sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+  const iCen = f + 2;
+  bloque("Materiales por centro / bodega",
+    ["Centro", "Nombre del centro", "Crítico", "Bajo", "Total", "A pedir (unid.)"],
+    centros.map(([cen, nom], i) => {
+      const r = iCen + i;
+      const enCentro = configurados.filter(m => m.centro === cen);
+      return [
+        cen, nom,
+        { formula: `COUNTIFS(${HD}!$B$${F + 1}:$B$${ultDet},$A${r},${HD}!$I$${F + 1}:$I$${ultDet},"Crítico")`,
+          result: enCentro.filter(m => m.estado === "CRITICO").length },
+        { formula: `COUNTIFS(${HD}!$B$${F + 1}:$B$${ultDet},$A${r},${HD}!$I$${F + 1}:$I$${ultDet},"Bajo")`,
+          result: enCentro.filter(m => m.estado === "BAJO").length },
+        { formula: `COUNTIF(${HD}!$B$${F + 1}:$B$${ultDet},$A${r})`, result: enCentro.length },
+        { formula: `SUMIF(${HP}!$C$${F + 1}:$C$${ultPedir},$A${r},${HP}!$J$${F + 1}:$J$${ultPedir})`,
+          result: pedirOrd.filter(m => m.centro === cen).reduce((s, m) => s + repNum(m.cantidad_sugerida_compra), 0) },
+      ];
+    }));
+  wsRes.getColumn(2).width = 32;
+  centros.forEach((_, i) => {
+    [3, 4, 5, 6].forEach(col => { wsRes.getCell(iCen + i, col).numFmt = "#,##0"; });
+  });
+
+  const provs = new Map();
+  pedirOrd.forEach(m => {
+    const p = m.proveedor || "Sin asignar";
+    const acc = provs.get(p) || { lineas: 0, unidades: 0 };
+    acc.lineas += 1;
+    acc.unidades += repNum(m.cantidad_sugerida_compra);
+    provs.set(p, acc);
+  });
+  const provOrd = [...provs.entries()].sort((a, b) => b[1].unidades - a[1].unidades);
+  const iProv = f + 2;
+  bloque("Reposición por proveedor  (una SOLPED por proveedor)", ["Proveedor", "Líneas", "Unidades"],
+    provOrd.map(([p, v], i) => {
+      const r = iProv + i;
+      return [
+        p,
+        { formula: `COUNTIF(${HP}!$K$${F + 1}:$K$${ultPedir},$A${r})`, result: v.lineas },
+        { formula: `SUMIF(${HP}!$K$${F + 1}:$K$${ultPedir},$A${r},${HP}!$J$${F + 1}:$J$${ultPedir})`, result: v.unidades },
+      ];
+    }));
+  provOrd.forEach((_, i) => {
+    wsRes.getCell(iProv + i, 2).numFmt = "#,##0";
+    wsRes.getCell(iProv + i, 3).numFmt = "#,##0";
+  });
+
+  wsRes.getCell(f, 1).value = "Pendientes por configurar:";
+  wsRes.getCell(f, 1).font = repFuente(10, true, REP_C.naranja);
+  const cp = wsRes.getCell(f, 2);
+  cp.value = { formula: `SUM('Pendientes Config'!$B$${F + 1}:$B$${ultPend})`, result: totalPend };
+  cp.font = repFuente(10, true, REP_C.naranja);
+  cp.numFmt = "#,##0";
+  cp.alignment = REP_CEN;
+  wsRes.getCell(f, 3).value = "materiales sin mín-máx definido";
+  wsRes.getCell(f, 3).font = repFuente(9, false, REP_C.gris);
+  wsRes.pageSetup = {
+    orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0,
+    margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.3, footer: 0.3 },
+  };
+
+  /* ============ Hoja 6: Metodologia ============ */
+  const wsMet = wb.addWorksheet("Metodología");
+  repTitulo(wsMet, "METODOLOGÍA Y DEFINICIONES", "Cómo se calcula cada cifra de este reporte", 2);
+  wsMet.getColumn(1).width = 26;
+  wsMet.getColumn(2).width = 95;
+  const met = [
+    ["Fuente de los datos", "Vista v_materiales_estado de la plataforma. Las existencias provienen del último cargue del reporte de inventario de SAP; los parámetros mín-máx, de la configuración registrada en la plataforma."],
+    ["Corte de datos", `${corteTxt}. Todas las cifras corresponden a esa fecha, no a la fecha de generación del archivo.`],
+    ["Alcance", alcance],
+    ["", ""],
+    ["Estado y cantidad a pedir", "El reporte no recalcula estas reglas: toma los campos 'estado' y 'cantidad_sugerida_compra' tal como los entrega la plataforma, de modo que el archivo y la pantalla siempre coinciden."],
+    ["Cobertura", "Existencia dividida entre el stock mínimo, en porcentaje. 0 % = sin stock; 100 % = justo en el mínimo. Sirve para distinguir urgencias dentro de un mismo estado."],
+    ["", ""],
+    ["Criticidad A", "La falla del componente detiene el equipo. Reposición prioritaria."],
+    ["Criticidad B", "Afecta el desempeño sin detener el equipo."],
+    ["Criticidad C", "Consumible o componente de bajo impacto."],
+    ["", ""],
+    ["Orden de prioridad", "Primero criticidad (A antes que B antes que C); dentro de cada criticidad, menor cobertura primero; a igual cobertura, mayor cantidad a pedir."],
+    ["Consolidado por material", "Un mismo código puede estar por debajo del mínimo en varios centros. El consolidado suma esas líneas para emitir una sola SOLPED por código."],
+    ["Pendientes por configurar", "Materiales sin parámetros mín-máx. No entran en el cálculo de reposición: sin mínimo no hay contra qué comparar la existencia."],
+    ["", ""],
+    ["Limitación conocida", "El cálculo no considera consumo histórico ni tiempo de entrega del proveedor. Un material de rotación alta y uno de rotación nula, con la misma cobertura, aparecen con la misma prioridad."],
+    ["Sin valorización", "Este reporte no incluye el costo de la reposición: la plataforma deriva el precio unitario del valor del stock, que es cero justamente en los materiales sin existencia."],
+  ];
+  met.forEach(([k, v], i) => {
+    const r = 4 + i;
+    const ck = wsMet.getCell(r, 1);
+    ck.value = k;
+    ck.font = repFuente(10, true, k ? REP_C.azul : "FF000000");
+    ck.alignment = { vertical: "top" };
+    const cv = wsMet.getCell(r, 2);
+    cv.value = v;
+    cv.font = repFuente(10);
+    cv.alignment = { wrapText: true, vertical: "top" };
+    if (v) wsMet.getRow(r).height = 28;
+  });
+  const cpie = wsMet.getCell(4 + met.length + 1, 1);
+  cpie.value = "Generado por Kronos-M · JAC Engineering";
+  cpie.font = repFuente(9, false, REP_C.gris);
+
+  return wb;
+}
+
+/* ============================================================
+   Utilidades compartidas por los dos puntos de descarga
+   ============================================================ */
+
+/* La fecha de corte NO es la de hoy: es la del ultimo cargue de inventario
+   desde SAP. Si la vista expone esa fecha, se toma la mas reciente de los
+   datos; si no, se cae a hoy. */
+function corteDesdeDatos(datos) {
+  let max = null;
+  datos.forEach(m => {
+    const f = m.fecha_carga || m.fecha_inventario || m.actualizado_en;
+    if (f && (!max || String(f) > String(max))) max = f;
+  });
+  return max ? String(max).slice(0, 10) : new Date().toISOString().slice(0, 10);
+}
+
+async function descargarLibro(wb, nombreArchivo) {
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = nombreArchivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/* ============================================================
+   Panel de Reporte de inventario (UI)
+   ============================================================ */
+async function prepararReporteInventario() {
+  // El panel se puede abrir directamente desde el menu, antes de que la lista
+  // de materiales se haya cargado: sin esto los selectores saldrian vacios.
+  if (!materialesData.length) {
+    document.getElementById("rep-previo").textContent = "Cargando materiales...";
+    await cargarMateriales();
+    abrirPanel("panel-reporte-inventario");
+  }
+  const selCat = document.getElementById("rep-categoria");
+  const selCen = document.getElementById("rep-centro");
+  const inpCorte = document.getElementById("rep-corte");
+
+  selCat.innerHTML = '<option value="">Todas las áreas</option>' +
+    categoriasConocidas.map(c => `<option value="${c}">${LABEL_CATEGORIA_MAT[c] || c}</option>`).join("");
+  selCat.value = categoriasConocidas.includes("VFD") ? "VFD" : (filtroCategoriaMat || "");
+
+  selCen.innerHTML = '<option value="">Todos los centros</option>' +
+    centrosConocidos.map(([c, nombre]) => `<option value="${c}">${c} · ${nombre}</option>`).join("");
+  selCen.value = filtroCentroMat || "";
+
+  inpCorte.value = corteDesdeDatos(materialesData);
+  actualizarPrevioReporte();
+}
+
+function datosReporteSeleccionados() {
+  const cat = document.getElementById("rep-categoria").value;
+  const cen = document.getElementById("rep-centro").value;
+  return materialesData.filter(m =>
+    (!cat || m.categoria === cat) && (!cen || m.centro === cen));
+}
+
+function actualizarPrevioReporte() {
+  const datos = datosReporteSeleccionados();
+  const conf = datos.filter(m => m.estado && m.estado !== "SIN CONFIGURAR");
+  const pedir = conf.filter(m => Number(m.cantidad_sugerida_compra) > 0);
+  const prev = document.getElementById("rep-previo");
+  prev.innerHTML = datos.length
+    ? `${conf.length} configurados · ${pedir.length} líneas a pedir · ${datos.length - conf.length} pendientes por configurar`
+    : "No hay materiales con esta selección.";
+}
+
+async function descargarReporteInventario() {
+  const btn = document.getElementById("rep-btn-generar");
+  const datos = datosReporteSeleccionados();
+  if (!datos.length) { toast("No hay materiales con esta selección"); return; }
+
+  btn.disabled = true;
+  btn.textContent = "Generando...";
+  try {
+    const selCat = document.getElementById("rep-categoria");
+    const selCen = document.getElementById("rep-centro");
+    const partes = [];
+    if (selCen.value) partes.push(selCen.selectedOptions[0].text);
+    if (selCat.value) partes.push(`Área: ${selCat.selectedOptions[0].text}`);
+
+    const valorCorte = document.getElementById("rep-corte").value;
+    const corte = valorCorte ? new Date(valorCorte + "T12:00:00") : new Date();
+
+    const wb = construirLibroReporte(datos, {
+      titulo: selCat.value
+        ? `CONTROL DE INVENTARIO  ·  ${(LABEL_CATEGORIA_MAT[selCat.value] || selCat.value).toUpperCase()}`
+        : "CONTROL DE INVENTARIO",
+      alcance: partes.length ? partes.join(" · ") : "Todos los centros y áreas",
+      corte,
+    });
+
+    await descargarLibro(wb, `Reporte_Inventario${selCat.value ? "_" + selCat.value : ""}_${valorCorte || new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast("Reporte generado");
+  } catch (e) {
+    console.error(e);
+    toast("Error al generar el reporte");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Generar Excel";
+  }
+}
+
+document.getElementById("rep-categoria").addEventListener("change", actualizarPrevioReporte);
+document.getElementById("rep-centro").addEventListener("change", actualizarPrevioReporte);
+document.getElementById("rep-btn-generar").onclick = descargarReporteInventario;
+
 
 /* ---------- Configuración Min-Max (búsqueda + creación) ---------- */
 let cfgBuscarTimeout = null;
