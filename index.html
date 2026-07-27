@@ -2674,7 +2674,14 @@ function construirLibroReporte(materiales, opciones = {}) {
   /* ---------- Particion de los datos ---------- */
   const configurados = materiales.filter(m => m.estado && m.estado !== "SIN CONFIGURAR");
   const pendientes   = materiales.filter(m => !m.estado || m.estado === "SIN CONFIGURAR");
-  const aPedir       = configurados.filter(m => repNum(m.cantidad_sugerida_compra) > 0);
+  /* Requieren reposicion los que estan en CRITICO (por debajo del minimo) y
+     en BAJO (dentro del primer 25% de la banda). NO sirve filtrar por
+     cantidad_sugerida_compra > 0: la vista la calcula como maximo menos
+     existencia, asi que un material en OK tambien la tiene mayor que cero
+     mientras no haya llegado al maximo. */
+  const ESTADOS_A_PEDIR = ["CRITICO", "BAJO"];
+  const aPedir = configurados.filter(m =>
+    ESTADOS_A_PEDIR.includes(m.estado) && repNum(m.cantidad_sugerida_compra) > 0);
 
   // Prioridad: criticidad primero, luego menor cobertura, luego mayor cantidad
   const porPrioridad = (a, b) =>
@@ -3103,7 +3110,14 @@ function construirLibroReporte(materiales, opciones = {}) {
     ["Corte de datos", `${corteTxt}. Todas las cifras corresponden a esa fecha, no a la fecha de generación del archivo.`],
     ["Alcance", alcance],
     ["", ""],
-    ["Estado y cantidad a pedir", "El reporte no recalcula estas reglas: toma los campos 'estado' y 'cantidad_sugerida_compra' tal como los entrega la plataforma, de modo que el archivo y la pantalla siempre coinciden."],
+    ["Estado y cantidad", "El reporte no recalcula nada: toma 'estado' y 'cantidad_sugerida_compra' de la vista v_materiales_estado, para que el archivo y la pantalla coincidan siempre. Las definiciones que siguen son las que aplica esa vista."],
+    ["Estado: Crítico", "Existencia por debajo del stock mínimo."],
+    ["Estado: Bajo", "Existencia igual o superior al mínimo, pero dentro del primer 25 % de la banda entre mínimo y máximo."],
+    ["Estado: OK", "Existencia por encima de ese umbral y sin superar el máximo."],
+    ["Estado: Sobrestock", "Existencia por encima del stock máximo."],
+    ["Estado: Sin configurar", "Sin stock mínimo definido, o stock máximo en cero."],
+    ["Qué entra en A Pedir", "Los materiales en estado Crítico o Bajo. Un material en OK también arroja cantidad sugerida mayor que cero mientras no alcance el máximo, pero no requiere reposición y por eso no se lista."],
+    ["Cantidad a pedir", "Stock máximo menos existencia actual, nunca negativa: repone hasta el máximo, no hasta el mínimo."],
     ["Cobertura", "Existencia dividida entre el stock mínimo, en porcentaje. 0 % = sin stock; 100 % = justo en el mínimo. Sirve para distinguir urgencias dentro de un mismo estado."],
     ["", ""],
     ["Criticidad A", "La falla del componente detiene el equipo. Reposición prioritaria."],
@@ -3202,7 +3216,8 @@ function datosReporteSeleccionados() {
 function actualizarPrevioReporte() {
   const datos = datosReporteSeleccionados();
   const conf = datos.filter(m => m.estado && m.estado !== "SIN CONFIGURAR");
-  const pedir = conf.filter(m => Number(m.cantidad_sugerida_compra) > 0);
+  const pedir = conf.filter(m =>
+    ["CRITICO", "BAJO"].includes(m.estado) && Number(m.cantidad_sugerida_compra) > 0);
   const prev = document.getElementById("rep-previo");
   prev.innerHTML = datos.length
     ? `${conf.length} configurados · ${pedir.length} líneas a pedir · ${datos.length - conf.length} pendientes por configurar`
