@@ -645,6 +645,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="12" r="5"/><circle cx="16" cy="12" r="5"/></svg>
     Equivalencias
   </button>
+  <button class="nav-item" data-tab="balance" data-modulo="materiales">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v18"/><path d="M5 8h14"/><path d="M5 8l-2 6h6z"/><path d="M19 8l-2 6h6z"/></svg>
+    Balance
+  </button>
   <button class="nav-item" data-tab="carrito" data-modulo="materiales" style="position:relative">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/></svg>
     Carrito
@@ -1140,6 +1144,22 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
 </div>
 
+<!-- ===== Panel: Balance entre centros ===== -->
+<div class="panel" id="panel-balance">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="volverAMateriales()">&#8592;</button>
+    <h2>Balance entre centros</h2>
+  </div>
+  <div class="panel-body">
+    <p class="hint-box">Material por debajo de su nivel en un centro cuando el mismo repuesto esta por encima del maximo en otro. Revisar esta lista antes de mandar un requerimiento a compras: cada linea es una compra que puede resolverse con un traslado. La viabilidad la confirma quien gestiona el material.</p>
+    <div class="field">
+      <input id="bal-buscar" placeholder="Buscar por codigo, nombre o centro..." oninput="renderBalance()"/>
+    </div>
+    <div id="bal-resumen"></div>
+    <div id="bal-lista"><div class="loading">Cargando...</div></div>
+  </div>
+</div>
+
 <!-- ===== Panel: Ensayos · lista de maquinas ===== -->
 <div class="panel" id="panel-ee-maquinas">
   <div class="panel-header"><h2>Máquinas eléctricas</h2></div>
@@ -1474,6 +1494,11 @@ let filtroCategoriaMat = "";
 let materialActual = null;
 let centrosConocidos = []; // [[codigo, nombre], ...]
 let categoriasConocidas = [];
+/* Balance entre centros. Se consulta SIEMPRE global, sin filtrar por centro:
+   el excedente que cubre un faltante suele estar precisamente en un centro
+   que NO esta en la seleccion del reporte. Si se filtrara, el dato
+   desapareceria justo cuando sirve. Clave del mapa: "codigo|centro". */
+let mapaTraslados = new Map();
 const LABEL_CATEGORIA_MAT = {
   ELECTRICIDAD: "Electricidad", MECANICA: "Mecánica", INSTRUMENTACION: "Instrumentación",
   VFD: "VFD", PRODUCCION: "Producción", OTRO: "Otro"
@@ -2415,6 +2440,9 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     } else if (btn.dataset.tab === "equivalencias") {
       abrirPanel("panel-equivalencias");
       cargarEquivalencias();
+    } else if (btn.dataset.tab === "balance") {
+      abrirPanel("panel-balance");
+      abrirBalance();
     } else if (btn.dataset.tab === "carrito") {
       abrirPanel("panel-carrito");
       renderCarrito();
@@ -2459,6 +2487,7 @@ async function cargarMateriales() {
       desde += PAGINA;
     }
     materialesData = todos;
+    await cargarBalanceTraslados();
 
     // Poblar filtro de centros (unicos, ordenados)
     const selCentro = document.getElementById("mat-filtro-centro");
@@ -2494,6 +2523,35 @@ async function cargarMateriales() {
   } catch (e) {
     lista.innerHTML = '<div class="empty">Error cargando materiales: ' + e.message + '</div>';
   }
+}
+
+/* Carga el balance entre centros: material bajo su nivel en un centro
+   cuando el mismo grupo de equivalencia tiene excedente sobre el maximo
+   en otro. Es informativo: NO altera la cantidad sugerida de compra.
+   Si la vista todavia no existe en la base, la app sigue funcionando
+   igual y el reporte simplemente sale sin esas columnas. */
+async function cargarBalanceTraslados() {
+  mapaTraslados = new Map();
+  try {
+    const PAGINA = 1000;
+    let desde = 0;
+    while (true) {
+      const { data, error } = await sb.from("v_traslados_sugeridos")
+        .select("*").order("codigo_sap").range(desde, desde + PAGINA - 1);
+      if (error) throw error;
+      (data || []).forEach(t => {
+        mapaTraslados.set(`${t.codigo_sap}|${t.centro}`, t);
+      });
+      if (!data || data.length < PAGINA) break;
+      desde += PAGINA;
+    }
+  } catch (e) {
+    console.warn("Balance entre centros no disponible:", e.message);
+  }
+}
+
+function trasladoDe(m) {
+  return mapaTraslados.get(`${m.codigo_sap}|${m.centro}`) || null;
 }
 
 function renderListaMateriales() {
@@ -2558,6 +2616,71 @@ document.querySelectorAll("#mat-estado-chips .estado-chip").forEach(chip => {
     renderListaMateriales();
   };
 });
+
+/* ---------- Balance entre centros ---------- */
+async function abrirBalance() {
+  document.getElementById("bal-lista").innerHTML = '<div class="loading">Cargando...</div>';
+  if (!materialesData.length) { await cargarMateriales(); }
+  else { await cargarBalanceTraslados(); }
+  renderBalance();
+}
+
+function renderBalance() {
+  const lista = document.getElementById("bal-lista");
+  const resumen = document.getElementById("bal-resumen");
+  const texto = (document.getElementById("bal-buscar").value || "").toLowerCase().trim();
+
+  /* Solo lo que aporta: lineas donde hay algo que trasladar. Las que van
+     100% a compra ya estan en el reporte y en la lista de materiales. */
+  let filas = [...mapaTraslados.values()]
+    .filter(t => Number(t.cant_posible_traslado) > 0);
+
+  if (!filas.length) {
+    resumen.innerHTML = "";
+    lista.innerHTML = '<div class="empty">No hay material cubrible por traslado. Si esperabas resultados, verifica que la vista v_traslados_sugeridos exista en la base de datos.</div>';
+    return;
+  }
+
+  const cubiertas = filas.filter(t => Number(t.cant_a_comprar) === 0).length;
+  const critA = filas.filter(t => t.criticidad === "A").length;
+  const valor = filas.reduce((s, t) => s + (Number(t.ahorro_estimado) || 0), 0);
+  resumen.innerHTML = `
+    <p class="hint-box" style="border-left-color:var(--accent)">
+      <strong>${filas.length} líneas</strong> tienen excedente en otro centro ·
+      <strong>${cubiertas}</strong> se cubren por completo ·
+      <strong>${critA}</strong> en criticidad A
+      ${valor > 0 ? `<br>Compra evitable estimada: <strong>$${Math.round(valor).toLocaleString("es-CO")}</strong>` : ""}
+    </p>`;
+
+  if (texto) {
+    filas = filas.filter(t => `${t.codigo_sap} ${t.descripcion || ""} ${t.centro} ${t.centros_con_excedente || ""}`
+      .toLowerCase().includes(texto));
+  }
+
+  const ordCrit = { A: 0, B: 1, C: 2 };
+  filas.sort((a, b) => (ordCrit[a.criticidad] ?? 9) - (ordCrit[b.criticidad] ?? 9)
+    || Number(b.cant_posible_traslado) - Number(a.cant_posible_traslado));
+
+  if (!filas.length) { lista.innerHTML = '<div class="empty">Sin resultados.</div>'; return; }
+
+  lista.innerHTML = filas.slice(0, 300).map(t => {
+    const total = Number(t.cant_a_comprar) === 0;
+    return `
+    <div class="mat-card">
+      <div class="mat-main">
+        <div class="mat-code">${t.codigo_sap} · falta en ${t.centro}</div>
+        <div class="mat-desc">${t.descripcion || ""}</div>
+        <div class="mat-stock">Stock ${Math.round(t.stock_actual)} · mín ${Math.round(t.stock_minimo)} · faltan ${Math.round(t.faltante)}</div>
+        <div class="mat-meta" style="color:var(--accent)">Excedente en ${t.centros_con_excedente || "—"}</div>
+        <div class="mat-stock">Trasladar ${Math.round(t.cant_posible_traslado)}${total ? " · cubre todo el faltante" : ` · comprar ${Math.round(t.cant_a_comprar)}`}</div>
+      </div>
+      <div class="mat-side">
+        <span class="badge ${total ? "badge-OK" : "badge-BAJO"}">${t.via_abastecimiento}</span>
+        <div class="mat-meta" style="text-align:center;margin-top:4px">Crit. ${t.criticidad || "—"}</div>
+      </div>
+    </div>`;
+  }).join("");
+}
 
 function abrirFichaMaterial(m) {
   materialActual = m;
@@ -2912,7 +3035,14 @@ function construirLibroReporte(materiales, opciones = {}) {
     alcance = "Todos los centros y áreas",
     corte = new Date(),
     subtitulo = "Mantenimiento · Operación Putumayo",
+    /* Map "codigo|centro" -> fila de v_traslados_sugeridos. Se recibe por
+       parametro para que la funcion siga siendo pura y la Edge Function
+       pueda pasar el mismo mapa. Si llega vacio, las columnas de balance
+       salen en blanco y el resto del reporte no cambia. */
+    traslados = new Map(),
   } = opciones;
+
+  const repTras = (m) => traslados.get(`${m.codigo_sap}|${m.centro}`) || null;
 
   const corteTxt = repFechaCorta(corte instanceof Date ? corte : new Date(corte));
 
@@ -2968,6 +3098,25 @@ function construirLibroReporte(materiales, opciones = {}) {
 
   // Totales precalculados (ExcelJS no evalua formulas: hay que darle el result)
   const totalUnidades = pedirOrd.reduce((s, m) => s + repNum(m.cantidad_sugerida_compra), 0);
+
+  /* Balance entre centros, precalculado sobre las lineas del reporte.
+     El ahorro solo se puede valorizar cuando el excedente existe: el centro
+     que lo tiene SI tiene stock, y por tanto valor unitario conocido. Es la
+     unica cifra valorizable del reporte, justo por eso. */
+  const trasFilas   = pedirOrd.map(repTras);
+  const totalTraslado = trasFilas.reduce((s, t) => s + (t ? repNum(t.cant_posible_traslado) : 0), 0);
+  const lineasTraslado = trasFilas.filter(t => t && repNum(t.cant_posible_traslado) > 0).length;
+  const lineasCubiertas = pedirOrd.filter((m, i) => {
+    const t = trasFilas[i];
+    return t && repNum(t.cant_posible_traslado) > 0 && repNum(t.cant_a_comprar) === 0;
+  }).length;
+  const totalNeto = pedirOrd.reduce((s, m, i) => {
+    const t = trasFilas[i];
+    return s + (t ? repNum(t.cant_a_comprar) : repNum(m.cantidad_sugerida_compra));
+  }, 0);
+  const ahorroTraslado = trasFilas.reduce((s, t) => s + (t ? repNum(t.ahorro_estimado) : 0), 0);
+  const critATraslado = pedirOrd.filter((m, i) =>
+    m.criticidad === "A" && trasFilas[i] && repNum(trasFilas[i].cant_posible_traslado) > 0).length;
   const cuentaEstado = (e) => configurados.filter(m => m.estado === e).length;
   const cuentaCrit   = (c) => configurados.filter(m => m.criticidad === c).length;
   const unidadesCrit = (c) => pedirOrd.filter(m => m.criticidad === c)
@@ -2991,29 +3140,35 @@ function construirLibroReporte(materiales, opciones = {}) {
   /* ============ Hoja 2: A Pedir (SOLPED) ============ */
   const wsPed = wb.addWorksheet("A Pedir (SOLPED)");
   repTitulo(wsPed, "MATERIALES A PEDIR  ·  ordenados por prioridad de reposición",
-    `Prioridad: criticidad (A > B > C), luego menor cobertura, luego mayor cantidad   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 11);
+    `Prioridad: criticidad (A > B > C), luego menor cobertura, luego mayor cantidad   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 15);
   repEncabezado(wsPed, F, [
     { h: "Prio.", w: 6 }, { h: "Código", w: 11 }, { h: "N° parte", w: 15 },
     { h: "Centro", w: 8 }, { h: "Nombre técnico", w: 42 }, { h: "Crit.", w: 6 },
     { h: "Existencia", w: 11 },
     { h: "Mínimo", w: 9 }, { h: "Máximo", w: 9 }, { h: "Cobertura", w: 11 },
     { h: "A pedir", w: 10 }, { h: "Proveedor", w: 22 },
+    { h: "Cubre traslado", w: 13 }, { h: "Neto a comprar", w: 13 },
+    { h: "Excedente en", w: 26 },
   ]);
   pedirOrd.forEach((m, i) => {
     const r = F + 1 + i;
+    const t = repTras(m);
+    const traslado = t ? repNum(t.cant_posible_traslado) : 0;
+    const neto = t ? repNum(t.cant_a_comprar) : repNum(m.cantidad_sugerida_compra);
     const vals = [
       i + 1, String(m.codigo_sap ?? ""), String(m.numero_parte ?? "").trim(),
       m.centro || "", repNombre(m), m.criticidad || "",
       repNum(m.stock_actual), repNum(m.stock_minimo), repNum(m.stock_maximo),
       { formula: `IFERROR(G${r}/H${r},0)`, result: repCobertura(m) },
       repNum(m.cantidad_sugerida_compra), m.proveedor || "Sin asignar",
+      traslado, neto, (t && traslado > 0) ? (t.centros_con_excedente || "") : "",
     ];
     vals.forEach((v, j) => {
       const c = wsPed.getCell(r, j + 1);
       c.value = v;
       c.font = repFuente(10);
       c.border = REP_BORDE;
-      c.alignment = (j === 4 || j === 11) ? REP_IZQ : REP_CEN;
+      c.alignment = (j === 4 || j === 11 || j === 14) ? REP_IZQ : REP_CEN;
     });
     wsPed.getCell(r, 2).numFmt = "@";
     wsPed.getCell(r, 3).numFmt = "@";
@@ -3025,6 +3180,26 @@ function construirLibroReporte(materiales, opciones = {}) {
     wsPed.getCell(r, 6).font = repFuente(10, true, cc);
     wsPed.getCell(r, 11).font = repFuente(10, true);
     wsPed.getCell(r, 11).fill = repRelleno(REP_C.fNaranja);
+    /* Balance entre centros. Va DESPUES de los estilos base a proposito:
+       las lineas de arriba reescriben el formato de la columna 11 y
+       borrarian el tachado si esto se aplicara antes. */
+    [13, 14].forEach(col => { wsPed.getCell(r, col).numFmt = "#,##0"; });
+    if (traslado > 0) {
+      /* Azul y no verde a proposito: es una posibilidad por confirmar, no un
+         hecho. El traslado puede no ser viable por zona, logistica o
+         revision del componente. */
+      wsPed.getCell(r, 13).font = repFuente(10, true, REP_C.azul2);
+      wsPed.getCell(r, 13).fill = repRelleno(REP_C.fAzul);
+      wsPed.getCell(r, 15).font = repFuente(9, false, REP_C.azul2);
+      if (neto === 0) {
+        /* Cubierto por completo: la cantidad a pedir queda tachada para que
+           salte a la vista antes de mandarla a compras. El valor NO se
+           modifica: si el traslado no se hace, el faltante sigue siendo ese. */
+        const cp = wsPed.getCell(r, 11);
+        cp.font = { name: "Arial", size: 10, color: { argb: REP_C.gris }, strike: true };
+        cp.fill = repRelleno(REP_C.fGris);
+      }
+    }
     if (repNum(m.stock_actual) === 0) {
       wsPed.getCell(r, 7).font = repFuente(10, true, REP_C.rojo);
       wsPed.getCell(r, 7).fill = repRelleno(REP_C.fRojo);
@@ -3035,7 +3210,7 @@ function construirLibroReporte(materiales, opciones = {}) {
     }
   });
   if (pedirOrd.length) {
-    wsPed.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPedir, column: 12 } };
+    wsPed.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPedir, column: 15 } };
     wsPed.addConditionalFormatting({
       ref: `J${F + 1}:J${ultPedir}`,
       rules: [{
@@ -3056,6 +3231,20 @@ function construirLibroReporte(materiales, opciones = {}) {
     ct.numFmt = "#,##0";
     wsPed.getCell(rt, 12).value = `unidades en ${pedirOrd.length} líneas`;
     wsPed.getCell(rt, 12).font = repFuente(9, false, REP_C.gris);
+    const ctT = wsPed.getCell(rt, 13);
+    ctT.value = { formula: `SUM(M${F + 1}:M${ultPedir})`, result: totalTraslado };
+    ctT.font = repFuente(11, true, REP_C.azul2);
+    ctT.fill = repRelleno(REP_C.fAzul);
+    ctT.alignment = REP_CEN;
+    ctT.numFmt = "#,##0";
+    const ctN = wsPed.getCell(rt, 14);
+    ctN.value = { formula: `SUM(N${F + 1}:N${ultPedir})`, result: totalNeto };
+    ctN.font = repFuente(11, true, REP_C.blanco);
+    ctN.fill = repRelleno(REP_C.azul2);
+    ctN.alignment = REP_CEN;
+    ctN.numFmt = "#,##0";
+    wsPed.getCell(rt, 15).value = "cubrible por traslado  /  neto a comprar";
+    wsPed.getCell(rt, 15).font = repFuente(9, false, REP_C.gris);
   }
   wsPed.views = [{ state: "frozen", xSplit: 5, ySplit: F }];
   repImpresion(wsPed, F, corteTxt);
@@ -3340,6 +3529,27 @@ function construirLibroReporte(materiales, opciones = {}) {
     wsRes.getCell(iProv + i, 3).numFmt = "#,##0";
   });
 
+  /* Balance entre centros. Solo aparece si hay algo que trasladar: un bloque
+     en cero no informa nada y le quita espacio al resumen. */
+  if (lineasTraslado > 0) {
+    const iBal = f + 2;
+    bloque("Antes de comprar: disponible en otro centro", ["Concepto", "Cantidad", "Detalle"], [
+      ["Líneas con excedente en otro centro", lineasTraslado, `de ${pedirOrd.length} líneas a pedir`],
+      ["Líneas cubiertas por completo", lineasCubiertas, "no requieren orden de compra si se traslada"],
+      ["De ellas, criticidad A", critATraslado, "prioridad de gestión"],
+      ["Unidades cubribles por traslado", totalTraslado, "sobre el excedente por encima del máximo"],
+      ["Neto a comprar", totalNeto, `frente a ${totalUnidades.toLocaleString("es-CO")} sin considerar traslados`],
+      ["Valor del traslado (COP)", ahorroTraslado > 0 ? Math.round(ahorroTraslado) : null,
+        ahorroTraslado > 0 ? "compra evitable si el traslado es viable" : "sin valor unitario disponible"],
+    ]);
+    for (let i = 0; i < 6; i++) wsRes.getCell(iBal + i, 2).numFmt = "#,##0";
+    wsRes.getCell(iBal + 1, 2).font = repFuente(10, true, REP_C.azul2);
+    wsRes.getCell(iBal + 2, 2).font = repFuente(10, true, REP_C.rojo);
+    wsRes.getCell(iBal + 4, 2).font = repFuente(11, true, REP_C.azul);
+    wsRes.getCell(iBal + 5, 2).numFmt = '"$"#,##0';
+    wsRes.getCell(iBal + 5, 2).font = repFuente(10, true, REP_C.azul);
+  }
+
   wsRes.getCell(f, 1).value = "Pendientes por configurar:";
   wsRes.getCell(f, 1).font = repFuente(10, true, REP_C.naranja);
   const cp = wsRes.getCell(f, 2);
@@ -3383,6 +3593,14 @@ function construirLibroReporte(materiales, opciones = {}) {
     ["Orden de prioridad", "Primero criticidad (A antes que B antes que C); dentro de cada criticidad, menor cobertura primero; a igual cobertura, mayor cantidad a pedir."],
     ["Consolidado por material", "Un mismo código puede estar por debajo del mínimo en varios centros. El consolidado suma esas líneas para emitir una sola SOLPED por código."],
     ["Pendientes por configurar", "Materiales sin parámetros mín-máx. No entran en el cálculo de reposición: sin mínimo no hay contra qué comparar la existencia."],
+    ["", ""],
+    ["Cubre traslado", "Unidades del faltante que podrían cubrirse con existencia de otro centro, cuando ese centro tiene el mismo material por encima de su propio stock máximo. Se calcula sobre el grupo de equivalencia, no solo sobre el código: dos códigos SAP del mismo repuesto cuentan como uno."],
+    ["Excedente en", "Centros que tienen el sobrante, con la cantidad disponible sobre su máximo. Es el punto de partida para gestionar el traslado."],
+    ["Neto a comprar", "Cantidad a pedir menos lo cubrible por traslado. Es una cifra de análisis, no una instrucción: si el traslado no se ejecuta, la cantidad que se requiere sigue siendo la de la columna 'A pedir', que por eso no se modifica."],
+    ["Excedente: definición", "Solo lo que supera el stock máximo del centro que lo tiene. No se propone dejar a un centro por debajo de su propio nivel de reposición para cubrir a otro."],
+    ["Reparto del excedente", "Si un mismo excedente puede cubrir varios centros, se asigna primero a criticidad A y, dentro de la misma criticidad, al centro con mayor déficit. Un excedente no se ofrece dos veces."],
+    ["Valor del traslado", "Única cifra valorizada del reporte. Es posible porque el centro con excedente sí tiene existencia y por tanto valor unitario conocido, a diferencia del material en cero."],
+    ["Traslado: qué NO valida", "Viabilidad. No considera zona operativa, propiedad del inventario, costo de transporte ni diferencias de revisión entre lotes del mismo número de parte. La confirmación es de quien gestiona el material."],
     ["", ""],
     ["Limitación conocida", "El cálculo no considera consumo histórico ni tiempo de entrega del proveedor. Un material de rotación alta y uno de rotación nula, con la misma cobertura, aparecen con la misma prioridad."],
     ["Sin valorización", "Este reporte no incluye el costo de la reposición: la plataforma deriva el precio unitario del valor del stock, que es cero justamente en los materiales sin existencia."],
@@ -3535,6 +3753,9 @@ async function descargarReporteInventario() {
         : "CONTROL DE INVENTARIO",
       alcance: alcanceReporte(),
       corte,
+      /* Global a proposito: el excedente que cubre un faltante de Put Norte
+         puede estar en un centro que no esta en la seleccion. */
+      traslados: mapaTraslados,
     });
 
     const sufijoCentro = centros.length === centrosConocidos.length
@@ -4597,21 +4818,35 @@ function eeDescargarWord() {
 
 let equivCandidatos = [];
 let equivGrupos = [];
+let equivPares = [];          // cuarto pase: obsoleto -> vigente declarado por SAP
+let equivMalApuntados = [];   // grupos cuyo preferente es un codigo obsoleto
 
 async function cargarEquivalencias() {
   const cont = document.getElementById("equiv-body");
   cont.innerHTML = '<div class="loading">Buscando candidatos...</div>';
   try {
-    const [cand, grupos, miembros] = await Promise.all([
+    const [cand, grupos, miembros, obsoletos, pares, malApuntados] = await Promise.all([
       sb.from("v_equivalencias_candidatas").select("*")
         .order("centros_en_conflicto", { ascending: false })
         .order("origen").order("similitud", { ascending: false }).limit(300),
       sb.from("grupos_material").select("*").order("aprobado_en", { ascending: false }),
       sb.from("materiales").select("codigo_sap, nombre_tecnico, grupo_id").not("grupo_id", "is", null),
+      sb.from("v_codigos_obsoletos_sap").select("*"),
+      sb.from("v_pares_obsoletos").select("*").order("estado_par").order("codigo_obsoleto"),
+      sb.from("v_grupos_con_preferente_obsoleto").select("*"),
     ]);
     if (cand.error) throw cand.error;
     if (grupos.error) throw grupos.error;
     if (miembros.error) throw miembros.error;
+
+    /* Las tres consultas del cuarto pase son opcionales: si las vistas
+       todavia no existen en la base, el panel funciona como antes. */
+    codigosObsoletos = new Map();
+    (obsoletos.data || []).forEach(o => {
+      if (o.codigo_obsoleto) codigosObsoletos.set(String(o.codigo_obsoleto), o);
+    });
+    equivPares = (pares.data || []).filter(p => p.estado_par !== "AGRUPADO");
+    equivMalApuntados = malApuntados.data || [];
 
     equivCandidatos = cand.data || [];
     equivGrupos = (grupos.data || []).map(g => ({
@@ -4625,14 +4860,32 @@ async function cargarEquivalencias() {
   }
 }
 
+/* Un codigo cuya descripcion trae nota de obsolescencia de SAP nunca puede
+   ser el preferente del grupo: seria dirigir las compras a un codigo que
+   el catalogo ya dio de baja. El pase por numero de parte no puede
+   detectarlo solo, porque el obsoleto y el vigente comparten fabricante y
+   para ese criterio son intercambiables.
+
+   No se resuelve leyendo el texto del candidato: la vista de candidatos
+   expone el nombre tecnico, y la nota de SAP esta en la descripcion. Se
+   consulta la lista de obsoletos por codigo. */
+let codigosObsoletos = new Map();   // codigo_obsoleto -> { nota_sap, codigo_vigente }
+
+function esObsoleto(codigo) {
+  return codigosObsoletos.has(String(codigo));
+}
+
 function equivFilaCodigo(codigo, nombre, stock, minimo, proveedor, idPar, marcado) {
+  const obs = esObsoleto(codigo);
+  const vig = obs ? codigosObsoletos.get(String(codigo)).codigo_vigente : null;
   return `
-    <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--bg-2)">
-      <input type="radio" name="pref-${idPar}" value="${codigo}" ${marcado ? "checked" : ""} style="margin-top:3px;flex-shrink:0"/>
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid ${obs ? "#c62828" : "var(--line)"};border-radius:9px;margin-bottom:6px;cursor:${obs ? "not-allowed" : "pointer"};background:var(--bg-2);opacity:${obs ? ".72" : "1"}">
+      <input type="radio" name="pref-${idPar}" value="${codigo}" ${marcado && !obs ? "checked" : ""} ${obs ? "disabled" : ""} style="margin-top:3px;flex-shrink:0"/>
       <span style="min-width:0;flex:1">
         <span class="mat-code">${codigo}</span>
         <span class="mat-desc" style="white-space:normal">${nombre || "(sin nombre técnico)"}</span>
         <span class="mat-stock">Existencia ${Number(stock) || 0} · Mínimo configurado ${Number(minimo) || 0} · ${proveedor || "Sin proveedor"}</span>
+        ${obs ? `<span class="mat-stock" style="color:#c62828"><b>SAP lo declara obsoleto${vig ? " — usar " + vig : ""}</b>. No puede quedar como código preferente.</span>` : ""}
       </span>
     </label>`;
 }
@@ -4640,6 +4893,58 @@ function equivFilaCodigo(codigo, nombre, stock, minimo, proveedor, idPar, marcad
 function renderEquivalencias() {
   const cont = document.getElementById("equiv-body");
   let html = "";
+
+  /* 1. Alerta: grupos que estan dirigiendo las compras a un codigo muerto.
+        Va de primero porque es un defecto activo, no una sugerencia. */
+  if (equivMalApuntados.length) {
+    html += `<div class="section-label" style="color:#c62828">Requiere corrección (${equivMalApuntados.length})</div>`;
+    equivMalApuntados.forEach(g => {
+      html += `
+      <div style="border:1px solid #c62828;border-radius:12px;padding:12px;margin-bottom:12px;background:var(--bg-1)">
+        <span class="badge badge-CRITICO">CÓDIGO PREFERENTE OBSOLETO</span>
+        <div class="mat-desc" style="white-space:normal;margin-top:6px">
+          El grupo pide con <b>${g.codigo_preferente}</b>, que SAP dio de baja.
+          Toda solicitud generada sobre este grupo va a un código que compras no puede tramitar.</div>
+        <div class="mat-stock">${g.nota_sap}</div>
+        ${g.codigo_vigente_sugerido ? `
+          <button class="btn-primary" style="margin-top:9px"
+            onclick="corregirPreferenteObsoleto('${g.id}','${g.codigo_vigente_sugerido}')">
+            Cambiar preferente a ${g.codigo_vigente_sugerido}</button>`
+          : `<div class="mat-stock" style="color:#c62828">No se pudo leer el código vigente en la nota. Corregir a mano.</div>`}
+      </div>`;
+    });
+  }
+
+  /* 2. Cuarto pase. Separado de los candidatos normales porque no es una
+        inferencia: SAP escribe el reemplazo en la propia descripcion. */
+  if (equivPares.length) {
+    const pend = equivPares.filter(p => p.estado_par === "PENDIENTE");
+    const parc = equivPares.filter(p => p.estado_par === "PARCIAL");
+    html += `<div class="section-label">Obsoletos declarados por SAP (${equivPares.length})</div>`;
+    html += `<p class="hint-box">SAP escribio el reemplazo en la descripcion del material. No hay nada que inferir: el codigo vigente queda como preferente siempre.</p>`;
+
+    if (pend.length) {
+      html += `<button class="btn-primary" style="margin-bottom:12px" onclick="agruparTodosObsoletos()">Agrupar los ${pend.length} pendientes</button>`;
+    }
+
+    equivPares.forEach((p, i) => {
+      const parcial = p.estado_par === "PARCIAL";
+      html += `
+      <div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;background:var(--bg-1)">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+          <span class="badge ${parcial ? "badge-BAJO" : "badge-CRITICO"}">${parcial ? "REVISAR A MANO" : "DECLARADO POR SAP"}</span>
+          ${p.numero_parte_vigente ? `<span class="mat-code">${p.numero_parte_vigente}</span>` : ""}
+        </div>
+        <div class="mat-stock"><b>${p.codigo_obsoleto}</b> → <b>${p.codigo_vigente}</b></div>
+        <div class="mat-desc" style="white-space:normal">${p.descripcion_vigente}</div>
+        <div class="mat-stock">Nombre técnico: ${p.nombre_vigente || "(sin registrar)"}</div>
+        <div class="mat-stock">Mín-máx configurado: ${p.params_obsoleto} centro(s) en el obsoleto · ${p.params_vigente} en el vigente</div>
+        ${parcial
+          ? `<div class="mat-stock" style="color:#c62828;margin-top:6px">Uno de los dos ya pertenece a otro grupo. Revísalo en la lista de grupos aprobados antes de unirlos.</div>`
+          : `<button class="btn-secondary" style="margin-top:9px" onclick="agruparParObsoleto(${i})">Agrupar con ${p.codigo_vigente} como preferente</button>`}
+      </div>`;
+    });
+  }
 
   html += `<div class="section-label">Candidatos por revisar (${equivCandidatos.length})</div>`;
   if (!equivCandidatos.length) {
@@ -4658,8 +4963,8 @@ function renderEquivalencias() {
         </div>
         ${conflicto > 0 ? `<div class="hint-box" style="margin:0 0 8px">&#9888;&#65039; En ${conflicto} centro${conflicto > 1 ? "s" : ""} ambos códigos tienen mínimo configurado: ahí el mínimo está duplicado.</div>` : ""}
         <div class="mat-stock" style="margin-bottom:6px">Elige el código que se conserva para configurar y pedir:</div>
-        ${equivFilaCodigo(c.codigo_a, c.nombre_a, c.stock_a, c.minimo_a, c.proveedor_a, i, true)}
-        ${equivFilaCodigo(c.codigo_b, c.nombre_b, c.stock_b, c.minimo_b, c.proveedor_b, i, false)}
+        ${equivFilaCodigo(c.codigo_a, c.nombre_a, c.stock_a, c.minimo_a, c.proveedor_a, i, !esObsoleto(c.codigo_a))}
+        ${equivFilaCodigo(c.codigo_b, c.nombre_b, c.stock_b, c.minimo_b, c.proveedor_b, i, esObsoleto(c.codigo_a) && !esObsoleto(c.codigo_b))}
         <div class="field" style="margin:8px 0 0">
           <select id="equiv-tipo-${i}">
             <option value="DUPLICADO">Duplicado · misma parte del mismo fabricante</option>
@@ -4702,6 +5007,11 @@ async function agruparCandidato(i) {
   const sel = document.querySelector(`input[name="pref-${i}"]:checked`);
   if (!sel) { toast("Elige el código que se conserva"); return; }
   const preferente = sel.value;
+  if (esObsoleto(preferente)) {
+    const vig = codigosObsoletos.get(String(preferente))?.codigo_vigente;
+    toast(`${preferente} está dado de baja en SAP${vig ? `. Usa ${vig}` : ""}`);
+    return;
+  }
   const tipo = document.getElementById(`equiv-tipo-${i}`).value;
   const nombre = preferente === c.codigo_a ? c.nombre_a : c.nombre_b;
 
@@ -4733,12 +5043,106 @@ async function agruparCandidato(i) {
       .update({ grupo_id: grupoId }).in("codigo_sap", [c.codigo_a, c.codigo_b]);
     if (errVinculo) throw errVinculo;
 
+    /* Sin esto se abre el hueco: el centro que tenia el min-max en el
+       codigo no preferente deja de aparecer en el listado a pedir. */
+    await propagarParametros(grupoId);
+
     toast(`Agrupados ${c.codigo_a} y ${c.codigo_b} · se conserva ${preferente}`);
     await cargarEquivalencias();
     materialesData = [];   // obliga a releer con la existencia ya sumada
   } catch (e) {
     console.error(e);
     toast("No se pudo agrupar: " + e.message);
+  }
+}
+
+/* ---------- Cuarto pase: obsoletos declarados por SAP ---------- */
+
+/* Agrupa un par obsoleto -> vigente. El preferente NO se elige: lo dice
+   el catalogo de SAP. Por eso esta accion no tiene radio buttons. */
+async function agruparParObsoleto(i, silencioso) {
+  const p = equivPares[i];
+  if (!p || p.estado_par === "PARCIAL") return false;
+  try {
+    const { data, error } = await sb.from("grupos_material").insert({
+      numero_parte: p.numero_parte_vigente || null,
+      descripcion: p.descripcion_vigente,
+      codigo_preferente: p.codigo_vigente,
+      tipo: "DUPLICADO",
+      criterio: `Código obsoleto declarado por SAP en la descripción del material ${p.codigo_obsoleto}: usar ${p.codigo_vigente}.`,
+    }).select("id").single();
+    if (error) throw error;
+
+    const { error: errVinculo } = await sb.from("materiales")
+      .update({ grupo_id: data.id }).in("codigo_sap", [p.codigo_obsoleto, p.codigo_vigente]);
+    if (errVinculo) throw errVinculo;
+
+    await propagarParametros(data.id);
+    if (!silencioso) {
+      toast(`Agrupados con ${p.codigo_vigente} como preferente`);
+      await cargarEquivalencias();
+      materialesData = [];
+    }
+    return true;
+  } catch (e) {
+    console.error(e);
+    if (!silencioso) toast("No se pudo agrupar: " + e.message);
+    return false;
+  }
+}
+
+async function agruparTodosObsoletos() {
+  const pend = equivPares.map((p, i) => ({ p, i })).filter(x => x.p.estado_par === "PENDIENTE");
+  if (!pend.length) return;
+  if (!confirm(`Se van a agrupar ${pend.length} pares, dejando siempre el código vigente como preferente. ¿Continuar?`)) return;
+  let ok = 0;
+  for (const x of pend) {
+    if (await agruparParObsoleto(x.i, true)) ok++;
+  }
+  toast(`${ok} de ${pend.length} agrupados`);
+  await cargarEquivalencias();
+  materialesData = [];
+}
+
+/* Corrige un grupo que quedo apuntando a un codigo dado de baja. Ademas de
+   cambiar el preferente, mete el vigente al grupo si estaba por fuera:
+   un grupo cuyo preferente no es miembro deja a todos sus codigos en
+   EQUIVALENTE y el material desaparece del listado a pedir. */
+async function corregirPreferenteObsoleto(grupoId, codigoVigente) {
+  if (!confirm(`El grupo va a pedir con ${codigoVigente} en lugar del código obsoleto. ¿Continuar?`)) return;
+  try {
+    const { error: e1 } = await sb.from("materiales")
+      .update({ grupo_id: grupoId }).eq("codigo_sap", codigoVigente);
+    if (e1) throw e1;
+
+    const { error: e2 } = await sb.from("grupos_material").update({
+      codigo_preferente: codigoVigente,
+      criterio: `Preferente corregido a ${codigoVigente}: SAP declara obsoleto el anterior.`,
+    }).eq("id", grupoId);
+    if (e2) throw e2;
+
+    const n = await propagarParametros(grupoId);
+    toast(n ? `Corregido · ${n} parámetro(s) propagado(s)` : "Corregido");
+    await cargarEquivalencias();
+    materialesData = [];
+  } catch (e) {
+    console.error(e);
+    toast("No se pudo corregir: " + e.message);
+  }
+}
+
+/* Al agrupar, los codigos no preferentes pasan a EQUIVALENTE y salen del
+   listado a pedir. Si el preferente no tiene min-max en algun centro donde
+   si lo tenia un equivalente, el requerimiento de ese centro desaparece
+   sin dejar rastro. Esto lo repara en el mismo paso. */
+async function propagarParametros(grupoId) {
+  try {
+    const { data, error } = await sb.rpc("propagar_parametros_grupo", { p_grupo_id: grupoId });
+    if (error) throw error;
+    return Number(data) || 0;
+  } catch (e) {
+    console.warn("No se pudo propagar parámetros:", e.message);
+    return 0;
   }
 }
 
