@@ -73,6 +73,15 @@ html,body{height:100%;margin:0;}
 .navbar.modulo-activos .nav-item[data-modulo="activos"]{display:flex;}
 .navbar.modulo-materiales .nav-item[data-modulo="materiales"]{display:flex;}
 .navbar.modulo-documental .nav-item[data-modulo="documental"]{display:flex;}
+.navbar.modulo-ensayos .nav-item[data-modulo="ensayos"]{display:flex;}
+.ee-pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;margin:0 3px}
+.ee-ok{background:#E8F5E9;color:#2E7D32}.ee-warn{background:#FFF3E0;color:#E08600}
+.ee-bad{background:#FFEBEE;color:#C62828}.ee-na{background:#F2F2F2;color:#666}
+.ee-fila{padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.ee-in{width:100%;min-width:64px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:13px}
+.tabla-ficha{width:100%;border-collapse:collapse;font-size:13px}
+.tabla-ficha td,.tabla-ficha th{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left}
+.tabla-ficha th{font-weight:600;color:var(--text-2);font-size:12px}
 body{
   background:var(--bg-0);color:var(--text-0);font-family:var(--sans);
   font-size:15px;overflow:hidden;padding-top:46px;
@@ -527,6 +536,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <option value="activos">Gestión de Activos</option>
     <option value="materiales">Gestión de Materiales</option>
     <option value="documental">Gestión Documental</option>
+    <option value="ensayos">Ensayos Eléctricos</option>
   </select>
 </div>
 
@@ -622,6 +632,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <button class="nav-item" data-tab="documentos-cargar" data-modulo="documental">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
     Cargar
+  </button>
+  <button class="nav-item" data-tab="ee-maquinas" data-modulo="ensayos">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 10h3l2 2-2 2h-3"/><path d="M9 4l-1 3h3l-1 3"/></svg>
+    Máquinas
   </button>
 
   <button class="nav-item nav-item-separador" data-tab="perfil">
@@ -1096,6 +1110,147 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
 </div>
 
+<!-- ===== Panel: Ensayos · lista de maquinas ===== -->
+<div class="panel" id="panel-ee-maquinas">
+  <div class="panel-header"><h2>Máquinas eléctricas</h2></div>
+  <div class="panel-body">
+    <div class="field"><input id="ee-buscar" placeholder="Buscar por SAP, nombre, serial o ubicacion..."/></div>
+    <button class="btn-primary" id="ee-btn-nueva" style="margin-bottom:12px">Nueva máquina</button>
+    <div id="ee-lista"><div class="loading">Cargando...</div></div>
+  </div>
+</div>
+
+<!-- ===== Panel: Ensayos · ficha de la maquina ===== -->
+<div class="panel" id="panel-ee-maquina">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="abrirPanel('panel-ee-maquinas')">&#8592;</button>
+    <h2 id="ee-maq-titulo">Máquina</h2>
+  </div>
+  <div class="panel-body"><div id="ee-maq-body"></div></div>
+</div>
+
+<!-- ===== Panel: Ensayos · alta y edicion de maquina ===== -->
+<div class="panel" id="panel-ee-form">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="abrirPanel('panel-ee-maquinas')">&#8592;</button>
+    <h2 id="ee-form-titulo">Nueva máquina</h2>
+  </div>
+  <div class="panel-body">
+    <p class="hint-box">Busca el equipo en Activos por codigo SAP, nombre o serial. La identidad la aporta Activos; aqui solo se registran los datos de placa, que Activos no tiene. Si la maquina no esta en SAP, dejala sin vincular y completa TAG o serial.</p>
+    <div class="field">
+      <label>Buscar en Activos</label>
+      <input id="ee-eq-buscar" placeholder="SAP, nombre o serial..." oninput="buscarEquipoActivos()"/>
+    </div>
+    <div id="ee-eq-res"></div>
+    <div id="ee-eq-elegido"></div>
+    <input type="hidden" id="ee-f-equipo"/>
+
+    <div class="section-label">Identificación</div>
+    <div class="field"><label>TAG</label><input id="ee-f-tag"/></div>
+    <div class="field"><label>Serial</label><input id="ee-f-serial"/></div>
+    <div class="field"><label>Código SAP</label><input id="ee-f-sap"/></div>
+    <div class="field"><label>Marca</label><input id="ee-f-marca"/></div>
+    <div class="field"><label>Modelo</label><input id="ee-f-modelo"/></div>
+    <div class="field"><label>Ubicación</label><input id="ee-f-ubicacion"/></div>
+
+    <div class="section-label">Tipo de máquina</div>
+    <div class="field"><label>Tipo</label>
+      <select id="ee-f-tipo"><option value="MOTOR">Motor eléctrico</option><option value="GENERADOR">Generador eléctrico</option></select>
+    </div>
+    <div id="ee-bloque-generador" style="display:none">
+      <div class="field"><label>Excitación</label>
+        <select id="ee-f-excitacion">
+          <option value="">— Sin definir —</option>
+          <option value="BRUSHLESS">Sin escobillas (diodos rotativos)</option>
+          <option value="ESCOBILLAS">Con escobillas</option>
+          <option value="IMANES_PERMANENTES">Imanes permanentes</option>
+          <option value="NA">No aplica</option>
+        </select>
+      </div>
+      <div class="field"><label>Tensión de campo (V)</label><input id="ee-f-vcampo" type="number" step="0.1"/></div>
+      <div class="field"><label>Potencia (kVA)</label><input id="ee-f-kva" type="number" step="0.1"/></div>
+    </div>
+
+    <div class="section-label">Datos de placa</div>
+    <div class="field"><label>Tensión nominal (V) *</label><input id="ee-f-voltaje" type="number" step="1"/></div>
+    <div class="field"><label>Potencia (kW)</label><input id="ee-f-kw" type="number" step="0.1"/></div>
+    <div class="field"><label>Corriente (A)</label><input id="ee-f-amp" type="number" step="0.1"/></div>
+    <div class="field"><label>Velocidad (rpm)</label><input id="ee-f-rpm" type="number"/></div>
+    <div class="field"><label>Frecuencia (Hz)</label><input id="ee-f-hz" type="number"/></div>
+
+    <div class="section-label">Parámetros de evaluación</div>
+    <p class="hint-box">El tipo de devanado define el mínimo admisible de la Tabla 3 de IEEE 43-2013: aleatorio 5 MΩ, preformado moderno 100 MΩ, preformado anterior a 1970 kV+1.</p>
+    <div class="field"><label>Tipo de devanado</label>
+      <select id="ee-f-devanado">
+        <option value="aleatorio">Aleatorio (típico &lt;1 kV)</option>
+        <option value="preformado">Preformado (MT/AT, moderno)</option>
+        <option value="preformado_antiguo">Preformado anterior a 1970</option>
+      </select>
+    </div>
+    <div class="field"><label>Marcación de bornes</label>
+      <select id="ee-f-marcacion"><option value="NEMA">NEMA (T1, T2, T3...)</option><option value="IEC">IEC (U1, V1, W1...)</option></select>
+    </div>
+    <div class="field"><label>Número de bobinas</label>
+      <select id="ee-f-nbob"><option value="3">3 bobinas (6 puntas)</option><option value="6">6 bobinas (12 puntas)</option></select>
+    </div>
+    <div class="field"><label>Criticidad</label>
+      <select id="ee-f-criticidad"><option value="">—</option><option>A - Crítico</option><option>B - Importante</option><option>C - Auxiliar</option></select>
+    </div>
+    <div class="field"><label>Notas</label><textarea id="ee-f-notas" rows="2"></textarea></div>
+    <button class="btn-primary" id="ee-btn-guardar-maq" style="margin-top:12px">Guardar máquina</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Ensayos · formulario de ensayo ===== -->
+<div class="panel" id="panel-ee-ensayo">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="abrirMaquina(eeMaquinaActual.id)">&#8592;</button>
+    <h2 id="ee-ens-titulo">Nuevo ensayo</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box" id="ee-ens-maquina"></div>
+    <div class="hint-box" id="ee-aviso-campo" style="display:none"></div>
+
+    <div class="section-label">Datos del ensayo</div>
+    <div class="field"><label>Fecha</label><input id="ee-e-fecha" type="date"/></div>
+    <div class="field"><label>Técnico</label><input id="ee-e-tecnico"/></div>
+    <div class="field"><label>Motivo</label>
+      <select id="ee-e-motivo">
+        <option>Rutina programada</option><option>Recepción de taller / reparación</option>
+        <option>Pre-arranque</option><option>Investigación de falla</option><option>Puesta en servicio</option>
+      </select>
+    </div>
+
+    <div class="section-label">Condiciones</div>
+    <p class="hint-box">La temperatura del devanado es la que permite corregir a 40 °C. Sin ella la lectura no se puede comparar con ensayos anteriores.</p>
+    <div class="field"><label>Temp. devanado (°C) *</label><input id="ee-e-tdev" type="number" step="0.5" oninput="eeRecalcular()"/></div>
+    <div class="field"><label>Temp. ambiente (°C)</label><input id="ee-e-tamb" type="number" step="0.5"/></div>
+    <div class="field"><label>Humedad relativa (%)</label><input id="ee-e-hum" type="number"/></div>
+    <div class="field"><label>Horas fuera de servicio</label><input id="ee-e-paro" type="number" step="0.5"/></div>
+    <div class="field"><label>Condición visual</label>
+      <select id="ee-e-cond"><option>Limpio y seco</option><option>Con polvo/suciedad</option><option>Húmedo</option><option>Contaminado (aceite/químicos)</option></select>
+    </div>
+    <div class="field"><label>Tensión de prueba (VDC)</label><input id="ee-e-vprueba" type="number"/>
+      <div class="mat-stock" id="ee-e-vsug"></div></div>
+    <div class="field"><label>Megóhmetro</label><input id="ee-e-megger" placeholder="Fluke 1555"/></div>
+    <div class="field"><label>Serie del equipo</label><input id="ee-e-meggerserie"/></div>
+    <div class="field"><label>Vence calibración</label><input id="ee-e-cal" type="date"/></div>
+
+    <div id="ee-tablas-ir"></div>
+
+    <div class="section-label">Resistencia óhmica por bobina</div>
+    <div id="ee-tabla-bob"></div>
+    <div class="field"><label>Temp. de medición (°C)</label><input id="ee-e-trdev" type="number" step="0.5"/></div>
+    <div class="field"><label>Instrumento</label><input id="ee-e-micro" placeholder="Micro-ohmetro / multimetro"/></div>
+
+    <div class="section-label">Evaluación IEEE 43-2013</div>
+    <div id="ee-eval" class="hint-box"></div>
+
+    <div class="field" style="margin-top:12px"><label>Observaciones</label><textarea id="ee-e-obs" rows="3"></textarea></div>
+    <button class="btn-primary" id="ee-btn-guardar-ens" style="margin-top:8px">Guardar ensayo</button>
+  </div>
+</div>
+
 <!-- ===== Panel: Documentos (busqueda) ===== -->
 <div class="panel" id="panel-documentos">
   <div class="panel-header">
@@ -1286,7 +1441,7 @@ function aplicarModulo(modulo, irVistaDefault = true) {
   localStorage.setItem(MODULO_KEY, modulo);
 
   const navbar = document.getElementById("navbar-principal");
-  navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental");
+  navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental", "modulo-ensayos");
   navbar.classList.add("modulo-" + modulo);
   document.getElementById("selector-modulo").value = modulo;
 
@@ -1310,6 +1465,11 @@ function aplicarModulo(modulo, irVistaDefault = true) {
     document.querySelector('[data-tab="documentos"]').classList.add("active");
     abrirPanel("panel-documentos");
     cargarDocumentos();
+  } else if (modulo === "ensayos") {
+    app.classList.add("modulo-completo");
+    document.querySelector('[data-tab="ee-maquinas"]').classList.add("active");
+    abrirPanel("panel-ee-maquinas");
+    cargarMaquinas();
   }
 }
 
@@ -2199,6 +2359,9 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     } else if (btn.dataset.tab === "reporte-inventario") {
       abrirPanel("panel-reporte-inventario");
       prepararReporteInventario();
+    } else if (btn.dataset.tab === "ee-maquinas") {
+      abrirPanel("panel-ee-maquinas");
+      cargarMaquinas();
     } else if (btn.dataset.tab === "equivalencias") {
       abrirPanel("panel-equivalencias");
       cargarEquivalencias();
@@ -3347,6 +3510,678 @@ document.getElementById("rep-categoria").addEventListener("change", (e) => {
   actualizarPrevioReporte();
 });
 document.getElementById("rep-btn-generar").onclick = descargarReporteInventario;
+
+/* ============================================================
+   MODULO: ENSAYOS ELECTRICOS
+   ------------------------------------------------------------
+   Reemplaza MotorTrack. La logica de evaluacion es la misma,
+   IEEE Std 43-2013, extendida para generadores: las mediciones
+   se agrupan por devanado (estator / campo / excitatriz) porque
+   el minimo admisible y el orden de magnitud son distintos en
+   cada uno.
+   ============================================================ */
+
+/* ---------- IEEE 43-2013 ---------- */
+
+// Correccion a 40 C: la resistencia se reduce a la mitad por cada
+// 10 C de aumento de temperatura.
+const EE_corr40 = (r, t) => (r > 0 && isFinite(t)) ? r * Math.pow(0.5, (40 - t) / 10) : null;
+
+// Tabla 3. El minimo depende del tipo de devanado y de la tension,
+// nunca de la potencia.
+function EE_irMin(tipoDevanado, kv) {
+  if (tipoDevanado === "aleatorio") return 5;
+  if (tipoDevanado === "preformado_antiguo") return kv + 1;
+  return 100;
+}
+
+// El devanado de campo se evalua siempre con la regla kV+1, sea cual
+// sea el tipo de devanado del estator.
+function EE_minimoGrupo(maq, grupo) {
+  if (grupo === "CAMPO" || grupo === "EXCITATRIZ") {
+    return Math.ceil((Number(maq.voltaje_campo) || 0) / 1000) + 1;
+  }
+  return EE_irMin(maq.tipo_devanado, Math.ceil((Number(maq.voltaje) || 0) / 1000));
+}
+
+// Tabla 1: tension de prueba recomendada segun la nominal.
+function EE_vPruebaSugerida(voltaje) {
+  const v = Number(voltaje) || 0;
+  if (v <= 1000)  return "500";
+  if (v <= 2500)  return "500 a 1000";
+  if (v <= 5000)  return "1000 a 2500";
+  if (v <= 12000) return "2500 a 5000";
+  return "5000 a 10000";
+}
+
+const EE_p = (nivel, texto) => ({ nivel, texto });
+// Por encima de 5 GOhm el aislamiento es tan alto que las corrientes de
+// absorcion se pierden en el ruido: DAR y PI dejan de ser concluyentes.
+const EE_evPI  = (pi, ir40) => ir40 != null && ir40 > 5000 ? EE_p("na", "PI no concluyente (IR>5 GΩ)")
+  : pi == null ? EE_p("na", "—") : pi >= 2 ? EE_p("ok", "Bueno ≥2.0")
+  : pi >= 1 ? EE_p("warn", "Cuestionable 1.0–2.0") : EE_p("bad", "Peligro <1.0");
+const EE_evDAR = (d, ir40) => ir40 != null && ir40 > 5000 ? EE_p("na", "DAR no concluyente (IR>5 GΩ)")
+  : d == null ? EE_p("na", "—") : d >= 1.6 ? EE_p("ok", "Excelente ≥1.6")
+  : d >= 1.25 ? EE_p("ok", "Aceptable") : d >= 1 ? EE_p("warn", "Cuestionable") : EE_p("bad", "Peligro <1.0");
+const EE_evIR  = (ir, min) => ir == null ? EE_p("na", "—")
+  : ir >= min * 2 ? EE_p("ok", "Bueno") : ir >= min ? EE_p("warn", "En el límite") : EE_p("bad", `Bajo (mín ${min} MΩ)`);
+const EE_evDes = d => d == null ? EE_p("na", "—")
+  : d <= 2 ? EE_p("ok", "Balanceado ≤2%") : d <= 5 ? EE_p("warn", "Alerta 2–5%") : EE_p("bad", "Alto >5%");
+const EE_pill = e => `<span class="ee-pill ee-${e.nivel}">${e.texto}</span>`;
+
+function EE_desbalance(vals) {
+  const v = vals.filter(x => x > 0);
+  if (v.length < 2) return null;
+  const prom = v.reduce((a, b) => a + b, 0) / v.length;
+  return prom > 0 ? Math.max(...v.map(x => Math.abs(x - prom))) / prom * 100 : null;
+}
+
+const EE_FASES = marc => marc === "IEC" ? ["U", "V", "W"] : ["A", "B", "C"];
+const EE_BORNES = marc => marc === "IEC" ? ["U1", "V1", "W1"] : ["T1", "T2", "T3"];
+
+/* ---------- Estado del modulo ---------- */
+let eeMaquinas = [];
+let eeMaquinaActual = null;
+let eeEnsayos = [];
+let eeEnsayoEditando = null;
+const EE_BORRADOR = "kronos_ensayo_borrador";
+
+/* ============================================================
+   Lista de maquinas
+   ============================================================ */
+async function cargarMaquinas() {
+  const cont = document.getElementById("ee-lista");
+  cont.innerHTML = '<div class="loading">Cargando máquinas...</div>';
+  try {
+    const { data, error } = await sb.from("v_maquinas_electricas").select("*").limit(1000);
+    if (error) throw error;
+    eeMaquinas = data || [];
+    renderMaquinas();
+  } catch (e) {
+    console.error(e);
+    cont.innerHTML = `<div class="empty">No se pudo cargar: ${e.message}</div>`;
+  }
+}
+
+function renderMaquinas() {
+  const q = (document.getElementById("ee-buscar").value || "").toLowerCase().trim();
+  const lista = eeMaquinas.filter(m => !q ||
+    [m.nombre_efectivo, m.sap_efectivo, m.serial_efectivo, m.marca_efectiva, m.ubicacion_efectiva]
+      .join(" ").toLowerCase().includes(q));
+
+  const cont = document.getElementById("ee-lista");
+  if (!lista.length) {
+    cont.innerHTML = '<div class="empty">No hay máquinas con esa búsqueda.</div>';
+    return;
+  }
+  cont.innerHTML = lista
+    .sort((a, b) => (b.ultimo_ensayo || "").localeCompare(a.ultimo_ensayo || ""))
+    .map(m => `
+      <div class="eq-card" onclick="abrirMaquina('${m.id}')">
+        <div class="eq-top">
+          <span class="eq-code">${m.sap_efectivo || m.serial_efectivo || "sin código"}</span>
+          <span class="badge ${m.tipo_maquina === "GENERADOR" ? "badge-SOBRESTOCK" : "badge-OK"}">${m.tipo_maquina}</span>
+          ${m.vinculado_a_activos ? "" : '<span class="badge badge-SIN">sin vincular</span>'}
+        </div>
+        <div class="eq-desc">${m.nombre_efectivo || "(sin nombre)"}</div>
+        <div class="eq-loc">${m.ubicacion_efectiva || "Ubicación no registrada"}</div>
+        <div class="mat-stock">${m.marca_efectiva || ""} ${m.modelo_efectivo || ""} · ${m.voltaje || "?"} V ·
+          ${m.total_ensayos} ensayo${m.total_ensayos === 1 ? "" : "s"}${m.ultimo_ensayo ? " · último " + m.ultimo_ensayo : ""}</div>
+      </div>`).join("");
+}
+
+/* ============================================================
+   Ficha de la maquina
+   ============================================================ */
+async function abrirMaquina(id) {
+  eeMaquinaActual = eeMaquinas.find(m => m.id === id);
+  if (!eeMaquinaActual) return;
+  abrirPanel("panel-ee-maquina");
+  document.getElementById("ee-maq-titulo").textContent = eeMaquinaActual.nombre_efectivo || "Máquina";
+  const cont = document.getElementById("ee-maq-body");
+  cont.innerHTML = '<div class="loading">Cargando ensayos...</div>';
+
+  const m = eeMaquinaActual;
+  const ficha = [
+    ["Tipo", m.tipo_maquina + (m.excitacion ? " · " + m.excitacion : "")],
+    ["Código SAP", m.sap_efectivo], ["Serial", m.serial_efectivo],
+    ["Marca / modelo", [m.marca_efectiva, m.modelo_efectivo].filter(Boolean).join(" ")],
+    ["Ubicación", m.ubicacion_efectiva],
+    ["Potencia", m.potencia_kw ? m.potencia_kw + " kW" : (m.potencia_kva ? m.potencia_kva + " kVA" : "")],
+    ["Tensión", m.voltaje ? m.voltaje + " V" : ""],
+    ["Tensión de campo", m.voltaje_campo ? m.voltaje_campo + " V" : ""],
+    ["Corriente / rpm / Hz", [m.amperios && m.amperios + " A", m.rpm && m.rpm + " rpm", m.hz && m.hz + " Hz"].filter(Boolean).join(" · ")],
+    ["Tipo de devanado", m.tipo_devanado],
+    ["Mínimo IEEE 43 (estator)", EE_minimoGrupo(m, "ESTATOR") + " MΩ"],
+    ["Marcación / bobinas", m.marcacion + " · " + m.n_bobinas],
+    ["Criticidad", m.criticidad],
+    ["En Activos", m.vinculado_a_activos ? "Sí · " + (m.id_interno || "") : "No vinculada"],
+  ].filter(([, v]) => v);
+
+  try {
+    const { data, error } = await sb.from("ensayos_electricos")
+      .select("*, ensayo_devanados(*), ensayo_bobinas(*)")
+      .eq("maquina_id", id).order("fecha", { ascending: false });
+    if (error) throw error;
+    eeEnsayos = data || [];
+
+    cont.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn-primary" style="flex:1" onclick="nuevoEnsayo()">Nuevo ensayo</button>
+        <button class="btn-secondary" onclick="editarMaquina('${m.id}')">Editar datos</button>
+      </div>
+      ${m.notas ? `<p class="hint-box">${m.notas}</p>` : ""}
+      <div class="section-label">Datos de placa</div>
+      <table class="tabla-ficha">${ficha.map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("")}</table>
+      <div class="section-label">Tendencia de aislamiento</div>
+      ${eeTendencia()}
+      <div class="section-label">Ensayos (${eeEnsayos.length})</div>
+      ${eeEnsayos.length ? eeEnsayos.map(e => eeTarjetaEnsayo(e, m)).join("")
+        : '<div class="empty">Sin ensayos registrados.</div>'}`;
+  } catch (e) {
+    console.error(e);
+    cont.innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+  }
+}
+
+// Grafica de la peor fase corregida a 40 C, por grupo de devanado.
+// Escala logaritmica: entre un estator sano y uno degradado hay ordenes
+// de magnitud, y en escala lineal no se distingue nada.
+function eeTendencia() {
+  const puntos = {};
+  eeEnsayos.slice().reverse().forEach(e => {
+    (e.ensayo_devanados || []).forEach(d => {
+      if (d.ir40_1min == null) return;
+      const g = d.grupo || "ESTATOR";
+      puntos[g] = puntos[g] || [];
+      const prev = puntos[g].find(p => p.fecha === e.fecha);
+      if (prev) prev.v = Math.min(prev.v, +d.ir40_1min);
+      else puntos[g].push({ fecha: e.fecha, v: +d.ir40_1min });
+    });
+  });
+  const grupos = Object.keys(puntos);
+  if (!grupos.length) return '<div class="empty">Sin mediciones corregidas a 40 °C.</div>';
+
+  return grupos.map(g => {
+    const p = puntos[g];
+    const min = EE_minimoGrupo(eeMaquinaActual, g);
+    if (p.length < 2) {
+      return `<div class="mat-stock">${g}: ${p[0].v.toFixed(1)} MΩ @40°C el ${p[0].fecha} · mínimo ${min} MΩ (un solo ensayo, sin tendencia)</div>`;
+    }
+    const vals = p.map(x => Math.log10(Math.max(x.v, 0.01)));
+    const lo = Math.min(...vals, Math.log10(min)) - 0.2, hi = Math.max(...vals) + 0.2;
+    const W = 300, H = 70;
+    const px = i => 4 + i * (W - 8) / (p.length - 1);
+    const py = v => H - 6 - (v - lo) / (hi - lo || 1) * (H - 16);
+    const linea = vals.map((v, i) => `${px(i)},${py(v)}`).join(" ");
+    const yMin = py(Math.log10(min));
+    return `
+      <div style="margin-bottom:10px">
+        <div class="mat-stock"><b>${g}</b> · último ${p[p.length - 1].v.toFixed(1)} MΩ @40°C · mínimo ${min} MΩ</div>
+        <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:420px;height:auto">
+          <line x1="0" y1="${yMin}" x2="${W}" y2="${yMin}" stroke="#C62828" stroke-dasharray="4 3" stroke-width="1"/>
+          <polyline points="${linea}" fill="none" stroke="#0C5292" stroke-width="2"/>
+          ${vals.map((v, i) => `<circle cx="${px(i)}" cy="${py(v)}" r="3" fill="${p[i].v < min ? "#C62828" : "#359E68"}"/>`).join("")}
+        </svg>
+        <div class="mat-stock">${p[0].fecha} → ${p[p.length - 1].fecha} · escala logarítmica</div>
+      </div>`;
+  }).join("");
+}
+
+function eeTarjetaEnsayo(e, m) {
+  const devs = e.ensayo_devanados || [];
+  const porGrupo = {};
+  devs.forEach(d => { (porGrupo[d.grupo || "ESTATOR"] = porGrupo[d.grupo || "ESTATOR"] || []).push(d); });
+  const filas = Object.entries(porGrupo).map(([g, ds]) => {
+    const min = EE_minimoGrupo(m, g);
+    return ds.map(d => `<tr>
+        <td>${g === "ESTATOR" ? "" : g + " "}${d.fase}</td>
+        <td>${d.ir_1min ?? "—"}</td>
+        <td>${d.ir40_1min != null ? (+d.ir40_1min).toFixed(1) : "—"}</td>
+        <td>${EE_pill(EE_evIR(d.ir40_1min != null ? +d.ir40_1min : null, min))}</td>
+        <td>${d.pi != null ? (+d.pi).toFixed(2) : "—"}</td>
+      </tr>`).join("");
+  }).join("");
+
+  return `
+    <div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+        <b>${e.fecha}</b>
+        <span class="mat-stock">${e.motivo || ""} · ${e.tecnico || ""}</span>
+      </div>
+      <div class="mat-stock">${e.temp_devanado != null ? e.temp_devanado + " °C devanado" : "sin temperatura"}
+        · ${e.v_prueba || "?"} VDC · ${e.megger || ""}</div>
+      <table class="tabla-ficha" style="margin-top:8px">
+        <tr><th>Fase</th><th>IR 1min</th><th>@40°C</th><th>Evaluación</th><th>PI</th></tr>
+        ${filas || '<tr><td colspan="5">Sin mediciones</td></tr>'}
+      </table>
+      ${e.observaciones ? `<div class="mat-stock" style="margin-top:6px">${e.observaciones}</div>` : ""}
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn-secondary" onclick="editarEnsayo('${e.id}')">Editar</button>
+        <button class="btn-secondary" onclick="borrarEnsayo('${e.id}')">Eliminar</button>
+      </div>
+    </div>`;
+}
+
+/* ============================================================
+   Alta y edicion de maquina, tomando la identidad de Activos
+   ============================================================ */
+function nuevaMaquina() {
+  eeMaquinaActual = null;
+  abrirPanel("panel-ee-form");
+  document.getElementById("ee-form-titulo").textContent = "Nueva máquina";
+  document.getElementById("ee-eq-buscar").value = "";
+  document.getElementById("ee-eq-res").innerHTML = "";
+  document.getElementById("ee-eq-elegido").innerHTML = "";
+  ["tag", "serial", "sap", "marca", "modelo", "ubicacion", "kw", "kva", "voltaje",
+   "vcampo", "amp", "rpm", "hz", "criticidad", "notas"].forEach(k => {
+    const el = document.getElementById("ee-f-" + k); if (el) el.value = "";
+  });
+  document.getElementById("ee-f-tipo").value = "MOTOR";
+  document.getElementById("ee-f-devanado").value = "aleatorio";
+  document.getElementById("ee-f-marcacion").value = "NEMA";
+  document.getElementById("ee-f-nbob").value = "3";
+  document.getElementById("ee-f-equipo").value = "";
+  eeToggleGenerador();
+}
+
+function editarMaquina(id) {
+  const m = eeMaquinas.find(x => x.id === id);
+  if (!m) return;
+  eeMaquinaActual = m;
+  abrirPanel("panel-ee-form");
+  document.getElementById("ee-form-titulo").textContent = "Editar máquina";
+  const v = (k, val) => { const el = document.getElementById("ee-f-" + k); if (el) el.value = val ?? ""; };
+  v("tag", m.tag); v("serial", m.serial); v("sap", m.codigo_sap); v("marca", m.marca);
+  v("modelo", m.modelo); v("ubicacion", m.ubicacion); v("kw", m.potencia_kw); v("kva", m.potencia_kva);
+  v("voltaje", m.voltaje); v("vcampo", m.voltaje_campo); v("amp", m.amperios); v("rpm", m.rpm);
+  v("hz", m.hz); v("criticidad", m.criticidad); v("notas", m.notas);
+  v("tipo", m.tipo_maquina); v("devanado", m.tipo_devanado); v("marcacion", m.marcacion);
+  v("nbob", m.n_bobinas); v("equipo", m.equipo_id || "");
+  document.getElementById("ee-f-excitacion").value = m.excitacion || "";
+  document.getElementById("ee-eq-elegido").innerHTML = m.vinculado_a_activos
+    ? `<div class="hint-box">Vinculada a Activos: <b>${m.id_interno || ""}</b> · ${m.nombre_efectivo}</div>`
+    : '<div class="hint-box">Sin vincular a Activos.</div>';
+  eeToggleGenerador();
+}
+
+function eeToggleGenerador() {
+  const esGen = document.getElementById("ee-f-tipo").value === "GENERADOR";
+  document.getElementById("ee-bloque-generador").style.display = esGen ? "" : "none";
+}
+
+// Busqueda contra el modulo de Activos por SAP, nombre o serial.
+let eeTimerBusq = null;
+function buscarEquipoActivos() {
+  clearTimeout(eeTimerBusq);
+  eeTimerBusq = setTimeout(async () => {
+    const q = document.getElementById("ee-eq-buscar").value.trim().replace(/[,()]/g, "");
+    const cont = document.getElementById("ee-eq-res");
+    if (q.length < 3) { cont.innerHTML = ""; return; }
+    cont.innerHTML = '<div class="loading">Buscando...</div>';
+    try {
+      const { data, error } = await sb.from("equipos")
+        .select("id,id_interno,codigo_sap,descripcion,numero_serie,marca,modelo,ubicacion_actual,ubicacion_tecnica_sap")
+        .or(`codigo_sap.ilike.%${q}%,descripcion.ilike.%${q}%,numero_serie.ilike.%${q}%`)
+        .limit(15);
+      if (error) throw error;
+      cont.innerHTML = (data || []).length
+        ? data.map(e => `
+            <div class="eq-card" onclick='eeElegirEquipo(${JSON.stringify(e).replace(/'/g, "&#39;")})'>
+              <div class="eq-top"><span class="eq-code">${e.codigo_sap || ""}</span>
+                <span class="mat-stock">${e.id_interno || ""}</span></div>
+              <div class="eq-desc">${e.descripcion || ""}</div>
+              <div class="mat-stock">S/N ${e.numero_serie || "—"} · ${e.marca || ""} ${e.modelo || ""}</div>
+            </div>`).join("")
+        : '<div class="empty">Sin resultados en Activos. Puedes registrarla sin vincular.</div>';
+    } catch (e) {
+      cont.innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+    }
+  }, 350);
+}
+
+function eeElegirEquipo(e) {
+  document.getElementById("ee-f-equipo").value = e.id;
+  document.getElementById("ee-eq-res").innerHTML = "";
+  document.getElementById("ee-eq-buscar").value = "";
+  document.getElementById("ee-eq-elegido").innerHTML =
+    `<div class="hint-box">Vinculada a <b>${e.id_interno || ""}</b> · SAP ${e.codigo_sap || "—"}<br>${e.descripcion || ""}
+     <br><button class="btn-secondary" style="margin-top:6px" onclick="eeQuitarEquipo()">Quitar vínculo</button></div>`;
+  // La identidad la aporta Activos: aqui solo se completa lo que falte.
+  const set = (k, val) => { const el = document.getElementById("ee-f-" + k); if (el && !el.value) el.value = val || ""; };
+  set("serial", e.numero_serie); set("marca", e.marca); set("modelo", e.modelo);
+  set("ubicacion", e.ubicacion_actual || e.ubicacion_tecnica_sap);
+}
+
+function eeQuitarEquipo() {
+  document.getElementById("ee-f-equipo").value = "";
+  document.getElementById("ee-eq-elegido").innerHTML = '<div class="hint-box">Sin vincular a Activos.</div>';
+}
+
+async function guardarMaquina() {
+  const g = k => (document.getElementById("ee-f-" + k)?.value || "").trim();
+  const num = k => { const v = g(k); return v === "" ? null : Number(v); };
+  if (!g("voltaje")) { toast("La tensión nominal es obligatoria: define el mínimo IEEE 43"); return; }
+  if (!g("equipo") && !g("serial") && !g("tag")) { toast("Sin vínculo a Activos necesitas al menos TAG o serial"); return; }
+
+  const payload = {
+    equipo_id: g("equipo") || null,
+    tag: g("tag") || null, serial: g("serial") || null, codigo_sap: g("sap") || null,
+    marca: g("marca") || null, modelo: g("modelo") || null, ubicacion: g("ubicacion") || null,
+    tipo_maquina: g("tipo"),
+    excitacion: g("tipo") === "GENERADOR" ? (document.getElementById("ee-f-excitacion").value || null) : null,
+    potencia_kw: num("kw"), potencia_kva: num("kva"), voltaje: num("voltaje"),
+    voltaje_campo: num("vcampo"), amperios: num("amp"), rpm: num("rpm"), hz: num("hz"),
+    tipo_devanado: g("devanado"), marcacion: g("marcacion"), n_bobinas: Number(g("nbob")) || 3,
+    criticidad: g("criticidad") || null, notas: g("notas") || null,
+    actualizado_en: new Date().toISOString(),
+  };
+  const btn = document.getElementById("ee-btn-guardar-maq");
+  btn.disabled = true;
+  try {
+    if (eeMaquinaActual) {
+      const { error } = await sb.from("maquinas_electricas").update(payload).eq("id", eeMaquinaActual.id);
+      if (error) throw error;
+    } else {
+      const { error } = await sb.from("maquinas_electricas").insert(payload);
+      if (error) throw error;
+    }
+    toast("Máquina guardada");
+    await cargarMaquinas();
+    abrirPanel("panel-ee-maquinas");
+  } catch (e) {
+    console.error(e);
+    toast("No se pudo guardar: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ============================================================
+   Ensayo
+   ============================================================ */
+function eeGruposDeMaquina(m) {
+  const g = [{ clave: "ESTATOR", etiqueta: "Aislamiento a tierra · estator", fases: EE_FASES(m.marcacion) }];
+  if (m.tipo_maquina === "GENERADOR") {
+    g.push({ clave: "CAMPO", etiqueta: "Aislamiento a tierra · devanado de campo", fases: ["F"] });
+  }
+  return g;
+}
+
+function nuevoEnsayo() {
+  if (!eeMaquinaActual) { toast("Elige primero una máquina"); return; }
+  eeEnsayoEditando = null;
+  abrirPanel("panel-ee-ensayo");
+  document.getElementById("ee-ens-titulo").textContent = "Nuevo ensayo";
+  document.getElementById("ee-ens-maquina").textContent = eeMaquinaActual.nombre_efectivo || "";
+  document.getElementById("ee-e-fecha").value = new Date().toISOString().slice(0, 10);
+  ["tecnico", "tdev", "tamb", "hum", "paro", "vprueba", "megger", "meggerserie",
+   "cal", "trdev", "micro", "obs"].forEach(k => {
+    const el = document.getElementById("ee-e-" + k); if (el) el.value = "";
+  });
+  document.getElementById("ee-e-vsug").textContent =
+    `Sugerido por IEEE 43 para ${eeMaquinaActual.voltaje} V: ${EE_vPruebaSugerida(eeMaquinaActual.voltaje)} VDC`;
+  eePintarTablas();
+  eeAvisoCampo();
+  eeRestaurarBorrador();
+  eeRecalcular();
+}
+
+// En generadores sin escobillas, aplicar tension de prueba al campo sin
+// aislar antes los diodos rotativos los destruye.
+function eeAvisoCampo() {
+  const m = eeMaquinaActual;
+  const av = document.getElementById("ee-aviso-campo");
+  if (m.tipo_maquina === "GENERADOR" && m.excitacion === "BRUSHLESS") {
+    av.style.display = "";
+    av.innerHTML = "&#9888;&#65039; <b>Generador sin escobillas.</b> No apliques tensión de prueba al devanado de campo sin aislar primero el puente de diodos rotativos: se destruyen. Si no puedes aislarlo, deja el campo sin medir.";
+  } else {
+    av.style.display = "none";
+  }
+}
+
+function eePintarTablas() {
+  const m = eeMaquinaActual;
+  document.getElementById("ee-tablas-ir").innerHTML = eeGruposDeMaquina(m).map(g => `
+    <div class="section-label">${g.etiqueta} <span class="mat-stock">· mínimo ${EE_minimoGrupo(m, g.clave)} MΩ</span></div>
+    <div style="overflow-x:auto"><table class="tabla-ficha">
+      <tr><th>Fase</th><th>IR 30 s</th><th>IR 1 min *</th><th>IR 10 min</th><th>DAR</th><th>PI</th></tr>
+      ${g.fases.map(f => `
+        <tr>
+          <td><b>${f}</b></td>
+          <td><input class="ee-in" id="ee-ir-${g.clave}-${f}-30" type="number" step="0.01" oninput="eeRecalcular()"></td>
+          <td><input class="ee-in" id="ee-ir-${g.clave}-${f}-60" type="number" step="0.01" oninput="eeRecalcular()"></td>
+          <td><input class="ee-in" id="ee-ir-${g.clave}-${f}-600" type="number" step="0.01" oninput="eeRecalcular()"></td>
+          <td><input class="ee-in" id="ee-ir-${g.clave}-${f}-dar" type="number" step="0.01" oninput="eeRecalcular()"></td>
+          <td><input class="ee-in" id="ee-ir-${g.clave}-${f}-pi" type="number" step="0.01" oninput="eeRecalcular()"></td>
+        </tr>`).join("")}
+    </table></div>`).join("");
+
+  const bornes = EE_BORNES(m.marcacion);
+  const pares = m.n_bobinas >= 6
+    ? ["T1–T4", "T2–T5", "T3–T6", "T7–T10", "T8–T11", "T9–T12"]
+    : [`${bornes[0]}–${bornes[1]}`, `${bornes[1]}–${bornes[2]}`, `${bornes[0]}–${bornes[2]}`];
+  document.getElementById("ee-tabla-bob").innerHTML = `
+    <table class="tabla-ficha">
+      <tr><th>Par</th><th>Resistencia (Ω)</th><th>Estado</th></tr>
+      ${pares.map((p, i) => `
+        <tr>
+          <td><b>${p}</b></td>
+          <td><input class="ee-in" id="ee-bob-${i}" type="number" step="0.001" oninput="eeRecalcular()"></td>
+          <td><select class="ee-in" id="ee-bobe-${i}" onchange="eeRecalcular()">
+            <option>Buena</option><option>Dudosa</option><option>Mala</option></select></td>
+        </tr>`).join("")}
+    </table>`;
+  document.getElementById("ee-tabla-bob").dataset.pares = JSON.stringify(pares);
+}
+
+function eeLeerMediciones() {
+  const m = eeMaquinaActual, T = parseFloat(document.getElementById("ee-e-tdev").value);
+  const out = [];
+  eeGruposDeMaquina(m).forEach(g => g.fases.forEach(f => {
+    const v = k => {
+      const el = document.getElementById(`ee-ir-${g.clave}-${f}-${k}`);
+      const n = parseFloat(el?.value);
+      return isFinite(n) ? n : null;
+    };
+    const r30 = v("30"), r60 = v("60"), r600 = v("600");
+    let dar = v("dar"), pi = v("pi");
+    if (dar == null && r30 > 0 && r60 > 0) dar = r60 / r30;
+    if (pi == null && r60 > 0 && r600 > 0) pi = r600 / r60;
+    if (r30 == null && r60 == null && r600 == null) return;
+    out.push({ grupo: g.clave, fase: f, r30, r60, r600, dar, pi, ir40: EE_corr40(r60, T) });
+  }));
+  return out;
+}
+
+function eeLeerBobinas() {
+  const pares = JSON.parse(document.getElementById("ee-tabla-bob").dataset.pares || "[]");
+  return pares.map((p, i) => ({
+    par: p,
+    r: parseFloat(document.getElementById("ee-bob-" + i)?.value),
+    estado: document.getElementById("ee-bobe-" + i)?.value || "Buena",
+  })).filter(b => isFinite(b.r) || b.estado !== "Buena");
+}
+
+function eeRecalcular() {
+  const m = eeMaquinaActual, T = parseFloat(document.getElementById("ee-e-tdev").value);
+  const meds = eeLeerMediciones();
+  let html = "";
+  const porGrupo = {};
+  meds.forEach(x => (porGrupo[x.grupo] = porGrupo[x.grupo] || []).push(x));
+  Object.entries(porGrupo).forEach(([g, xs]) => {
+    const min = EE_minimoGrupo(m, g);
+    xs.forEach(x => {
+      if (x.r60 == null) return;
+      html += `<div class="ee-fila"><b>${g === "ESTATOR" ? "Fase " : ""}${x.fase}</b>
+        <span class="mat-stock">${x.r60} MΩ ${x.ir40 != null ? `→ <b>${x.ir40.toFixed(1)} MΩ @40°C</b>` : "(falta temperatura)"}</span>
+        ${EE_pill(EE_evIR(x.ir40, min))}
+        DAR ${x.dar ? x.dar.toFixed(2) : "—"} ${EE_pill(EE_evDAR(x.dar, x.ir40))}
+        PI ${x.pi ? x.pi.toFixed(2) : "—"} ${EE_pill(EE_evPI(x.pi, x.ir40))}</div>`;
+    });
+    // Desbalance entre fases del mismo grupo
+    const d = EE_desbalance(xs.map(x => x.ir40).filter(v => v != null));
+    if (d != null && xs.length > 2) {
+      html += `<div class="ee-fila"><b>Desbalance ${g}</b><span class="mat-stock">${d.toFixed(1)}% entre fases</span>${EE_pill(EE_evDes(d))}</div>`;
+    }
+  });
+
+  const bob = eeLeerBobinas();
+  const db = EE_desbalance(bob.map(b => b.r).filter(r => isFinite(r)));
+  if (db != null) html += `<div class="ee-fila"><b>Resistencia entre bobinas</b><span class="mat-stock">Desviación ${db.toFixed(1)}%</span>${EE_pill(EE_evDes(db))}</div>`;
+  const malas = bob.filter(b => b.estado === "Mala").map(b => b.par);
+  if (malas.length) html += `<div class="hint-box">&#9888;&#65039; Bobinas reportadas en mal estado: ${malas.join(", ")}</div>`;
+  if (!isFinite(T)) html += '<div class="hint-box">&#9888;&#65039; Sin temperatura de devanado no hay corrección a 40 °C, y la tendencia histórica deja de ser comparable.</div>';
+
+  document.getElementById("ee-eval").innerHTML = html || '<div class="empty">Digita las lecturas para ver la evaluación.</div>';
+  eeGuardarBorrador();
+}
+
+/* Borrador local: los ensayos se hacen en campo, muchas veces sin señal.
+   Se guarda mientras escribes y se recupera al volver a abrir. */
+function eeGuardarBorrador() {
+  if (!eeMaquinaActual || eeEnsayoEditando) return;
+  const campos = {};
+  document.querySelectorAll("#panel-ee-ensayo input, #panel-ee-ensayo select, #panel-ee-ensayo textarea")
+    .forEach(el => { if (el.id) campos[el.id] = el.value; });
+  try {
+    localStorage.setItem(EE_BORRADOR, JSON.stringify({ maquina: eeMaquinaActual.id, campos, ts: Date.now() }));
+  } catch (e) { /* almacenamiento lleno: no es critico */ }
+}
+
+function eeRestaurarBorrador() {
+  try {
+    const b = JSON.parse(localStorage.getItem(EE_BORRADOR) || "null");
+    if (!b || b.maquina !== eeMaquinaActual.id) return;
+    const dias = (Date.now() - b.ts) / 86400000;
+    if (dias > 7) { localStorage.removeItem(EE_BORRADOR); return; }
+    if (!confirm("Hay un ensayo sin terminar para esta máquina. ¿Recuperarlo?")) {
+      localStorage.removeItem(EE_BORRADOR); return;
+    }
+    Object.entries(b.campos).forEach(([id, v]) => {
+      const el = document.getElementById(id); if (el) el.value = v;
+    });
+  } catch (e) { /* borrador corrupto */ }
+}
+
+async function guardarEnsayo() {
+  const m = eeMaquinaActual;
+  const g = k => (document.getElementById("ee-e-" + k)?.value || "").trim();
+  const num = k => { const v = g(k); return v === "" ? null : Number(v); };
+  const meds = eeLeerMediciones();
+  if (!meds.length) { toast("Registra al menos una medición de aislamiento"); return; }
+  if (!g("tdev")) {
+    if (!confirm("Sin temperatura de devanado no se puede corregir a 40 °C y este ensayo no será comparable con los anteriores. ¿Guardar igual?")) return;
+  }
+
+  const btn = document.getElementById("ee-btn-guardar-ens");
+  btn.disabled = true;
+  try {
+    const cab = {
+      maquina_id: m.id, fecha: g("fecha") || new Date().toISOString().slice(0, 10),
+      tecnico: g("tecnico") || null, motivo: document.getElementById("ee-e-motivo").value,
+      temp_devanado: num("tdev"), temp_ambiente: num("tamb"), humedad: num("hum"),
+      horas_paro: num("paro"), condicion: document.getElementById("ee-e-cond").value,
+      v_prueba: num("vprueba"), megger: g("megger") || null, megger_serie: g("meggerserie") || null,
+      megger_calibracion: g("cal") || null, marcacion: m.marcacion, n_bobinas: m.n_bobinas,
+      temp_medicion_bobinas: num("trdev"), instrumento_bobinas: g("micro") || null,
+      observaciones: g("obs") || null,
+    };
+
+    let ensayoId = eeEnsayoEditando;
+    if (ensayoId) {
+      const { error } = await sb.from("ensayos_electricos").update(cab).eq("id", ensayoId);
+      if (error) throw error;
+      await sb.from("ensayo_devanados").delete().eq("ensayo_id", ensayoId);
+      await sb.from("ensayo_bobinas").delete().eq("ensayo_id", ensayoId);
+    } else {
+      const { data, error } = await sb.from("ensayos_electricos").insert(cab).select("id").single();
+      if (error) throw error;
+      ensayoId = data.id;
+    }
+
+    const filasDev = meds.map(x => ({
+      ensayo_id: ensayoId, grupo: x.grupo, fase: x.fase,
+      ir_30s: x.r30, ir_1min: x.r60, ir_10min: x.r600,
+      ir40_1min: x.ir40 != null ? +x.ir40.toFixed(3) : null,
+      dar: x.dar != null ? +x.dar.toFixed(4) : null,
+      pi: x.pi != null ? +x.pi.toFixed(4) : null,
+    }));
+    const { error: e2 } = await sb.from("ensayo_devanados").insert(filasDev);
+    if (e2) throw e2;
+
+    const filasBob = eeLeerBobinas().map(b => ({
+      ensayo_id: ensayoId, par: b.par,
+      resistencia: isFinite(b.r) ? b.r : null, estado: b.estado,
+    }));
+    if (filasBob.length) {
+      const { error: e3 } = await sb.from("ensayo_bobinas").insert(filasBob);
+      if (e3) throw e3;
+    }
+
+    localStorage.removeItem(EE_BORRADOR);
+    toast("Ensayo guardado");
+    await cargarMaquinas();
+    eeMaquinaActual = eeMaquinas.find(x => x.id === m.id);
+    abrirMaquina(m.id);
+  } catch (e) {
+    console.error(e);
+    toast("No se pudo guardar: " + e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function editarEnsayo(id) {
+  const e = eeEnsayos.find(x => x.id === id);
+  if (!e) return;
+  eeEnsayoEditando = id;
+  abrirPanel("panel-ee-ensayo");
+  document.getElementById("ee-ens-titulo").textContent = "Editar ensayo";
+  document.getElementById("ee-ens-maquina").textContent = eeMaquinaActual.nombre_efectivo || "";
+  eePintarTablas();
+  eeAvisoCampo();
+  const v = (k, val) => { const el = document.getElementById("ee-e-" + k); if (el) el.value = val ?? ""; };
+  v("fecha", e.fecha); v("tecnico", e.tecnico); v("tdev", e.temp_devanado); v("tamb", e.temp_ambiente);
+  v("hum", e.humedad); v("paro", e.horas_paro); v("vprueba", e.v_prueba); v("megger", e.megger);
+  v("meggerserie", e.megger_serie); v("cal", e.megger_calibracion); v("trdev", e.temp_medicion_bobinas);
+  v("micro", e.instrumento_bobinas); v("obs", e.observaciones);
+  if (e.motivo) document.getElementById("ee-e-motivo").value = e.motivo;
+  if (e.condicion) document.getElementById("ee-e-cond").value = e.condicion;
+  (e.ensayo_devanados || []).forEach(d => {
+    const s = (k, val) => { const el = document.getElementById(`ee-ir-${d.grupo}-${d.fase}-${k}`); if (el && val != null) el.value = val; };
+    s("30", d.ir_30s); s("60", d.ir_1min); s("600", d.ir_10min); s("dar", d.dar); s("pi", d.pi);
+  });
+  const pares = JSON.parse(document.getElementById("ee-tabla-bob").dataset.pares || "[]");
+  (e.ensayo_bobinas || []).forEach(b => {
+    const i = pares.indexOf(b.par);
+    if (i >= 0) {
+      const el = document.getElementById("ee-bob-" + i); if (el && b.resistencia != null) el.value = b.resistencia;
+      const es = document.getElementById("ee-bobe-" + i); if (es && b.estado) es.value = b.estado;
+    }
+  });
+  eeRecalcular();
+}
+
+async function borrarEnsayo(id) {
+  if (!confirm("Se elimina el ensayo con todas sus mediciones. ¿Continuar?")) return;
+  try {
+    const { error } = await sb.from("ensayos_electricos").delete().eq("id", id);
+    if (error) throw error;
+    toast("Ensayo eliminado");
+    await cargarMaquinas();
+    abrirMaquina(eeMaquinaActual.id);
+  } catch (e) {
+    toast("No se pudo eliminar: " + e.message);
+  }
+}
+
+document.getElementById("ee-buscar").addEventListener("input", renderMaquinas);
+document.getElementById("ee-f-tipo").addEventListener("change", eeToggleGenerador);
+document.getElementById("ee-btn-guardar-maq").onclick = guardarMaquina;
+document.getElementById("ee-btn-guardar-ens").onclick = guardarEnsayo;
+document.getElementById("ee-btn-nueva").onclick = nuevaMaquina;
+
 
 /* ============================================================
    EQUIVALENCIAS DE MATERIALES
