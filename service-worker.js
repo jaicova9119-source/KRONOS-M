@@ -1,5 +1,5 @@
 /*
- * Service Worker de Control Equipos GTE.
+ * Service Worker de Kronos-M.
  *
  * Guarda en el navegador la pagina principal y las librerias externas
  * (Supabase, Excel) la primera vez que se abre con señal, para que
@@ -12,26 +12,49 @@
  * cargue sin señal.
  */
 
-const CACHE_NAME = "equipos-gte-v18";
+const CACHE_NAME = "kronos-m-v19";
 
-const ARCHIVOS_A_GUARDAR = [
+/* Archivos propios. Estos tienen que quedar guardados si o si: sin ellos
+   la app no abre sin señal. */
+const ARCHIVOS_PROPIOS = [
   "./",
   "./index.html",
+  "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-maskable-512.png",
   "./icons/apple-touch-icon.png",
   "./icons/favicon-32.png",
   "./icons/favicon-16.png",
+];
+
+/* Librerias externas. Se guardan aparte de las propias porque dependen de
+   un CDN que puede estar lento o caido en el momento de la instalacion. */
+const LIBRERIAS = [
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
+  "https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js",
   "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
 ];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(ARCHIVOS_A_GUARDAR))
-      .catch((err) => console.warn("No se pudieron guardar todos los archivos:", err))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      /* addAll es todo o nada: si UNA sola direccion falla, rechaza y no
+         guarda ninguna. Con el catch de antes el error quedaba en la
+         consola, la instalacion se daba por buena y el cache quedaba
+         vacio -- la app dejaba de abrir sin señal y nada lo avisaba.
+         Por eso los archivos propios van con addAll (deben estar todos)
+         y las librerias una por una, para que la caida de un CDN no se
+         lleve por delante todo el cache. */
+      await cache.addAll(ARCHIVOS_PROPIOS);
+      await Promise.allSettled(
+        LIBRERIAS.map((url) =>
+          cache.add(url).catch((err) =>
+            console.warn("No se pudo guardar la libreria", url, err)
+          )
+        )
+      );
+    }).catch((err) => console.warn("Fallo la instalacion del cache:", err))
   );
   self.skipWaiting();
 });
@@ -48,23 +71,54 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  const url = event.request.url;
+  const req = event.request;
+  const url = req.url;
 
-  // Las peticiones a la base de datos de Supabase (equipos, movimientos, etc.)
-  // siempre van directo a internet -- no se guardan aqui.
+  /* Solo se manejan GET. Un cache.put con POST lanza excepcion. */
+  if (req.method !== "GET") return;
+
+  /* Datos en vivo de Supabase: siempre a internet, nunca al cache. */
   if (url.includes(".supabase.co/rest/") || url.includes(".supabase.co/auth/")) {
     return;
   }
 
-  // Para todo lo demas (la pagina, las librerias): intenta primero desde
-  // la memoria guardada, y si hay señal, actualiza la copia en segundo plano.
-  event.respondWith(
-    caches.match(event.request).then((guardado) => {
-      const buscarEnRed = fetch(event.request)
+  /* Supabase Storage guarda los documentos tecnicos del modulo documental.
+     Antes entraban al cache como cualquier otro archivo: cada PDF abierto
+     se quedaba en el telefono para siempre y el cache crecia sin tope.
+     Se dejan pasar directo a la red. */
+  if (url.includes(".supabase.co/storage/")) {
+    return;
+  }
+
+  /* La pagina en si va primero a la red, con el cache como respaldo.
+     Con la estrategia contraria, despues de cada despliegue la primera
+     carga mostraba la version anterior y habia que recargar de nuevo
+     para ver los cambios. Sin señal sigue funcionando igual: si la red
+     falla, responde lo guardado. */
+  if (req.mode === "navigate") {
+    event.respondWith(
+      fetch(req)
         .then((respuesta) => {
           if (respuesta && respuesta.ok) {
             const copia = respuesta.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copia));
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copia));
+          }
+          return respuesta;
+        })
+        .catch(() => caches.match(req).then((g) => g || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  /* Para todo lo demas (iconos, librerias): responde de inmediato desde
+     la memoria guardada y actualiza la copia en segundo plano. */
+  event.respondWith(
+    caches.match(req).then((guardado) => {
+      const buscarEnRed = fetch(req)
+        .then((respuesta) => {
+          if (respuesta && respuesta.ok) {
+            const copia = respuesta.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copia));
           }
           return respuesta;
         })
