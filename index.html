@@ -82,6 +82,36 @@ html,body{height:100%;margin:0;}
 .tabla-ficha{width:100%;border-collapse:collapse;font-size:13px}
 .tabla-ficha td,.tabla-ficha th{padding:5px 7px;border-bottom:1px solid var(--line);text-align:left}
 .tabla-ficha th{font-weight:600;color:var(--text-2);font-size:12px}
+#ee-informe{background:#fff;color:#000;padding:18px;border-radius:10px;font-size:13px}
+#ee-informe h3{font-size:14px;margin:16px 0 5px;border-bottom:1px solid #999;padding-bottom:3px}
+#ee-informe .inf-titulo{font-size:19px;font-weight:800}
+#ee-informe .inf-sub{font-size:11px;color:#555}
+#ee-informe .inf-cab{display:flex;gap:14px;align-items:center;margin-bottom:12px}
+#ee-informe .inf-logo{max-height:56px}
+#ee-informe .inf-min{font-weight:400;font-size:11px;color:#555;float:right}
+#ee-informe .inf-tabla{border-collapse:collapse;width:100%;font-size:12px}
+#ee-informe .inf-tabla td,#ee-informe .inf-tabla th{border:1px solid #999;padding:4px 6px;text-align:left}
+#ee-informe .inf-tabla th{background:#0C5292;color:#fff;font-weight:600}
+#ee-informe .inf-datos{width:100%;border-collapse:collapse}
+#ee-informe .inf-col{width:50%;vertical-align:top;padding-right:10px}
+#ee-informe .inf-ok{color:#2E7D32}#ee-informe .inf-warn{color:#E08600}
+#ee-informe .inf-bad{color:#C62828;font-weight:700}#ee-informe .inf-na{color:#666}
+#ee-informe .inf-dictamen{border:2px solid #999;padding:10px;margin-top:5px}
+#ee-informe .inf-d-bad{border-color:#C62828}#ee-informe .inf-d-warn{border-color:#E08600}
+#ee-informe .inf-d-ok{border-color:#359E68}
+#ee-informe .inf-veredicto{font-size:15px;font-weight:800}
+#ee-informe .inf-nota{font-size:11px;color:#555}
+#ee-informe .inf-obs{font-size:12px}
+#ee-informe .inf-firmas{width:100%;margin-top:26px;font-size:12px}
+#ee-informe .inf-firmas td{width:50%;padding-top:10px}
+#ee-informe .inf-pie{font-size:10px;color:#666;margin-top:16px;border-top:1px solid #ccc;padding-top:5px}
+@media print{
+  body *{visibility:hidden!important}
+  #ee-informe,#ee-informe *{visibility:visible!important}
+  #ee-informe{position:absolute;left:0;top:0;width:100%;padding:0;border-radius:0}
+  .no-print{display:none!important}
+  @page{margin:14mm}
+}
 body{
   background:var(--bg-0);color:var(--text-0);font-family:var(--sans);
   font-size:15px;overflow:hidden;padding-top:46px;
@@ -1248,6 +1278,26 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
     <div class="field" style="margin-top:12px"><label>Observaciones</label><textarea id="ee-e-obs" rows="3"></textarea></div>
     <button class="btn-primary" id="ee-btn-guardar-ens" style="margin-top:8px">Guardar ensayo</button>
+  </div>
+</div>
+
+<!-- ===== Panel: Ensayos · informe ===== -->
+<div class="panel" id="panel-ee-informe">
+  <div class="panel-header no-print">
+    <button class="icon-btn" onclick="abrirMaquina(eeMaquinaActual.id)">&#8592;</button>
+    <h2>Informe del ensayo</h2>
+  </div>
+  <div class="panel-body">
+    <div class="no-print" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button class="btn-primary" style="flex:1" onclick="eeImprimirInforme()">Imprimir o guardar PDF</button>
+      <button class="btn-secondary" style="flex:1" onclick="eeDescargarWord()">Descargar Word</button>
+    </div>
+    <div class="no-print field">
+      <label>Logo del informe (opcional)</label>
+      <input type="file" accept="image/*" onchange="eeCargarLogo(this)"/>
+      <div id="ee-logo-estado" style="margin-top:6px"></div>
+    </div>
+    <div id="ee-informe"></div>
   </div>
 </div>
 
@@ -3757,6 +3807,7 @@ function eeTarjetaEnsayo(e, m) {
       </table>
       ${e.observaciones ? `<div class="mat-stock" style="margin-top:6px">${e.observaciones}</div>` : ""}
       <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn-primary" onclick="verInforme('${e.id}')">Informe</button>
         <button class="btn-secondary" onclick="editarEnsayo('${e.id}')">Editar</button>
         <button class="btn-secondary" onclick="borrarEnsayo('${e.id}')">Eliminar</button>
       </div>
@@ -4181,6 +4232,356 @@ document.getElementById("ee-f-tipo").addEventListener("change", eeToggleGenerado
 document.getElementById("ee-btn-guardar-maq").onclick = guardarMaquina;
 document.getElementById("ee-btn-guardar-ens").onclick = guardarEnsayo;
 document.getElementById("ee-btn-nueva").onclick = nuevaMaquina;
+
+/* ============================================================
+   DICTAMEN AUTOMATICO E INFORME
+   ------------------------------------------------------------
+   Portado de MotorTrack y adaptado a los grupos de devanado.
+   El dictamen es apoyo al diagnostico, no lo reemplaza: se
+   apoya solo en lo que quedo registrado.
+   ============================================================ */
+
+const EE_norm = t => (t || "").toString().toLowerCase()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+function eeCorrelacionar(obs, ctx) {
+  const t = EE_norm(obs);
+  if (!t.trim()) return [];
+  const res = [];
+  const regla = (patron, etiqueta, respaldado) => {
+    if (patron.test(t)) res.push(respaldado
+      ? `Concuerda: la observación sobre «${etiqueta}» coincide con los parámetros medidos.`
+      : `Discrepancia: la observación sobre «${etiqueta}» no se refleja en los parámetros medidos. Verificar en campo o revisar la digitación.`);
+  };
+  regla(/(aislamiento|resistencia)[^.]{0,25}baj|baj[oa][^.]{0,20}(aislamiento|resistencia)/, "bajo aislamiento", ctx.irBajo || ctx.irLimite);
+  regla(/humed|mojad|condensacion/, "humedad en el devanado", ctx.piMuyBajo || ctx.piBajo || ctx.darBajo || ctx.condHumeda);
+  regla(/bobina[^.]{0,35}(dan|mal|quemad|corto|abiert)|(dan|quemad|corto)[^.]{0,25}bobina/, "bobina dañada", ctx.bobMalas || ctx.desbAlto);
+  regla(/(\bip\b|\bpi\b|indice de polarizacion)[^.]{0,20}baj/, "índice de polarización bajo", ctx.piBajo || ctx.piMuyBajo);
+  regla(/desbalance|desequilibri/, "desbalance entre bobinas", ctx.desbAlgo);
+  regla(/contamin|aceite|suci/, "contaminación del devanado", ctx.piMuyBajo || ctx.darBajo || ctx.condHumeda);
+
+  // Afirmar buen estado contra datos adversos es contradiccion, salvo que el
+  // propio texto ya reconozca el hallazgo: ahi el tecnico ya esta al tanto.
+  const afirmaBueno = /(buen estado|sin novedad|estado normal|satisfactori|apto|todo ok|sin problema)/.test(t);
+  const reconoce = /cuestionable|seguimiento|l[ií]mite|deterior|desbalance|contamin|humed|vigilar|monitor|pr[oó]xim|\bpi\b|\bdar\b|corto|baj/.test(t);
+  if (afirmaBueno && !reconoce && ctx.nivel !== "ok") {
+    res.push("Discrepancia: se reporta buen estado, pero los parámetros medidos indican lo contrario. Priorizar revisión; puede ser error de digitación o una condición no evidente a simple vista.");
+  }
+  return res;
+}
+
+function eeDictamen(lista, m) {
+  if (!lista.length) return null;
+  const e = lista[lista.length - 1];
+  const T = Number(e.temp_devanado);
+  const hallazgos = [], recs = [];
+  let nivel = "ok";
+  const peor = n => { if (n === "bad") nivel = "bad"; else if (n === "warn" && nivel !== "bad") nivel = "warn"; };
+
+  const devs = e.ensayo_devanados || [];
+  const bobs = e.ensayo_bobinas || [];
+
+  devs.forEach(d => {
+    const grupo = d.grupo || "ESTATOR";
+    const min = EE_minimoGrupo(m, grupo);
+    const etq = grupo === "ESTATOR" ? `Fase ${d.fase}` : `${grupo} ${d.fase}`;
+    const ir40 = d.ir40_1min != null ? Number(d.ir40_1min) : EE_corr40(Number(d.ir_1min), T);
+    if (ir40 != null) {
+      if (ir40 < min) { peor("bad"); hallazgos.push(`${etq}: IR corregida ${ir40.toFixed(1)} MΩ, por debajo del mínimo IEEE 43 de ${min} MΩ.`); }
+      else if (ir40 < min * 2) { peor("warn"); hallazgos.push(`${etq}: IR corregida ${ir40.toFixed(1)} MΩ, cercana al mínimo de ${min} MΩ.`); }
+    }
+    const alto = ir40 != null && ir40 > 5000;
+    if (d.pi != null && !alto) {
+      const pi = Number(d.pi);
+      if (pi < 1) { peor("bad"); hallazgos.push(`${etq}: PI ${pi.toFixed(2)} por debajo de 1.0, absorción anómala que apunta a humedad o contaminación.`); }
+      else if (pi < 2) { peor("warn"); hallazgos.push(`${etq}: PI ${pi.toFixed(2)} en zona cuestionable (1.0 a 2.0).`); }
+    }
+    if (d.dar != null && !alto) {
+      const dar = Number(d.dar);
+      if (dar < 1) { peor("bad"); hallazgos.push(`${etq}: DAR ${dar.toFixed(2)} por debajo de 1.0, condición dieléctrica deficiente.`); }
+      else if (dar < 1.25) { peor("warn"); hallazgos.push(`${etq}: DAR ${dar.toFixed(2)} en zona cuestionable.`); }
+    }
+  });
+
+  // Desbalance de IR entre las fases del estator: apunta a un problema
+  // localizado en una fase, no a degradacion general del aislamiento.
+  const irEstator = devs.filter(d => (d.grupo || "ESTATOR") === "ESTATOR" && d.ir40_1min != null)
+                        .map(d => Number(d.ir40_1min));
+  const dIR = EE_desbalance(irEstator);
+  if (dIR != null && irEstator.length >= 3 && dIR > 50) {
+    peor("warn");
+    hallazgos.push(`Dispersión del ${dIR.toFixed(0)} % en la IR entre fases del estator, lo que sugiere un deterioro localizado en una fase y no una degradación uniforme.`);
+  }
+
+  const d = EE_desbalance(bobs.map(b => Number(b.resistencia)).filter(x => isFinite(x)));
+  if (d != null) {
+    if (d > 5) { peor("bad"); hallazgos.push(`Desbalance resistivo entre bobinas del ${d.toFixed(1)} %, por encima del 5 %: posible espira en corto o conexión defectuosa.`); }
+    else if (d > 2) { peor("warn"); hallazgos.push(`Desbalance resistivo entre bobinas del ${d.toFixed(1)} % (2 a 5 %). Vigilar.`); }
+  }
+  const malas = bobs.filter(b => b.estado === "Mala").map(b => b.par);
+  const dudosas = bobs.filter(b => b.estado === "Dudosa").map(b => b.par);
+  if (malas.length) { peor("bad"); hallazgos.push(`Bobinas reportadas en mal estado: ${malas.join(", ")}.`); }
+  else if (dudosas.length) { peor("warn"); hallazgos.push(`Bobinas en estado dudoso: ${dudosas.join(", ")}.`); }
+
+  // Tendencia contra el ensayo anterior, comparando la peor fase del estator
+  if (lista.length >= 2) {
+    const prev = lista[lista.length - 2];
+    const peorIR = ee => {
+      const v = (ee.ensayo_devanados || [])
+        .filter(x => (x.grupo || "ESTATOR") === "ESTATOR" && x.ir40_1min != null)
+        .map(x => Number(x.ir40_1min));
+      return v.length ? Math.min(...v) : null;
+    };
+    const a = peorIR(e), b = peorIR(prev);
+    if (a != null && b > 0) {
+      const dif = (a - b) / b * 100;
+      if (dif < -50) { peor("bad"); hallazgos.push(`Degradación acelerada: la IR corregida cayó ${Math.abs(dif).toFixed(0)} % frente al ensayo del ${prev.fecha}.`); }
+      else if (dif < -30) { peor("warn"); hallazgos.push(`Tendencia descendente: la IR corregida cayó ${Math.abs(dif).toFixed(0)} % frente al ensayo del ${prev.fecha}.`); }
+    }
+  }
+
+  if (!isFinite(T)) {
+    if (nivel === "ok") nivel = "warn";
+    hallazgos.push("El ensayo no registra temperatura de devanado: sin corrección a 40 °C los valores no son comparables con los ensayos anteriores.");
+  }
+  const dias = Math.floor((Date.now() - new Date(e.fecha).getTime()) / 864e5);
+  if (dias > 365) {
+    if (nivel === "ok") nivel = "warn";
+    hallazgos.push(`El ensayo tiene ${dias} días: el dictamen se apoya en datos que ya no son vigentes.`);
+    recs.push("Programar una nueva medición para actualizar el diagnóstico.");
+  }
+  if (["Húmedo", "Contaminado (aceite/químicos)"].includes(e.condicion)) {
+    if (nivel === "ok") nivel = "warn";
+    hallazgos.push(`Condición visual reportada: ${e.condicion}.`);
+  }
+
+  if (nivel === "bad") {
+    if (hallazgos.some(h => h.includes("por debajo del mínimo") || h.includes("PI") && h.includes("por debajo de 1.0")))
+      recs.unshift("No energizar hasta corregir. Secar el devanado y repetir el ensayo; si el valor persiste, evaluar limpieza profunda o rebobinado.");
+    if (hallazgos.some(h => h.includes("Desbalance resistivo") && h.includes("por encima del 5")))
+      recs.push("Verificar apriete y estado de las conexiones, y medir bobina por bobina para descartar espiras en corto.");
+    if (malas.length) recs.push("Intervención de taller sobre las bobinas señaladas antes del retorno a servicio.");
+  } else if (nivel === "warn") {
+    recs.push("Apto para servicio con seguimiento: acortar el intervalo de ensayo y comparar la tendencia en la próxima medición.");
+  } else {
+    recs.push("Apto para servicio. Mantener la periodicidad de ensayo establecida.");
+  }
+
+  const titulo = nivel === "bad" ? "NO APTO · requiere intervención"
+    : nivel === "warn" ? "APTO CON OBSERVACIONES · seguimiento" : "APTO PARA SERVICIO";
+
+  const ctx = {
+    nivel,
+    irBajo: hallazgos.some(h => h.includes("por debajo del mínimo")),
+    irLimite: hallazgos.some(h => h.includes("cercana al mínimo")),
+    piMuyBajo: hallazgos.some(h => h.includes("PI") && h.includes("por debajo de 1.0")),
+    piBajo: hallazgos.some(h => h.includes("zona cuestionable (1.0 a 2.0)")),
+    darBajo: hallazgos.some(h => h.includes("DAR")),
+    desbAlto: d != null && d > 5, desbAlgo: d != null && d > 2,
+    bobMalas: malas.length > 0,
+    condHumeda: ["Húmedo", "Contaminado (aceite/químicos)"].includes(e.condicion),
+  };
+  return { nivel, titulo, hallazgos, recs, correlacion: eeCorrelacionar(e.observaciones, ctx), fechaBase: e.fecha };
+}
+
+/* ---------- Logo opcional del informe ---------- */
+const EE_LOGO = "kronos_informe_logo";
+
+function eeCargarLogo(input) {
+  const f = input.files[0];
+  if (!f) return;
+  const img = new Image();
+  const lector = new FileReader();
+  lector.onload = ev => {
+    img.onload = () => {
+      const esc = Math.min(1, 320 / img.width);
+      const c = document.createElement("canvas");
+      c.width = img.width * esc; c.height = img.height * esc;
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      try {
+        localStorage.setItem(EE_LOGO, c.toDataURL("image/png"));
+        toast("Logo guardado en este dispositivo");
+        if (eeInformeActual) verInforme(eeInformeActual);
+      } catch (err) { toast("El logo es muy pesado"); }
+    };
+    img.src = ev.target.result;
+  };
+  lector.readAsDataURL(f);
+}
+
+function eeQuitarLogo() {
+  localStorage.removeItem(EE_LOGO);
+  toast("Logo eliminado");
+  if (eeInformeActual) verInforme(eeInformeActual);
+}
+
+/* ---------- Informe ---------- */
+let eeInformeActual = null;
+
+function eeTablaInforme(e, m) {
+  const devs = e.ensayo_devanados || [];
+  const porGrupo = {};
+  devs.forEach(d => (porGrupo[d.grupo || "ESTATOR"] = porGrupo[d.grupo || "ESTATOR"] || []).push(d));
+  return Object.entries(porGrupo).map(([g, ds]) => {
+    const min = EE_minimoGrupo(m, g);
+    return `
+      <h3>Aislamiento a tierra · ${g.toLowerCase()} <span class="inf-min">mínimo IEEE 43: ${min} MΩ</span></h3>
+      <table class="inf-tabla">
+        <tr><th>Fase</th><th>IR 30 s</th><th>IR 1 min</th><th>IR 10 min</th><th>IR @40 °C</th><th>DAR</th><th>PI</th><th>Evaluación</th></tr>
+        ${ds.map(d => {
+          const ir40 = d.ir40_1min != null ? Number(d.ir40_1min) : null;
+          const ev = EE_evIR(ir40, min);
+          return `<tr>
+            <td><b>${d.fase}</b></td>
+            <td>${d.ir_30s ?? "—"}</td><td>${d.ir_1min ?? "—"}</td><td>${d.ir_10min ?? "—"}</td>
+            <td><b>${ir40 != null ? ir40.toFixed(1) : "—"}</b></td>
+            <td>${d.dar != null ? Number(d.dar).toFixed(2) : "—"}</td>
+            <td>${d.pi != null ? Number(d.pi).toFixed(2) : "—"}</td>
+            <td class="inf-${ev.nivel}">${ev.texto}</td></tr>`;
+        }).join("")}
+      </table>`;
+  }).join("");
+}
+
+async function verInforme(ensayoId) {
+  const e = eeEnsayos.find(x => x.id === ensayoId);
+  const m = eeMaquinaActual;
+  if (!e || !m) return;
+  eeInformeActual = ensayoId;
+  abrirPanel("panel-ee-informe");
+
+  // El dictamen mira toda la historia hasta este ensayo, no solo este
+  const hasta = eeEnsayos.slice().sort((a, b) => a.fecha.localeCompare(b.fecha))
+    .filter(x => x.fecha <= e.fecha);
+  const dic = eeDictamen(hasta, m);
+  const logo = localStorage.getItem(EE_LOGO);
+  const bobs = e.ensayo_bobinas || [];
+  const desb = EE_desbalance(bobs.map(b => Number(b.resistencia)).filter(x => isFinite(x)));
+
+  const ficha = [
+    ["Equipo", m.nombre_efectivo], ["Código SAP", m.sap_efectivo], ["Serial", m.serial_efectivo],
+    ["Tipo", m.tipo_maquina + (m.excitacion ? " · " + m.excitacion : "")],
+    ["Marca / modelo", [m.marca_efectiva, m.modelo_efectivo].filter(Boolean).join(" ")],
+    ["Ubicación", m.ubicacion_efectiva],
+    ["Potencia", m.potencia_kw ? m.potencia_kw + " kW" : (m.potencia_kva ? m.potencia_kva + " kVA" : "")],
+    ["Tensión nominal", m.voltaje ? m.voltaje + " V" : ""],
+    ["Tipo de devanado", m.tipo_devanado],
+  ].filter(([, v]) => v);
+
+  const cond = [
+    ["Fecha", e.fecha], ["Técnico", e.tecnico], ["Motivo", e.motivo],
+    ["Temp. devanado", e.temp_devanado != null ? e.temp_devanado + " °C" : "no registrada"],
+    ["Temp. ambiente", e.temp_ambiente != null ? e.temp_ambiente + " °C" : ""],
+    ["Humedad relativa", e.humedad != null ? e.humedad + " %" : ""],
+    ["Condición visual", e.condicion],
+    ["Tensión de prueba", e.v_prueba ? e.v_prueba + " VDC" : ""],
+    ["Instrumento", [e.megger, e.megger_serie && "S/N " + e.megger_serie].filter(Boolean).join(" · ")],
+    ["Vence calibración", e.megger_calibracion],
+  ].filter(([, v]) => v);
+
+  document.getElementById("ee-informe").innerHTML = `
+    <div class="inf-cab">
+      ${logo ? `<img src="${logo}" class="inf-logo" alt=""/>` : ""}
+      <div>
+        <div class="inf-titulo">Informe de ensayo de aislamiento</div>
+        <div class="inf-sub">Máquinas eléctricas rotativas · criterios IEEE Std 43-2013</div>
+      </div>
+    </div>
+
+    <table class="inf-datos">
+      <tr><td class="inf-col">
+        <h3>Equipo ensayado</h3>
+        <table class="inf-tabla">${ficha.map(([k, v]) => `<tr><td>${k}</td><td><b>${v}</b></td></tr>`).join("")}</table>
+      </td><td class="inf-col">
+        <h3>Condiciones del ensayo</h3>
+        <table class="inf-tabla">${cond.map(([k, v]) => `<tr><td>${k}</td><td><b>${v}</b></td></tr>`).join("")}</table>
+      </td></tr>
+    </table>
+
+    ${eeTablaInforme(e, m)}
+
+    ${bobs.length ? `
+      <h3>Resistencia óhmica por bobina
+        ${desb != null ? `<span class="inf-min">desbalance ${desb.toFixed(1)} %</span>` : ""}</h3>
+      <table class="inf-tabla">
+        <tr><th>Par</th><th>Resistencia (Ω)</th><th>Estado</th></tr>
+        ${bobs.map(b => `<tr><td>${b.par}</td><td>${b.resistencia ?? "—"}</td><td>${b.estado || ""}</td></tr>`).join("")}
+      </table>
+      ${e.temp_medicion_bobinas != null || e.instrumento_bobinas
+        ? `<div class="inf-nota">Medido a ${e.temp_medicion_bobinas ?? "—"} °C con ${e.instrumento_bobinas || "instrumento no registrado"}.</div>` : ""}` : ""}
+
+    ${dic ? `
+      <h3>Dictamen</h3>
+      <div class="inf-dictamen inf-d-${dic.nivel}">
+        <div class="inf-veredicto">${dic.titulo}</div>
+        <div class="inf-nota">Basado en el ensayo del ${dic.fechaBase} y en el historial previo de la máquina.</div>
+        <p><b>Hallazgos.</b> ${dic.hallazgos.length ? dic.hallazgos.join(" ") : "Sin hallazgos adversos en los parámetros evaluados."}</p>
+        <p><b>Recomendación.</b> ${dic.recs.join(" ")}</p>
+        ${dic.correlacion.length ? `<p><b>Contraste con las observaciones registradas.</b> ${dic.correlacion.join(" ")}</p>` : ""}
+      </div>` : ""}
+
+    ${e.observaciones ? `<h3>Observaciones del técnico</h3><p class="inf-obs">${e.observaciones}</p>` : ""}
+
+    <table class="inf-firmas">
+      <tr><td>Realizó<br><br><br>______________________<br>${e.tecnico || ""}</td>
+          <td>Revisó<br><br><br>______________________<br>&nbsp;</td></tr>
+    </table>
+    <div class="inf-pie">
+      El dictamen es un apoyo al diagnóstico generado a partir de los datos registrados y no reemplaza el criterio del ingeniero responsable.
+      Informe generado el ${new Date().toLocaleDateString("es-CO")} desde Kronos-M.
+    </div>`;
+
+  document.getElementById("ee-logo-estado").innerHTML = logo
+    ? '<button class="btn-secondary" onclick="eeQuitarLogo()">Quitar logo</button>'
+    : '<span class="mat-stock">Sin logo. El informe sale sin imagen.</span>';
+}
+
+function eeImprimirInforme() { window.print(); }
+
+// Word abre HTML empaquetado como .doc conservando tablas y colores, y el
+// documento queda editable. No es un .docx nativo, pero para adjuntar a una
+// orden de trabajo cumple y no obliga a cargar otra libreria.
+function eeDescargarWord() {
+  const m = eeMaquinaActual;
+  const e = eeEnsayos.find(x => x.id === eeInformeActual);
+  if (!e) return;
+  const estilos = `
+    body{font-family:Arial,sans-serif;font-size:10pt;color:#000}
+    h3{font-size:11pt;margin:14pt 0 4pt;border-bottom:1px solid #999;padding-bottom:2pt}
+    .inf-titulo{font-size:15pt;font-weight:bold}
+    .inf-sub{font-size:9pt;color:#555}
+    .inf-min{font-weight:normal;font-size:9pt;color:#555}
+    .inf-tabla{border-collapse:collapse;width:100%;font-size:9.5pt}
+    .inf-tabla td,.inf-tabla th{border:1px solid #999;padding:3pt 5pt;text-align:left}
+    .inf-tabla th{background:#0C5292;color:#fff}
+    .inf-datos{width:100%}.inf-col{width:50%;vertical-align:top;padding-right:8pt}
+    .inf-ok{color:#2E7D32}.inf-warn{color:#E08600}.inf-bad{color:#C62828;font-weight:bold}.inf-na{color:#666}
+    .inf-dictamen{border:1.5pt solid #999;padding:8pt;margin-top:4pt}
+    .inf-d-bad{border-color:#C62828}.inf-d-warn{border-color:#E08600}.inf-d-ok{border-color:#359E68}
+    .inf-veredicto{font-size:12pt;font-weight:bold}
+    .inf-nota{font-size:8.5pt;color:#555}
+    .inf-firmas{width:100%;margin-top:22pt;font-size:9.5pt}
+    .inf-firmas td{width:50%;padding-top:8pt}
+    .inf-pie{font-size:8pt;color:#666;margin-top:14pt;border-top:1px solid #ccc;padding-top:4pt}
+    .inf-logo{max-height:48pt}
+    .inf-cab{margin-bottom:10pt}`;
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+    xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8"><title>Informe de ensayo</title>
+    <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+    <style>@page{size:21cm 27.9cm;margin:2cm}${estilos}</style></head>
+    <body>${document.getElementById("ee-informe").innerHTML}</body></html>`;
+
+  const blob = new Blob(["\ufeff", doc], { type: "application/msword" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const nombre = (m.sap_efectivo || m.serial_efectivo || "maquina").toString().replace(/[^\w-]/g, "");
+  a.href = url;
+  a.download = `Ensayo_aislamiento_${nombre}_${e.fecha}.doc`;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+
 
 
 /* ============================================================
