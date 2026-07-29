@@ -654,11 +654,6 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     Carrito
     <span class="cart-fab-badge" id="carrito-badge" style="display:none;top:2px;right:14px">0</span>
   </button>
-  <button class="nav-item" data-tab="config-minmax" data-modulo="materiales" id="nav-config-minmax" style="display:none">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 014 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
-    Configuración
-  </button>
-
   <button class="nav-item" data-tab="documentos" data-modulo="documental">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
     Buscar
@@ -934,6 +929,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <button class="estado-chip" data-estado="OK">OK</button>
       <button class="estado-chip" data-estado="SOBRESTOCK">Sobrestock</button>
       <button class="estado-chip" data-estado="SIN">Sin configurar</button>
+    </div>
+    <div id="mat-link-config" style="display:none;padding:2px 0 8px">
+      <button class="btn-secondary" style="font-size:13px;padding:8px 12px"
+        onclick="abrirPanel('panel-config-minmax')">
+        &#9998; Configurar un material que no está en esta lista
+      </button>
     </div>
     <div class="list" style="padding-top:4px" id="lista-materiales">
       <div class="loading">Cargando materiales...</div>
@@ -2516,7 +2517,14 @@ async function cargarMateriales() {
     document.getElementById("dl-proveedores").innerHTML = proveedoresUnicos.map(p => `<option value="${p}">`).join("");
 
     const puedeConfigurar = usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
-    document.getElementById("nav-config-minmax").style.display = puedeConfigurar ? "flex" : "none";
+    /* El piñon de Configuracion salio de la barra lateral: casi todo lo que
+       hacia ya se resuelve desde "Editar parametros min-max" en la ficha del
+       material. Lo unico que no se puede hacer desde ahi es configurar un
+       material que no aparece en esta lista -- uno del catalogo que nunca ha
+       tenido existencia en ningun centro. Para eso queda este acceso, dentro
+       de Buscar, que es donde uno se da cuenta de que el material falta. */
+    const linkCfg = document.getElementById("mat-link-config");
+    if (linkCfg) linkCfg.style.display = puedeConfigurar ? "block" : "none";
 
     actualizarBadgeCarrito();
     renderListaMateriales();
