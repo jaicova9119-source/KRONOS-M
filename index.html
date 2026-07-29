@@ -900,6 +900,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <div class="section-label" style="margin-top:24px">Sincronización con SAP</div>
       <button class="btn-secondary" onclick="abrirPanel('panel-ih08')">Contraste con IH08</button>
       <button class="btn-secondary" style="margin-top:8px" onclick="abrirPanel('panel-carga-materiales')">Actualizar inventario de Materiales</button>
+      <button class="btn-secondary" style="margin-top:8px" onclick="abrirCargaSap()">Cargar consumo (MB25) y compras en curso (ME5A)</button>
     </div>
   </div>
 </div>
@@ -977,6 +978,58 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
 </div>
 
+<!-- ===== Panel: Carga de transacciones SAP (MB25 / ME5A) ===== -->
+<div class="panel" id="panel-carga-sap">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-carga-sap');reiniciarCargaSap();">&#8592;</button>
+    <h2>Consumo y compras en curso</h2>
+  </div>
+  <div class="panel-body">
+    <div id="csap-paso-tipo">
+      <p class="hint-box">Dos extractos de SAP que alimentan el análisis de mín-máx y evitan pedidos duplicados. Cada carga <b>reemplaza</b> la anterior: son fotos completas, no acumulados.</p>
+
+      <div class="section-label">¿Qué vas a cargar?</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn-secondary" style="text-align:left;padding:12px" onclick="elegirTipoSap('MB25')">
+          <b>MB25 &mdash; Consumo histórico</b>
+          <div class="mat-meta" style="white-space:normal;margin-top:4px">Movimientos de salida de material. De aquí sale la rotación real que reemplaza al consumo estimado. Mensual o trimestral es suficiente.</div>
+        </button>
+        <button class="btn-secondary" style="text-align:left;padding:12px" onclick="elegirTipoSap('ME5A')">
+          <b>ME5A &mdash; Compras en curso</b>
+          <div class="mat-meta" style="white-space:normal;margin-top:4px">Solicitudes de pedido abiertas. <b>Cárgalo justo antes de generar un requerimiento</b>: es lo que evita pedir algo ya radicado.</div>
+        </button>
+      </div>
+
+      <div id="csap-ultimas" style="margin-top:20px"></div>
+    </div>
+
+    <div id="csap-paso-archivo" style="display:none">
+      <div class="section-label" id="csap-titulo-archivo"></div>
+      <p class="hint-box" id="csap-ayuda-archivo"></p>
+      <div class="field">
+        <label>Archivo exportado de SAP</label>
+        <input type="file" id="csap-input-archivo" accept=".xlsx,.xls,.csv"/>
+      </div>
+      <button class="btn-secondary" onclick="reiniciarCargaSap()">Volver</button>
+    </div>
+
+    <div id="csap-paso-mapeo" style="display:none;margin-top:20px">
+      <div class="section-label">¿Qué columna del archivo corresponde a cada dato?</div>
+      <p class="hint-box">Solo la primera vez, o si cambia el formato del reporte. Se guarda para las próximas cargas.</p>
+      <div id="csap-campos-mapeo"></div>
+      <button class="btn-primary" style="margin-top:14px" onclick="confirmarMapeoSap()">Confirmar y revisar</button>
+    </div>
+
+    <div id="csap-resultado" style="display:none;margin-top:20px">
+      <div class="section-label">Revisión antes de aplicar</div>
+      <div id="csap-resumen" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px"></div>
+      <div id="csap-avisos"></div>
+      <button class="btn-primary" id="csap-btn-aplicar" style="margin-top:16px" onclick="aplicarCargaSap()">Aplicar carga</button>
+      <button class="btn-secondary" style="margin-top:10px" onclick="reiniciarCargaSap()">Cargar otro archivo</button>
+    </div>
+  </div>
+</div>
+
 <!-- ===== Panel: Materiales (lista + filtros) ===== -->
 <div class="panel" id="panel-materiales">
   <div class="panel-header">
@@ -1000,7 +1053,8 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <button class="estado-chip" data-estado="BAJO">Bajo</button>
       <button class="estado-chip" data-estado="OK">OK</button>
       <button class="estado-chip" data-estado="SOBRESTOCK">Sobrestock</button>
-      <button class="estado-chip" data-estado="SIN">Sin configurar</button>
+      <button class="estado-chip" data-estado="SIN CONFIGURAR">Sin configurar</button>
+      <button class="estado-chip" data-estado="SIN PARAMETRIZAR">Sin parametrizar</button>
     </div>
     <div id="mat-link-config" style="display:none;padding:2px 0 8px">
       <button class="btn-secondary" style="font-size:13px;padding:8px 12px"
@@ -2575,6 +2629,7 @@ async function cargarMateriales() {
     }
     materialesData = todos;
     await cargarBalanceTraslados();
+    await cargarConsumoYTramites();
 
     // Poblar filtro de centros (unicos, ordenados)
     const selCentro = document.getElementById("mat-filtro-centro");
@@ -2678,6 +2733,41 @@ function trasladoDe(m) {
   return mapaTraslados.get(`${m.codigo_sap}|${m.centro}`) || null;
 }
 
+/* Consumo real (MB25) y solicitudes abiertas (ME5A).
+   El consumo es por material, sin centro: es una propiedad del repuesto y
+   se agrega por grupo de equivalencia. Los tramites si son por centro,
+   porque una solicitud se radica para un centro concreto. */
+let mapaConsumo = new Map();    // codigo_sap -> fila de v_consumo_material
+let mapaTramites = new Map();   // "codigo|centro" -> fila de v_compras_abiertas
+
+async function cargarConsumoYTramites() {
+  mapaConsumo = new Map();
+  mapaTramites = new Map();
+  const paginado = async (vista, clave) => {
+    const PAGINA = 1000;
+    let desde = 0;
+    while (true) {
+      const { data, error } = await sb.from(vista).select("*").range(desde, desde + PAGINA - 1);
+      if (error) throw error;
+      (data || []).forEach(r => clave(r));
+      if (!data || data.length < PAGINA) break;
+      desde += PAGINA;
+    }
+  };
+  /* Si las vistas todavia no existen, la app sigue funcionando igual: la
+     ficha simplemente no muestra esas filas. */
+  try {
+    await paginado("v_consumo_material", r => {
+      if (r.tiene_historial) mapaConsumo.set(String(r.codigo_sap), r);
+    });
+  } catch (e) { console.warn("Consumo historico no disponible:", e.message); }
+  try {
+    await paginado("v_compras_abiertas", r => {
+      mapaTramites.set(`${r.codigo_sap}|${r.centro}`, r);
+    });
+  } catch (e) { console.warn("Compras en curso no disponibles:", e.message); }
+}
+
 function renderListaMateriales() {
   const lista = document.getElementById("lista-materiales");
   const texto = (document.getElementById("mat-buscar").value || "").toLowerCase().trim();
@@ -2686,8 +2776,12 @@ function renderListaMateriales() {
     if (filtroCentroMat && m.centro !== filtroCentroMat) return false;
     if (filtroCategoriaMat && m.categoria !== filtroCategoriaMat) return false;
     if (filtroEstadoMat) {
-      const key = (m.estado || "").split(" ")[0];
-      if (key !== filtroEstadoMat) return false;
+      /* Comparacion por estado completo. Antes se comparaba solo la primera
+         palabra, lo que hacia indistinguibles SIN CONFIGURAR y SIN
+         PARAMETRIZAR, y ademas dejaba la lista vacia al hacer clic en la
+         tarjeta de Resumen de esos estados, porque esa tarjeta si enviaba
+         el nombre completo. */
+      if ((m.estado || "") !== filtroEstadoMat) return false;
     }
     if (texto) {
       /* Se incluye la aplicabilidad para poder buscar al reves: en campo la
@@ -2810,6 +2904,46 @@ function renderBalance() {
   }).join("");
 }
 
+/* Filas de consumo real y solicitudes abiertas para la ficha.
+   Las dos son el contraste que faltaba: el mínimo se juzga contra lo que
+   se consume, y la compra se juzga contra lo que ya está pedido. */
+function filasConsumoTramite(m) {
+  let out = "";
+
+  const c = mapaConsumo.get(String(m.codigo_sap));
+  if (c) {
+    const anual = Math.round((Number(c.prom_mensual_24m) || 0) * 12 * 10) / 10;
+    const meses = (Number(m.stock_maximo) > 0 && Number(c.prom_mensual_24m) > 0)
+      ? Math.round(Number(m.stock_maximo) / Number(c.prom_mensual_24m)) : null;
+    out += `<tr><td>Consumo real<br><span style="font-weight:400;opacity:.6;font-size:11px">últimos 24 meses</span></td>
+      <td>${Number(c.consumo_24m) || 0} und · ${anual}/año
+      ${c.dias_desde_ultimo_consumo != null
+        ? `<br><span style="font-size:11px;opacity:.7">último movimiento hace ${c.dias_desde_ultimo_consumo} días</span>` : ""}
+      ${meses != null
+        ? `<br><span style="font-size:11px;${meses > 36 ? "color:#c62828" : "opacity:.7"}">el máximo cubre ${meses} meses</span>` : ""}
+      </td></tr>`;
+  } else {
+    /* Ausencia de fila NO es consumo cero: es que el material no venia en el
+       extracto cargado. Decirlo evita que alguien baje un minimo por esto. */
+    out += `<tr><td>Consumo real</td>
+      <td style="opacity:.65">Sin historial en el extracto de SAP cargado. No significa que no se consuma.</td></tr>`;
+  }
+
+  const t = mapaTramites.get(`${m.codigo_sap}|${m.centro}`);
+  if (t) {
+    const dias = Number(t.dias_en_tramite) || 0;
+    const alerta = dias > 540
+      ? "Más de 18 meses abierta. Verificar si sigue vigente antes de contarla como cobertura."
+      : (dias > 180 ? "Solicitud demorada." : "");
+    out += `<tr><td>Ya solicitado<br><span style="font-weight:400;opacity:.6;font-size:11px">${m.centro}</span></td>
+      <td><b>${Number(t.cantidad_en_tramite) || 0} und</b> en trámite
+      <br><span style="font-size:11px;opacity:.7">SOLPED ${t.solicitudes || "—"} · hace ${dias} días</span>
+      ${alerta ? `<br><span style="font-size:11px;color:#c62828">${alerta}</span>` : ""}
+      </td></tr>`;
+  }
+  return out;
+}
+
 function abrirFichaMaterial(m) {
   materialActual = m;
   document.getElementById("mat-ficha-titulo").textContent = m.descripcion;
@@ -2844,6 +2978,7 @@ function abrirFichaMaterial(m) {
     <tr><td>Consumo prom. mensual</td><td>${m.consumo_prom_mensual}</td></tr>
     <tr><td>Valor stock</td><td>${fmtCOP(m.valor_stock)}</td></tr>
     <tr><td>Precio unitario aprox.</td><td>${fmtCOP(precioUnit)}</td></tr>
+    ${filasConsumoTramite(m)}
     ${notaSegura ? `<tr><td>Nota técnica<br><span style="font-weight:400;opacity:.6;font-size:11px">${m.centro}</span></td><td style="white-space:pre-line;line-height:1.5">${notaSegura}</td></tr>` : ""}
   `;
 
@@ -7007,6 +7142,318 @@ async function aplicarSincronizacionesIH08() {
    Categoría, número de parte, nombre técnico y proveedor —que se
    configuran a mano en Kronos-M— nunca se tocan desde aquí.
    ============================================================ */
+
+/* ============================================================
+   Carga de transacciones SAP: MB25 (consumo) y ME5A (compras en curso)
+
+   Mismo patron que el importador de inventario: leer, mapear columnas una
+   sola vez, revisar y aplicar. Dos diferencias de fondo:
+
+   · Cada carga REEMPLAZA la tabla completa. Son extractos, no
+     incrementos. Un material que desaparece del ME5A es un material cuya
+     solicitud se cerro; si se acumulara, seguiria descontandose para
+     siempre.
+   · Se registra la carga en cargas_sap con el rango de fechas. La fecha
+     de corte importa tanto como los datos: un consumo de hace ocho meses
+     sostiene decisiones distintas a uno de la semana pasada.
+   ============================================================ */
+
+const CSAP_MAPEO_KEY = "materiales_carga_transaccion_mapeo";
+
+const CSAP_DEF = {
+  MB25: {
+    titulo: "MB25 · Consumo histórico",
+    ayuda: "Exporta MB25 a Excel con los materiales que tengan mín-máx configurado. Idealmente 24 meses o más: con menos historial el promedio no sostiene una decisión de inventario.",
+    tabla: "consumo_historico",
+    campos: [
+      { key: "codigo_sap",         label: "Material",                requerido: true,  pistas: ["material"] },
+      { key: "fecha_necesidad",    label: "Fecha de necesidad",      requerido: true,  pistas: ["fecha de necesidad", "fecha"] },
+      { key: "cantidad_consumida", label: "Cantidad reducida (consumida)", requerido: true, pistas: ["reducid"] },
+      { key: "cantidad_necesaria", label: "Cantidad necesaria",      requerido: false, pistas: ["cantidad necesaria"] },
+      { key: "centro",             label: "Centro",                  requerido: false, pistas: ["centro"] },
+      { key: "clase_movimiento",   label: "Clase de movimiento",     requerido: false, pistas: ["clase de movimiento"] },
+      { key: "debe_haber",         label: "Indicador Debe/Haber",    requerido: false, pistas: ["debe"] },
+      { key: "texto_breve",        label: "Texto breve",             requerido: false, pistas: ["texto breve"] },
+      { key: "reserva",            label: "Nº reserva",              requerido: false, pistas: ["reserva"] },
+      { key: "orden",              label: "Orden",                   requerido: false, pistas: ["orden"] },
+      { key: "unidad",             label: "Unidad",                  requerido: false, pistas: ["unidad"] },
+      { key: "almacen",            label: "Almacén",                 requerido: false, pistas: ["almac"] },
+      { key: "posicion_borrada",   label: "Posición borrada",        requerido: false, pistas: ["borrada"] },
+      { key: "salida_final",       label: "Salida final",            requerido: false, pistas: ["salida final"] },
+    ],
+  },
+  ME5A: {
+    titulo: "ME5A · Compras en curso",
+    ayuda: "Exporta ME5A con las solicitudes de pedido abiertas. Cárgalo el mismo día que vayas a generar un requerimiento: su único trabajo es evitar pedir algo que ya está radicado.",
+    tabla: "compras_en_curso",
+    campos: [
+      { key: "codigo_sap",          label: "Material",                requerido: true,  pistas: ["material"] },
+      { key: "solicitud_pedido",    label: "Solicitud de pedido",     requerido: true,  pistas: ["solicitud de pedido"] },
+      { key: "cantidad_solicitada", label: "Cantidad solicitada",     requerido: true,  pistas: ["cantidad solicitada"] },
+      { key: "centro",              label: "Centro",                  requerido: false, pistas: ["centro"] },
+      { key: "fecha_solicitud",     label: "Fecha de solicitud",      requerido: true,  pistas: ["fecha de solicitud"] },
+      { key: "cantidad_confirmada", label: "Cantidad confirmada",     requerido: false, pistas: ["confirmada"] },
+      { key: "valor_total",         label: "Valor total",             requerido: false, pistas: ["valor total"] },
+      { key: "moneda",              label: "Moneda",                  requerido: false, pistas: ["moneda"] },
+      { key: "status_tratamiento",  label: "Status de tratamiento",   requerido: false, pistas: ["status"] },
+      { key: "indicador_borrado",   label: "Indicador de borrado",    requerido: false, pistas: ["borrado"] },
+      { key: "texto_breve",         label: "Texto breve",             requerido: false, pistas: ["texto breve"] },
+      { key: "proveedor_deseado",   label: "Proveedor deseado",       requerido: false, pistas: ["proveedor deseado"] },
+      { key: "posicion",            label: "Posición",                requerido: false, pistas: ["pos.solicitud"] },
+      { key: "area",                label: "Código de área",          requerido: false, pistas: ["rea"] },
+      { key: "creado_por",          label: "Creado por",              requerido: false, pistas: ["creado por"] },
+      { key: "fecha_liberacion",    label: "Fecha de liberación",     requerido: false, pistas: ["liberaci"] },
+      { key: "grupo_compras",       label: "Grupo de compras",        requerido: false, pistas: ["grupo de compras"] },
+    ],
+  },
+};
+
+let csapTipo = null;
+let csapFilasCrudas = [];
+let csapHeaders = [];
+let csapNormalizadas = [];
+
+async function abrirCargaSap() {
+  reiniciarCargaSap();
+  abrirPanel("panel-carga-sap");
+  /* Mostrar de que fecha son los datos actuales. Sin esto uno no sabe si
+     lo que ve en el analisis es de esta semana o de marzo. */
+  const cont = document.getElementById("csap-ultimas");
+  cont.innerHTML = '<div class="loading">Consultando última carga...</div>';
+  try {
+    const { data, error } = await sb.from("cargas_sap")
+      .select("transaccion, archivo, filas, fecha_desde, fecha_hasta, created_at")
+      .order("created_at", { ascending: false }).limit(20);
+    if (error) throw error;
+    const ultima = {};
+    (data || []).forEach(c => { if (!ultima[c.transaccion]) ultima[c.transaccion] = c; });
+    const filas = ["MB25", "ME5A"].map(t => {
+      const u = ultima[t];
+      if (!u) return `<tr><td><b>${t}</b></td><td colspan="2" style="opacity:.6">Sin cargar</td></tr>`;
+      const dias = Math.floor((Date.now() - new Date(u.created_at)) / 86400000);
+      return `<tr><td><b>${t}</b></td>
+        <td>${u.filas} filas · ${u.fecha_desde || "?"} a ${u.fecha_hasta || "?"}</td>
+        <td style="text-align:right;${dias > 30 ? "color:#c62828" : ""}">hace ${dias} d</td></tr>`;
+    }).join("");
+    cont.innerHTML = `<div class="section-label">Última carga</div>
+      <table class="tabla-ficha" style="font-size:12px">${filas}</table>`;
+  } catch (e) {
+    cont.innerHTML = `<p class="hint-box">No se pudo leer el historial de cargas: ${e.message}</p>`;
+  }
+}
+
+function reiniciarCargaSap() {
+  csapTipo = null; csapFilasCrudas = []; csapHeaders = []; csapNormalizadas = [];
+  const inp = document.getElementById("csap-input-archivo");
+  if (inp) inp.value = "";
+  ["csap-paso-archivo", "csap-paso-mapeo", "csap-resultado"].forEach(id => {
+    const el = document.getElementById(id); if (el) el.style.display = "none";
+  });
+  const t = document.getElementById("csap-paso-tipo");
+  if (t) t.style.display = "";
+}
+
+function elegirTipoSap(tipo) {
+  csapTipo = tipo;
+  const d = CSAP_DEF[tipo];
+  document.getElementById("csap-titulo-archivo").textContent = d.titulo;
+  document.getElementById("csap-ayuda-archivo").textContent = d.ayuda;
+  document.getElementById("csap-paso-tipo").style.display = "none";
+  document.getElementById("csap-paso-archivo").style.display = "";
+}
+
+function csapNum(v) {
+  if (v === "" || v === null || v === undefined) return null;
+  const n = Number(String(v).replace(/\s/g, "").replace(/,/g, ""));
+  return isNaN(n) ? null : n;
+}
+
+function csapFecha(v) {
+  if (!v) return null;
+  if (v instanceof Date && !isNaN(v)) {
+    // Fecha local a ISO sin corrimiento de zona horaria.
+    return new Date(v.getTime() - v.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  }
+  const s = String(v).trim();
+  // dd.mm.yyyy y dd/mm/yyyy son los formatos que suele soltar SAP.
+  const m = s.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+  if (m) return `${m[3]}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
+  const d = new Date(s);
+  return isNaN(d) ? null : d.toISOString().slice(0, 10);
+}
+
+document.getElementById("csap-input-archivo").addEventListener("change", async (e) => {
+  const archivo = e.target.files[0];
+  if (!archivo || !csapTipo) return;
+  try {
+    const buffer = await archivo.arrayBuffer();
+    /* cellDates hace que SheetJS entregue objetos Date en vez del numero
+       serial de Excel, que es lo que rompe las fechas al importar. */
+    const libro = XLSX.read(buffer, { type: "array", cellDates: true });
+    const hoja = libro.Sheets[libro.SheetNames[0]];
+    const filas = XLSX.utils.sheet_to_json(hoja, { defval: "" });
+    if (!filas.length) { toast("El archivo no tiene filas de datos"); return; }
+    csapFilasCrudas = filas;
+    csapHeaders = Object.keys(filas[0]);
+    mostrarMapeoSap();
+  } catch (err) {
+    console.error(err);
+    toast("No se pudo leer el archivo. ¿Es un Excel o CSV válido?");
+  }
+});
+
+function mostrarMapeoSap() {
+  let guardadoTodo = {};
+  try { guardadoTodo = JSON.parse(localStorage.getItem(CSAP_MAPEO_KEY) || "{}"); } catch (e) {}
+  const guardado = guardadoTodo[csapTipo] || {};
+  const cont = document.getElementById("csap-campos-mapeo");
+  cont.innerHTML = CSAP_DEF[csapTipo].campos.map(campo => {
+    const prev = guardado[campo.key];
+    const sugerido = csapHeaders.includes(prev)
+      ? prev
+      : (csapHeaders.find(h => campo.pistas.some(p => h.toLowerCase().includes(p))) || "");
+    const opciones = ["<option value=''>-- no disponible --</option>"]
+      .concat(csapHeaders.map(h => `<option value="${h}" ${h === sugerido ? "selected" : ""}>${h}</option>`));
+    return `<div class="ih08-mapeo-fila">
+        <label>${campo.label}${campo.requerido ? " *" : ""}</label>
+        <select data-campo-csap="${campo.key}">${opciones.join("")}</select>
+      </div>`;
+  }).join("");
+  document.getElementById("csap-paso-archivo").style.display = "none";
+  document.getElementById("csap-paso-mapeo").style.display = "";
+}
+
+function confirmarMapeoSap() {
+  const mapeo = {};
+  document.querySelectorAll("[data-campo-csap]").forEach(s => {
+    if (s.value) mapeo[s.dataset.campoCsap] = s.value;
+  });
+  const faltan = CSAP_DEF[csapTipo].campos
+    .filter(c => c.requerido && !mapeo[c.key]).map(c => c.label);
+  if (faltan.length) { toast("Falta asignar: " + faltan.join(", ")); return; }
+
+  let todo = {};
+  try { todo = JSON.parse(localStorage.getItem(CSAP_MAPEO_KEY) || "{}"); } catch (e) {}
+  todo[csapTipo] = mapeo;
+  localStorage.setItem(CSAP_MAPEO_KEY, JSON.stringify(todo));
+
+  const descartadas = [];
+  csapNormalizadas = [];
+  csapFilasCrudas.forEach((f, i) => {
+    const o = {};
+    CSAP_DEF[csapTipo].campos.forEach(c => {
+      const col = mapeo[c.key];
+      if (!col) return;
+      let v = f[col];
+      if (c.key.indexOf("fecha") === 0) v = csapFecha(v);
+      else if (c.key.indexOf("cantidad") === 0 || c.key === "valor_total") v = csapNum(v);
+      else if (c.key === "indicador_borrado") v = ["true", "x", "si", "sí"].indexOf(String(v).trim().toLowerCase()) >= 0;
+      else v = (v === "" || v === null || v === undefined) ? null : String(v).trim();
+      o[c.key] = v;
+    });
+    if (!o.codigo_sap) { descartadas.push("fila " + (i + 2) + ": sin material"); return; }
+    if (csapTipo === "MB25") {
+      if (!o.fecha_necesidad) { descartadas.push("fila " + (i + 2) + ": fecha ilegible"); return; }
+      if (o.cantidad_consumida === null && o.cantidad_necesaria === null) {
+        descartadas.push("fila " + (i + 2) + ": sin cantidad"); return;
+      }
+    } else if (!o.fecha_solicitud) {
+      descartadas.push("fila " + (i + 2) + ": fecha de solicitud ilegible"); return;
+    }
+    csapNormalizadas.push(o);
+  });
+
+  const cods = new Set(csapNormalizadas.map(f => f.codigo_sap));
+  const chip = (t, v, color) => `<div style="background:var(--bg-2);border:1px solid ${color || "var(--line)"};border-radius:9px;padding:8px 12px">
+      <div style="font-size:10.5px;opacity:.7">${t}</div><div style="font-size:16px;font-weight:600">${v}</div></div>`;
+  let extra = "";
+  if (csapTipo === "MB25") {
+    const fs = csapNormalizadas.map(f => f.fecha_necesidad).filter(Boolean).sort();
+    const salidas = csapNormalizadas.filter(f => !f.debe_haber || f.debe_haber === "H").length;
+    extra = chip("Rango de fechas", fs.length ? fs[0] + " → " + fs[fs.length - 1] : "—")
+          + chip("Movimientos de salida", salidas);
+  } else {
+    const fs = csapNormalizadas.map(f => f.fecha_solicitud).filter(Boolean).sort();
+    const und = csapNormalizadas.reduce((s, f) => s + (f.cantidad_solicitada || 0), 0);
+    const viejas = csapNormalizadas.filter(f => f.fecha_solicitud &&
+      (Date.now() - new Date(f.fecha_solicitud)) / 86400000 > 540).length;
+    extra = chip("Unidades en trámite", und.toLocaleString("es-CO"))
+          + chip("Más antigua", fs[0] || "—")
+          + (viejas ? chip("Con más de 18 meses", viejas, "#c62828") : "");
+  }
+  document.getElementById("csap-resumen").innerHTML =
+    chip("Filas a cargar", csapNormalizadas.length) + chip("Materiales", cods.size) + extra;
+
+  const avisos = [];
+  if (descartadas.length) {
+    avisos.push('<p class="hint-box" style="border-left-color:#c62828"><b>' + descartadas.length +
+      " filas se van a descartar</b><br>" + descartadas.slice(0, 6).join("<br>") +
+      (descartadas.length > 6 ? "<br>…" : "") + "</p>");
+  }
+  avisos.push('<p class="hint-box"><b>Esta carga reemplaza por completo</b> los datos de ' + csapTipo +
+    " que haya hoy. Es lo correcto para un extracto: si se acumularan, un movimiento corregido en SAP quedaría contado dos veces.</p>");
+  if (csapTipo === "MB25") {
+    avisos.push('<p class="hint-box">Los materiales que no vengan en este archivo quedan marcados <b>sin historial</b>, no con consumo cero. Es una distinción que importa: sobre ellos no se puede concluir que no rotan.</p>');
+  }
+  document.getElementById("csap-avisos").innerHTML = avisos.join("");
+
+  document.getElementById("csap-paso-mapeo").style.display = "none";
+  document.getElementById("csap-resultado").style.display = "";
+  document.getElementById("csap-btn-aplicar").disabled = csapNormalizadas.length === 0;
+}
+
+async function aplicarCargaSap() {
+  if (!csapNormalizadas.length) return;
+  const btn = document.getElementById("csap-btn-aplicar");
+  btn.disabled = true;
+  const tabla = CSAP_DEF[csapTipo].tabla;
+  const cargaId = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
+  const campoFecha = csapTipo === "MB25" ? "fecha_necesidad" : "fecha_solicitud";
+  const fechas = csapNormalizadas.map(f => f[campoFecha]).filter(Boolean).sort();
+  const archivo = document.getElementById("csap-input-archivo").files[0];
+
+  try {
+    /* La carga se registra ANTES de tocar los datos. La API REST no permite
+       envolver borrado e insercion en una transaccion, asi que si algo falla
+       a mitad queda el rastro de que se intento y con que archivo. */
+    btn.textContent = "Registrando la carga...";
+    const { error: errCarga } = await sb.from("cargas_sap").insert({
+      id: cargaId,
+      transaccion: csapTipo,
+      archivo: archivo ? archivo.name : null,
+      filas: csapNormalizadas.length,
+      fecha_desde: fechas[0] || null,
+      fecha_hasta: fechas[fechas.length - 1] || null,
+      cargado_por: (usuarioActual && (usuarioActual.nombre || usuarioActual.email)) || null,
+    });
+    if (errCarga) throw errCarga;
+
+    btn.textContent = "Borrando la carga anterior...";
+    const { error: errDel } = await sb.from(tabla).delete().not("id", "is", null);
+    if (errDel) throw errDel;
+
+    const filas = csapNormalizadas.map(f => Object.assign({}, f, { carga_id: cargaId }));
+    for (let i = 0; i < filas.length; i += 500) {
+      const lote = filas.slice(i, i + 500);
+      const { error } = await sb.from(tabla).insert(lote);
+      if (error) throw error;
+      btn.textContent = "Cargando... " + Math.min(i + 500, filas.length) + "/" + filas.length;
+    }
+
+    toast(csapTipo + ": " + filas.length + " filas cargadas");
+    // Forzar que el analisis se recalcule con los datos nuevos.
+    materialesData = [];
+    mapaTraslados = new Map();
+    reiniciarCargaSap();
+    cerrarPanel("panel-carga-sap");
+  } catch (e) {
+    console.error(e);
+    toast("Error al cargar: " + e.message);
+    btn.disabled = false;
+    btn.textContent = "Aplicar carga";
+  }
+}
+
 
 const CARGA_MAT_MAPEO_KEY = "materiales_carga_sap_mapeo";
 
