@@ -346,6 +346,53 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   align-items:center;justify-content:center;box-shadow:0 4px 14px rgba(0,0,0,.4);z-index:5;
 }
 
+/* ---------- Asistente Técnico ----------
+   Botón flotante, no un módulo aparte: si hubiera que navegar hasta él,
+   no se usaría en campo. Se sitúa por encima del FAB de "equipo nuevo"
+   (bottom:80px) para no chocar, en la misma posición en todos los módulos. */
+#btn-asistente{
+  position:fixed;right:16px;bottom:142px;width:52px;height:52px;border-radius:50%;
+  background:var(--azul,#134B70);color:#fff;border:1px solid rgba(255,255,255,.18);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 4px 16px rgba(0,0,0,.28);z-index:40;cursor:pointer;
+}
+#btn-asistente svg{width:24px;height:24px}
+#asis-sheet{
+  position:fixed;inset:0;z-index:60;display:none;
+  background:rgba(0,0,0,.45);
+}
+#asis-sheet.abierto{display:flex;align-items:flex-end;justify-content:center}
+#asis-caja{
+  background:var(--bg-1);width:100%;max-width:620px;height:min(82vh,720px);
+  border-radius:16px 16px 0 0;display:flex;flex-direction:column;overflow:hidden;
+}
+#asis-encabezado{
+  display:flex;align-items:center;gap:10px;padding:12px 14px;
+  background:var(--azul,#134B70);color:#fff;flex-shrink:0;
+}
+#asis-contexto{
+  font-size:11px;opacity:.85;padding:6px 14px;background:var(--bg-2);
+  border-bottom:1px solid var(--line);color:var(--text-2);flex-shrink:0;
+}
+#asis-mensajes{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.asis-msg{max-width:88%;font-size:13.5px;line-height:1.55;padding:10px 12px;border-radius:12px}
+.asis-msg.yo{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
+.asis-msg.ia{align-self:flex-start;background:var(--bg-2);border:1px solid var(--line);border-bottom-left-radius:4px}
+.asis-msg.err{align-self:flex-start;background:#fdecea;border:1px solid #f5c6c2;color:#8a1f16}
+.asis-fuente{font-size:10.5px;opacity:.6;margin-top:6px;font-family:ui-monospace,monospace}
+#asis-entrada{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);flex-shrink:0}
+#asis-texto{
+  flex:1;resize:none;max-height:96px;font-family:inherit;font-size:14px;
+  padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--bg-2);color:var(--text-1);
+}
+.asis-sug{
+  display:flex;gap:6px;flex-wrap:wrap;padding:0 14px 10px;flex-shrink:0;
+}
+.asis-sug button{
+  font-size:11.5px;padding:6px 10px;border-radius:14px;border:1px solid var(--line);
+  background:var(--bg-2);color:var(--text-1);cursor:pointer;
+}
+
 .navbar{
   flex-shrink:0;display:flex;border-top:1px solid var(--line);background:var(--bg-1);
   position:absolute;bottom:0;left:0;right:0;max-width:520px;margin:0 auto;height:58px;z-index:25;
@@ -613,6 +660,31 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
 
   <button class="fab" id="btn-fab" title="Equipo nuevo">+</button>
+</div>
+
+<!-- ===== Asistente Técnico ===== -->
+<button id="btn-asistente" title="Asistente técnico" aria-label="Asistente técnico">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9z"/>
+    <path d="M18 15.5l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/>
+  </svg>
+</button>
+
+<div id="asis-sheet">
+  <div id="asis-caja">
+    <div id="asis-encabezado">
+      <b style="flex:1;font-size:14.5px">Asistente técnico</b>
+      <button id="asis-limpiar" style="background:none;border:none;color:#fff;font-size:11.5px;opacity:.8;cursor:pointer">Limpiar</button>
+      <button id="asis-cerrar" style="background:none;border:none;color:#fff;font-size:20px;line-height:1;cursor:pointer">&times;</button>
+    </div>
+    <div id="asis-contexto"></div>
+    <div id="asis-mensajes"></div>
+    <div class="asis-sug" id="asis-sugerencias"></div>
+    <div id="asis-entrada">
+      <textarea id="asis-texto" rows="1" placeholder="Pregunta algo..."></textarea>
+      <button class="btn-primary" id="asis-enviar" style="width:auto;padding:0 16px">Enviar</button>
+    </div>
+  </div>
 </div>
 
 <div class="navbar modulo-activos" id="navbar-principal">
@@ -7156,6 +7228,180 @@ sb.auth.onAuthStateChange((_event, session) => {
 // Solo funciona cuando la app esta publicada en una direccion https real
 // (Render, Netlify, etc.) -- los navegadores no permiten esto para
 // archivos abiertos directamente desde el computador (file://).
+/* =====================================================================
+   Asistente Técnico
+
+   Va como boton flotante y no como modulo aparte a proposito: lo que le
+   da valor es saber QUE estas mirando cuando lo abres. Si estas en la
+   ficha de un material, "y en otro centro?" ya se entiende sin repetir el
+   codigo, porque el contexto viaja en cada pregunta.
+
+   El modelo no accede a la base directamente: la Edge Function le expone
+   cuatro funciones cerradas y las ejecuta con el token de este usuario,
+   asi que el RLS sigue aplicando igual que en la app.
+   ===================================================================== */
+
+const ASIS_URL = `${SUPABASE_URL}/functions/v1/asistente-tecnico`;
+let asisHistorial = [];   // [{rol, texto}] — se envian los ultimos turnos
+let asisOcupado = false;
+
+const ASIS_MODULOS = {
+  activos: "Gestión de Activos",
+  materiales: "Gestión de Materiales",
+  documental: "Gestión Documental",
+  ensayos: "Ensayos Eléctricos",
+};
+
+/* Describe en una frase que esta viendo el usuario. Este texto se le manda
+   al modelo como contexto, no se interpreta en el cliente. */
+function contextoAsistente() {
+  const partes = [ASIS_MODULOS[moduloActivo] || moduloActivo];
+  const abierto = document.querySelector(".panel.open");
+
+  if (abierto && abierto.id === "panel-material-ficha" && materialActual) {
+    partes.push(`ficha del material ${materialActual.codigo_sap} en el centro ${materialActual.centro}`);
+    if (materialActual.descripcion) partes.push(materialActual.descripcion);
+  } else if (abierto) {
+    const titulo = abierto.querySelector(".panel-header h2, h2");
+    if (titulo) partes.push(titulo.textContent.trim());
+  } else if (moduloActivo === "materiales") {
+    const centro = document.getElementById("mat-filtro-centro");
+    const cat = document.getElementById("mat-filtro-categoria");
+    if (centro && centro.value) partes.push(`filtrando el centro ${centro.value}`);
+    if (cat && cat.value) partes.push(`categoría ${cat.value}`);
+  }
+  return partes.join(" · ");
+}
+
+/* Sugerencias segun el contexto: en campo nadie escribe una pregunta
+   larga en un celular. */
+function asisSugerencias() {
+  const abierto = document.querySelector(".panel.open");
+  if (abierto && abierto.id === "panel-material-ficha" && materialActual) {
+    return [
+      "¿Hay excedente de este material en otro centro?",
+      "¿Necesito comprarlo?",
+      "¿Para qué equipos aplica?",
+      "¿Tiene códigos equivalentes?",
+    ];
+  }
+  if (moduloActivo === "materiales") {
+    return [
+      "¿Qué debo pedir en C072 de criticidad A?",
+      "¿Qué puedo cubrir por traslado en vez de comprar?",
+    ];
+  }
+  return ["¿Qué materiales están en cero y son criticidad A?"];
+}
+
+/* Escapa el texto y luego aplica un markdown minimo: el modelo devuelve
+   **negrita**, guiones y saltos de linea. Se escapa PRIMERO para que nada
+   de lo que venga del modelo pueda inyectar HTML. */
+function asisFormato(txt) {
+  const esc = String(txt || "")
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return esc
+    .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
+    .replace(/^[ \t]*[-*][ \t]+/gm, "• ")
+    .replace(/\n/g, "<br>");
+}
+
+function asisPintar() {
+  const cont = document.getElementById("asis-mensajes");
+  if (!asisHistorial.length) {
+    cont.innerHTML = `<div class="empty" style="padding:30px 10px">
+      Pregunta sobre materiales, existencias, equivalencias o traslados.<br><br>
+      Los datos salen de Kronos-M. Para valores de manual —parámetros, torques—
+      te va a remitir al documento del fabricante en vez de arriesgar un número.
+    </div>`;
+  } else {
+    cont.innerHTML = asisHistorial.map(m => {
+      const clase = m.rol === "usuario" ? "yo" : (m.error ? "err" : "ia");
+      const fuente = m.herramientas && m.herramientas.length
+        ? `<div class="asis-fuente">consultó: ${m.herramientas.join(", ")}</div>` : "";
+      return `<div class="asis-msg ${clase}">${asisFormato(m.texto)}${fuente}</div>`;
+    }).join("");
+  }
+  if (asisOcupado) {
+    cont.innerHTML += `<div class="asis-msg ia" style="opacity:.7">Consultando...</div>`;
+  }
+  cont.scrollTop = cont.scrollHeight;
+
+  const sug = document.getElementById("asis-sugerencias");
+  sug.innerHTML = asisHistorial.length ? "" : asisSugerencias()
+    .map(s => `<button data-q="${s.replace(/"/g, "&quot;")}">${s}</button>`).join("");
+  sug.querySelectorAll("button").forEach(b => {
+    b.onclick = () => { document.getElementById("asis-texto").value = b.dataset.q; asisEnviar(); };
+  });
+}
+
+async function asisEnviar() {
+  const caja = document.getElementById("asis-texto");
+  const pregunta = caja.value.trim();
+  if (!pregunta || asisOcupado) return;
+
+  caja.value = "";
+  asisHistorial.push({ rol: "usuario", texto: pregunta });
+  asisOcupado = true;
+  asisPintar();
+
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    if (!session) throw new Error("La sesión expiró. Vuelve a entrar.");
+
+    const r = await fetch(ASIS_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Bearer " + session.access_token,
+      },
+      body: JSON.stringify({
+        pregunta,
+        contexto_app: contextoAsistente(),
+        // Se manda el historial sin el turno actual, que ya va en pregunta.
+        historial: asisHistorial.slice(0, -1).slice(-8),
+      }),
+    });
+    const out = await r.json();
+    asisOcupado = false;
+
+    if (!r.ok || out.error) {
+      asisHistorial.push({ rol: "asistente", texto: out.error || "No se pudo consultar.", error: true });
+    } else {
+      asisHistorial.push({
+        rol: "asistente",
+        texto: out.respuesta,
+        herramientas: out.herramientas_usadas || [],
+      });
+    }
+  } catch (e) {
+    asisOcupado = false;
+    asisHistorial.push({ rol: "asistente", texto: String(e.message || e), error: true });
+  }
+  asisPintar();
+}
+
+function abrirAsistente() {
+  document.getElementById("asis-contexto").textContent = "Viendo: " + contextoAsistente();
+  document.getElementById("asis-sheet").classList.add("abierto");
+  asisPintar();
+  if (window.innerWidth > 760) setTimeout(() => document.getElementById("asis-texto").focus(), 80);
+}
+
+document.getElementById("btn-asistente").onclick = abrirAsistente;
+document.getElementById("asis-cerrar").onclick = () =>
+  document.getElementById("asis-sheet").classList.remove("abierto");
+document.getElementById("asis-sheet").onclick = (e) => {
+  // Cerrar al tocar fuera de la caja, no al tocar dentro.
+  if (e.target.id === "asis-sheet") e.currentTarget.classList.remove("abierto");
+};
+document.getElementById("asis-limpiar").onclick = () => { asisHistorial = []; asisPintar(); };
+document.getElementById("asis-enviar").onclick = asisEnviar;
+document.getElementById("asis-texto").addEventListener("keydown", (e) => {
+  // Enter envia; Shift+Enter hace salto de linea.
+  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); asisEnviar(); }
+});
+
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("./service-worker.js").catch(err => {
     console.warn("No se pudo registrar el service worker:", err);
