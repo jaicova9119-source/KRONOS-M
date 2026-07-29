@@ -998,7 +998,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <textarea id="pe-aplica-a" rows="2" placeholder="Ej: CFW11 242, CFW11 312, CFW11 477A, CFW11105A"></textarea>
       <div class="mat-stock" style="margin-top:4px">Dato del catálogo: se escribe una vez y aplica en todos los centros. Se puede buscar por aquí desde la lista de materiales.</div>
     </div>
-    <div class="field"><label>Observaciones del centro</label><textarea id="pe-observaciones"></textarea></div>
+    <div class="field">
+      <label>Observaciones del centro</label>
+      <textarea id="pe-observaciones" rows="3" placeholder="Ej: Mínimo 128 definido por criterio técnico. / Validar referencia en sitio."></textarea>
+      <small style="opacity:.65;font-size:11px;line-height:1.4;display:block;margin-top:4px">Nota propia de este centro: pendientes por verificar, o el sustento de un mínimo definido por criterio. No repitas aquí la aplicabilidad — para eso está el campo de arriba.</small>
+    </div>
     <button class="btn-primary" id="pe-btn-guardar">Guardar parámetros</button>
   </div>
 </div>
@@ -2829,6 +2833,13 @@ document.getElementById("pe-btn-guardar").onclick = async () => {
   btn.disabled = true; btn.textContent = "Guardando...";
   try {
     const aplicaTxt = document.getElementById("pe-aplica-a").value.trim();
+    /* Si la observacion del centro repite la aplicabilidad, se descarta: son
+       dos campos con papeles distintos y guardar lo mismo en ambos hace que
+       la ficha muestre el texto dos veces. Se compara sin espacios ni
+       puntuacion porque suele ser el mismo contenido con otro formato. */
+    const normalizar = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+    let obsTxt = document.getElementById("pe-observaciones").value.trim();
+    if (obsTxt && normalizar(obsTxt) === normalizar(aplicaTxt)) obsTxt = "";
     const { error: errMat } = await sb.from("materiales").update({
       numero_parte: document.getElementById("pe-numero-parte").value || null,
       nombre_tecnico: document.getElementById("pe-nombre-tecnico").value || null,
@@ -2853,7 +2864,7 @@ document.getElementById("pe-btn-guardar").onclick = async () => {
       criticidad: document.getElementById("pe-criticidad").value,
       consumo_prom_mensual: parseFloat(document.getElementById("pe-consumo").value) || 0,
       proveedor: document.getElementById("pe-proveedor").value || "POR CONFIGURAR",
-      observaciones: document.getElementById("pe-observaciones").value || null,
+      observaciones: obsTxt || null,
       updated_at: new Date().toISOString()
     }, { onConflict: "codigo_sap,centro" });
 
@@ -2870,7 +2881,7 @@ document.getElementById("pe-btn-guardar").onclick = async () => {
       criticidad: document.getElementById("pe-criticidad").value,
       consumo_prom_mensual: parseFloat(document.getElementById("pe-consumo").value) || 0,
       proveedor: document.getElementById("pe-proveedor").value || "POR CONFIGURAR",
-      observaciones: document.getElementById("pe-observaciones").value || null
+      observaciones: obsTxt || null
     });
 
     toast("Parámetros actualizados");
