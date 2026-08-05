@@ -12,7 +12,7 @@
  * cargue sin señal.
  */
 
-const CACHE_NAME = "kronos-m-v26";
+const CACHE_NAME = "kronos-m-v27";
 
 /* Archivos propios. Estos tienen que quedar guardados si o si: sin ellos
    la app no abre sin señal. */
