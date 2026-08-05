@@ -381,6 +381,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 .asis-msg.ia{align-self:flex-start;background:var(--bg-2);border:1px solid var(--line);border-bottom-left-radius:4px}
 .asis-msg.err{align-self:flex-start;background:#fdecea;border:1px solid #f5c6c2;color:#8a1f16}
 .asis-fuente{font-size:10.5px;opacity:.6;margin-top:6px;font-family:ui-monospace,monospace}
+.asis-acciones{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.asis-acciones button{
+  font-size:11.5px;padding:5px 10px;border-radius:7px;cursor:pointer;
+  border:1px solid var(--line);background:var(--bg-2);color:var(--text-1);
+}
+.asis-acciones button.principal{background:var(--azul,#134B70);color:#fff;border-color:transparent}
 #asis-entrada{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);flex-shrink:0}
 #asis-texto{
   flex:1;resize:none;max-height:96px;font-family:inherit;font-size:14px;
@@ -8154,6 +8160,7 @@ function progRedactar() {
     "Trabajo programado: " + (a.descripcion_trabajo || "—") + "\n" +
     "Notas: " + notas;
   abrirAsistente();
+  asisDestino = "prog-e-actividades";
   asisEnviar();
 }
 
@@ -8546,6 +8553,7 @@ function progRedactarNP() {
     "Motivo: " + (document.getElementById("np-desc-trabajo").value || "—") + "\n" +
     "Notas: " + notas;
   abrirAsistente();
+  asisDestino = "np-actividades";
   asisEnviar();
 }
 
@@ -8673,11 +8681,19 @@ function asisPintar() {
       te va a remitir al documento del fabricante en vez de arriesgar un número.
     </div>`;
   } else {
-    cont.innerHTML = asisHistorial.map(m => {
+    cont.innerHTML = asisHistorial.map((m, i) => {
       const clase = m.rol === "usuario" ? "yo" : (m.error ? "err" : "ia");
       const fuente = m.herramientas && m.herramientas.length
         ? `<div class="asis-fuente">consultó: ${m.herramientas.join(", ")}</div>` : "";
-      return `<div class="asis-msg ${clase}">${asisFormato(m.texto)}${fuente}</div>`;
+      /* Copiar y pasar al campo: en un celular seleccionar texto a mano
+         es incomodo y se pierden pedazos. */
+      const acciones = (m.rol !== "usuario" && !m.error)
+        ? `<div class="asis-acciones">
+             <button onclick="asisCopiar(${i})">Copiar</button>
+             ${asisDestino ? `<button class="principal" onclick="asisUsar(${i})">Pasar al campo</button>` : ""}
+           </div>`
+        : "";
+      return `<div class="asis-msg ${clase}">${asisFormato(m.texto)}${fuente}${acciones}</div>`;
     }).join("");
   }
   if (asisOcupado) {
@@ -8739,7 +8755,34 @@ async function asisEnviar() {
   asisPintar();
 }
 
+/* Campo del formulario al que debe ir la respuesta. Lo fija quien abre
+   el asistente para redactar; se limpia si se abre de forma normal. */
+let asisDestino = null;
+
+async function asisCopiar(i) {
+  const m = asisHistorial[i];
+  if (!m) return;
+  try {
+    await navigator.clipboard.writeText(m.texto);
+    toast("Texto copiado");
+  } catch (e) {
+    toast("Tu navegador no permitió copiar. Selecciona el texto manualmente.");
+  }
+}
+
+function asisUsar(i) {
+  const m = asisHistorial[i];
+  if (!m || !asisDestino) return;
+  const campo = document.getElementById(asisDestino);
+  if (!campo) { toast("El formulario ya no está abierto"); return; }
+  campo.value = m.texto;
+  document.getElementById("asis-sheet").classList.remove("abierto");
+  campo.focus();
+  toast("Texto pasado al formulario. Revísalo antes de guardar.");
+}
+
 function abrirAsistente() {
+  asisDestino = null;
   document.getElementById("asis-contexto").textContent = "Viendo: " + contextoAsistente();
   document.getElementById("asis-sheet").classList.add("abierto");
   asisPintar();
