@@ -74,6 +74,7 @@ html,body{height:100%;margin:0;}
 .navbar.modulo-materiales .nav-item[data-modulo="materiales"]{display:flex;}
 .navbar.modulo-documental .nav-item[data-modulo="documental"]{display:flex;}
 .navbar.modulo-ensayos .nav-item[data-modulo="ensayos"]{display:flex;}
+.navbar.modulo-programacion .nav-item[data-modulo="programacion"]{display:flex;}
 .ee-pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;margin:0 3px}
 .ee-ok{background:#E8F5E9;color:#2E7D32}.ee-warn{background:#FFF3E0;color:#E08600}
 .ee-bad{background:#FFEBEE;color:#C62828}.ee-na{background:#F2F2F2;color:#666}
@@ -614,6 +615,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <option value="materiales">Gestión de Materiales</option>
     <option value="documental">Gestión Documental</option>
     <option value="ensayos">Ensayos Eléctricos</option>
+    <option value="programacion">Programación</option>
   </select>
 </div>
 
@@ -737,6 +739,19 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <button class="nav-item" data-tab="ee-maquinas" data-modulo="ensayos">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 10h3l2 2-2 2h-3"/><path d="M9 4l-1 3h3l-1 3"/></svg>
     Máquinas
+  </button>
+
+  <button class="nav-item" data-tab="prog-dia" data-modulo="programacion">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 11h18"/><path d="M9 15l2 2 4-4"/></svg>
+    Hoy
+  </button>
+  <button class="nav-item" data-tab="prog-semana" data-modulo="programacion">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 15v-4M12 15V8M16 15v-6"/></svg>
+    Semana
+  </button>
+  <button class="nav-item" data-tab="prog-carga" data-modulo="programacion">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
+    Cargar
   </button>
 
   <button class="nav-item nav-item-separador" data-tab="perfil">
@@ -1469,6 +1484,112 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 </div>
 
 <!-- ===== Panel: Documentos (busqueda) ===== -->
+<!-- ===== Programación: actividades del día ===== -->
+<div class="panel" id="panel-prog-dia">
+  <div class="panel-header">
+    <h2>Actividades del día</h2>
+  </div>
+  <div class="panel-body" style="padding:0">
+    <div class="filtros-bar" style="padding:12px 16px 8px;gap:6px;align-items:center">
+      <button class="icon-btn" onclick="progMoverDia(-1)" title="Día anterior">&#8592;</button>
+      <input type="date" id="prog-fecha" onchange="progFecha=this.value;cargarProgramacionDia()"
+             style="flex:1;min-width:0;font-size:13px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)"/>
+      <button class="icon-btn" onclick="progMoverDia(1)" title="Día siguiente">&#8594;</button>
+      <button class="icon-btn" onclick="progFecha=progISO(new Date());document.getElementById('prog-fecha').value=progFecha;cargarProgramacionDia()" title="Hoy">&#8226;</button>
+    </div>
+    <div id="prog-resumen-dia" style="padding:0 16px 8px"></div>
+    <div class="list" style="padding-top:4px" id="prog-lista">
+      <div class="loading">Cargando programación...</div>
+    </div>
+    <div style="padding:12px 16px 16px">
+      <button class="btn-primary" onclick="progGenerarReporte()">Generar reporte del día</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Programación: registro de una actividad ===== -->
+<div class="panel" id="panel-prog-actividad">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-prog-actividad')">&#8592;</button>
+    <h2 id="prog-act-titulo">Actividad</h2>
+  </div>
+  <div class="panel-body">
+    <div class="section-label">PROGRAMADO POR PLANEACIÓN</div>
+    <table class="tabla-ficha" id="prog-act-tabla"></table>
+
+    <div class="section-label" style="margin-top:18px">REGISTRO DE EJECUCIÓN</div>
+    <div class="field">
+      <label>Estado</label>
+      <select id="prog-e-estado" onchange="progToggleMotivo()">
+        <option value="programada">Programada</option>
+        <option value="en_ejecucion">En ejecución</option>
+        <option value="ejecutada">Ejecutada</option>
+        <option value="no_ejecutada">No ejecutada</option>
+        <option value="reprogramada">Reprogramada</option>
+      </select>
+    </div>
+    <div class="field"><label>Avance (%)</label><input id="prog-e-avance" type="number" min="0" max="100" step="5"/></div>
+    <div class="field"><label>HH ejecutadas (eléctrica)</label><input id="prog-e-hh" type="number" step="0.5"/></div>
+    <div class="field"><label>Personal que ejecutó</label><input id="prog-e-personal" placeholder="Ej. Yonatan Perea/Ferney Riascos"/></div>
+    <div class="field">
+      <label>Actividades realizadas</label>
+      <textarea id="prog-e-actividades" rows="6" placeholder="Escribe tus notas de campo. Después puedes pedirle al asistente que las redacte."></textarea>
+      <button class="btn-secondary" style="margin-top:6px" onclick="progRedactar()">Redactar con el asistente</button>
+      <div class="mat-stock">El asistente ordena y da forma técnica a tus notas. No agrega mediciones ni resultados que no hayas escrito.</div>
+    </div>
+    <div class="field"><label>Observaciones</label><textarea id="prog-e-observaciones" rows="2" placeholder="Opcional. Aparece al final del reporte."></textarea></div>
+    <div class="field" id="prog-e-motivo-wrap" style="display:none">
+      <label>Motivo de no ejecución</label>
+      <textarea id="prog-e-motivo" rows="2" placeholder="Obligatorio si la actividad no se ejecutó"></textarea>
+    </div>
+    <button class="btn-primary" id="prog-btn-guardar" onclick="progGuardarEjecucion()">Guardar registro</button>
+  </div>
+</div>
+
+<!-- ===== Programación: resumen de la semana ===== -->
+<div class="panel" id="panel-prog-semana">
+  <div class="panel-header">
+    <h2>Resumen de la semana</h2>
+  </div>
+  <div class="panel-body" id="prog-semana-body">
+    <div class="loading">Cargando...</div>
+  </div>
+</div>
+
+<!-- ===== Programación: cargar el Excel ===== -->
+<div class="panel" id="panel-prog-carga">
+  <div class="panel-header">
+    <h2>Cargar programación</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box">&#8505;&#65039; Archivo de Planeación, formato GTEC-MT-FO-008. Se lee la hoja de la semana. Recargar una reprogramación actualiza lo programado y <b>no borra</b> lo que ya registraste como ejecutado.</div>
+    <div class="field">
+      <label>Archivo (.xlsm o .xlsx)</label>
+      <input type="file" id="prog-archivo" accept=".xlsm,.xlsx" onchange="progLeerArchivo(this)"/>
+    </div>
+    <div id="prog-carga-resumen"></div>
+  </div>
+</div>
+
+<!-- ===== Programación: reporte del día ===== -->
+<div class="panel" id="panel-prog-reporte">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-prog-reporte')">&#8592;</button>
+    <h2>Reporte del día</h2>
+  </div>
+  <div class="panel-body">
+    <div class="field"><label>Encabezado</label><input id="prog-r-encabezado" placeholder="Ej. CHB-ESP EVFD"/></div>
+    <div class="field"><label>Personal</label><input id="prog-r-personal" placeholder="Ej. Yonatan Perea/Ferney Riascos"/></div>
+    <button class="btn-secondary" onclick="progGenerarReporte()">Regenerar</button>
+    <div class="field" style="margin-top:12px">
+      <label>Mensaje</label>
+      <textarea id="prog-r-texto" rows="18" style="font-family:inherit"></textarea>
+    </div>
+    <button class="btn-primary" onclick="progCopiarReporte()">Copiar al portapapeles</button>
+    <div class="mat-stock" id="prog-r-nota" style="margin-top:8px"></div>
+  </div>
+</div>
+
 <div class="panel" id="panel-documentos">
   <div class="panel-header">
     <h2>Documentos</h2>
@@ -1668,7 +1789,7 @@ function aplicarModulo(modulo, irVistaDefault = true) {
   localStorage.setItem(MODULO_KEY, modulo);
 
   const navbar = document.getElementById("navbar-principal");
-  navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental", "modulo-ensayos");
+  navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental", "modulo-ensayos", "modulo-programacion");
   navbar.classList.add("modulo-" + modulo);
   document.getElementById("selector-modulo").value = modulo;
 
@@ -1697,6 +1818,11 @@ function aplicarModulo(modulo, irVistaDefault = true) {
     document.querySelector('[data-tab="ee-maquinas"]').classList.add("active");
     abrirPanel("panel-ee-maquinas");
     cargarMaquinas();
+  } else if (modulo === "programacion") {
+    app.classList.add("modulo-completo");
+    document.querySelector('[data-tab="prog-dia"]').classList.add("active");
+    abrirPanel("panel-prog-dia");
+    abrirProgramacion();
   }
 }
 
@@ -2652,6 +2778,15 @@ document.querySelectorAll(".nav-item").forEach(btn => {
       renderCarrito();
     } else if (btn.dataset.tab === "config-minmax") {
       abrirPanel("panel-config-minmax");
+    } else if (btn.dataset.tab === "prog-dia") {
+      abrirPanel("panel-prog-dia");
+      abrirProgramacion();
+    } else if (btn.dataset.tab === "prog-semana") {
+      abrirPanel("panel-prog-semana");
+      progResumenSemana();
+    } else if (btn.dataset.tab === "prog-carga") {
+      abrirPanel("panel-prog-carga");
+      document.getElementById("prog-carga-resumen").innerHTML = "";
     } else if (btn.dataset.tab === "documentos") {
       abrirPanel("panel-documentos");
       cargarDocumentos();
@@ -7755,11 +7890,520 @@ const ASIS_URL = `${SUPABASE_URL}/functions/v1/asistente-tecnico-v2`;
 let asisHistorial = [];   // [{rol, texto}] — se envian los ultimos turnos
 let asisOcupado = false;
 
+
+/* ============================================================
+   PROGRAMACIÓN SEMANAL DE MANTENIMIENTO
+
+   Planeación entrega un Excel por semana. Aquí se importa, se filtra
+   la disciplina eléctrica, se registra lo ejecutado en campo y se
+   genera el reporte diario listo para pasar al grupo de trabajo.
+
+   El reporte se arma en la base de datos (programa_reporte_dia) y no
+   aquí, para que la pantalla y el asistente produzcan el mismo texto.
+   ============================================================ */
+const PROG_CFG_KEY = "kronos_prog_reporte_cfg";
+let progFecha = null;
+let progLista = [];
+let progActual = null;
+let progFilasArchivo = [];
+let progMetaArchivo = null;
+
+const PROG_ESTADOS = {
+  programada:   { etiqueta: "Programada",   clase: "" },
+  en_ejecucion: { etiqueta: "En ejecución", clase: "warn" },
+  ejecutada:    { etiqueta: "Ejecutada",    clase: "ok" },
+  no_ejecutada: { etiqueta: "No ejecutada", clase: "bad" },
+  reprogramada: { etiqueta: "Reprogramada", clase: "warn" },
+};
+
+function progISO(d) {
+  return d.getFullYear() + "-" +
+    String(d.getMonth() + 1).padStart(2, "0") + "-" +
+    String(d.getDate()).padStart(2, "0");
+}
+function progFmtFecha(iso) {
+  if (!iso) return "—";
+  const [a, m, d] = String(iso).slice(0, 10).split("-");
+  return d + "/" + m + "/" + a;
+}
+function progCfg() {
+  try { return JSON.parse(localStorage.getItem(PROG_CFG_KEY) || "{}"); } catch (e) { return {}; }
+}
+function progGuardarCfg(cfg) {
+  try { localStorage.setItem(PROG_CFG_KEY, JSON.stringify(cfg)); } catch (e) {}
+}
+
+/* ---------- Vista del día ---------- */
+async function abrirProgramacion() {
+  if (!progFecha) progFecha = progISO(new Date());
+  document.getElementById("prog-fecha").value = progFecha;
+  await cargarProgramacionDia();
+}
+
+function progMoverDia(delta) {
+  const d = new Date(progFecha + "T12:00:00");
+  d.setDate(d.getDate() + delta);
+  progFecha = progISO(d);
+  document.getElementById("prog-fecha").value = progFecha;
+  cargarProgramacionDia();
+}
+
+async function cargarProgramacionDia() {
+  const cont = document.getElementById("prog-lista");
+  cont.innerHTML = '<div class="loading">Cargando programación...</div>';
+  const { data, error } = await sb
+    .from("v_programa_actividades")
+    .select("*")
+    .eq("fecha_programada", progFecha)
+    .gt("hh_ele", 0)
+    .order("estacion", { ascending: true })
+    .order("item", { ascending: true });
+
+  if (error) {
+    cont.innerHTML = '<div class="empty">No se pudo cargar: ' + error.message + "</div>";
+    return;
+  }
+  progLista = data || [];
+  renderProgramacionDia();
+}
+
+function renderProgramacionDia() {
+  const res = document.getElementById("prog-resumen-dia");
+  const cont = document.getElementById("prog-lista");
+
+  if (!progLista.length) {
+    res.innerHTML = "";
+    cont.innerHTML = '<div class="empty">No hay actividades eléctricas programadas el ' +
+      progFmtFecha(progFecha) + ".<br><br>Si esperabas ver algo, revisa que la semana esté cargada.</div>";
+    return;
+  }
+
+  const hechas = progLista.filter(a => a.estado === "ejecutada").length;
+  const hhProg = progLista.reduce((t, a) => t + (Number(a.hh_ele) || 0), 0);
+  const hhEjec = progLista.reduce((t, a) => t + (Number(a.hh_ejec_ele) || 0), 0);
+  res.innerHTML = '<div class="mat-stock">' + progLista.length + " actividades · " +
+    hechas + " ejecutadas · " + hhProg + " HH programadas" +
+    (hhEjec ? " · " + hhEjec + " HH ejecutadas" : "") + "</div>";
+
+  cont.innerHTML = progLista.map(a => {
+    const e = PROG_ESTADOS[a.estado] || PROG_ESTADOS.programada;
+    return '<div class="eq-card" onclick="progAbrirActividad(\'' + a.id + '\')">' +
+      '<div class="eq-main">' +
+      '<div class="eq-code">' + (a.numero_ot || "sin OT") + "</div>" +
+      '<div class="eq-desc">' + (a.descripcion_equipo || a.codigo_equipo || "—") + "</div>" +
+      '<div class="eq-loc">' + (a.estacion || "—") + " · " + (a.tipo_mantenimiento || a.tipo_orden || "—") +
+      " · " + (a.hh_ele || 0) + " HH" +
+      (a.avance_pct != null ? " · avance " + a.avance_pct + "%" : "") + "</div></div>" +
+      '<span class="badge ' + e.clase + '">' + e.etiqueta + "</span>" +
+      "</div>";
+  }).join("");
+}
+
+/* ---------- Registro de una actividad ---------- */
+function progAbrirActividad(id) {
+  const a = progLista.find(x => String(x.id) === String(id));
+  if (!a) return;
+  progActual = a;
+
+  document.getElementById("prog-act-titulo").textContent =
+    (a.numero_ot || "Actividad") + " · " + progFmtFecha(a.fecha_programada);
+
+  const filas = [
+    ["Equipo", a.descripcion_equipo],
+    ["Código", a.codigo_equipo],
+    ["Estación", a.estacion],
+    ["Tipo", a.tipo_mantenimiento || a.tipo_orden],
+    ["Tipo tarea", a.tipo_tarea],
+    ["HH eléctrica", a.hh_ele],
+    ["HH totales programadas", a.hh_prog],
+    ["Disciplinas", (a.disciplinas || []).join(", ")],
+    ["Trabajo programado", a.descripcion_trabajo],
+  ];
+  document.getElementById("prog-act-tabla").innerHTML = filas
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => "<tr><td>" + k + "</td><td>" + v + "</td></tr>").join("");
+
+  const cfg = progCfg();
+  document.getElementById("prog-e-estado").value = a.estado || "programada";
+  document.getElementById("prog-e-avance").value = a.avance_pct != null ? a.avance_pct : "";
+  document.getElementById("prog-e-hh").value = a.hh_ejec_ele != null ? a.hh_ejec_ele : (a.hh_ele || "");
+  document.getElementById("prog-e-personal").value = a.personal || cfg.personal || "";
+  document.getElementById("prog-e-actividades").value = a.actividades_realizadas || "";
+  document.getElementById("prog-e-observaciones").value = a.observaciones || "";
+  document.getElementById("prog-e-motivo").value = a.motivo_no_ejecucion || "";
+  progToggleMotivo();
+
+  abrirPanel("panel-prog-actividad");
+}
+
+function progToggleMotivo() {
+  const noEjec = document.getElementById("prog-e-estado").value === "no_ejecutada";
+  document.getElementById("prog-e-motivo-wrap").style.display = noEjec ? "" : "none";
+}
+
+async function progGuardarEjecucion() {
+  if (!progActual) return;
+  const btn = document.getElementById("prog-btn-guardar");
+  const estado = document.getElementById("prog-e-estado").value;
+  const motivo = document.getElementById("prog-e-motivo").value.trim();
+
+  if (estado === "no_ejecutada" && !motivo) {
+    toast("Indica el motivo de no ejecución");
+    return;
+  }
+
+  const personal = document.getElementById("prog-e-personal").value.trim();
+  // Se recuerda el personal para no volver a digitarlo en cada actividad
+  if (personal) { const c = progCfg(); c.personal = personal; progGuardarCfg(c); }
+
+  btn.disabled = true; btn.textContent = "Guardando...";
+  const { data, error } = await sb.rpc("programa_registrar_ejecucion", {
+    p_actividad_id: progActual.id,
+    p_estado: estado,
+    p_avance: document.getElementById("prog-e-avance").value !== ""
+      ? parseInt(document.getElementById("prog-e-avance").value, 10) : null,
+    p_hh_ele: document.getElementById("prog-e-hh").value !== ""
+      ? parseFloat(document.getElementById("prog-e-hh").value) : null,
+    p_personal: personal || null,
+    p_actividades: document.getElementById("prog-e-actividades").value.trim() || null,
+    p_observaciones: document.getElementById("prog-e-observaciones").value.trim() || null,
+    p_motivo: motivo || null,
+    p_fecha: null,
+  });
+  btn.disabled = false; btn.textContent = "Guardar registro";
+
+  if (error) { toast("No se pudo guardar: " + error.message); return; }
+  if (data && data.ok === false) { toast(data.error || "No se pudo guardar"); return; }
+
+  toast("Registro guardado");
+  cerrarPanel("panel-prog-actividad");
+  await cargarProgramacionDia();
+}
+
+/* Manda las notas al asistente para que las redacte. El asistente tiene
+   instrucción de no agregar datos que no estén en las notas. */
+function progRedactar() {
+  if (!progActual) return;
+  const notas = document.getElementById("prog-e-actividades").value.trim();
+  if (!notas) { toast("Escribe primero tus notas de campo"); return; }
+  const a = progActual;
+  document.getElementById("asis-texto").value =
+    "Convierte estas notas de campo en el párrafo formal de actividades realizadas, " +
+    "en un solo bloque de texto técnico. No agregues ningún dato que no esté en las notas.\n" +
+    "Equipo: " + (a.descripcion_equipo || a.codigo_equipo || "—") + "\n" +
+    "OT: " + (a.numero_ot || "—") + "\n" +
+    "Trabajo programado: " + (a.descripcion_trabajo || "—") + "\n" +
+    "Notas: " + notas;
+  abrirAsistente();
+  asisEnviar();
+}
+
+/* ---------- Reporte del día ---------- */
+async function progGenerarReporte() {
+  const cfg = progCfg();
+  const enc = document.getElementById("prog-r-encabezado");
+  const per = document.getElementById("prog-r-personal");
+  if (enc && !enc.value) enc.value = cfg.encabezado || "";
+  if (per && !per.value) per.value = cfg.personal || "";
+
+  const encabezado = enc ? enc.value.trim() : "";
+  const personal = per ? per.value.trim() : "";
+  const c = progCfg();
+  if (encabezado) c.encabezado = encabezado;
+  if (personal) c.personal = personal;
+  progGuardarCfg(c);
+
+  const { data, error } = await sb.rpc("programa_reporte_dia", {
+    p_fecha: progFecha,
+    p_encabezado: encabezado || null,
+    p_personal: personal || null,
+  });
+
+  if (error) { toast("No se pudo generar: " + error.message); return; }
+
+  abrirPanel("panel-prog-reporte");
+  document.getElementById("prog-r-encabezado").value = encabezado;
+  document.getElementById("prog-r-personal").value = personal;
+  document.getElementById("prog-r-texto").value = data && data.reporte ? data.reporte : "";
+  document.getElementById("prog-r-nota").textContent = (data && data.nota) || "";
+  if (data && !data.reporte) toast(data.nota || "Sin actividades ejecutadas ese día");
+}
+
+async function progCopiarReporte() {
+  const t = document.getElementById("prog-r-texto");
+  try {
+    await navigator.clipboard.writeText(t.value);
+    toast("Reporte copiado");
+  } catch (e) {
+    // Sin permiso de portapapeles (pasa en algunos navegadores móviles)
+    t.select();
+    toast("Selecciona y copia manualmente");
+  }
+}
+
+/* ---------- Resumen de la semana ---------- */
+async function progResumenSemana() {
+  const cont = document.getElementById("prog-semana-body");
+  cont.innerHTML = '<div class="loading">Cargando...</div>';
+  const base = new Date((progFecha || progISO(new Date())) + "T12:00:00");
+  const lunes = new Date(base);
+  lunes.setDate(lunes.getDate() - ((lunes.getDay() + 6) % 7));
+  const domingo = new Date(lunes);
+  domingo.setDate(domingo.getDate() + 6);
+
+  const { data, error } = await sb
+    .from("v_programa_actividades")
+    .select("*")
+    .gte("fecha_programada", progISO(lunes))
+    .lte("fecha_programada", progISO(domingo))
+    .gt("hh_ele", 0);
+
+  if (error) { cont.innerHTML = '<div class="empty">' + error.message + "</div>"; return; }
+  const filas = data || [];
+  if (!filas.length) {
+    cont.innerHTML = '<div class="empty">No hay actividades eléctricas entre el ' +
+      progFmtFecha(progISO(lunes)) + " y el " + progFmtFecha(progISO(domingo)) + ".</div>";
+    return;
+  }
+
+  const porDia = {};
+  filas.forEach(a => {
+    const k = a.fecha_programada;
+    porDia[k] = porDia[k] || { total: 0, hechas: 0, hh: 0, hhEjec: 0, vencidas: 0 };
+    porDia[k].total++;
+    if (a.estado === "ejecutada") porDia[k].hechas++;
+    if (a.vencida) porDia[k].vencidas++;
+    porDia[k].hh += Number(a.hh_ele) || 0;
+    porDia[k].hhEjec += Number(a.hh_ejec_ele) || 0;
+  });
+
+  const totalHH = filas.reduce((t, a) => t + (Number(a.hh_ele) || 0), 0);
+  const totalEjec = filas.reduce((t, a) => t + (Number(a.hh_ejec_ele) || 0), 0);
+  const hechas = filas.filter(a => a.estado === "ejecutada").length;
+  const vencidas = filas.filter(a => a.vencida).length;
+
+  let html = '<div class="section-label">SEMANA DEL ' + progFmtFecha(progISO(lunes)) +
+    " AL " + progFmtFecha(progISO(domingo)) + "</div>" +
+    '<table class="tabla-ficha">' +
+    "<tr><td>Actividades eléctricas</td><td>" + filas.length + "</td></tr>" +
+    "<tr><td>Ejecutadas</td><td>" + hechas + " de " + filas.length + "</td></tr>" +
+    "<tr><td>HH programadas</td><td>" + totalHH + "</td></tr>" +
+    "<tr><td>HH ejecutadas</td><td>" + totalEjec + "</td></tr>" +
+    (vencidas ? "<tr><td>Vencidas sin registrar</td><td><b>" + vencidas + "</b></td></tr>" : "") +
+    "</table>";
+
+  html += '<div class="section-label" style="margin-top:18px">POR DÍA</div><div class="list">';
+  Object.keys(porDia).sort().forEach(k => {
+    const d = porDia[k];
+    html += '<div class="eq-card" onclick="progIrADia(\'' + k + '\')">' +
+      '<div class="eq-main">' +
+      '<div class="eq-desc">' + progFmtFecha(k) + "</div>" +
+      '<div class="eq-loc">' + d.total + " actividades · " + d.hechas + " ejecutadas · " +
+      d.hh + " HH" + (d.vencidas ? " · " + d.vencidas + " vencidas" : "") + "</div></div></div>";
+  });
+  html += "</div>";
+  cont.innerHTML = html;
+}
+
+function progIrADia(iso) {
+  progFecha = iso;
+  const b = document.querySelector('[data-tab="prog-dia"]');
+  if (b) b.click();
+}
+
+/* ---------- Importación del Excel de Planeación ----------
+   El formato es fijo, así que no se pide mapeo manual: se detectan las
+   columnas por su encabezado. Si el formato cambia, el resumen previo
+   lo delata antes de aplicar nada. */
+function progNorm(v) {
+  return String(v === null || v === undefined ? "" : v)
+    .toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ").trim();
+}
+
+function progFechaCelda(v) {
+  if (v instanceof Date && !isNaN(v)) return progISO(v);
+  if (typeof v === "number" && v > 20000) {
+    const ms = Math.round((v - 25569) * 86400000);
+    const d = new Date(ms);
+    return progISO(new Date(d.getTime() + d.getTimezoneOffset() * 60000));
+  }
+  const t = String(v === null || v === undefined ? "" : v).trim();
+  let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (m) return m[1] + "-" + m[2] + "-" + m[3];
+  m = t.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (m) return m[3] + "-" + String(m[2]).padStart(2, "0") + "-" + String(m[1]).padStart(2, "0");
+  return null;
+}
+
+function progMapearColumnas(fila) {
+  const idx = {};
+  (fila || []).forEach((h, i) => {
+    const t = progNorm(h);
+    if (!t) return;
+    if (t === "item" && idx.item === undefined) idx.item = i;
+    else if (t.indexOf("fecha") >= 0 && idx.fecha === undefined) idx.fecha = i;
+    else if (t.indexOf("descripcion equipo") >= 0 && idx.desc_equipo === undefined) idx.desc_equipo = i;
+    else if (t.indexOf("codigo equipo") >= 0 && idx.cod_equipo === undefined) idx.cod_equipo = i;
+    else if (t.indexOf("hh prog") >= 0 && idx.hh_prog === undefined) idx.hh_prog = i;
+    else if (t === "estacion" && idx.estacion === undefined) idx.estacion = i;
+    else if (t.indexOf("tipo tarea") >= 0 && idx.tipo_tarea === undefined) idx.tipo_tarea = i;
+    else if (t === "tipo" && idx.tipo === undefined) idx.tipo = i;
+    else if (t.indexOf("ot") >= 0 && t.length <= 6 && idx.ot === undefined) idx.ot = i;
+    else if (t.indexOf("descripcion de trabajo") >= 0 && idx.desc_trabajo === undefined) idx.desc_trabajo = i;
+    // MEC/ELE/INS/SOL aparecen dos veces: programado y ejecutado.
+    // Solo interesa la primera aparición, que es lo programado.
+    else if (t === "mec" && idx.mec === undefined) idx.mec = i;
+    else if (t === "ele" && idx.ele === undefined) idx.ele = i;
+    else if (t === "ins" && idx.ins === undefined) idx.ins = i;
+    else if (t === "sol" && idx.sol === undefined) idx.sol = i;
+  });
+  return idx;
+}
+
+function progNum(v) {
+  if (v === null || v === undefined || v === "") return null;
+  const n = parseFloat(String(v).replace(",", "."));
+  return isFinite(n) ? n : null;
+}
+
+async function progLeerArchivo(input) {
+  const cont = document.getElementById("prog-carga-resumen");
+  const file = input.files && input.files[0];
+  if (!file) return;
+  cont.innerHTML = '<div class="loading">Leyendo archivo...</div>';
+  progFilasArchivo = [];
+  progMetaArchivo = null;
+
+  try {
+    const buf = await file.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
+    const nombreHoja = wb.SheetNames.find(n => /^\s*semana/i.test(n)) || wb.SheetNames[0];
+    const ws = wb.Sheets[nombreHoja];
+    const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, blankrows: true });
+
+    // Fila de encabezados: la que contiene "Ítem"
+    let iHead = -1, cols = null;
+    for (let i = 0; i < Math.min(grid.length, 30); i++) {
+      const c = progMapearColumnas(grid[i]);
+      if (c.item !== undefined && c.fecha !== undefined && c.ot !== undefined) { iHead = i; cols = c; break; }
+    }
+    if (iHead < 0) throw new Error("No se encontró la fila de encabezados (Ítem, Fecha, # OT). ¿Cambió el formato?");
+
+    // Periodo: se busca en las filas de arriba el par de fechas
+    let ini = null, fin = null;
+    for (let i = 0; i < iHead; i++) {
+      const fechas = (grid[i] || []).map(progFechaCelda).filter(Boolean);
+      if (fechas.length >= 2) { ini = fechas[0]; fin = fechas[1]; break; }
+    }
+
+    const filas = [];
+    for (let i = iHead + 1; i < grid.length; i++) {
+      const r = grid[i] || [];
+      const item = progNum(r[cols.item]);
+      const fecha = progFechaCelda(r[cols.fecha]);
+      if (item === null || !fecha) continue;
+      filas.push({
+        item: item,
+        fecha_programada: fecha,
+        descripcion_equipo: r[cols.desc_equipo] != null ? String(r[cols.desc_equipo]).trim() : null,
+        codigo_equipo: r[cols.cod_equipo] != null ? String(r[cols.cod_equipo]).trim() : null,
+        estacion: cols.estacion !== undefined && r[cols.estacion] != null ? String(r[cols.estacion]).trim() : null,
+        tipo_orden: cols.tipo !== undefined && r[cols.tipo] != null ? String(r[cols.tipo]).trim() : null,
+        numero_ot: cols.ot !== undefined && r[cols.ot] != null ? String(r[cols.ot]).trim() : null,
+        tipo_tarea: cols.tipo_tarea !== undefined && r[cols.tipo_tarea] != null ? String(r[cols.tipo_tarea]).trim() : null,
+        descripcion_trabajo: cols.desc_trabajo !== undefined && r[cols.desc_trabajo] != null ? String(r[cols.desc_trabajo]).trim() : null,
+        hh_prog: progNum(r[cols.hh_prog]),
+        hh_mec: cols.mec !== undefined ? progNum(r[cols.mec]) : null,
+        hh_ele: cols.ele !== undefined ? progNum(r[cols.ele]) : null,
+        hh_ins: cols.ins !== undefined ? progNum(r[cols.ins]) : null,
+        hh_sol: cols.sol !== undefined ? progNum(r[cols.sol]) : null,
+      });
+    }
+    if (!filas.length) throw new Error("No se encontraron filas de actividades");
+
+    const fechas = filas.map(f => f.fecha_programada).sort();
+    if (!ini) ini = fechas[0];
+    if (!fin) fin = fechas[fechas.length - 1];
+
+    const mSem = nombreHoja.match(/(\d+)/);
+    const semana = mSem ? parseInt(mSem[1], 10) : null;
+    const anio = parseInt(ini.slice(0, 4), 10);
+
+    progFilasArchivo = filas;
+    progMetaArchivo = { anio: anio, semana: semana, inicio: ini, fin: fin, archivo: file.name, hoja: nombreHoja };
+
+    const ele = filas.filter(f => (f.hh_ele || 0) > 0);
+    const estaciones = [...new Set(filas.map(f => f.estacion).filter(Boolean))];
+    const tipos = [...new Set(filas.map(f => f.tipo_orden).filter(Boolean))];
+    const sinOT = filas.filter(f => !f.numero_ot).length;
+    const hhEle = ele.reduce((t, f) => t + (f.hh_ele || 0), 0);
+
+    cont.innerHTML =
+      '<div class="section-label">RESUMEN DEL ARCHIVO</div>' +
+      '<table class="tabla-ficha">' +
+      "<tr><td>Hoja</td><td>" + nombreHoja + "</td></tr>" +
+      "<tr><td>Semana</td><td>" + (semana != null ? semana : "no detectada") + " de " + anio + "</td></tr>" +
+      "<tr><td>Periodo</td><td>" + progFmtFecha(ini) + " al " + progFmtFecha(fin) + "</td></tr>" +
+      "<tr><td>Actividades totales</td><td>" + filas.length + "</td></tr>" +
+      "<tr><td><b>Con horas eléctricas</b></td><td><b>" + ele.length + " (" + hhEle + " HH)</b></td></tr>" +
+      "<tr><td>Estaciones</td><td>" + (estaciones.join(", ") || "—") + "</td></tr>" +
+      "<tr><td>Tipos de orden</td><td>" + (tipos.join(", ") || "—") + "</td></tr>" +
+      (sinOT ? "<tr><td>Sin número de OT</td><td>" + sinOT + "</td></tr>" : "") +
+      "</table>" +
+      (semana == null
+        ? '<div class="hint-box">&#9888;&#65039; No se pudo deducir el número de semana del nombre de la hoja. Escríbelo antes de aplicar.<div class="field" style="margin-top:8px"><input id="prog-semana-manual" type="number" placeholder="Ej. 32"/></div></div>'
+        : "") +
+      '<button class="btn-primary" id="prog-btn-aplicar" style="margin-top:12px" onclick="progAplicarCarga()">Aplicar carga</button>';
+  } catch (e) {
+    cont.innerHTML = '<div class="empty">No se pudo leer el archivo: ' + e.message + "</div>";
+  }
+}
+
+async function progAplicarCarga() {
+  if (!progFilasArchivo.length || !progMetaArchivo) return;
+  let semana = progMetaArchivo.semana;
+  if (semana == null) {
+    const el = document.getElementById("prog-semana-manual");
+    semana = el ? parseInt(el.value, 10) : NaN;
+    if (!semana) { toast("Indica el número de semana"); return; }
+  }
+
+  const btn = document.getElementById("prog-btn-aplicar");
+  btn.disabled = true; btn.textContent = "Aplicando...";
+
+  const { data, error } = await sb.rpc("programa_importar", {
+    p_anio: progMetaArchivo.anio,
+    p_semana: semana,
+    p_inicio: progMetaArchivo.inicio,
+    p_fin: progMetaArchivo.fin,
+    p_filas: progFilasArchivo,
+    p_archivo: progMetaArchivo.archivo,
+    p_planeador: null,
+  });
+
+  btn.disabled = false; btn.textContent = "Aplicar carga";
+
+  if (error) { toast("No se pudo aplicar: " + error.message); return; }
+
+  toast("Programación cargada: " + data.nuevas + " nuevas, " + data.actualizadas + " actualizadas");
+  document.getElementById("prog-carga-resumen").innerHTML =
+    '<div class="hint-box">&#9989; Semana ' + data.semana + " cargada. " +
+    data.nuevas + " actividades nuevas, " + data.actualizadas + " actualizadas." +
+    (data.sin_equipo_registrado
+      ? " " + data.sin_equipo_registrado + " quedaron sin enlazar a un equipo registrado."
+      : "") + "</div>";
+  progFilasArchivo = [];
+  progMetaArchivo = null;
+  document.getElementById("prog-archivo").value = "";
+}
+
 const ASIS_MODULOS = {
   activos: "Gestión de Activos",
   materiales: "Gestión de Materiales",
   documental: "Gestión Documental",
   ensayos: "Ensayos Eléctricos",
+  programacion: "Programación de mantenimiento",
 };
 
 /* Describe en una frase que esta viendo el usuario. Este texto se le manda
@@ -7793,6 +8437,13 @@ function asisSugerencias() {
       "¿Necesito comprarlo?",
       "¿Para qué equipos aplica?",
       "¿Tiene códigos equivalentes?",
+    ];
+  }
+  if (moduloActivo === "programacion") {
+    return [
+      "¿Qué tengo programado hoy?",
+      "¿Qué actividades quedaron vencidas esta semana?",
+      "Genérame el reporte del día",
     ];
   }
   if (moduloActivo === "materiales") {
