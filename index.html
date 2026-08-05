@@ -1506,6 +1506,14 @@ input,select,textarea{font-family:inherit;font-size:15px;}
              style="flex:1;min-width:0;font-size:13px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)"/>
       <button class="icon-btn" onclick="progMoverDia(1)" title="Día siguiente">&#8594;</button>
       <button class="icon-btn" onclick="progFecha=progISO(new Date());document.getElementById('prog-fecha').value=progFecha;cargarProgramacionDia()" title="Hoy">&#8226;</button>
+      <select id="prog-disciplina" onchange="progCambiarDisciplina(this.value)"
+              style="font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
+        <option value="ELE">Eléctrica</option>
+        <option value="MEC">Mecánica</option>
+        <option value="INS">Instrumentación</option>
+        <option value="SOL">Soldadura</option>
+        <option value="TODAS">Todas</option>
+      </select>
     </div>
     <div id="prog-resumen-dia" style="padding:0 16px 8px"></div>
     <div class="list" style="padding-top:4px" id="prog-lista">
@@ -7971,6 +7979,22 @@ let progLista = [];
 let progActual = null;
 let progFilasArchivo = [];
 let progMetaArchivo = null;
+let progDisciplina = localStorage.getItem("kronos_prog_disciplina") || "ELE";
+
+const PROG_DISC_LABEL = { ELE: "eléctricas", MEC: "mecánicas", INS: "de instrumentación", SOL: "de soldadura", TODAS: "de mantenimiento" };
+
+/* Las horas vienen de sumas decimales: sin redondear salen cosas como
+   256.06000000000034, que en pantalla parecen un error del sistema. */
+function progHH(n) {
+  const v = Number(n) || 0;
+  return (Math.round(v * 100) / 100).toString();
+}
+
+function progCambiarDisciplina(d) {
+  progDisciplina = d;
+  localStorage.setItem("kronos_prog_disciplina", d);
+  cargarProgramacionDia();
+}
 
 const PROG_ESTADOS = {
   programada:   { etiqueta: "Programada",   clase: "" },
@@ -8001,6 +8025,7 @@ function progGuardarCfg(cfg) {
 async function abrirProgramacion() {
   if (!progFecha) progFecha = progISO(new Date());
   document.getElementById("prog-fecha").value = progFecha;
+  document.getElementById("prog-disciplina").value = progDisciplina;
   await cargarProgramacionDia();
 }
 
@@ -8015,11 +8040,9 @@ function progMoverDia(delta) {
 async function cargarProgramacionDia() {
   const cont = document.getElementById("prog-lista");
   cont.innerHTML = '<div class="loading">Cargando programación...</div>';
-  const { data, error } = await sb
-    .from("v_programa_actividades")
-    .select("*")
-    .eq("fecha_programada", progFecha)
-    .eq("aplica_ele", true)
+  let q = sb.from("v_programa_actividades").select("*").eq("fecha_programada", progFecha);
+  if (progDisciplina !== "TODAS") q = q.contains("disciplinas", [progDisciplina]);
+  const { data, error } = await q
     .order("estacion", { ascending: true })
     .order("item", { ascending: true });
 
@@ -8037,17 +8060,19 @@ function renderProgramacionDia() {
 
   if (!progLista.length) {
     res.innerHTML = "";
-    cont.innerHTML = '<div class="empty">No hay actividades eléctricas programadas el ' +
-      progFmtFecha(progFecha) + ".<br><br>Si esperabas ver algo, revisa que la semana esté cargada.</div>";
+    cont.innerHTML = '<div class="empty">No hay actividades ' +
+      (PROG_DISC_LABEL[progDisciplina] || "") + " programadas el " +
+      progFmtFecha(progFecha) + ".<br><br>Si esperabas ver algo, revisa que la semana esté cargada o cambia la disciplina.</div>";
     return;
   }
 
   const hechas = progLista.filter(a => a.estado === "ejecutada").length;
-  const hhProg = progLista.reduce((t, a) => t + (Number(a.hh_ele) || 0), 0);
-  const hhEjec = progLista.reduce((t, a) => t + (Number(a.hh_ejec_ele) || 0), 0);
-  res.innerHTML = '<div class="mat-stock">' + progLista.length + " actividades · " +
-    hechas + " ejecutadas · " + hhProg + " HH programadas" +
-    (hhEjec ? " · " + hhEjec + " HH ejecutadas" : "") + "</div>";
+  const hhProg = progLista.reduce((t, a) => t + (Number(a.hh_prog_total) || 0), 0);
+  const hhEjec = progLista.reduce((t, a) => t + (Number(a.hh_ejec_total) || 0), 0);
+  res.innerHTML = '<div class="mat-stock">' + progLista.length + " actividades " +
+    (PROG_DISC_LABEL[progDisciplina] || "") + " · " + hechas + " ejecutadas · " +
+    progHH(hhProg) + " HH programadas" +
+    (hhEjec ? " · " + progHH(hhEjec) + " HH ejecutadas" : "") + "</div>";
 
   cont.innerHTML = progLista.map(a => {
     const e = PROG_ESTADOS[a.estado] || PROG_ESTADOS.programada;
@@ -8057,7 +8082,7 @@ function renderProgramacionDia() {
       (a.no_programada ? " · NO PROG" : "") + "</div>" +
       '<div class="eq-desc">' + (a.descripcion_equipo || a.codigo_equipo || "—") + "</div>" +
       '<div class="eq-loc">' + (a.estacion || "—") + " · " + (a.tipo_mantenimiento || a.tipo_orden || "—") +
-      " · " + (a.hh_ele || 0) + " HH" +
+      " · " + progHH(a.hh_prog_total) + " HH" +
       (a.avance_pct != null ? " · avance " + a.avance_pct + "%" : "") + "</div></div>" +
       '<span class="badge ' + e.clase + '">' + e.etiqueta + "</span>" +
       "</div>";
@@ -8183,6 +8208,7 @@ async function progGenerarReporte() {
     p_fecha: progFecha,
     p_encabezado: encabezado || null,
     p_personal: personal || null,
+    p_disciplina: progDisciplina,
   });
 
   if (error) { toast("No se pudo generar: " + error.message); return; }
@@ -8217,55 +8243,42 @@ async function progResumenSemana() {
   const domingo = new Date(lunes);
   domingo.setDate(domingo.getDate() + 6);
 
-  const { data, error } = await sb
-    .from("v_programa_actividades")
-    .select("*")
-    .gte("fecha_programada", progISO(lunes))
-    .lte("fecha_programada", progISO(domingo))
-    .eq("aplica_ele", true);
+  /* Los totales se piden a la base de datos en vez de sumarlos aquí:
+     acumular decimales en JavaScript arrastra el error de punto flotante. */
+  const { data, error } = await sb.rpc("programa_resumen", {
+    p_desde: progISO(lunes),
+    p_hasta: progISO(domingo),
+    p_disciplina: progDisciplina,
+  });
 
   if (error) { cont.innerHTML = '<div class="empty">' + error.message + "</div>"; return; }
-  const filas = data || [];
-  if (!filas.length) {
-    cont.innerHTML = '<div class="empty">No hay actividades eléctricas entre el ' +
+  if (!data || !data.total) {
+    cont.innerHTML = '<div class="empty">No hay actividades ' +
+      (PROG_DISC_LABEL[progDisciplina] || "") + " entre el " +
       progFmtFecha(progISO(lunes)) + " y el " + progFmtFecha(progISO(domingo)) + ".</div>";
     return;
   }
 
-  const porDia = {};
-  filas.forEach(a => {
-    const k = a.fecha_programada;
-    porDia[k] = porDia[k] || { total: 0, hechas: 0, hh: 0, hhEjec: 0, vencidas: 0 };
-    porDia[k].total++;
-    if (a.estado === "ejecutada") porDia[k].hechas++;
-    if (a.vencida) porDia[k].vencidas++;
-    porDia[k].hh += Number(a.hh_ele) || 0;
-    porDia[k].hhEjec += Number(a.hh_ejec_ele) || 0;
-  });
-
-  const totalHH = filas.reduce((t, a) => t + (Number(a.hh_ele) || 0), 0);
-  const totalEjec = filas.reduce((t, a) => t + (Number(a.hh_ejec_ele) || 0), 0);
-  const hechas = filas.filter(a => a.estado === "ejecutada").length;
-  const vencidas = filas.filter(a => a.vencida).length;
-
   let html = '<div class="section-label">SEMANA DEL ' + progFmtFecha(progISO(lunes)) +
-    " AL " + progFmtFecha(progISO(domingo)) + "</div>" +
+    " AL " + progFmtFecha(progISO(domingo)) + " · " +
+    (PROG_DISC_LABEL[progDisciplina] || progDisciplina).toUpperCase() + "</div>" +
     '<table class="tabla-ficha">' +
-    "<tr><td>Actividades eléctricas</td><td>" + filas.length + "</td></tr>" +
-    "<tr><td>Ejecutadas</td><td>" + hechas + " de " + filas.length + "</td></tr>" +
-    "<tr><td>HH programadas</td><td>" + totalHH + "</td></tr>" +
-    "<tr><td>HH ejecutadas</td><td>" + totalEjec + "</td></tr>" +
-    (vencidas ? "<tr><td>Vencidas sin registrar</td><td><b>" + vencidas + "</b></td></tr>" : "") +
+    "<tr><td>Actividades</td><td>" + data.total + "</td></tr>" +
+    "<tr><td>Ejecutadas</td><td>" + data.ejecutadas + " de " + data.total + "</td></tr>" +
+    "<tr><td>HH programadas</td><td>" + progHH(data.hh_prog) + "</td></tr>" +
+    "<tr><td>HH ejecutadas</td><td>" + progHH(data.hh_ejec) + "</td></tr>" +
+    (data.no_programadas ? "<tr><td>No programadas</td><td>" + data.no_programadas + "</td></tr>" : "") +
+    (data.vencidas ? "<tr><td>Vencidas sin registrar</td><td><b>" + data.vencidas + "</b></td></tr>" : "") +
     "</table>";
 
   html += '<div class="section-label" style="margin-top:18px">POR DÍA</div><div class="list">';
-  Object.keys(porDia).sort().forEach(k => {
-    const d = porDia[k];
-    html += '<div class="eq-card" onclick="progIrADia(\'' + k + '\')">' +
+  (data.por_dia || []).forEach(d => {
+    html += '<div class="eq-card" onclick="progIrADia(\'' + d.fecha + '\')">' +
       '<div class="eq-main">' +
-      '<div class="eq-desc">' + progFmtFecha(k) + "</div>" +
-      '<div class="eq-loc">' + d.total + " actividades · " + d.hechas + " ejecutadas · " +
-      d.hh + " HH" + (d.vencidas ? " · " + d.vencidas + " vencidas" : "") + "</div></div></div>";
+      '<div class="eq-desc">' + progFmtFecha(d.fecha) + "</div>" +
+      '<div class="eq-loc">' + d.total + " actividades · " + d.ejecutadas + " ejecutadas · " +
+      progHH(d.hh_prog) + " HH" +
+      (d.vencidas ? " · " + d.vencidas + " vencidas" : "") + "</div></div></div>";
   });
   html += "</div>";
   cont.innerHTML = html;
