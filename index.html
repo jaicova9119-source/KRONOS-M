@@ -788,6 +788,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="hint-box">&#8505;&#65039; Estos cambios quedan registrados para reportarse a quien actualiza SAP, con fecha y usuario — no se sobrescriben sin dejar rastro como en Excel.</div>
     <div class="field"><label>Descripción</label><input id="e-desc" list="dl-descripciones"/></div>
     <div class="field">
+      <label>Descripción técnica ampliada</label>
+      <textarea id="e-desctec" rows="3"
+        placeholder="Ej. Motor eléctrico 200 HP, 460 V, 180 A, jaula de ardilla, 1780 rpm, marco 445T, IP55"></textarea>
+      <div class="mat-stock">Campo propio de Kronos-M: no existe en SAP y no genera pendiente de actualización. Sirve para buscar por características.</div>
+    </div>
+    <div class="field">
       <label>Tipo</label>
       <select id="e-tipo">
         <option value="">Sin clasificar</option>
@@ -859,6 +865,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <div class="panel-body">
     <div class="hint-box">&#8505;&#65039; Este equipo no tiene código SAP todavía. Se le asigna un ID interno y queda como solicitud de alta.</div>
     <div class="field"><label>Descripción</label><input id="n-desc" list="dl-descripciones" placeholder="Ej. Variador de frecuencia 520KVA"/></div>
+    <div class="field">
+      <label>Descripción técnica ampliada</label>
+      <textarea id="n-desctec" rows="3"
+        placeholder="Ej. Motor eléctrico 200 HP, 460 V, 180 A, jaula de ardilla, 1780 rpm, marco 445T, IP55"></textarea>
+    </div>
     <div class="field"><label>Marca</label><input id="n-marca" list="dl-marcas"/></div>
     <div class="field"><label>Modelo</label><input id="n-modelo" list="dl-modelos"/></div>
     <div class="field"><label>Número de serie</label><input id="n-serie"/></div>
@@ -1927,7 +1938,7 @@ function buscableDe(e) {
   let s = _buscables.get(e.id);
   if (s === undefined) {
     s = [
-      e.codigo_sap, e.id_interno, e.descripcion,
+      e.codigo_sap, e.id_interno, e.descripcion, e.descripcion_tecnica,
       e.marca, e.modelo, e.numero_serie,
       e.tipo_equipo, e.campo_codigo,
       e.ubicacion_actual, e.ubicacion_tecnica_sap,
@@ -2226,6 +2237,7 @@ async function abrirFicha(equipo) {
   badge.className = "badge " + badgeClase(equipo.estado_operativo);
 
   const filas = [
+    ["Descripción técnica", equipo.descripcion_tecnica],
     ["Tipo", TIPOS_EQUIPO_LABEL[equipo.tipo_equipo] || "Sin clasificar"],
     ["Marca", equipo.marca],
     ["Modelo", equipo.modelo],
@@ -2380,6 +2392,7 @@ document.getElementById("btn-editar-datos").onclick = () => {
   document.getElementById("e-modelo").value = equipoSeleccionado.modelo || "";
   document.getElementById("e-serie").value = equipoSeleccionado.numero_serie || "";
   document.getElementById("e-ubicaciontecnica").value = equipoSeleccionado.ubicacion_tecnica_sap || "";
+  document.getElementById("e-desctec").value = equipoSeleccionado.descripcion_tecnica || "";
   abrirPanel("panel-editar");
 };
 
@@ -2395,7 +2408,17 @@ document.getElementById("btn-guardar-editar").onclick = async () => {
     modelo: document.getElementById("e-modelo").value.trim() || null,
     numero_serie: document.getElementById("e-serie").value.trim() || null,
     ubicacion_tecnica_sap: document.getElementById("e-ubicaciontecnica").value.trim() || null,
+    descripcion_tecnica: document.getElementById("e-desctec").value.trim() || null,
   };
+
+  /* Campos que tienen contraparte en SAP: cambiarlos genera un pendiente
+     para quien administra SAP. La descripcion tecnica ampliada es propia de
+     Kronos-M, no existe alla, y reportarla ensuciaria ese listado con
+     lineas que nadie puede atender. */
+  const CAMPOS_SAP = [
+    "descripcion", "tipo_equipo", "marca", "modelo",
+    "numero_serie", "ubicacion_tecnica_sap",
+  ];
 
   const cambios = {};
   const registrosPendientes = [];
@@ -2404,13 +2427,15 @@ document.getElementById("btn-guardar-editar").onclick = async () => {
     const valorAnterior = equipoSeleccionado[campo] || null;
     if (valorNuevo !== valorAnterior) {
       cambios[campo] = valorNuevo;
-      registrosPendientes.push({
-        equipo_id: equipoSeleccionado.id,
-        campo,
-        valor_sap: valorAnterior,
-        valor_propuesto: valorNuevo,
-        estado: "pendiente",
-      });
+      if (CAMPOS_SAP.includes(campo)) {
+        registrosPendientes.push({
+          equipo_id: equipoSeleccionado.id,
+          campo,
+          valor_sap: valorAnterior,
+          valor_propuesto: valorNuevo,
+          estado: "pendiente",
+        });
+      }
     }
   });
 
@@ -2421,7 +2446,10 @@ document.getElementById("btn-guardar-editar").onclick = async () => {
   }
 
   try {
-    cambios.estado_sincronizacion = "pendiente_actualizar_sap";
+    // Solo se marca desalineado si lo que cambio existe en SAP.
+    if (registrosPendientes.length) {
+      cambios.estado_sincronizacion = "pendiente_actualizar_sap";
+    }
     const guardadoDirecto = await intentarOEncolar(
       "editar_datos",
       { cambios, registrosPendientes, equipoId: equipoSeleccionado.id },
@@ -2527,7 +2555,7 @@ document.getElementById("btn-guardar-cambio").onclick = async () => {
 document.getElementById("btn-fab").onclick = () => {
   const sel = document.getElementById("n-campo");
   sel.innerHTML = campos.map(c => `<option value="${c.codigo}">${c.codigo}</option>`).join("");
-  ["n-desc", "n-marca", "n-modelo", "n-serie", "n-ubicacion"].forEach(id => document.getElementById(id).value = "");
+  ["n-desc", "n-desctec", "n-marca", "n-modelo", "n-serie", "n-ubicacion"].forEach(id => document.getElementById(id).value = "");
   abrirPanel("panel-nuevo");
 };
 
@@ -2546,6 +2574,7 @@ document.getElementById("btn-guardar-nuevo").onclick = async () => {
     marca: document.getElementById("n-marca").value.trim() || null,
     modelo: document.getElementById("n-modelo").value.trim() || null,
     numero_serie: document.getElementById("n-serie").value.trim() || null,
+    descripcion_tecnica: document.getElementById("n-desctec").value.trim() || null,
     campo_codigo: document.getElementById("n-campo").value || null,
     ubicacion_actual: document.getElementById("n-ubicacion").value.trim() || null,
     estado_operativo: "Disponible",
