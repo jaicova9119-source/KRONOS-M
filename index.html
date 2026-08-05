@@ -749,6 +749,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 15v-4M12 15V8M16 15v-6"/></svg>
     Semana
   </button>
+  <button class="nav-item" data-tab="prog-np" data-modulo="programacion">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
+    No prog.
+  </button>
   <button class="nav-item" data-tab="prog-carga" data-modulo="programacion">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
     Cargar
@@ -1553,6 +1557,57 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
   <div class="panel-body" id="prog-semana-body">
     <div class="loading">Cargando...</div>
+  </div>
+</div>
+
+<!-- ===== Programación: actividad no programada ===== -->
+<div class="panel" id="panel-prog-np">
+  <div class="panel-header">
+    <h2>Actividad no programada</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box">&#8505;&#65039; Trabajo que no venía en el programa de la semana. Queda en el reporte del día marcado como NO PROGRAMADA y suma a los indicadores de trabajo emergente.</div>
+
+    <div class="field"><label>Fecha de ejecución</label><input type="date" id="np-fecha"/></div>
+
+    <div class="field">
+      <label>Equipo</label>
+      <input id="np-buscar-equipo" placeholder="Código, descripción, marca, modelo o ubicación..." oninput="progBuscarEquipo(this.value)" autocomplete="off"/>
+      <div id="np-resultados"></div>
+      <div id="np-equipo-elegido" style="display:none"></div>
+      <input type="hidden" id="np-codigo-equipo"/>
+    </div>
+
+    <div class="field"><label>Descripción del equipo</label><input id="np-desc-equipo" placeholder="Se llena sola al elegir el equipo"/></div>
+    <div class="field"><label>Estación</label><input id="np-estacion" placeholder="Ej. PAD CHB-02"/></div>
+
+    <div class="field">
+      <label>Tipo</label>
+      <select id="np-tipo"></select>
+    </div>
+    <div class="field"><label>Especialidad</label>
+      <select id="np-especialidad">
+        <option value="ELE">Eléctrica</option>
+        <option value="MEC">Mecánica</option>
+        <option value="INS">Instrumentación</option>
+        <option value="SOL">Soldadura</option>
+      </select>
+    </div>
+    <div class="field"><label># OT</label><input id="np-ot" placeholder="Ej. 100032508"/></div>
+    <div class="field"><label># Tarea</label><input id="np-tarea" placeholder="Opcional"/></div>
+    <div class="field"><label>Descripción del trabajo</label><input id="np-desc-trabajo" placeholder="Qué se solicitó o qué originó la intervención"/></div>
+
+    <div class="field"><label>HH ejecutadas</label><input id="np-hh" type="number" step="0.5"/></div>
+    <div class="field"><label>Avance (%)</label><input id="np-avance" type="number" min="0" max="100" step="5" value="100"/></div>
+    <div class="field"><label>Personal que ejecutó</label><input id="np-personal"/></div>
+    <div class="field">
+      <label>Actividades realizadas</label>
+      <textarea id="np-actividades" rows="6" placeholder="Escribe tus notas de campo. Después puedes pedirle al asistente que las redacte."></textarea>
+      <button class="btn-secondary" style="margin-top:6px" onclick="progRedactarNP()">Redactar con el asistente</button>
+    </div>
+    <div class="field"><label>Observaciones</label><textarea id="np-observaciones" rows="2"></textarea></div>
+
+    <button class="btn-primary" id="np-btn-guardar" onclick="progGuardarNoProgramada()">Registrar actividad</button>
   </div>
 </div>
 
@@ -2784,6 +2839,9 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     } else if (btn.dataset.tab === "prog-semana") {
       abrirPanel("panel-prog-semana");
       progResumenSemana();
+    } else if (btn.dataset.tab === "prog-np") {
+      abrirPanel("panel-prog-np");
+      progNuevaNoProgramada();
     } else if (btn.dataset.tab === "prog-carga") {
       abrirPanel("panel-prog-carga");
       document.getElementById("prog-carga-resumen").innerHTML = "";
@@ -7955,7 +8013,7 @@ async function cargarProgramacionDia() {
     .from("v_programa_actividades")
     .select("*")
     .eq("fecha_programada", progFecha)
-    .gt("hh_ele", 0)
+    .eq("aplica_ele", true)
     .order("estacion", { ascending: true })
     .order("item", { ascending: true });
 
@@ -7989,7 +8047,8 @@ function renderProgramacionDia() {
     const e = PROG_ESTADOS[a.estado] || PROG_ESTADOS.programada;
     return '<div class="eq-card" onclick="progAbrirActividad(\'' + a.id + '\')">' +
       '<div class="eq-main">' +
-      '<div class="eq-code">' + (a.numero_ot || "sin OT") + "</div>" +
+      '<div class="eq-code">' + (a.numero_ot || "sin OT") +
+      (a.no_programada ? " · NO PROG" : "") + "</div>" +
       '<div class="eq-desc">' + (a.descripcion_equipo || a.codigo_equipo || "—") + "</div>" +
       '<div class="eq-loc">' + (a.estacion || "—") + " · " + (a.tipo_mantenimiento || a.tipo_orden || "—") +
       " · " + (a.hh_ele || 0) + " HH" +
@@ -8156,7 +8215,7 @@ async function progResumenSemana() {
     .select("*")
     .gte("fecha_programada", progISO(lunes))
     .lte("fecha_programada", progISO(domingo))
-    .gt("hh_ele", 0);
+    .eq("aplica_ele", true);
 
   if (error) { cont.innerHTML = '<div class="empty">' + error.message + "</div>"; return; }
   const filas = data || [];
@@ -8398,6 +8457,143 @@ async function progAplicarCarga() {
   document.getElementById("prog-archivo").value = "";
 }
 
+
+/* ---------- Actividades no programadas ----------
+   El equipo se busca contra el catálogo ya cargado en memoria, así que
+   funciona sin señal y responde al instante. Al elegirlo se traen su
+   descripción y ubicación para no digitarlas otra vez. */
+let npEquipo = null;
+
+async function progNuevaNoProgramada() {
+  npEquipo = null;
+  const cfg = progCfg();
+  document.getElementById("np-fecha").value = progFecha || progISO(new Date());
+  ["np-buscar-equipo","np-codigo-equipo","np-desc-equipo","np-estacion","np-ot",
+   "np-tarea","np-desc-trabajo","np-hh","np-actividades","np-observaciones"]
+    .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
+  document.getElementById("np-avance").value = 100;
+  document.getElementById("np-personal").value = cfg.personal || "";
+  document.getElementById("np-resultados").innerHTML = "";
+  document.getElementById("np-equipo-elegido").style.display = "none";
+  document.getElementById("np-especialidad").value = "ELE";
+
+  // Tipos desde el catálogo, no escritos a mano: si mañana Planeación
+  // agrega un tipo, aparece aquí sin tocar el frontend.
+  const sel = document.getElementById("np-tipo");
+  if (!sel.options.length) {
+    const { data } = await sb.from("tipos_orden").select("codigo, nombre, planificado").order("orden");
+    (data || []).forEach(t => {
+      const o = document.createElement("option");
+      o.value = t.codigo;
+      o.textContent = t.codigo + " · " + t.nombre;
+      sel.appendChild(o);
+    });
+  }
+  sel.value = "ZCO";
+}
+
+function progBuscarEquipo(texto) {
+  const cont = document.getElementById("np-resultados");
+  const t = String(texto || "").trim().toLowerCase();
+  if (t.length < 2) { cont.innerHTML = ""; return; }
+  const terminos = t.split(/\s+/);
+  const hits = [];
+  for (const e of equipos) {
+    if (terminos.every(x => buscableDe(e).includes(x))) {
+      hits.push(e);
+      if (hits.length >= 12) break;
+    }
+  }
+  if (!hits.length) {
+    cont.innerHTML = '<div class="mat-stock">Sin coincidencias en el catálogo de activos. Puedes escribir la descripción a mano.</div>';
+    return;
+  }
+  cont.innerHTML = hits.map(e =>
+    '<div class="eq-card" onclick="progElegirEquipo(\'' + e.id + '\')">' +
+    '<div class="eq-main"><div class="eq-code">' + (e.codigo_sap || e.id_interno || "—") + "</div>" +
+    '<div class="eq-desc">' + (e.descripcion || "(sin descripción)") + "</div>" +
+    '<div class="eq-loc">' + (e.ubicacion_actual || e.ubicacion_tecnica_sap || "—") + "</div>" +
+    "</div></div>").join("");
+}
+
+function progElegirEquipo(id) {
+  const e = equipos.find(x => String(x.id) === String(id));
+  if (!e) return;
+  npEquipo = e;
+  document.getElementById("np-codigo-equipo").value = e.codigo_sap || "";
+  document.getElementById("np-desc-equipo").value = e.descripcion || "";
+  if (!document.getElementById("np-estacion").value) {
+    document.getElementById("np-estacion").value = e.ubicacion_actual || e.campo_codigo || "";
+  }
+  document.getElementById("np-buscar-equipo").value = (e.codigo_sap || "") + " · " + (e.descripcion || "");
+  document.getElementById("np-resultados").innerHTML = "";
+  const av = document.getElementById("np-equipo-elegido");
+  av.style.display = "";
+  av.className = "mat-stock";
+  av.textContent = e.codigo_sap
+    ? "Enlazado al activo " + e.codigo_sap
+    : "Este activo no tiene código SAP: la actividad queda sin enlazar en el reporte a Planeación.";
+}
+
+function progRedactarNP() {
+  const notas = document.getElementById("np-actividades").value.trim();
+  if (!notas) { toast("Escribe primero tus notas de campo"); return; }
+  document.getElementById("asis-texto").value =
+    "Convierte estas notas de campo en el párrafo formal de actividades realizadas, " +
+    "en un solo bloque de texto técnico. No agregues ningún dato que no esté en las notas.\n" +
+    "Equipo: " + (document.getElementById("np-desc-equipo").value || "—") + "\n" +
+    "OT: " + (document.getElementById("np-ot").value || "—") + "\n" +
+    "Motivo: " + (document.getElementById("np-desc-trabajo").value || "—") + "\n" +
+    "Notas: " + notas;
+  abrirAsistente();
+  asisEnviar();
+}
+
+async function progGuardarNoProgramada() {
+  const fecha = document.getElementById("np-fecha").value;
+  if (!fecha) { toast("Indica la fecha de ejecución"); return; }
+  const desc = document.getElementById("np-desc-equipo").value.trim();
+  const codigo = document.getElementById("np-codigo-equipo").value.trim();
+  if (!desc && !codigo) { toast("Elige un equipo o escribe su descripción"); return; }
+
+  const personal = document.getElementById("np-personal").value.trim();
+  if (personal) { const c = progCfg(); c.personal = personal; progGuardarCfg(c); }
+
+  const btn = document.getElementById("np-btn-guardar");
+  btn.disabled = true; btn.textContent = "Registrando...";
+
+  const { data, error } = await sb.rpc("programa_agregar_no_programada", {
+    p_fecha: fecha,
+    p_codigo_equipo: codigo || null,
+    p_descripcion_equipo: desc || null,
+    p_estacion: document.getElementById("np-estacion").value.trim() || null,
+    p_tipo_orden: document.getElementById("np-tipo").value,
+    p_numero_ot: document.getElementById("np-ot").value.trim() || null,
+    p_numero_tarea: document.getElementById("np-tarea").value.trim() || null,
+    p_descripcion_trabajo: document.getElementById("np-desc-trabajo").value.trim() || null,
+    p_especialidad: document.getElementById("np-especialidad").value,
+    p_hh_ele: document.getElementById("np-hh").value !== ""
+      ? parseFloat(document.getElementById("np-hh").value) : null,
+    p_avance: document.getElementById("np-avance").value !== ""
+      ? parseInt(document.getElementById("np-avance").value, 10) : 100,
+    p_personal: personal || null,
+    p_actividades: document.getElementById("np-actividades").value.trim() || null,
+    p_observaciones: document.getElementById("np-observaciones").value.trim() || null,
+  });
+
+  btn.disabled = false; btn.textContent = "Registrar actividad";
+  if (error) { toast("No se pudo registrar: " + error.message); return; }
+
+  toast("Actividad no programada registrada" + (data && data.nota ? " · revisa el aviso" : ""));
+  if (data && data.nota) {
+    document.getElementById("np-equipo-elegido").style.display = "";
+    document.getElementById("np-equipo-elegido").textContent = data.nota;
+  }
+  progFecha = fecha;
+  const b = document.querySelector('[data-tab="prog-dia"]');
+  if (b) b.click();
+}
+
 const ASIS_MODULOS = {
   activos: "Gestión de Activos",
   materiales: "Gestión de Materiales",
@@ -8443,6 +8639,7 @@ function asisSugerencias() {
     return [
       "¿Qué tengo programado hoy?",
       "¿Qué actividades quedaron vencidas esta semana?",
+      "¿Cuántas actividades no programadas hubo esta semana?",
       "Genérame el reporte del día",
     ];
   }
