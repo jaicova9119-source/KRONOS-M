@@ -1780,6 +1780,7 @@ async function cargarEquipos() {
       desde += TAMANO_PAGINA;
     }
     equipos = todos;
+    _buscables.clear();
     try {
       localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
     } catch (e) {
@@ -1790,6 +1791,7 @@ async function cargarEquipos() {
     const cache = localStorage.getItem(CACHE_KEY);
     if (cache) {
       equipos = JSON.parse(cache);
+      _buscables.clear();
       toast("Sin conexión: mostrando datos guardados localmente");
     } else {
       lista.innerHTML = '<div class="empty">No se pudo cargar. Verifica tu conexión.</div>';
@@ -1910,17 +1912,46 @@ document.querySelectorAll(".filtro-toggle").forEach(btn => {
   });
 });
 
+/* Indice de busqueda. Antes solo se miraba codigo, id interno, descripcion
+   y serie: buscar una marca funcionaba de casualidad, cuando la marca venia
+   escrita dentro de la descripcion, y buscar un modelo o una ubicacion no
+   devolvia nada. Ahora entra todo el registro.
+
+   Se guarda en un Map aparte y NO dentro del objeto del equipo: si se pegara
+   al registro, viajaria a Supabase en el siguiente guardado contra una
+   columna que no existe. Y se calcula una sola vez por equipo, porque armar
+   10.000 cadenas en cada tecla se siente en un celular. */
+const _buscables = new Map();
+
+function buscableDe(e) {
+  let s = _buscables.get(e.id);
+  if (s === undefined) {
+    s = [
+      e.codigo_sap, e.id_interno, e.descripcion,
+      e.marca, e.modelo, e.numero_serie,
+      e.tipo_equipo, e.campo_codigo,
+      e.ubicacion_actual, e.ubicacion_tecnica_sap,
+      e.equipo_superior_sap, e.estado_operativo,
+    ].filter(Boolean).join(" ").toLowerCase();
+    _buscables.set(e.id, s);
+  }
+  return s;
+}
+
 function obtenerFiltrados() {
   const texto = filtroTexto.trim().toLowerCase();
+  /* Varias palabras: todas deben aparecer, en cualquier campo y en cualquier
+     orden. Asi "weg mqt" devuelve los WEG del campo MQT sin tocar filtros. */
+  const terminos = texto ? texto.split(/\s+/) : [];
+
   return equipos.filter(e => {
     if (filtroCampo && e.campo_codigo !== filtroCampo) return false;
     if (filtroEstado && e.estado_operativo !== filtroEstado) return false;
     if (filtroTipo && e.tipo_equipo !== filtroTipo) return false;
     if (filtroSinCodigo && e.codigo_sap) return false;
-    if (texto) {
-      const campo = [e.codigo_sap, e.id_interno, e.descripcion, e.numero_serie]
-        .filter(Boolean).join(" ").toLowerCase();
-      if (!campo.includes(texto)) return false;
+    if (terminos.length) {
+      const campo = buscableDe(e);
+      if (!terminos.every(t => campo.includes(t))) return false;
     }
     return true;
   });
@@ -2398,6 +2429,8 @@ document.getElementById("btn-guardar-editar").onclick = async () => {
         Object.assign(equipoSeleccionado, cambios);
         const idx = equipos.findIndex(e => e.id === equipoSeleccionado.id);
         if (idx >= 0) Object.assign(equipos[idx], cambios);
+        // Sin esto la busqueda seguiria encontrando el equipo por su dato viejo
+        _buscables.delete(equipoSeleccionado.id);
         localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
       }
     );
@@ -2472,6 +2505,7 @@ document.getElementById("btn-guardar-cambio").onclick = async () => {
         Object.assign(equipoSeleccionado, cambiosEquipo);
         const idx = equipos.findIndex(e => e.id === equipoSeleccionado.id);
         if (idx >= 0) Object.assign(equipos[idx], cambiosEquipo);
+        _buscables.delete(equipoSeleccionado.id);
         localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
       }
     );
