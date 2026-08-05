@@ -257,6 +257,31 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 .badge-Dado{background:var(--bg-3);color:var(--text-2);}
 .badge-pendiente{background:var(--accent-bg);color:var(--accent);}
 .badge-CRITICO{background:var(--danger-bg);color:var(--danger);}
+/* Estados de la programación */
+.badge-prog-programada{background:var(--bg-3);color:var(--text-2);}
+.badge-prog-en_ejecucion{background:var(--accent-bg);color:var(--accent);}
+.badge-prog-ejecutada{background:var(--ok-bg);color:var(--ok);}
+.badge-prog-no_ejecutada{background:var(--danger-bg);color:var(--danger);}
+.badge-prog-reprogramada{background:var(--warn-bg);color:var(--warn);}
+/* Franja de color a la izquierda de cada tarjeta, para leer de un vistazo */
+.eq-card.prog-estado{border-left:4px solid var(--bg-3);}
+.eq-card.prog-en_ejecucion{border-left-color:var(--accent);}
+.eq-card.prog-ejecutada{border-left-color:var(--ok);}
+.eq-card.prog-no_ejecutada{border-left-color:var(--danger);}
+.eq-card.prog-reprogramada{border-left-color:var(--warn);}
+.eq-card.prog-vencida{border-left-color:var(--danger);}
+/* Tablero */
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:16px}
+.kpi{background:var(--bg-2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.kpi-valor{font-size:24px;font-weight:600;line-height:1.1}
+.kpi-label{font-size:11.5px;color:var(--text-2);margin-top:4px}
+.kpi.ok .kpi-valor{color:var(--ok)}
+.kpi.warn .kpi-valor{color:var(--warn)}
+.kpi.bad .kpi-valor{color:var(--danger)}
+.barra-fila{margin:8px 0}
+.barra-top{display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:3px}
+.barra-fondo{height:7px;background:var(--bg-3);border-radius:4px;overflow:hidden}
+.barra-valor{height:100%;background:var(--ok);border-radius:4px}
 .badge-BAJO{background:var(--warn-bg);color:var(--warn);}
 .badge-OK{background:var(--ok-bg);color:var(--ok);}
 .badge-SOBRESTOCK{background:var(--accent-bg);color:var(--accent);}
@@ -754,6 +779,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <button class="nav-item" data-tab="prog-semana" data-modulo="programacion">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V5M4 19h16"/><path d="M8 15v-4M12 15V8M16 15v-6"/></svg>
     Semana
+  </button>
+  <button class="nav-item" data-tab="prog-tablero" data-modulo="programacion">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20a8 8 0 108-8"/><path d="M12 12l5-5"/><circle cx="12" cy="12" r="1.5"/></svg>
+    Tablero
   </button>
   <button class="nav-item" data-tab="prog-np" data-modulo="programacion">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
@@ -1571,6 +1600,33 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
   <div class="panel-body" id="prog-semana-body">
     <div class="loading">Cargando...</div>
+  </div>
+</div>
+
+<!-- ===== Programación: tablero de cumplimiento ===== -->
+<div class="panel" id="panel-prog-tablero">
+  <div class="panel-header">
+    <h2>Cumplimiento</h2>
+  </div>
+  <div class="panel-body">
+    <div class="filtros-bar" style="gap:6px;margin-bottom:12px">
+      <select id="tab-periodo" onchange="progTablero()"
+              style="flex:1;min-width:0;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
+        <option value="semana">Semana en curso</option>
+        <option value="semana_pasada">Semana pasada</option>
+        <option value="mes">Mes en curso</option>
+        <option value="30">Últimos 30 días</option>
+      </select>
+      <select id="tab-disciplina" onchange="progTablero()"
+              style="font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
+        <option value="ELE">Eléctrica</option>
+        <option value="MEC">Mecánica</option>
+        <option value="INS">Instrumentación</option>
+        <option value="SOL">Soldadura</option>
+        <option value="TODAS">Todas</option>
+      </select>
+    </div>
+    <div id="tab-contenido"><div class="loading">Cargando indicadores...</div></div>
   </div>
 </div>
 
@@ -2853,6 +2909,10 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     } else if (btn.dataset.tab === "prog-semana") {
       abrirPanel("panel-prog-semana");
       progResumenSemana();
+    } else if (btn.dataset.tab === "prog-tablero") {
+      abrirPanel("panel-prog-tablero");
+      document.getElementById("tab-disciplina").value = progDisciplina;
+      progTablero();
     } else if (btn.dataset.tab === "prog-np") {
       abrirPanel("panel-prog-np");
       progNuevaNoProgramada();
@@ -8076,15 +8136,18 @@ function renderProgramacionDia() {
 
   cont.innerHTML = progLista.map(a => {
     const e = PROG_ESTADOS[a.estado] || PROG_ESTADOS.programada;
-    return '<div class="eq-card" onclick="progAbrirActividad(\'' + a.id + '\')">' +
+    const hh = Number(a.hh_prog_total) > 0 ? a.hh_prog_total : a.hh_ejec_total;
+    const franja = "prog-estado prog-" + (a.vencida ? "vencida" : a.estado);
+    return '<div class="eq-card ' + franja + '" onclick="progAbrirActividad(\'' + a.id + '\')">' +
       '<div class="eq-main">' +
       '<div class="eq-code">' + (a.numero_ot || "sin OT") +
       (a.no_programada ? " · NO PROG" : "") + "</div>" +
       '<div class="eq-desc">' + (a.descripcion_equipo || a.codigo_equipo || "—") + "</div>" +
       '<div class="eq-loc">' + (a.estacion || "—") + " · " + (a.tipo_mantenimiento || a.tipo_orden || "—") +
-      " · " + progHH(a.hh_prog_total) + " HH" +
+      " · " + progHH(hh) + " HH" +
       (a.avance_pct != null ? " · avance " + a.avance_pct + "%" : "") + "</div></div>" +
-      '<span class="badge ' + e.clase + '">' + e.etiqueta + "</span>" +
+      '<span class="badge badge-prog-' + a.estado + '">' +
+      (a.vencida ? "Vencida" : e.etiqueta) + "</span>" +
       "</div>";
   }).join("");
 }
@@ -8615,6 +8678,126 @@ async function progGuardarNoProgramada() {
   if (b) b.click();
 }
 
+
+/* ---------- Tablero de cumplimiento ----------
+   Los porcentajes los calcula la base de datos: aquí solo se pintan.
+   Ojo con la diferencia entre los dos cumplimientos, está explicada
+   en la nota al pie del propio tablero. */
+function progRangoPeriodo(clave) {
+  const hoy = new Date();
+  const lunes = new Date(hoy);
+  lunes.setDate(lunes.getDate() - ((lunes.getDay() + 6) % 7));
+  if (clave === "semana") {
+    const dom = new Date(lunes); dom.setDate(dom.getDate() + 6);
+    return [progISO(lunes), progISO(dom)];
+  }
+  if (clave === "semana_pasada") {
+    const l = new Date(lunes); l.setDate(l.getDate() - 7);
+    const d = new Date(l); d.setDate(d.getDate() + 6);
+    return [progISO(l), progISO(d)];
+  }
+  if (clave === "mes") {
+    const ini = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const fin = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0);
+    return [progISO(ini), progISO(fin)];
+  }
+  const ini = new Date(hoy); ini.setDate(ini.getDate() - 29);
+  return [progISO(ini), progISO(hoy)];
+}
+
+function progColorPct(v) {
+  if (v == null) return "";
+  return v >= 90 ? "ok" : v >= 70 ? "warn" : "bad";
+}
+
+function progBarra(etiqueta, hechas, total, extra) {
+  const pct = total ? Math.round(hechas * 100 / total) : 0;
+  return '<div class="barra-fila"><div class="barra-top"><span>' + etiqueta +
+    "</span><span>" + hechas + "/" + total + (extra ? " · " + extra : "") +
+    "</span></div><div class=\"barra-fondo\"><div class=\"barra-valor\" style=\"width:" +
+    pct + '%"></div></div></div>';
+}
+
+async function progTablero() {
+  const cont = document.getElementById("tab-contenido");
+  cont.innerHTML = '<div class="loading">Cargando indicadores...</div>';
+  const [desde, hasta] = progRangoPeriodo(document.getElementById("tab-periodo").value);
+  const disc = document.getElementById("tab-disciplina").value;
+
+  const { data: d, error } = await sb.rpc("programa_indicadores", {
+    p_desde: desde, p_hasta: hasta, p_disciplina: disc,
+  });
+  if (error) { cont.innerHTML = '<div class="empty">' + error.message + "</div>"; return; }
+  if (!d || (!d.programadas && !d.no_programadas)) {
+    cont.innerHTML = '<div class="empty">No hay actividades entre el ' +
+      progFmtFecha(desde) + " y el " + progFmtFecha(hasta) + ".</div>";
+    return;
+  }
+
+  const pct = v => v == null ? "—" : progHH(v) + "%";
+
+  let html = '<div class="kpi-grid">' +
+    '<div class="kpi ' + progColorPct(d.cumplimiento_a_la_fecha) + '">' +
+      '<div class="kpi-valor">' + pct(d.cumplimiento_a_la_fecha) + "</div>" +
+      '<div class="kpi-label">Cumplimiento a la fecha</div></div>' +
+    '<div class="kpi ' + progColorPct(d.cumplimiento_periodo) + '">' +
+      '<div class="kpi-valor">' + pct(d.cumplimiento_periodo) + "</div>" +
+      '<div class="kpi-label">Cumplimiento del periodo</div></div>' +
+    '<div class="kpi ' + progColorPct(d.cumplimiento_horas) + '">' +
+      '<div class="kpi-valor">' + pct(d.cumplimiento_horas) + "</div>" +
+      '<div class="kpi-label">Cumplimiento en horas</div></div>' +
+    '<div class="kpi ' + (d.pendientes_vencidas > 0 ? "bad" : "ok") + '">' +
+      '<div class="kpi-valor">' + d.pendientes_vencidas + "</div>" +
+      '<div class="kpi-label">Vencidas sin registrar</div></div>' +
+    "</div>";
+
+  html += '<table class="tabla-ficha">' +
+    "<tr><td>Programadas</td><td>" + d.programadas + "</td></tr>" +
+    "<tr><td>Ejecutadas</td><td>" + d.ejecutadas + "</td></tr>" +
+    (d.no_ejecutadas ? "<tr><td>No ejecutadas</td><td>" + d.no_ejecutadas + "</td></tr>" : "") +
+    (d.reprogramadas ? "<tr><td>Reprogramadas</td><td>" + d.reprogramadas + "</td></tr>" : "") +
+    "<tr><td>No programadas (emergente)</td><td>" + d.no_programadas +
+      (d.porcentaje_emergente != null ? " · " + progHH(d.porcentaje_emergente) + "% de lo ejecutado" : "") + "</td></tr>" +
+    "<tr><td>HH programadas</td><td>" + progHH(d.hh_prog) + "</td></tr>" +
+    "<tr><td>HH ejecutadas</td><td>" + progHH(d.hh_ejec) +
+      (d.hh_ejec_emergente ? " · " + progHH(d.hh_ejec_emergente) + " en emergente" : "") + "</td></tr>" +
+    "</table>";
+
+  if ((d.por_estacion || []).length) {
+    html += '<div class="section-label" style="margin-top:18px">POR ESTACIÓN</div>';
+    d.por_estacion.forEach(e => {
+      html += progBarra(e.estacion, e.ejecutadas, e.total, progHH(e.hh_ejec) + " HH");
+    });
+  }
+
+  if ((d.por_tipo || []).length) {
+    html += '<div class="section-label" style="margin-top:18px">POR TIPO DE MANTENIMIENTO</div>';
+    d.por_tipo.forEach(t => {
+      html += progBarra(t.tipo, t.ejecutadas, t.total, progHH(t.hh_ejec) + " HH");
+    });
+  }
+
+  if ((d.pendientes || []).length) {
+    html += '<div class="section-label" style="margin-top:18px">VENCIDAS SIN REGISTRAR</div><div class="list">';
+    d.pendientes.forEach(x => {
+      html += '<div class="eq-card prog-estado prog-vencida" onclick="progIrADia(\'' + x.fecha_programada + '\')">' +
+        '<div class="eq-main"><div class="eq-code">' + (x.numero_ot || "sin OT") + "</div>" +
+        '<div class="eq-desc">' + (x.equipo || "—") + "</div>" +
+        '<div class="eq-loc">' + progFmtFecha(x.fecha_programada) + " · " +
+        (x.estacion || "—") + " · " + progHH(x.hh) + " HH</div></div></div>";
+    });
+    html += "</div>";
+  }
+
+  html += '<div class="mat-stock" style="margin-top:16px">' +
+    "Periodo " + progFmtFecha(desde) + " al " + progFmtFecha(hasta) + ". " +
+    "<b>Cumplimiento a la fecha</b> solo cuenta lo que ya venció, por eso es el número válido a mitad de semana. " +
+    "<b>Cumplimiento del periodo</b> incluye lo que aún no llega y solo tiene sentido al cerrar. " +
+    "Si el cumplimiento en horas queda muy por debajo del de actividades, se están ejecutando las cortas y quedando las pesadas.</div>";
+
+  cont.innerHTML = html;
+}
+
 const ASIS_MODULOS = {
   activos: "Gestión de Activos",
   materiales: "Gestión de Materiales",
@@ -8662,6 +8845,7 @@ function asisSugerencias() {
       "¿Qué actividades quedaron vencidas esta semana?",
       "¿Cuántas actividades no programadas hubo esta semana?",
       "Genérame el reporte del día",
+      "¿Cómo vamos con el cumplimiento?",
     ];
   }
   if (moduloActivo === "materiales") {
