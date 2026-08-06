@@ -87,8 +87,12 @@ html,body{height:100%;margin:0;}
 #ee-informe h3{font-size:14px;margin:16px 0 5px;border-bottom:1px solid #999;padding-bottom:3px}
 #ee-informe .inf-titulo{font-size:19px;font-weight:800}
 #ee-informe .inf-sub{font-size:11px;color:#555}
-#ee-informe .inf-cab{display:flex;gap:14px;align-items:center;margin-bottom:12px}
-#ee-informe .inf-logo{max-height:56px}
+/* Tabla y no flexbox: Word no interpreta flex y apilaria el logo sobre el
+   titulo. La tabla se comporta igual en pantalla, impresion y Word. */
+#ee-informe .inf-cab{width:100%;border-collapse:collapse;margin-bottom:12px;border-bottom:2px solid #0C5292}
+#ee-informe .inf-cab td{vertical-align:middle;padding:0 0 8px}
+#ee-informe .inf-cab-logo{width:1px;white-space:nowrap;padding-right:14px}
+#ee-informe .inf-logo{height:44px;width:auto;display:block}
 #ee-informe .inf-min{font-weight:400;font-size:11px;color:#555;float:right}
 #ee-informe .inf-tabla{border-collapse:collapse;width:100%;font-size:12px}
 #ee-informe .inf-tabla td,#ee-informe .inf-tabla th{border:1px solid #999;padding:4px 6px;text-align:left}
@@ -134,6 +138,8 @@ html,body{height:100%;margin:0;}
   #print-root h3{font-size:10pt!important;margin:7pt 0 2pt!important}
   #print-root p{margin:3.5pt 0!important}
   #print-root .inf-cab{margin-bottom:8pt!important}
+  #print-root .inf-cab td{padding-bottom:5pt!important}
+  #print-root .inf-cab-logo{padding-right:10pt!important}
   #print-root .inf-dictamen{padding:6pt!important;margin-top:2pt!important}
   #print-root .inf-datos .inf-tabla{font-size:8pt!important}
   #print-root .inf-datos .inf-tabla td{padding:1.5pt 4pt!important}
@@ -154,7 +160,7 @@ html,body{height:100%;margin:0;}
   #print-root .inf-tabla{font-size:8.5pt!important}
   #print-root .inf-tabla td,#print-root .inf-tabla th{padding:2pt 4pt!important}
   #print-root .inf-veredicto{font-size:12pt!important}
-  #print-root .inf-logo{max-height:42pt!important}
+  #print-root .inf-logo{height:33pt!important;width:auto!important}
   #print-root .inf-pie{font-size:7.5pt!important}
 
   /* Fondos e hilos de color: sin esto Chrome/Edge imprimen los encabezados
@@ -5340,6 +5346,11 @@ function eeDictamen(lista, m) {
 
 /* ---------- Logo opcional del informe ---------- */
 const EE_LOGO = "kronos_informe_logo";
+// Word ignora el CSS de las imagenes y solo obedece los atributos width y
+// height del <img>. Sin la relacion de aspecto no se puede calcular el ancho
+// que corresponde a la altura del encabezado, y la imagen sale deformada.
+const EE_LOGO_AR = "kronos_informe_logo_ar";
+const EE_LOGO_ALTO = 44;
 
 function eeCargarLogo(input) {
   const f = input.files[0];
@@ -5354,6 +5365,7 @@ function eeCargarLogo(input) {
       c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
       try {
         localStorage.setItem(EE_LOGO, c.toDataURL("image/png"));
+        localStorage.setItem(EE_LOGO_AR, (c.width / c.height).toFixed(4));
         toast("Logo guardado en este dispositivo");
         if (eeInformeActual) verInforme(eeInformeActual);
       } catch (err) { toast("El logo es muy pesado"); }
@@ -5365,6 +5377,7 @@ function eeCargarLogo(input) {
 
 function eeQuitarLogo() {
   localStorage.removeItem(EE_LOGO);
+  localStorage.removeItem(EE_LOGO_AR);
   toast("Logo eliminado");
   if (eeInformeActual) verInforme(eeInformeActual);
 }
@@ -5409,6 +5422,21 @@ async function verInforme(ensayoId) {
     .filter(x => x.fecha <= e.fecha);
   const dic = eeDictamen(hasta, m);
   const logo = localStorage.getItem(EE_LOGO);
+  let logoAR = parseFloat(localStorage.getItem(EE_LOGO_AR)) || 0;
+  // Logo cargado antes de que se guardara la proporcion: se mide una vez
+  // y se repinta. Al haber ya valor, no vuelve a entrar aqui.
+  if (logo && !logoAR) {
+    const medir = new Image();
+    medir.onload = () => {
+      localStorage.setItem(EE_LOGO_AR, (medir.width / medir.height).toFixed(4));
+      if (eeInformeActual) verInforme(eeInformeActual);
+    };
+    medir.src = logo;
+  }
+  const imgLogo = logo
+    ? `<img src="${logo}" class="inf-logo" height="${EE_LOGO_ALTO}"` +
+      `${logoAR ? ` width="${Math.round(EE_LOGO_ALTO * logoAR)}"` : ""} alt=""/>`
+    : "";
   const bobs = e.ensayo_bobinas || [];
   const desb = EE_desbalance(bobs.map(b => Number(b.resistencia)).filter(x => isFinite(x)));
 
@@ -5434,13 +5462,13 @@ async function verInforme(ensayoId) {
   ].filter(([, v]) => v);
 
   document.getElementById("ee-informe").innerHTML = `
-    <div class="inf-cab">
-      ${logo ? `<img src="${logo}" class="inf-logo" alt=""/>` : ""}
-      <div>
+    <table class="inf-cab"><tbody><tr>
+      ${logo ? `<td class="inf-cab-logo">${imgLogo}</td>` : ""}
+      <td>
         <div class="inf-titulo">Informe de ensayo de aislamiento</div>
         <div class="inf-sub">Máquinas eléctricas rotativas · criterios IEEE Std 43-2013</div>
-      </div>
-    </div>
+      </td>
+    </tr></tbody></table>
 
     <table class="inf-datos">
       <tr><td class="inf-col">
@@ -5521,6 +5549,14 @@ function eeImprimirInforme() {
 // Word abre HTML empaquetado como .doc conservando tablas y colores, y el
 // documento queda editable. No es un .docx nativo, pero para adjuntar a una
 // orden de trabajo cumple y no obliga a cargar otra libreria.
+// Word no respeta la altura de un <div> vacio: el espacio para firmar se
+// colapsa. Los saltos de linea si los honra, asi que se sustituyen solo en
+// la exportacion, sin tocar la version de pantalla ni la de impresion.
+function eeCuerpoParaWord() {
+  return document.getElementById("ee-informe").innerHTML
+    .replace(/<div[^>]*class="inf-espacio"[^>]*><\/div>/g, "<br><br><br>");
+}
+
 function eeDescargarWord() {
   const m = eeMaquinaActual;
   const e = eeEnsayos.find(x => x.id === eeInformeActual);
@@ -5546,14 +5582,15 @@ function eeDescargarWord() {
     .inf-firmas td{width:50%;padding-top:2pt;vertical-align:bottom}
     .inf-espacio{height:22pt}
     .inf-pie{font-size:8pt;color:#666;margin-top:2pt}
-    .inf-logo{max-height:48pt}
-    .inf-cab{margin-bottom:10pt}`;
+    .inf-cab{width:100%;border-collapse:collapse;margin-bottom:8pt;border-bottom:1.5pt solid #0C5292}
+    .inf-cab td{vertical-align:middle;padding:0 0 5pt}
+    .inf-cab-logo{width:1%;padding-right:10pt}`;
   const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
     xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
     <head><meta charset="utf-8"><title>Informe de ensayo</title>
     <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
-    <style>@page{size:21cm 27.9cm;margin:1.5cm}${estilos}</style></head>
-    <body>${document.getElementById("ee-informe").innerHTML}</body></html>`;
+    <style>@page{size:21.59cm 27.94cm;margin:1.5cm}${estilos}</style></head>
+    <body>${eeCuerpoParaWord()}</body></html>`;
 
   const blob = new Blob(["\ufeff", doc], { type: "application/msword" });
   const url = URL.createObjectURL(blob);
