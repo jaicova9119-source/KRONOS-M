@@ -1582,6 +1582,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <button class="btn-primary" style="flex:1" onclick="eeImprimirInforme()">Imprimir o guardar PDF</button>
       <button class="btn-secondary" style="flex:1" onclick="eeDescargarWord()">Descargar Word</button>
     </div>
+    <div class="no-print hint-box" style="margin-bottom:10px">
+      En el diálogo de impresión abre <b>Más configuraciones</b> y desmarca
+      <b>Encabezados y pies de página</b> para que el informe salga sin la fecha
+      ni la dirección del sitio. Marca <b>Gráficos de fondo</b> para conservar el
+      color de las tablas. El navegador recuerda ambos ajustes.
+    </div>
     <div class="no-print field">
       <label>Logo del informe (opcional)</label>
       <input type="file" accept="image/*" onchange="eeCargarLogo(this)"/>
