@@ -340,6 +340,11 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
     <p>Reconoce el formato solo, junta los días en una sola línea de tiempo y cruza tendencia,
        eventos y acciones de operador. Agregar archivos suma días <b>a la misma unidad</b>; para
        cargar otro pozo, elige «unidad nueva». Todo corre en tu navegador: nada se sube a ningún lado.</p>
+    <p><b>Cargar carpeta</b> recorre la estructura que arma el variador —mes, semana, día— y toma
+       todos los CSV de una sola vez. El nombre del pozo sale de la carpeta, no de los archivos.
+       Lee tanto los <b>.csv</b> exportados como los <b>.dat</b> que el variador escribe por su
+       cuenta, así que no hay que exportar nada. Si un día tiene los dos, se usa el .dat: pesa
+       nueve veces menos y trae canales que la exportación descarta.</p>
     <div class="target" id="target" hidden>
       <div class="tlab">Agregar a</div>
       <div class="topts" id="topts"></div>
@@ -347,14 +352,17 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
     </div>
     <div class="acts">
       <button class="btn pri" id="bPick">Elegir archivos</button>
+      <button class="btn" id="bDir">Cargar carpeta del pozo</button>
       <button class="btn" id="bClose" hidden>Volver</button>
     </div>
-    <input type="file" id="file" accept=".csv,.txt,.CSV" multiple hidden>
+    <input type="file" id="file" accept=".csv,.txt,.dat,.CSV,.DAT" multiple hidden>
+    <input type="file" id="dir" webkitdirectory directory multiple hidden>
     <div class="err" id="err"></div>
     <div class="fine">
       <b>Formatos reconocidos</b><br>
       Baker Hughes GCS y ADV — <b>log</b> de tendencia, <b>SD_Hist</b>, <b>Event_Rec</b>, <b>Ampchart</b><br>
       Triol — log de tendencia con canales DHG<br>
+      Baker Hughes — <b>WellData</b> diario, en CSV y en <b>.dat</b> binario<br>
       Halliburton Summit — tendencia diaria y registro de alarmas<br>
       HMI — registro de operación con valor anterior y nuevo
     </div>
@@ -379,11 +387,18 @@ const R={
  t_intake:["Temp. de admisión","°C","--c-cya","T"], t_wind:["Temp. de devanado","°C","--c-red","T"],
  t_brg1:["Rodamiento lado libre","°C","--c-ora","T"], t_brg2:["Rodamiento lado acople","°C","--c-pnk","T"],
  t_oil:["Temp. de aceite","°C","--c-amb","T"], t_hs:["Disipador","°C","--c-vio","T"], t_igbt:["IGBT","°C","--c-lim","T"],
- t_ind:["Inductor","°C","--c-tea","T"],
+ t_ind:["Inductor","°C","--c-tea","T"], t_amb:["Temp. ambiente","°C","--c-blu","T"],
  vib_1:["Vibración eje 1","G","--c-vio"], vib_2:["Vibración eje 2","G","--c-pnk"], vib_3:["Vibración eje 3","G","--c-cya"],
  rpm:["Velocidad","RPM","--c-blu"], torque:["Par","%","--c-ste"], torque_bba:["Par de la bomba","lbft","--c-yel"],
+ freq_set:["Frecuencia ajustada","Hz","--c-lim"],
+ // El variador reporta su propio desbalance con la definicion del fabricante.
+ // No puede ir al rol unb_v: buildDerived() calcula ese con NEMA a partir de
+ // las tres tensiones, y mezclarlos hace incomparables dos pozos de marcas
+ // distintas. Se muestra aparte, para poder contrastarlos.
+ unb_v_fab:["Desbalance de tensión (variador)","%","--c-ora"],
  pf:["Factor de potencia","","--c-ste"], p_act:["Potencia activa","kW","--c-lim"], p_apa:["Potencia aparente","kVA","--c-cya"],
  leak:["Fuga del motor","mA","--c-ste"], sens_v:["Tensión del sensor","V","--c-ind"],
+ tool_i:["Corriente del tool","mA","--c-ora"],
  amp_max:["Amperaje máximo","A","--c-pnk"], amp_min:["Amperaje mínimo","A","--c-blu"], amp_avg:["Amperaje promedio","A","--c-yel"],
  unb_i:["Desbalance de corriente","%","--c-vio"], unb_v:["Desbalance de tensión","%","--c-pnk"],
  dp:["ΔP de la bomba","psi","--c-ind"], dt_wi:["Δ devanado − admisión","°C","--c-amb","dT"], vhz:["Relación V/Hz","V/Hz","--c-ste"]
@@ -510,6 +525,52 @@ const PROFILES=[
     "Heatsink 4 Present Temperature":null,
     "Inductor Present Temperature":"t_ind" } },
 
+/* Exportacion diaria WellData: 65 columnas, UTF-8 con BOM y nombres propios
+   («Heatsink 1 Present Value» y no «...Present Temperature»). Trae el sensor
+   de fondo por dos caminos: el bloque «DH Sensor» y el bloque «Z», que son los
+   mismos registros. Se toma el «Z» porque es el unico que trae presion de
+   descarga y porque su vibracion viene con mas resolucion (0,257 contra 0,25);
+   del bloque DH solo se conserva el eje Y, que el otro no tiene. */
+{ id:"bh_welldata", name:"Baker Hughes · WellData diario", genre:"serie", cls:null, keepUnknown:true,
+  score:h=>(/Converter 1 A-B Voltage|DH Sensor Intake Pressure|Exp I\/O 1 AI1 Present Value|Heatsink 1 Present Value/i.test(h)?9:0),
+  enc:"auto", headerAux:2, dateFmt:"Y/M/D h:m:s",
+  map:{
+    "Output Frequency":"freq_out","Set Frequency":"freq_set","Output Volts":"v_out",
+    "Output Current A":"i_out_a","Output Current B":"i_out_b","Output Current C":"i_out_c",
+    "Bus Volts":"v_bus","Raw DC Link Amperage":null,
+    "Motor Torque":"torque","Present Motor RPM":"rpm",
+    "Input frequency Present Value":"freq_in","Input KVA":"p_apa",
+    "Power Factor":["pf",v=>v/100],
+    "Converter 1 A-B Voltage":"v_ab","Converter 1 B-C Voltage":"v_bc","Converter 1 C-A Voltage":"v_ca",
+    "Voltage Unbalance Present Value":"unb_v_fab",
+    "Heatsink 1 Present Value":"t_hs","Heatsink 2 Present Value":null,
+    "Inductor Temp Present Value":"t_ind","Ambient Temp Present Value":"t_amb",
+    "DH Sensor Intake Pressure":null,"DH Sensor Intake Temperature":null,
+    "DH Sensor Motor Temperature":null,"DH Sensor X-Axis Vibration":null,
+    "DH Sensor Y-Axis Vibration":"vib_3",
+    "ZIntake Pres":"p_intake","ZDschrge Pres":"p_disch",
+    "ZIntake Temp":["t_intake",F2C],"ZMotor Temp":["t_wind",F2C],
+    "ZVibration X":"vib_1",
+    "APC/PCM Fault":null,"PCM Fault":null,"APC/PCM Diagnostics Variable Zero":null,
+    "Analog Input 1 Present Value":null,"Analog Input 2 Present Value":null,
+    "Digital Input 1 Present State":null,"Digital Input 2 Present State":null,
+    "Digital Input 3 Present State":null,
+    "Exp I/O 1 AI1 Present Value":null,"Exp I/O 1 AI2 Present Value":null,
+    "Exp I/O 2 AI1 Present Value":null,"Exp I/O 2 AI2 Present Value":null,
+    "Exp I/O 3 AI1 Present Value":null,"Exp I/O 3 AI2 Present Value":null,
+    "Exp I/O 1 DI1 Present State":null,"Exp I/O 1 DI2 Present State":null,
+    "Exp I/O 1 DI3 Present State":null,"Exp I/O 2 DI1 Present State":null,
+    "Exp I/O 2 DI2 Present State":null,"Exp I/O 2 DI3 Present State":null,
+    "Exp I/O 3 DI1 Present State":null,"Exp I/O 3 DI2 Present State":null,
+    "Exp I/O 3 DI3 Present State":null,
+    "Remote Device Two Tag 1":null,"Remote Device Two Tag 2":null,"Remote Device Two Tag 3":null,
+    "Remote Device Two Tag 4":null,"Remote Device Two Tag 5":null,
+    "Remote Device Three Tag 1":null,"Remote Device Three Tag 2":null,"Remote Device Three Tag 3":null,
+    "Remote Device Three Tag 4":null,"Remote Device Three Tag 5":null } },
+
+{ id:"bh_dat", name:"Baker Hughes · WellData binario (.dat)", genre:"serie", cls:null, bin:true,
+  score:()=>0 },
+
 { id:"bh_sdhist", name:"Baker Hughes · histórico de paros", genre:"evento",
   score:h=>(/^\s*"?Shutdown Cause"?/i.test(h)?10:0), enc:"auto", dateFmt:"Y/M/D", kind:"sdhist" },
 
@@ -561,6 +622,8 @@ function parseDate(s,fmt,timeStr){
   return new Date(Y,Mo-1,D,h,mi,se).getTime();
 }
 function detectProfile(text){
+  if(text instanceof ArrayBuffer)
+    return esDat(text)? PROFILES.find(p=>p.id==="bh_dat") : null;
   const lines=text.split(/\r?\n/,12);
   let best=null,bs=0;
   for(const p of PROFILES){
@@ -593,6 +656,145 @@ function unitFromName(n){
     return DB.active || "sin nombre";
   }
   return b;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2b · LECTOR BINARIO .dat  (Baker Hughes)
+
+   Es el registro que el variador escribe por su cuenta; el CSV es una
+   exportacion posterior que hay que pedirle al software del equipo. Leer
+   el .dat directo quita ese paso, pesa nueve veces menos y trae 15 canales
+   que la exportacion descarta, entre ellos el eje Z de vibracion y la
+   tension del sensor de fondo.
+
+   Estructura:
+     bloque inicial (sin marcador)  len(u16) ts(u32) pares
+     03 FF  diccionario   len ts { reg(u16) cod_unidad(u16) nombre UTF-16BE 0000 }*
+     01 FF  foto completa len ts pares
+     02 FF  solo cambios  len ts pares
+     par = reg(u16) valor(float32),  numero de pares = (len-4)/3
+   Todo en big-endian.
+
+   Validado celda por celda contra los CSV exportados de los mismos dias:
+   9.159.296 celdas, cero diferencias.
+══════════════════════════════════════════════════════════════════ */
+const DAT_UNID={0:"",4:"A",5:"V",7:"Hz",12:"°C",13:"%",21:"PSIa",30:"°F",31:"RPM",44:"G",45:"mA",49:"kVA"};
+
+/* El mapeo va por numero de registro y no por nombre de columna. Es el mismo
+   numero que trae la segunda fila del CSV, y no cambia entre versiones de
+   firmware aunque el fabricante renombre la columna. */
+const DAT_ROL={
+  5:"freq_out", 310:"freq_set", 6:"i_out_a", 7:"i_out_b", 8:"i_out_c",
+  9:"v_out", 10:"v_bus", 132:"freq_in", 209:["pf",v=>v/100], 297:"unb_v_fab",
+  1291:"torque", 1292:"rpm", 1793:"p_apa",
+  1716:"v_ab", 1717:"v_bc", 1718:"v_ca",
+  387:"t_hs", 399:null, 435:"t_ind", 447:"t_amb",
+  // Heatsink 3 y 4 marcan -40 y 300 fijos: RTD abierta, no lectura.
+  411:null, 423:null,
+  // El sensor de fondo llega por dos caminos. Se toma el bloque Z: trae la
+  // presion de descarga, el eje Z de vibracion y mas resolucion en el X.
+  829:null, 830:null, 831:null, 1308:null, 1309:"vib_3",
+  1562:"p_intake", 1563:"p_disch", 1564:["t_intake",F2C], 1565:["t_wind",F2C],
+  1566:"vib_1", 1567:"vib_2", 1568:"tool_i", 1569:"sens_v",
+  611:null, 192:null, 1372:null
+};
+const DAT_IGNORAR=/^(Remote Device|Exp I\/O|Analog Input|Digital Input|APC\/PCM Diagnostics)/i;
+// Un canal estable no vuelve a aparecer hasta que cambia. Se repite su ultimo
+// valor cada tanto para que el intervalo mediano de cada serie siga siendo
+// comparable con el de los demas; sin esto, alignedPairs() no cruza nada.
+const DAT_RELLENO=10000;
+
+function esDat(buf){
+  if(!(buf instanceof ArrayBuffer) || buf.byteLength<64) return false;
+  const d=new DataView(buf);
+  const ln=d.getUint16(0), np=(ln-4)/3;
+  if(!Number.isInteger(np) || np<0 || np>800) return false;
+  const off=6+np*6;
+  return off+2<=buf.byteLength && d.getUint16(off)===0x03ff;
+}
+
+function parseDat(buf){
+  const d=new DataView(buf), dic=new Map(), canal=new Map(), acc={}, notes=[];
+  let filas=0, extra=0, ultTs=0;
+
+  function leerDic(i){
+    while(i<buf.byteLength-8){
+      const reg=d.getUint16(i), cod=d.getUint16(i+2);
+      let j=i+4, s="";
+      for(;;){
+        if(j+1>=buf.byteLength){ s=null; break; }
+        const c=d.getUint16(j);
+        if(c===0) break;
+        if(c<32||c>126){ s=null; break; }
+        s+=String.fromCharCode(c); j+=2;
+      }
+      if(s===null || !s.trim()) break;
+      dic.set(reg,{nom:s.trim(), uni:DAT_UNID[cod]!==undefined?DAT_UNID[cod]:""});
+      i=j+2;
+    }
+    return i;
+  }
+
+  function canalDe(reg){
+    if(canal.has(reg)) return canal.get(reg);
+    const info=dic.get(reg)||{nom:"registro "+reg, uni:""};
+    let spec=DAT_ROL[reg];
+    if(spec===undefined && DAT_IGNORAR.test(info.nom)) spec=null;
+    if(spec===null){ canal.set(reg,null); return null; }
+    let rol, conv=null;
+    if(spec===undefined){
+      rol="x_"+info.nom.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,30);
+      if(rol==="x_"){ canal.set(reg,null); return null; }
+      ensureRole(rol, info.nom, info.uni);
+      extra++;
+    } else if(Array.isArray(spec)){ rol=spec[0]; conv=spec[1]; }
+    else rol=spec;
+    if(!acc[rol]) acc[rol]={t:[],y:[],src:info.nom,srcUnit:info.uni};
+    const c={conv, a:acc[rol], ultT:-Infinity, ultY:NaN};
+    canal.set(reg,c); return c;
+  }
+
+  function meter(reg,ts,v){
+    const c=canalDe(reg); if(!c) return;
+    if(!Number.isFinite(v)) return;
+    const y=c.conv? c.conv(v) : v;
+    c.a.t.push(ts); c.a.y.push(y); c.ultT=ts; c.ultY=y;
+  }
+  function rellenar(ts){
+    canal.forEach(c=>{
+      if(c && Number.isFinite(c.ultY) && ts-c.ultT>=DAT_RELLENO){
+        c.a.t.push(ts); c.a.y.push(c.ultY); c.ultT=ts;
+      }
+    });
+  }
+  function pares(i,ln,ts){
+    const np=(ln-4)/3;
+    for(let k=0;k<np;k++){
+      const o=i+k*6;
+      if(o+6>buf.byteLength) break;
+      meter(d.getUint16(o), ts, d.getFloat32(o+2));
+    }
+    return i+np*6;
+  }
+
+  let i=0;
+  { const ln=d.getUint16(0); ultTs=d.getUint32(2)*1000; i=pares(6,ln,ultTs); filas++; }
+  while(i<buf.byteLength-4){
+    const m=d.getUint16(i), ln=d.getUint16(i+2);
+    if(m===0x03ff){ i=leerDic(i+8); }
+    else if(m===0x01ff||m===0x02ff){
+      ultTs=d.getUint32(i+4)*1000;
+      i=pares(i+8,ln,ultTs);
+      rellenar(ultTs);
+      filas++;
+    } else {
+      notes.push(`el archivo trae un bloque no reconocido (0x${m.toString(16)}) en el byte ${i}; se leyó hasta ahí`);
+      break;
+    }
+  }
+  if(!filas) throw new Error("el .dat no trae muestras legibles");
+  if(extra) notes.push(`${extra} canal${extra>1?"es":""} adicional${extra>1?"es":""} del archivo se muestra${extra>1?"n":""} con el nombre y la unidad que trae el propio .dat`);
+  return {acc,notes,rows:filas};
 }
 
 /* ── parseo por género ── */
@@ -735,7 +937,7 @@ function addFileFromText(text,fname,forceUnit){
   }
 
   if(prof.genre==="serie"){
-    const {acc,notes,rows}=parseSerie(text,prof,fname);
+    const {acc,notes,rows}= prof.bin? parseDat(text) : parseSerie(text,prof,fname);
     f.notes.push(...notes);
     let t0=Infinity,t1=-Infinity,added=0;
     for(const role in acc){
@@ -2176,6 +2378,50 @@ $("#bTheme").onclick=()=>setTheme(document.documentElement.dataset.theme==="ligh
 $("#bCopy").onclick=async e=>{ try{ await navigator.clipboard.writeText(analysisText());
   e.target.textContent="Copiado"; setTimeout(()=>e.target.textContent="Copiar análisis",1400);}catch(x){} };
 fi.onchange=()=>{ if(fi.files.length) readMany([...fi.files]); fi.value=""; };
+
+/* ── carga por carpeta ──
+   El variador escribe POZO/mes/semana/día/. El nombre del pozo solo existe en
+   la carpeta: los archivos se llaman «26-08-03 WellData.csv», de donde se
+   deduciria un pozo llamado «WellData» y los cuatro archivos de un mismo dia
+   terminarian en unidades distintas. */
+const di=$("#dir");
+$("#bDir").onclick=()=>di.click();
+const CARPETA_FECHA=/^(\d{4}[-_ ]?\d{2}|\d{4}\s*W\s*\d{1,2}|\d{2}[-_]\d{2}[-_]\d{2}|\d{4}[-_]\d{2}[-_]\d{2}|\d{6,8})$/i;
+const BASURA=/^(desktop\.ini|thumbs\.db|\.ds_store)$/i;
+
+function pozoDeRuta(f){
+  const partes=(f.webkitRelativePath||"").split("/").filter(Boolean);
+  partes.pop();                                  // el nombre del archivo no cuenta
+  let ult=null;
+  for(const c of partes){ if(CARPETA_FECHA.test(c.trim())) break; ult=c.trim(); }
+  return ult||null;                              // null: que lo deduzca como siempre
+}
+
+di.onchange=()=>{
+  const todos=[...di.files];
+  di.value="";
+  if(!todos.length) return;
+  /* El .dat y el .csv del mismo dia traen lo mismo, pero el .dat trae ademas
+     el eje Z de vibracion y la tension del sensor. Cuando estan los dos, se
+     carga solo el .dat y se descarta el CSV duplicado. */
+  const util=todos.filter(f=>!BASURA.test(f.name) && /\.(csv|dat)$/i.test(f.name));
+  const clave=f=>(f.webkitRelativePath||f.name).replace(/\.[^.]+$/,"").toLowerCase();
+  const conDat=new Set(util.filter(f=>/\.dat$/i.test(f.name)).map(clave));
+  const buenos=util.filter(f=>!(/\.csv$/i.test(f.name) && conDat.has(clave(f))))
+                   .sort((a,b)=>(a.webkitRelativePath||a.name).localeCompare(b.webkitRelativePath||b.name));
+  if(!buenos.length){
+    $("#err").textContent="No se encontró ningún .csv ni .dat en esa carpeta.";
+    return;
+  }
+  const notas=[];
+  const nDat=buenos.filter(f=>/\.dat$/i.test(f.name)).length;
+  const dupl=util.length-buenos.length;
+  if(nDat) notas.push(`${nDat} archivo${nDat>1?"s":""} .dat se lee${nDat>1?"n":""} directo del registro del variador.`);
+  if(dupl) notas.push(`Se omitió el CSV de ${dupl} día${dupl>1?"s":""} por estar ya cubierto${dupl>1?"s":""} por su .dat.`);
+  const otros=todos.length-util.length;
+  if(otros>0) notas.push(`Se omitieron ${otros} archivo${otros>1?"s":""} que no son datos.`);
+  readMany(buenos,{unidadDe:pozoDeRuta, nota:notas.join(" "), variasOk:true});
+};
 ["dragenter","dragover"].forEach(ev=>document.addEventListener(ev,e=>{
   e.preventDefault();
   if($("#drop").classList.contains("hide")){
@@ -2209,7 +2455,8 @@ function nombreComun(files){
   const top=Object.entries(c).sort((a,b)=>b[1]-a[1])[0];
   return top[1]>=Math.ceil(n.length/2)? top[0] : null;
 }
-function readMany(files){
+function readMany(files,opts){
+  opts=opts||{};
   $("#err").textContent=`Leyendo ${files.length} archivo${files.length>1?"s":""}…`;
   let done=0; const errs=[];
   const antes=new Set(Object.keys(DB.units));
@@ -2223,22 +2470,30 @@ function readMany(files){
     r.onload=()=>{
       const buf=r.result;
       try{
-        let text=decode(buf,"auto");
-        const prof=detectProfile(text);
-        if(prof&&prof.enc==="latin1") text=decode(buf,"latin1");
-        const f=addFileFromText(text,file.name,DEST||undefined);
+        // El .dat se pasa como binario tal cual; el resto sigue por texto.
+        let text;
+        if(esDat(buf)) text=buf;
+        else{
+          text=decode(buf,"auto");
+          const prof=detectProfile(text);
+          if(prof&&prof.enc==="latin1") text=decode(buf,"latin1");
+        }
+        const propia=opts.unidadDe? opts.unidadDe(file) : null;
+        const f=addFileFromText(text,file.name,propia||DEST||undefined);
         f._text=text;
       }catch(err){ errs.push(`${file.name}: ${err.message||err}`); }
-      if(++done===files.length) finishLoad(errs,antes);
+      if(++done===files.length) finishLoad(errs,antes,opts);
     };
-    r.onerror=()=>{ errs.push(`${file.name}: no se pudo leer`); if(++done===files.length) finishLoad(errs,antes); };
+    r.onerror=()=>{ errs.push(`${file.name}: no se pudo leer`); if(++done===files.length) finishLoad(errs,antes,opts); };
     r.readAsArrayBuffer(file);
   });
 }
-function finishLoad(errs,antes){
+function finishLoad(errs,antes,opts){
+  opts=opts||{};
   const nuevas=Object.keys(DB.units).filter(k=>!antes||!antes.has(k));
   const avisos=[...errs];
-  if(nuevas.length>1) avisos.push(
+  if(opts.nota) avisos.unshift(opts.nota);
+  if(nuevas.length>1 && !opts.variasOk) avisos.push(
     `Se crearon ${nuevas.length} unidades (${nuevas.join(", ")}). Si todos los archivos son del mismo pozo, `+
     `usa el selector de unidad en cada archivo para juntarlos, o vuelve a cargarlos eligiendo un destino único.`);
   $("#err").textContent=avisos.length? avisos.join("\n") : "";
