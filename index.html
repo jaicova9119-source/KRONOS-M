@@ -1487,6 +1487,16 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="field"><label>Serie del equipo</label><input id="ee-e-meggerserie"/></div>
     <div class="field"><label>Vence calibración</label><input id="ee-e-cal" type="date"/></div>
 
+    <div class="field"><label>Unidad del megóhmetro</label>
+      <select id="ee-e-unidad" onchange="eeRecalcular()">
+        <option value="kohm">kΩ</option>
+        <option value="Mohm" selected>MΩ</option>
+        <option value="Gohm">GΩ</option>
+        <option value="Tohm">TΩ</option>
+      </select>
+      <div class="mat-stock">Digita las lecturas tal como las muestra el instrumento. La evaluación, la tendencia y el informe se expresan siempre en MΩ.</div>
+    </div>
+
     <div id="ee-tablas-ir"></div>
 
     <div class="section-label">Resistencia óhmica por bobina</div>
@@ -4420,6 +4430,26 @@ document.getElementById("rep-btn-generar").onclick = descargarReporteInventario;
 // 10 C de aumento de temperatura.
 const EE_corr40 = (r, t) => (r > 0 && isFinite(t)) ? r * Math.pow(0.5, (40 - t) / 10) : null;
 
+/* ---------- Unidad de ingreso del megohmetro ----------
+   Se digita en la unidad que muestre el instrumento; internamente todo
+   se almacena y evalua en MOhm. El trigger fn_normalizar_ir() en la base
+   repite la conversion, de modo que un insert por fuera del app tampoco
+   puede guardar un valor en la unidad equivocada. */
+const EE_UNIDADES = {
+  kohm: { simbolo: "kΩ", factor: 0.001 },
+  Mohm: { simbolo: "MΩ", factor: 1 },
+  Gohm: { simbolo: "GΩ", factor: 1000 },
+  Tohm: { simbolo: "TΩ", factor: 1e6 },
+};
+const EE_unidadActual = () => document.getElementById("ee-e-unidad")?.value || "Mohm";
+const EE_simbolo = u => (EE_UNIDADES[u] || EE_UNIDADES.Mohm).simbolo;
+const EE_aMohm = (v, u) => (v == null || !isFinite(v)) ? null
+  : v * (EE_UNIDADES[u] || EE_UNIDADES.Mohm).factor;
+const EE_num = v => v == null ? "—" : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 1 });
+const EE_fmtMohm = v => v == null ? "—" : EE_num(v) + " MΩ";
+const EE_fmtMedido = (v, u) => v == null ? "—"
+  : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 4 }) + " " + EE_simbolo(u);
+
 // Tabla 3. El minimo depende del tipo de devanado y de la tension,
 // nunca de la potencia.
 function EE_irMin(tipoDevanado, kv) {
@@ -4629,8 +4659,8 @@ function eeTarjetaEnsayo(e, m) {
     const min = EE_minimoGrupo(m, g);
     return ds.map(d => `<tr>
         <td>${g === "ESTATOR" ? "" : g + " "}${d.fase}</td>
-        <td>${d.ir_1min ?? "—"}</td>
-        <td>${d.ir40_1min != null ? (+d.ir40_1min).toFixed(1) : "—"}</td>
+        <td${d.unidad_ingreso && d.unidad_ingreso !== "Mohm" ? ` title="Medido: ${EE_fmtMedido(d.ir_1min_ing, d.unidad_ingreso)}"` : ""}>${EE_num(d.ir_1min)}</td>
+        <td>${EE_num(d.ir40_1min)}</td>
         <td>${EE_pill(EE_evIR(d.ir40_1min != null ? +d.ir40_1min : null, min))}</td>
         <td>${d.pi != null ? (+d.pi).toFixed(2) : "—"}</td>
       </tr>`).join("");
@@ -4645,7 +4675,7 @@ function eeTarjetaEnsayo(e, m) {
       <div class="mat-stock">${e.temp_devanado != null ? e.temp_devanado + " °C devanado" : "sin temperatura"}
         · ${e.v_prueba || "?"} VDC · ${e.megger || ""}</div>
       <table class="tabla-ficha" style="margin-top:8px">
-        <tr><th>Fase</th><th>IR 1min</th><th>@40°C</th><th>Evaluación</th><th>PI</th></tr>
+        <tr><th>Fase</th><th>IR 1min (MΩ)</th><th>@40 °C (MΩ)</th><th>Evaluación</th><th>PI</th></tr>
         ${filas || '<tr><td colspan="5">Sin mediciones</td></tr>'}
       </table>
       ${e.observaciones ? `<div class="mat-stock" style="margin-top:6px">${e.observaciones}</div>` : ""}
@@ -4813,6 +4843,8 @@ function nuevoEnsayo() {
    "cal", "trdev", "micro", "obs"].forEach(k => {
     const el = document.getElementById("ee-e-" + k); if (el) el.value = "";
   });
+  const uNuevo = document.getElementById("ee-e-unidad");
+  if (uNuevo) uNuevo.value = "Mohm";
   document.getElementById("ee-e-vsug").textContent =
     `Sugerido por IEEE 43 para ${eeMaquinaActual.voltaje} V: ${EE_vPruebaSugerida(eeMaquinaActual.voltaje)} VDC`;
   eePintarTablas();
@@ -4839,7 +4871,7 @@ function eePintarTablas() {
   document.getElementById("ee-tablas-ir").innerHTML = eeGruposDeMaquina(m).map(g => `
     <div class="section-label">${g.etiqueta} <span class="mat-stock">· mínimo ${EE_minimoGrupo(m, g.clave)} MΩ</span></div>
     <div style="overflow-x:auto"><table class="tabla-ficha">
-      <tr><th>Fase</th><th>IR 30 s</th><th>IR 1 min *</th><th>IR 10 min</th><th>DAR</th><th>PI</th></tr>
+      <tr><th>Fase</th><th>IR 30 s <span class="ee-u"></span></th><th>IR 1 min * <span class="ee-u"></span></th><th>IR 10 min <span class="ee-u"></span></th><th>DAR</th><th>PI</th></tr>
       ${g.fases.map(f => `
         <tr>
           <td><b>${f}</b></td>
@@ -4871,6 +4903,7 @@ function eePintarTablas() {
 
 function eeLeerMediciones() {
   const m = eeMaquinaActual, T = parseFloat(document.getElementById("ee-e-tdev").value);
+  const u = EE_unidadActual();
   const out = [];
   eeGruposDeMaquina(m).forEach(g => g.fases.forEach(f => {
     const v = k => {
@@ -4878,12 +4911,14 @@ function eeLeerMediciones() {
       const n = parseFloat(el?.value);
       return isFinite(n) ? n : null;
     };
-    const r30 = v("30"), r60 = v("60"), r600 = v("600");
+    // i* = lo digitado en la unidad del instrumento; r* = normalizado a MOhm
+    const i30 = v("30"), i60 = v("60"), i600 = v("600");
+    const r30 = EE_aMohm(i30, u), r60 = EE_aMohm(i60, u), r600 = EE_aMohm(i600, u);
     let dar = v("dar"), pi = v("pi");
     if (dar == null && r30 > 0 && r60 > 0) dar = r60 / r30;
     if (pi == null && r60 > 0 && r600 > 0) pi = r600 / r60;
     if (r30 == null && r60 == null && r600 == null) return;
-    out.push({ grupo: g.clave, fase: f, r30, r60, r600, dar, pi, ir40: EE_corr40(r60, T) });
+    out.push({ grupo: g.clave, fase: f, u, i30, i60, i600, r30, r60, r600, dar, pi, ir40: EE_corr40(r60, T) });
   }));
   return out;
 }
@@ -4899,6 +4934,7 @@ function eeLeerBobinas() {
 
 function eeRecalcular() {
   const m = eeMaquinaActual, T = parseFloat(document.getElementById("ee-e-tdev").value);
+  document.querySelectorAll(".ee-u").forEach(el => el.textContent = "(" + EE_simbolo(EE_unidadActual()) + ")");
   const meds = eeLeerMediciones();
   let html = "";
   const porGrupo = {};
@@ -4908,7 +4944,7 @@ function eeRecalcular() {
     xs.forEach(x => {
       if (x.r60 == null) return;
       html += `<div class="ee-fila"><b>${g === "ESTATOR" ? "Fase " : ""}${x.fase}</b>
-        <span class="mat-stock">${x.r60} MΩ ${x.ir40 != null ? `→ <b>${x.ir40.toFixed(1)} MΩ @40°C</b>` : "(falta temperatura)"}</span>
+        <span class="mat-stock">${x.u !== "Mohm" ? EE_fmtMedido(x.i60, x.u) + " = " : ""}${EE_fmtMohm(x.r60)} ${x.ir40 != null ? `→ <b>${EE_num(x.ir40)} MΩ @40°C</b>` : "(falta temperatura)"}</span>
         ${EE_pill(EE_evIR(x.ir40, min))}
         DAR ${x.dar ? x.dar.toFixed(2) : "—"} ${EE_pill(EE_evDAR(x.dar, x.ir40))}
         PI ${x.pi ? x.pi.toFixed(2) : "—"} ${EE_pill(EE_evPI(x.pi, x.ir40))}</div>`;
@@ -4996,7 +5032,8 @@ async function guardarEnsayo() {
 
     const filasDev = meds.map(x => ({
       ensayo_id: ensayoId, grupo: x.grupo, fase: x.fase,
-      ir_30s: x.r30, ir_1min: x.r60, ir_10min: x.r600,
+      unidad_ingreso: x.u,
+      ir_30s_ing: x.i30, ir_1min_ing: x.i60, ir_10min_ing: x.i600,
       ir40_1min: x.ir40 != null ? +x.ir40.toFixed(3) : null,
       dar: x.dar != null ? +x.dar.toFixed(4) : null,
       pi: x.pi != null ? +x.pi.toFixed(4) : null,
@@ -5042,9 +5079,12 @@ function editarEnsayo(id) {
   v("micro", e.instrumento_bobinas); v("obs", e.observaciones);
   if (e.motivo) document.getElementById("ee-e-motivo").value = e.motivo;
   if (e.condicion) document.getElementById("ee-e-cond").value = e.condicion;
+  const uSel = document.getElementById("ee-e-unidad");
+  if (uSel) uSel.value = (e.ensayo_devanados || [])[0]?.unidad_ingreso || "Mohm";
   (e.ensayo_devanados || []).forEach(d => {
     const s = (k, val) => { const el = document.getElementById(`ee-ir-${d.grupo}-${d.fase}-${k}`); if (el && val != null) el.value = val; };
-    s("30", d.ir_30s); s("60", d.ir_1min); s("600", d.ir_10min); s("dar", d.dar); s("pi", d.pi);
+    s("30", d.ir_30s_ing ?? d.ir_30s); s("60", d.ir_1min_ing ?? d.ir_1min);
+    s("600", d.ir_10min_ing ?? d.ir_10min); s("dar", d.dar); s("pi", d.pi);
   });
   const pares = JSON.parse(document.getElementById("ee-tabla-bob").dataset.pares || "[]");
   (e.ensayo_bobinas || []).forEach(b => {
@@ -5270,14 +5310,14 @@ function eeTablaInforme(e, m) {
     return `
       <h3>Aislamiento a tierra · ${g.toLowerCase()} <span class="inf-min">mínimo IEEE 43: ${min} MΩ</span></h3>
       <table class="inf-tabla">
-        <tr><th>Fase</th><th>IR 30 s</th><th>IR 1 min</th><th>IR 10 min</th><th>IR @40 °C</th><th>DAR</th><th>PI</th><th>Evaluación</th></tr>
+        <tr><th>Fase</th><th>IR 30 s (MΩ)</th><th>IR 1 min (MΩ)</th><th>IR 10 min (MΩ)</th><th>IR @40 °C (MΩ)</th><th>DAR</th><th>PI</th><th>Evaluación</th></tr>
         ${ds.map(d => {
           const ir40 = d.ir40_1min != null ? Number(d.ir40_1min) : null;
           const ev = EE_evIR(ir40, min);
           return `<tr>
             <td><b>${d.fase}</b></td>
-            <td>${d.ir_30s ?? "—"}</td><td>${d.ir_1min ?? "—"}</td><td>${d.ir_10min ?? "—"}</td>
-            <td><b>${ir40 != null ? ir40.toFixed(1) : "—"}</b></td>
+            <td>${EE_num(d.ir_30s)}</td><td>${EE_num(d.ir_1min)}</td><td>${EE_num(d.ir_10min)}</td>
+            <td><b>${EE_num(ir40)}</b></td>
             <td>${d.dar != null ? Number(d.dar).toFixed(2) : "—"}</td>
             <td>${d.pi != null ? Number(d.pi).toFixed(2) : "—"}</td>
             <td class="inf-${ev.nivel}">${ev.texto}</td></tr>`;
