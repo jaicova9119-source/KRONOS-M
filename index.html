@@ -1590,6 +1590,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <textarea id="prog-e-motivo" rows="2" placeholder="Obligatorio si la actividad no se ejecutó"></textarea>
     </div>
     <button class="btn-primary" id="prog-btn-guardar" onclick="progGuardarEjecucion()">Guardar registro</button>
+    <div id="prog-acciones-extra" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"></div>
   </div>
 </div>
 
@@ -8186,6 +8187,21 @@ function progAbrirActividad(id) {
   document.getElementById("prog-e-motivo").value = a.motivo_no_ejecucion || "";
   progToggleMotivo();
 
+  /* Una programada no se borra: viene de Planeación y volvería a
+     aparecer en la próxima carga. Solo se limpia su ejecución.
+     Una no programada sí, porque solo existe aquí. */
+  const extra = document.getElementById("prog-acciones-extra");
+  if (a.no_programada) {
+    extra.innerHTML =
+      '<button class="btn-secondary" onclick="progEditarNP()">Editar datos</button>' +
+      '<button class="btn-secondary" style="color:var(--danger)" onclick="progEliminarNP()">Eliminar actividad</button>';
+  } else if (a.estado !== "programada") {
+    extra.innerHTML =
+      '<button class="btn-secondary" onclick="progLimpiarEjecucion()">Limpiar registro de ejecución</button>';
+  } else {
+    extra.innerHTML = "";
+  }
+
   abrirPanel("panel-prog-actividad");
 }
 
@@ -8217,10 +8233,12 @@ async function progGuardarEjecucion() {
       ? parseInt(document.getElementById("prog-e-avance").value, 10) : null,
     p_hh_ele: document.getElementById("prog-e-hh").value !== ""
       ? parseFloat(document.getElementById("prog-e-hh").value) : null,
-    p_personal: personal || null,
-    p_actividades: document.getElementById("prog-e-actividades").value.trim() || null,
-    p_observaciones: document.getElementById("prog-e-observaciones").value.trim() || null,
-    p_motivo: motivo || null,
+    // Se manda cadena vacía en vez de null para poder BORRAR un campo:
+    // con null la función conserva el valor anterior.
+    p_personal: personal,
+    p_actividades: document.getElementById("prog-e-actividades").value.trim(),
+    p_observaciones: document.getElementById("prog-e-observaciones").value.trim(),
+    p_motivo: motivo,
     p_fecha: null,
   });
   btn.disabled = false; btn.textContent = "Guardar registro";
@@ -8549,6 +8567,8 @@ let npEquipo = null;
 
 async function progNuevaNoProgramada() {
   npEquipo = null;
+  npEditando = null;
+  document.getElementById("np-btn-guardar").textContent = "Registrar actividad";
   const cfg = progCfg();
   document.getElementById("np-fecha").value = progFecha || progISO(new Date());
   ["np-buscar-equipo","np-codigo-equipo","np-desc-equipo","np-estacion","np-ot",
@@ -8634,6 +8654,7 @@ function progRedactarNP() {
 }
 
 async function progGuardarNoProgramada() {
+  if (npEditando) return progGuardarEdicionNP();
   const fecha = document.getElementById("np-fecha").value;
   if (!fecha) { toast("Indica la fecha de ejecución"); return; }
   const desc = document.getElementById("np-desc-equipo").value.trim();
@@ -8796,6 +8817,114 @@ async function progTablero() {
     "Si el cumplimiento en horas queda muy por debajo del de actividades, se están ejecutando las cortas y quedando las pesadas.</div>";
 
   cont.innerHTML = html;
+}
+
+
+/* ---------- Editar y eliminar ---------- */
+async function progLimpiarEjecucion() {
+  if (!progActual) return;
+  if (!confirm("Se borrará el registro de ejecución de esta actividad: avance, horas, personal y narrativa. Los datos de Planeación no se tocan. ¿Continuar?")) return;
+
+  const { data, error } = await sb.rpc("programa_limpiar_ejecucion", { p_actividad_id: progActual.id });
+  if (error) { toast("No se pudo limpiar: " + error.message); return; }
+  if (data && data.ok === false) { toast(data.error); return; }
+
+  toast("Registro de ejecución borrado");
+  cerrarPanel("panel-prog-actividad");
+  cargarProgramacionDia();
+}
+
+async function progEliminarNP() {
+  if (!progActual) return;
+  const nombre = progActual.descripcion_equipo || progActual.codigo_equipo || "esta actividad";
+  if (!confirm("Se eliminará definitivamente la actividad no programada de " + nombre +
+               ". Esta acción no se puede deshacer. ¿Continuar?")) return;
+
+  const { data, error } = await sb.rpc("programa_eliminar_no_programada", { p_actividad_id: progActual.id });
+  if (error) { toast("No se pudo eliminar: " + error.message); return; }
+  if (data && data.ok === false) { toast(data.error); return; }
+
+  toast("Actividad eliminada");
+  cerrarPanel("panel-prog-actividad");
+  cargarProgramacionDia();
+}
+
+/* Reutiliza el formulario de alta, precargado con los datos actuales. */
+let npEditando = null;
+
+async function progEditarNP() {
+  if (!progActual) return;
+  const a = progActual;
+  document.querySelector('[data-tab="prog-np"]').click();
+  // Esperar a que el panel termine de inicializarse antes de precargar
+  setTimeout(() => {
+    npEditando = a.id;
+    document.getElementById("np-fecha").value = a.fecha_ejecucion || a.fecha_programada || "";
+    document.getElementById("np-codigo-equipo").value = a.codigo_equipo || "";
+    document.getElementById("np-desc-equipo").value = a.descripcion_equipo || "";
+    document.getElementById("np-buscar-equipo").value =
+      (a.codigo_equipo ? a.codigo_equipo + " · " : "") + (a.descripcion_equipo || "");
+    document.getElementById("np-estacion").value = a.estacion || "";
+    document.getElementById("np-tipo").value = a.tipo_orden || "ZCO";
+    document.getElementById("np-especialidad").value = a.especialidad || "ELE";
+    document.getElementById("np-ot").value = a.numero_ot || "";
+    document.getElementById("np-tarea").value = a.numero_tarea || "";
+    document.getElementById("np-desc-trabajo").value = a.descripcion_trabajo || "";
+    document.getElementById("np-hh").value = a.hh_ejec_ele != null ? a.hh_ejec_ele : "";
+    document.getElementById("np-avance").value = a.avance_pct != null ? a.avance_pct : 100;
+    document.getElementById("np-personal").value = a.personal || "";
+    document.getElementById("np-actividades").value = a.actividades_realizadas || "";
+    document.getElementById("np-observaciones").value = a.observaciones || "";
+    document.getElementById("np-btn-guardar").textContent = "Guardar cambios";
+    const av = document.getElementById("np-equipo-elegido");
+    av.style.display = "";
+    av.className = "mat-stock";
+    av.textContent = "Editando una actividad ya registrada.";
+  }, 60);
+}
+
+async function progGuardarEdicionNP() {
+  const btn = document.getElementById("np-btn-guardar");
+  btn.disabled = true; btn.textContent = "Guardando...";
+
+  const r1 = await sb.rpc("programa_editar_no_programada", {
+    p_actividad_id: npEditando,
+    p_fecha: document.getElementById("np-fecha").value || null,
+    p_codigo_equipo: document.getElementById("np-codigo-equipo").value.trim(),
+    p_descripcion_equipo: document.getElementById("np-desc-equipo").value.trim(),
+    p_estacion: document.getElementById("np-estacion").value.trim(),
+    p_tipo_orden: document.getElementById("np-tipo").value,
+    p_numero_ot: document.getElementById("np-ot").value.trim(),
+    p_numero_tarea: document.getElementById("np-tarea").value.trim(),
+    p_descripcion_trabajo: document.getElementById("np-desc-trabajo").value.trim(),
+    p_especialidad: document.getElementById("np-especialidad").value,
+  });
+
+  if (r1.error) { btn.disabled = false; btn.textContent = "Guardar cambios"; toast("No se pudo guardar: " + r1.error.message); return; }
+  if (r1.data && r1.data.ok === false) { btn.disabled = false; btn.textContent = "Guardar cambios"; toast(r1.data.error); return; }
+
+  const r2 = await sb.rpc("programa_registrar_ejecucion", {
+    p_actividad_id: npEditando,
+    p_estado: "ejecutada",
+    p_avance: document.getElementById("np-avance").value !== ""
+      ? parseInt(document.getElementById("np-avance").value, 10) : null,
+    p_hh_ele: document.getElementById("np-hh").value !== ""
+      ? parseFloat(document.getElementById("np-hh").value) : null,
+    p_personal: document.getElementById("np-personal").value.trim(),
+    p_actividades: document.getElementById("np-actividades").value.trim(),
+    p_observaciones: document.getElementById("np-observaciones").value.trim(),
+    p_motivo: null,
+    p_fecha: document.getElementById("np-fecha").value || null,
+  });
+
+  btn.disabled = false; btn.textContent = "Registrar actividad";
+  if (r2.error) { toast("Datos guardados, pero falló la ejecución: " + r2.error.message); return; }
+
+  toast("Cambios guardados");
+  npEditando = null;
+  progFecha = document.getElementById("np-fecha").value || progFecha;
+  const b = document.querySelector('[data-tab="prog-dia"]');
+  if (b) b.click();
 }
 
 const ASIS_MODULOS = {
