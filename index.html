@@ -640,11 +640,17 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   #app.modulo-completo .pane-list{display:none;}
 
   /* En el modulo VFD la barra lateral solo tendria un boton, el del propio
-     modulo. Se oculta y se recupera el padding de 84 px que reservaba: es
-     justo el ancho que le falta a la fila de botones del analizador para no
-     cortarse. Solo en escritorio; en movil esa barra es la unica navegacion. */
-  #app.modulo-vfd{padding-left:0;}
+     modulo, y ademas #app reserva 84 px de padding para ella aunque este
+     oculta. En vez de pelear con el padding del contenedor, el panel se
+     posiciona fijo contra el viewport: asi no depende de que ninguna clase
+     aterrice en #app. Solo en escritorio; en movil esa barra es la unica
+     navegacion y debe quedarse. */
+  #panel-vfd.open{
+    position:fixed;top:46px;left:0;right:0;bottom:0;
+    width:auto;height:auto;max-width:none;margin:0;z-index:31;
+  }
   #app.modulo-vfd .navbar{display:none;}
+  #app.modulo-vfd{padding-left:0;}
   .pane-detail{
     display:flex;flex:1;position:relative;background:var(--bg-1);overflow:hidden;
   }
