@@ -103,8 +103,10 @@ html,body{height:100%;margin:0;}
 #ee-informe .inf-veredicto{font-size:15px;font-weight:800}
 #ee-informe .inf-nota{font-size:11px;color:#555}
 #ee-informe .inf-obs{font-size:12px}
-#ee-informe .inf-firmas{width:100%;margin-top:26px;font-size:12px}
-#ee-informe .inf-firmas td{width:50%;padding-top:10px}
+#ee-informe .inf-firmas{width:100%;margin-top:14px;font-size:12px}
+#ee-informe .inf-firmas td{width:50%;padding-top:6px;vertical-align:bottom}
+#ee-informe .inf-espacio{height:34px}
+#ee-informe .inf-idpag{font-size:9px;color:#666;margin-top:16px;border-top:1px solid #ccc;padding-top:4px}
 #ee-informe .inf-pie{font-size:10px;color:#666;margin-top:16px;border-top:1px solid #ccc;padding-top:5px}
 /* Contenedor temporal: eeImprimirInforme() mueve aqui el informe justo antes
    de llamar a window.print() y lo devuelve al terminar. Es la unica forma de
@@ -128,11 +130,24 @@ html,body{height:100%;margin:0;}
     margin:0!important;padding:0!important;border-radius:0!important;
     background:#fff!important;color:#000!important;font-size:10pt!important;
   }
-  #print-root h3{font-size:10.5pt!important;margin:11pt 0 3pt!important}
+  #print-root h3{font-size:10.5pt!important;margin:8pt 0 2.5pt!important}
+  #print-root p{margin:4pt 0!important}
+  #print-root .inf-dictamen{padding:7pt!important;margin-top:3pt!important}
+  #print-root .inf-idpag{margin-top:10pt!important;padding-top:3pt!important;font-size:7.5pt!important}
+  #print-root .inf-firmas{margin-top:8pt!important;font-size:9.5pt!important}
+  #print-root .inf-firmas td{padding-top:2pt!important}
+  #print-root .inf-espacio{height:26pt!important}
+  #print-root .inf-pie{margin-top:9pt!important;padding-top:3pt!important}
+  /* La identificacion, las firmas y el pie son un solo bloque: si alguna vez
+     el informe pasa de una hoja, viajan juntos y nunca se parten. */
+  #print-root .inf-idpag,#print-root .inf-firmas,#print-root .inf-pie{
+    break-inside:avoid;page-break-inside:avoid;
+  }
+  #print-root .inf-idpag{break-after:avoid;page-break-after:avoid}
   #print-root .inf-titulo{font-size:15pt!important}
   #print-root .inf-sub,#print-root .inf-min,#print-root .inf-nota{font-size:8pt!important}
   #print-root .inf-tabla{font-size:8.5pt!important}
-  #print-root .inf-tabla td,#print-root .inf-tabla th{padding:2.5pt 4pt!important}
+  #print-root .inf-tabla td,#print-root .inf-tabla th{padding:2pt 4pt!important}
   #print-root .inf-veredicto{font-size:12pt!important}
   #print-root .inf-logo{max-height:42pt!important}
   #print-root .inf-pie{font-size:7.5pt!important}
@@ -150,7 +165,7 @@ html,body{height:100%;margin:0;}
   #print-root tr{break-inside:avoid;page-break-inside:avoid}
   #print-root thead{display:table-header-group}
 
-  @page{size:letter portrait;margin:12mm}
+  @page{size:letter portrait;margin:10mm}
 }
 body{
   background:var(--bg-0);color:var(--text-0);font-family:var(--sans);
@@ -4484,9 +4499,13 @@ const EE_unidadActual = () => document.getElementById("ee-e-unidad")?.value || "
 const EE_simbolo = u => (EE_UNIDADES[u] || EE_UNIDADES.Mohm).simbolo;
 const EE_aMohm = (v, u) => (v == null || !isFinite(v)) ? null
   : v * (EE_UNIDADES[u] || EE_UNIDADES.Mohm).factor;
-// Sin separador de miles: en un informe tecnico "3.970" se confunde con 3,97.
-const EE_num = v => v == null ? "—"
-  : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 1, useGrouping: false });
+// Coma decimal y sin separador de miles: en un informe tecnico en espanol
+// "3.970" se confunde con 3,97. Un solo formateador para todo el modulo
+// evita la mezcla de 3365,7 con 1.48 en la misma tabla.
+const EE_num = (v, d = 1) => (v == null || !isFinite(v)) ? "—"
+  : Number(v).toLocaleString("es-CO", { maximumFractionDigits: d, useGrouping: false });
+const EE_dec = (v, d = 2) => (v == null || !isFinite(v)) ? "—"
+  : Number(v).toLocaleString("es-CO", { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: false });
 const EE_fmtMohm = v => v == null ? "—" : EE_num(v) + " MΩ";
 const EE_fmtMedido = (v, u) => v == null ? "—"
   : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 4, useGrouping: false }) + " " + EE_simbolo(u);
@@ -4670,7 +4689,7 @@ function eeTendencia() {
     const p = puntos[g];
     const min = EE_minimoGrupo(eeMaquinaActual, g);
     if (p.length < 2) {
-      return `<div class="mat-stock">${g}: ${p[0].v.toFixed(1)} MΩ @40°C el ${p[0].fecha} · mínimo ${min} MΩ (un solo ensayo, sin tendencia)</div>`;
+      return `<div class="mat-stock">${g}: ${EE_num(p[0].v)} MΩ @40°C el ${p[0].fecha} · mínimo ${min} MΩ (un solo ensayo, sin tendencia)</div>`;
     }
     const vals = p.map(x => Math.log10(Math.max(x.v, 0.01)));
     const lo = Math.min(...vals, Math.log10(min)) - 0.2, hi = Math.max(...vals) + 0.2;
@@ -4681,7 +4700,7 @@ function eeTendencia() {
     const yMin = py(Math.log10(min));
     return `
       <div style="margin-bottom:10px">
-        <div class="mat-stock"><b>${g}</b> · último ${p[p.length - 1].v.toFixed(1)} MΩ @40°C · mínimo ${min} MΩ</div>
+        <div class="mat-stock"><b>${g}</b> · último ${EE_num(p[p.length - 1].v)} MΩ @40°C · mínimo ${min} MΩ</div>
         <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:420px;height:auto">
           <line x1="0" y1="${yMin}" x2="${W}" y2="${yMin}" stroke="#C62828" stroke-dasharray="4 3" stroke-width="1"/>
           <polyline points="${linea}" fill="none" stroke="#0C5292" stroke-width="2"/>
@@ -4703,7 +4722,7 @@ function eeTarjetaEnsayo(e, m) {
         <td${d.unidad_ingreso && d.unidad_ingreso !== "Mohm" ? ` title="Medido: ${EE_fmtMedido(d.ir_1min_ing, d.unidad_ingreso)}"` : ""}>${EE_num(d.ir_1min)}</td>
         <td>${EE_num(d.ir40_1min)}</td>
         <td>${EE_pill(EE_evIR(d.ir40_1min != null ? +d.ir40_1min : null, min))}</td>
-        <td>${d.pi != null ? (+d.pi).toFixed(2) : "—"}</td>
+        <td>${EE_dec(d.pi)}</td>
       </tr>`).join("");
   }).join("");
 
@@ -4987,19 +5006,19 @@ function eeRecalcular() {
       html += `<div class="ee-fila"><b>${g === "ESTATOR" ? "Fase " : ""}${x.fase}</b>
         <span class="mat-stock">${x.u !== "Mohm" ? EE_fmtMedido(x.i60, x.u) + " = " : ""}${EE_fmtMohm(x.r60)} ${x.ir40 != null ? `→ <b>${EE_num(x.ir40)} MΩ @40°C</b>` : "(falta temperatura)"}</span>
         ${EE_pill(EE_evIR(x.ir40, min))}
-        DAR ${x.dar ? x.dar.toFixed(2) : "—"} ${EE_pill(EE_evDAR(x.dar, x.ir40))}
-        PI ${x.pi ? x.pi.toFixed(2) : "—"} ${EE_pill(EE_evPI(x.pi, x.ir40))}</div>`;
+        DAR ${EE_dec(x.dar)} ${EE_pill(EE_evDAR(x.dar, x.ir40))}
+        PI ${EE_dec(x.pi)} ${EE_pill(EE_evPI(x.pi, x.ir40))}</div>`;
     });
     // Desbalance entre fases del mismo grupo
     const d = EE_desbalance(xs.map(x => x.ir40).filter(v => v != null));
     if (d != null && xs.length > 2) {
-      html += `<div class="ee-fila"><b>Desbalance ${g}</b><span class="mat-stock">${d.toFixed(1)}% entre fases</span>${EE_pill(EE_evDes(d))}</div>`;
+      html += `<div class="ee-fila"><b>Desbalance ${g}</b><span class="mat-stock">${EE_num(d)} % entre fases</span>${EE_pill(EE_evDes(d))}</div>`;
     }
   });
 
   const bob = eeLeerBobinas();
   const db = EE_desbalance(bob.map(b => b.r).filter(r => isFinite(r)));
-  if (db != null) html += `<div class="ee-fila"><b>Resistencia entre bobinas</b><span class="mat-stock">Desviación ${db.toFixed(1)}%</span>${EE_pill(EE_evDes(db))}</div>`;
+  if (db != null) html += `<div class="ee-fila"><b>Resistencia entre bobinas</b><span class="mat-stock">Desviación ${EE_num(db)} %</span>${EE_pill(EE_evDes(db))}</div>`;
   const malas = bob.filter(b => b.estado === "Mala").map(b => b.par);
   if (malas.length) html += `<div class="hint-box">&#9888;&#65039; Bobinas reportadas en mal estado: ${malas.join(", ")}</div>`;
   if (!isFinite(T)) html += '<div class="hint-box">&#9888;&#65039; Sin temperatura de devanado no hay corrección a 40 °C, y la tendencia histórica deja de ser comparable.</div>';
@@ -5211,19 +5230,19 @@ function eeDictamen(lista, m) {
     const etq = grupo === "ESTATOR" ? `Fase ${d.fase}` : `${grupo} ${d.fase}`;
     const ir40 = d.ir40_1min != null ? Number(d.ir40_1min) : EE_corr40(Number(d.ir_1min), T);
     if (ir40 != null) {
-      if (ir40 < min) { peor("bad"); hallazgos.push(`${etq}: IR corregida ${ir40.toFixed(1)} MΩ, por debajo del mínimo IEEE 43 de ${min} MΩ.`); }
-      else if (ir40 < min * 2) { peor("warn"); hallazgos.push(`${etq}: IR corregida ${ir40.toFixed(1)} MΩ, cercana al mínimo de ${min} MΩ.`); }
+      if (ir40 < min) { peor("bad"); hallazgos.push(`${etq}: IR corregida ${EE_num(ir40)} MΩ, por debajo del mínimo IEEE 43 de ${min} MΩ.`); }
+      else if (ir40 < min * 2) { peor("warn"); hallazgos.push(`${etq}: IR corregida ${EE_num(ir40)} MΩ, cercana al mínimo de ${min} MΩ.`); }
     }
     const alto = ir40 != null && ir40 > 5000;
     if (d.pi != null && !alto) {
       const pi = Number(d.pi);
-      if (pi < 1) { peor("bad"); hallazgos.push(`${etq}: PI ${pi.toFixed(2)} por debajo de 1.0, absorción anómala que apunta a humedad o contaminación.`); }
-      else if (pi < 2) { peor("warn"); hallazgos.push(`${etq}: PI ${pi.toFixed(2)} en zona cuestionable (1.0 a 2.0).`); }
+      if (pi < 1) { peor("bad"); hallazgos.push(`${etq}: PI ${EE_dec(pi)} por debajo de 1.0, absorción anómala que apunta a humedad o contaminación.`); }
+      else if (pi < 2) { peor("warn"); hallazgos.push(`${etq}: PI ${EE_dec(pi)} en zona cuestionable (1.0 a 2.0).`); }
     }
     if (d.dar != null && !alto) {
       const dar = Number(d.dar);
-      if (dar < 1) { peor("bad"); hallazgos.push(`${etq}: DAR ${dar.toFixed(2)} por debajo de 1.0, condición dieléctrica deficiente.`); }
-      else if (dar < 1.25) { peor("warn"); hallazgos.push(`${etq}: DAR ${dar.toFixed(2)} en zona cuestionable.`); }
+      if (dar < 1) { peor("bad"); hallazgos.push(`${etq}: DAR ${EE_dec(dar)} por debajo de 1.0, condición dieléctrica deficiente.`); }
+      else if (dar < 1.25) { peor("warn"); hallazgos.push(`${etq}: DAR ${EE_dec(dar)} en zona cuestionable.`); }
     }
   });
 
@@ -5234,13 +5253,13 @@ function eeDictamen(lista, m) {
   const dIR = EE_desbalance(irEstator);
   if (dIR != null && irEstator.length >= 3 && dIR > 50) {
     peor("warn");
-    hallazgos.push(`Dispersión del ${dIR.toFixed(0)} % en la IR entre fases del estator, lo que sugiere un deterioro localizado en una fase y no una degradación uniforme.`);
+    hallazgos.push(`Dispersión del ${EE_num(dIR, 0)} % en la IR entre fases del estator, lo que sugiere un deterioro localizado en una fase y no una degradación uniforme.`);
   }
 
   const d = EE_desbalance(bobs.map(b => Number(b.resistencia)).filter(x => isFinite(x)));
   if (d != null) {
-    if (d > 5) { peor("bad"); hallazgos.push(`Desbalance resistivo entre bobinas del ${d.toFixed(1)} %, por encima del 5 %: posible espira en corto o conexión defectuosa.`); }
-    else if (d > 2) { peor("warn"); hallazgos.push(`Desbalance resistivo entre bobinas del ${d.toFixed(1)} % (2 a 5 %). Vigilar.`); }
+    if (d > 5) { peor("bad"); hallazgos.push(`Desbalance resistivo entre bobinas del ${EE_num(d)} %, por encima del 5 %: posible espira en corto o conexión defectuosa.`); }
+    else if (d > 2) { peor("warn"); hallazgos.push(`Desbalance resistivo entre bobinas del ${EE_num(d)} % (2 a 5 %). Vigilar.`); }
   }
   const malas = bobs.filter(b => b.estado === "Mala").map(b => b.par);
   const dudosas = bobs.filter(b => b.estado === "Dudosa").map(b => b.par);
@@ -5259,8 +5278,8 @@ function eeDictamen(lista, m) {
     const a = peorIR(e), b = peorIR(prev);
     if (a != null && b > 0) {
       const dif = (a - b) / b * 100;
-      if (dif < -50) { peor("bad"); hallazgos.push(`Degradación acelerada: la IR corregida cayó ${Math.abs(dif).toFixed(0)} % frente al ensayo del ${prev.fecha}.`); }
-      else if (dif < -30) { peor("warn"); hallazgos.push(`Tendencia descendente: la IR corregida cayó ${Math.abs(dif).toFixed(0)} % frente al ensayo del ${prev.fecha}.`); }
+      if (dif < -50) { peor("bad"); hallazgos.push(`Degradación acelerada: la IR corregida cayó ${EE_num(Math.abs(dif), 0)} % frente al ensayo del ${prev.fecha}.`); }
+      else if (dif < -30) { peor("warn"); hallazgos.push(`Tendencia descendente: la IR corregida cayó ${EE_num(Math.abs(dif), 0)} % frente al ensayo del ${prev.fecha}.`); }
     }
   }
 
@@ -5359,8 +5378,8 @@ function eeTablaInforme(e, m) {
             <td><b>${d.fase}</b></td>
             <td>${EE_num(d.ir_30s)}</td><td>${EE_num(d.ir_1min)}</td><td>${EE_num(d.ir_10min)}</td>
             <td><b>${EE_num(ir40)}</b></td>
-            <td>${d.dar != null ? Number(d.dar).toFixed(2) : "—"}</td>
-            <td>${d.pi != null ? Number(d.pi).toFixed(2) : "—"}</td>
+            <td>${EE_dec(d.dar)}</td>
+            <td>${EE_dec(d.pi)}</td>
             <td class="inf-${ev.nivel}">${ev.texto}</td></tr>`;
         }).join("")}
       </table>`;
@@ -5426,10 +5445,10 @@ async function verInforme(ensayoId) {
 
     ${bobs.length ? `
       <h3>Resistencia óhmica por bobina
-        ${desb != null ? `<span class="inf-min">desbalance ${desb.toFixed(1)} %</span>` : ""}</h3>
+        ${desb != null ? `<span class="inf-min">desbalance ${EE_num(desb)} %</span>` : ""}</h3>
       <table class="inf-tabla">
         <tr><th>Par</th><th>Resistencia (Ω)</th><th>Estado</th></tr>
-        ${bobs.map(b => `<tr><td>${b.par}</td><td>${b.resistencia ?? "—"}</td><td>${b.estado || ""}</td></tr>`).join("")}
+        ${bobs.map(b => `<tr><td>${b.par}</td><td>${EE_num(b.resistencia, 3)}</td><td>${b.estado || ""}</td></tr>`).join("")}
       </table>
       ${e.temp_medicion_bobinas != null || e.instrumento_bobinas
         ? `<div class="inf-nota">Medido a ${e.temp_medicion_bobinas ?? "—"} °C con ${e.instrumento_bobinas || "instrumento no registrado"}.</div>` : ""}` : ""}
@@ -5446,9 +5465,10 @@ async function verInforme(ensayoId) {
 
     ${e.observaciones ? `<h3>Observaciones del técnico</h3><p class="inf-obs">${e.observaciones}</p>` : ""}
 
+    <div class="inf-idpag">${(m.nombre_efectivo || "").toString()} · SAP ${m.sap_efectivo || "—"} · Ensayo del ${e.fecha}</div>
     <table class="inf-firmas">
-      <tr><td>Realizó<br><br><br>______________________<br>${e.tecnico || ""}</td>
-          <td>Revisó<br><br><br>______________________<br>&nbsp;</td></tr>
+      <tr><td>Realizó<div class="inf-espacio"></div>______________________<br>${e.tecnico || ""}</td>
+          <td>Revisó<div class="inf-espacio"></div>______________________<br>&nbsp;</td></tr>
     </table>
     <div class="inf-pie">
       El dictamen es un apoyo al diagnóstico generado a partir de los datos registrados y no reemplaza el criterio del ingeniero responsable.
@@ -5507,8 +5527,10 @@ function eeDescargarWord() {
     .inf-d-bad{border-color:#C62828}.inf-d-warn{border-color:#E08600}.inf-d-ok{border-color:#359E68}
     .inf-veredicto{font-size:12pt;font-weight:bold}
     .inf-nota{font-size:8.5pt;color:#555}
-    .inf-firmas{width:100%;margin-top:22pt;font-size:9.5pt}
-    .inf-firmas td{width:50%;padding-top:8pt}
+    .inf-firmas{width:100%;margin-top:8pt;font-size:9.5pt}
+    .inf-firmas td{width:50%;padding-top:2pt;vertical-align:bottom}
+    .inf-espacio{height:26pt}
+    .inf-idpag{font-size:7.5pt;color:#666;margin-top:10pt;border-top:1px solid #ccc;padding-top:3pt}
     .inf-pie{font-size:8pt;color:#666;margin-top:14pt;border-top:1px solid #ccc;padding-top:4pt}
     .inf-logo{max-height:48pt}
     .inf-cab{margin-bottom:10pt}`;
