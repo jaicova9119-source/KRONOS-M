@@ -1,0 +1,2242 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registro de variadores — Analizador multi-formato</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ink:#080F15; --panel:#0F1A22; --panel2:#0C151C;
+  --rule:#1A2A35; --rule2:#263D4C; --rule3:#152029; --hover:#14212B;
+  --tx:#C4D6E0; --tx2:#7794A6; --tx3:#4D6C7E; --prose:#A6BECD;
+  --acc:#3BD5E0; --acc-dim:#1E6F78; --acc-bg:#07242A; --steel:#5B8AA8;
+  --code-bg:#16242F; --dead:#5C2226;
+  --L1:#FF5257; --L2:#FFB020; --L3:#4DA3FF;
+  --c-red:#FF5257; --c-amb:#FFB020; --c-blu:#4DA3FF; --c-tea:#2FD4B5;
+  --c-lim:#A5D93F; --c-vio:#B98CFF; --c-ora:#FF8A3D; --c-cya:#35D6E3;
+  --c-pnk:#FF6FB5; --c-yel:#EFD64A; --c-ind:#8C8CFF; --c-ste:#8FA5B4;
+  --band-off:rgba(255,82,87,.10); --band-nd:rgba(140,150,160,.10);
+  --press:#2FD4B5; --vib:#B98CFF; --temp:#FF8A3D; --speed:#A5D93F; --misc:#8FA5B4;
+  --cv-grid:#152430; --cv-tick:#456075; --cv-axis:#22384A;
+  --cv-run:#0E2C33; --cv-off:#0D161D; --cv-nodata:#141419; --cv-day:#1A2C39; --cv-mask:rgba(8,15,21,.74);
+  --ok:#3FBFA0; --obs:#6FA8DC; --att:#E8A33D; --crit:#E5484D;
+  --g-serie:#3BD5E0; --g-evento:#E8A33D; --g-accion:#B583F0;
+  --f-ui:'Archivo','Helvetica Neue',Arial,sans-serif;
+  --f-mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,Consolas,monospace;
+  --f-prose:'Newsreader',Georgia,'Times New Roman',serif;
+}
+:root[data-theme="light"]{
+  --ink:#EDF2F6; --panel:#FFFFFF; --panel2:#F7FAFC;
+  --rule:#D5E1E8; --rule2:#B7CAD6; --rule3:#E6EDF2; --hover:#E9F1F5;
+  --tx:#12303F; --tx2:#4E6D7D; --tx3:#5F7480; --prose:#2B4B5C;
+  --acc:#0A7C8A; --acc-dim:#7EB7C0; --acc-bg:#DFF2F5; --steel:#3E6B87;
+  --code-bg:#E5EDF2; --dead:#E0A5A8;
+  --L1:#C7262C; --L2:#9A6400; --L3:#1668C7;
+  --c-red:#C7262C; --c-amb:#9A6400; --c-blu:#1668C7; --c-tea:#067F6B;
+  --c-lim:#5C7A0A; --c-vio:#6E3FBF; --c-ora:#BE4E12; --c-cya:#0A7C8A;
+  --c-pnk:#B62E77; --c-yel:#8A7400; --c-ind:#4646C8; --c-ste:#5B7383;
+  --band-off:rgba(199,38,44,.09); --band-nd:rgba(90,110,125,.10);
+  --press:#067F6B; --vib:#6E3FBF; --temp:#BE4E12; --speed:#5C7A0A; --misc:#5B7383;
+  --cv-grid:#E2EAF0; --cv-tick:#65808E; --cv-axis:#C2D2DC;
+  --cv-run:#DAEFEB; --cv-off:#EFF4F7; --cv-nodata:#E2E2E6; --cv-day:#DBE5EC; --cv-mask:rgba(237,242,246,.76);
+  --ok:#0B8167; --obs:#2C6DA8; --att:#9B6607; --crit:#C42B31;
+  --g-serie:#0A7C8A; --g-evento:#9B6607; --g-accion:#7A3FC0;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--ink);color:var(--tx);font-family:var(--f-ui);font-size:15px;
+  -webkit-font-smoothing:antialiased;overflow:hidden;transition:background-color .18s,color .18s}
+button,input,select{font-family:inherit;font-size:inherit;color:inherit}
+button{cursor:pointer;background:none;border:none}
+:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-thumb{background:var(--rule2);border-radius:6px}
+::-webkit-scrollbar-track{background:transparent}
+
+#app{display:grid;grid-template-rows:auto auto auto 1fr;height:100%;min-height:0}
+
+.hdr{display:flex;align-items:center;gap:20px;padding:10px 18px;border-bottom:1px solid var(--rule);background:var(--panel2)}
+.brand{display:flex;align-items:baseline;gap:10px;flex:0 0 auto}
+.brand b{font-weight:700;letter-spacing:-.02em;font-size:16px}
+.brand span{font-family:var(--f-mono);font-size:10.5px;color:var(--tx3);letter-spacing:.11em;text-transform:uppercase}
+.unitsel{display:flex;gap:5px;flex:1 1 auto;overflow-x:auto;scrollbar-width:none}
+.unitsel::-webkit-scrollbar{display:none}
+.ub{font-family:var(--f-mono);font-size:12.5px;padding:6px 12px;border:1px solid var(--rule);border-radius:2px;
+  color:var(--tx2);white-space:nowrap}
+.ub:hover{border-color:var(--rule2);color:var(--tx)}
+.ub.on{border-color:var(--acc-dim);color:var(--acc);background:var(--acc-bg)}
+.ub em{font-style:normal;color:var(--tx3);margin-left:6px}
+.hdr-act{display:flex;gap:8px;flex:0 0 auto}
+.btn{border:1px solid var(--rule2);border-radius:3px;padding:7px 13px;font-size:13.5px;color:var(--tx2);transition:.13s}
+.btn:hover{border-color:var(--acc-dim);color:var(--acc)}
+.btn.tgl{padding:7px 10px;font-size:15px;line-height:1}
+.btn.tgl.off{color:var(--tx3);border-color:var(--rule)}
+.btn.pri{border-color:var(--acc-dim);color:var(--acc);background:var(--acc-bg)}
+
+.views{display:flex;gap:4px;padding:0 18px;border-bottom:1px solid var(--rule);background:var(--panel2)}
+.vb{padding:9px 16px;font-size:13.5px;color:var(--tx3);border-bottom:2px solid transparent;margin-bottom:-1px}
+.vb:hover{color:var(--tx2)}
+.vb.on{color:var(--acc);border-bottom-color:var(--acc)}
+.vb em{font-style:normal;font-family:var(--f-mono);font-size:10.5px;color:var(--tx3);margin-left:7px}
+
+#tip{position:fixed;z-index:60;pointer-events:none;background:var(--panel);border:1px solid var(--rule2);
+  border-radius:4px;padding:9px 11px;box-shadow:0 6px 24px rgba(0,0,0,.4);display:none;min-width:180px}
+:root[data-theme="light"] #tip{box-shadow:0 6px 24px rgba(30,60,80,.18)}
+#tip .th{font-family:var(--f-mono);font-size:11.5px;color:var(--acc);margin-bottom:7px;
+  padding-bottom:6px;border-bottom:1px solid var(--rule)}
+#tip .tr{display:flex;justify-content:space-between;gap:16px;font-size:12.5px;line-height:1.7}
+#tip .tr span{color:var(--tx2);display:flex;align-items:center;gap:6px}
+#tip .tr i{width:9px;height:2.5px;border-radius:2px;display:inline-block}
+#tip .tr b{font-family:var(--f-mono);font-weight:500;color:var(--tx);font-variant-numeric:tabular-nums}
+
+.ampwrap{display:grid;grid-template-columns:1fr 190px;gap:18px;padding:16px 0;height:100%}
+#ampCv{display:block;width:100%;cursor:crosshair}
+.days{overflow-y:auto;display:flex;flex-direction:column;gap:8px}
+.dayb{border:1px solid var(--rule);border-radius:3px;padding:7px;text-align:center;transition:.13s}
+.dayb:hover{border-color:var(--rule2)}
+.dayb.on{border-color:var(--acc-dim);background:var(--acc-bg)}
+.dayb canvas{display:block;width:100%;height:auto}
+.dayb u{text-decoration:none;font-family:var(--f-mono);font-size:10.5px;color:var(--tx2);display:block;margin-top:4px}
+.dayb.on u{color:var(--acc)}
+.dayb small{font-family:var(--f-mono);font-size:9.5px;color:var(--tx3);display:block}
+
+.evtbl{width:100%;border-collapse:collapse;font-size:13px}
+.evtbl th{position:sticky;top:0;background:var(--ink);text-align:left;padding:9px 10px;color:var(--tx3);
+  font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;font-weight:500;
+  border-bottom:1px solid var(--rule2);z-index:2}
+.evtbl td{padding:8px 10px;border-bottom:1px solid var(--rule3);vertical-align:top}
+.evtbl tr:hover td{background:var(--hover);cursor:pointer}
+.evtbl .fh{font-family:var(--f-mono);font-size:12px;color:var(--tx2);white-space:nowrap}
+.evtbl .tx{color:var(--tx);font-weight:500}
+.evtbl .de{font-family:var(--f-mono);font-size:11.5px;color:var(--tx3)}
+.evtbl .sv{width:3px;padding:0;background:var(--rule2)}
+.evtbl tr.crit .sv{background:var(--crit)} .evtbl tr.att .sv{background:var(--att)}
+.evtbl tr.ok .sv{background:var(--ok)} .evtbl tr.accion .sv{background:var(--g-accion)}
+.efilt{display:flex;gap:5px;padding:12px 0;flex-wrap:wrap;align-items:center}
+.ribbon.min #ribCv{height:34px}
+.ribbon{border-bottom:1px solid var(--rule);background:var(--panel2);padding:9px 18px 10px}
+.ribbon.off{padding:7px 18px}
+.ribbon.off #ribCv{display:none}
+.ribbon.off .rib-foot{margin-top:0}
+.rib-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:5px;gap:16px}
+.rib-lab{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3)}
+.rib-win{font-family:var(--f-mono);font-size:12.5px;color:var(--acc)}
+#ribCv{display:block;width:100%;height:58px;cursor:crosshair}
+.rib-foot{display:flex;align-items:center;gap:14px;margin-top:7px}
+.quick{display:flex;gap:5px;flex-wrap:wrap;align-items:center;flex:1 1 auto}
+.qb{font-family:var(--f-mono);font-size:11.5px;padding:4px 9px;border:1px solid var(--rule);border-radius:2px;color:var(--tx3)}
+.qb:hover{border-color:var(--acc-dim);color:var(--acc)}
+.klav{font-family:var(--f-mono);font-size:10px;color:var(--tx3);margin-left:auto}
+
+.main{position:relative;overflow:hidden;min-height:0}
+.col{overflow-y:auto;overflow-x:hidden}
+.plots{position:absolute;inset:0;background:var(--ink);padding:0 24px 40px}
+.sidebar,.analysis{position:absolute;top:0;bottom:0;z-index:22;background:var(--panel2);
+  transition:transform .17s cubic-bezier(.2,.7,.3,1)}
+.sidebar{left:0;width:290px;border-right:1px solid var(--rule2);transform:translateX(-101%);
+  box-shadow:14px 0 34px rgba(0,0,0,.45)}
+.analysis{right:0;width:424px;border-left:1px solid var(--rule2);transform:translateX(101%);
+  box-shadow:-14px 0 34px rgba(0,0,0,.45)}
+:root[data-theme="light"] .sidebar{box-shadow:14px 0 34px rgba(30,60,80,.14)}
+:root[data-theme="light"] .analysis{box-shadow:-14px 0 34px rgba(30,60,80,.14)}
+.sidebar.open,.analysis.open{transform:none}
+.pane-top{position:sticky;top:0;z-index:6;display:flex;justify-content:space-between;align-items:center;
+  gap:10px;padding:9px 13px;background:var(--panel2);border-bottom:1px solid var(--rule2)}
+.pane-top>span{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--tx3)}
+.pinb{font-size:12px;padding:4px 10px;border:1px solid var(--rule2);border-radius:2px;color:var(--tx2);white-space:nowrap}
+.pinb:hover{border-color:var(--acc-dim);color:var(--acc)}
+.pinb.on{border-color:var(--acc-dim);color:var(--acc);background:var(--acc-bg)}
+.plots{transition:left .18s cubic-bezier(.2,.7,.3,1),right .18s cubic-bezier(.2,.7,.3,1)}
+.main.dockL .plots{left:290px}
+.main.dockR .plots{right:424px}
+.main.dockL .rail.rL,.main.dockR .rail.rR{display:none}
+.main.dockL .sidebar,.main.dockR .analysis{box-shadow:none}
+.rail{position:absolute;top:0;bottom:0;width:14px;z-index:23;cursor:pointer}
+.rail.rL{left:0} .rail.rR{right:0}
+.rail::after{content:"";position:absolute;top:0;bottom:0;width:2px;background:var(--rule2);
+  opacity:.5;transition:.15s}
+.rail.rL::after{left:0} .rail.rR::after{right:0}
+.rail:hover::after{background:var(--acc);opacity:1;width:3px}
+.rail.pin::after{background:var(--acc);opacity:.85;width:3px}
+.rail em{position:absolute;top:50%;font-style:normal;font-family:var(--f-mono);font-size:10px;
+  letter-spacing:.16em;color:var(--tx3);white-space:nowrap;transition:.15s;opacity:.55}
+.rail.rL em{left:5px;transform:rotate(90deg);transform-origin:left center}
+.rail.rR em{right:5px;transform:rotate(-90deg);transform-origin:right center}
+.rail:hover em{color:var(--acc);opacity:1}
+.sec{border-bottom:1px solid var(--rule);padding:13px 15px}
+.sec-h{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);
+  margin:0 0 9px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+.sec-h em{font-style:normal;color:var(--acc-dim)}
+
+.fitem{display:grid;grid-template-columns:3px 1fr auto;gap:8px;padding:6px 0;border-bottom:1px solid var(--rule3);align-items:start}
+.fitem:last-child{border-bottom:none}
+.fitem .bar{width:3px;height:100%;min-height:28px;border-radius:2px;background:var(--g-serie)}
+.fitem.evento .bar{background:var(--g-evento)} .fitem.accion .bar{background:var(--g-accion)}
+.fitem .nm{font-size:12.5px;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx)}
+.fitem .dt{font-family:var(--f-mono);font-size:10.5px;color:var(--tx3);line-height:1.45}
+.hitem{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;padding:7px 0;
+  border-bottom:1px solid var(--rule3);cursor:pointer}
+.hitem:last-child{border-bottom:none}
+.hitem:hover .hn{color:var(--acc)}
+.hn{font-size:12.5px;color:var(--tx)}
+.hd{font-family:var(--f-mono);font-size:10px;color:var(--tx3);line-height:1.45}
+.hx{color:var(--tx3);font-size:14px;padding:0 3px}
+.hx:hover{color:var(--crit)}
+.srvpill{font-family:var(--f-mono);font-size:10px;padding:4px 9px;border-radius:2px;
+  border:1px solid var(--rule2);color:var(--tx3);align-self:center}
+.srvpill.on{border-color:var(--ok);color:var(--ok)}
+.fitem .x{color:var(--tx3);font-size:15px;line-height:1;padding:0 2px}
+.fitem .x:hover{color:var(--crit)}
+.usel{margin-top:4px;width:100%;background:var(--ink);border:1px solid var(--rule);
+  border-radius:2px;padding:3px 5px;font-family:var(--f-mono);font-size:10px;color:var(--tx2)}
+.warn{font-family:var(--f-mono);font-size:10.5px;color:var(--att);line-height:1.4;margin-top:2px}
+
+.grp{display:flex;flex-wrap:wrap;gap:4px}
+.gb{font-size:12.5px;padding:5px 10px;border:1px solid var(--rule);border-radius:2px;color:var(--tx2);transition:.13s;text-align:left}
+.gb:hover{border-color:var(--rule2);color:var(--tx)}
+.gb.on{border-color:var(--acc-dim);color:var(--acc);background:var(--acc-bg)}
+.chan{display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:2px;cursor:pointer;user-select:none}
+.chan:hover{background:var(--hover)}
+.chan .sw{width:3px;height:19px;border-radius:2px;flex:0 0 auto}
+.chan .nm{flex:1 1 auto;min-width:0;font-size:13px;line-height:1.25;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--tx2)}
+.chan .tg{font-family:var(--f-mono);font-size:10.5px;color:var(--tx3);flex:0 0 auto}
+.chan.on{background:var(--hover)} .chan.on .nm{color:var(--tx);font-weight:500}
+.chan.dead .nm{color:var(--crit);text-decoration:line-through;text-decoration-color:var(--dead)}
+
+.ev{width:100%;text-align:left;display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;padding:6px;border-radius:2px}
+.ev:hover{background:var(--hover)}
+.ev i{font-style:normal;width:7px;height:7px;border-radius:50%;margin-top:5px;background:var(--tx3)}
+.ev.crit i{background:var(--crit)} .ev.att i{background:var(--att)}
+.ev.ok i{background:var(--ok)} .ev.accion i{background:var(--g-accion)}
+.ev u{text-decoration:none;font-size:12.5px;color:var(--tx);display:block;line-height:1.3}
+.ev small{font-family:var(--f-mono);font-size:10.5px;color:var(--tx3)}
+
+.pnl{border-bottom:1px solid var(--rule);padding:12px 0 4px;position:relative}
+.pnl:last-child{border-bottom:none}
+.pnl-h{display:flex;align-items:flex-start;gap:14px;margin-bottom:6px;flex-wrap:wrap}
+.pnl-t{font-family:var(--f-mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);flex:0 0 auto;padding-top:2px}
+.leg{display:flex;gap:14px;flex-wrap:wrap;flex:1 1 auto}
+.lg{display:flex;align-items:center;gap:6px;font-size:12.5px}
+.lg i{width:11px;height:2.5px;border-radius:2px;flex:0 0 auto}
+.lg span{color:var(--tx2)}
+.lg b{font-family:var(--f-mono);font-weight:500;color:var(--tx);min-width:52px;text-align:right;font-variant-numeric:tabular-nums}
+.pcv{display:block;width:100%;cursor:crosshair}
+.axis{position:sticky;bottom:0;background:linear-gradient(transparent,var(--ink) 26%);padding-top:6px}
+#axCv{display:block;width:100%;height:28px}
+
+.find{padding:12px 15px;border-bottom:1px solid var(--rule);border-left:2px solid var(--rule2)}
+.find.ok{border-left-color:var(--ok)} .find.obs{border-left-color:var(--obs)}
+.find.att{border-left-color:var(--att)} .find.crit{border-left-color:var(--crit)}
+.find.info{border-left-color:var(--rule2)}
+.find h4{margin:0 0 6px;font-size:13.5px;font-weight:600;display:flex;justify-content:space-between;gap:9px;align-items:baseline}
+.find h4 em{font-style:normal;font-family:var(--f-mono);font-size:9px;letter-spacing:.1em;text-transform:uppercase;flex:0 0 auto}
+.find.ok h4 em{color:var(--ok)} .find.obs h4 em{color:var(--obs)}
+.find.att h4 em{color:var(--att)} .find.crit h4 em{color:var(--crit)} .find.info h4 em{color:var(--tx3)}
+.find p{margin:0;font-family:var(--f-prose);font-size:15.5px;line-height:1.52;color:var(--prose)}
+.find p+p{margin-top:7px}
+.find code{font-family:var(--f-mono);font-size:12.5px;color:var(--tx);background:var(--code-bg);padding:1px 4px;border-radius:2px}
+
+table.st{width:100%;border-collapse:collapse;font-family:var(--f-mono);font-size:11.5px}
+table.st th{text-align:right;padding:4px 5px;color:var(--tx3);font-weight:500;border-bottom:1px solid var(--rule);font-size:9px;letter-spacing:.07em;text-transform:uppercase}
+table.st th:first-child,table.st td:first-child{text-align:left}
+table.st td{text-align:right;padding:4px 5px;border-bottom:1px solid var(--rule3);color:var(--tx2);font-variant-numeric:tabular-nums}
+table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.drop{position:fixed;inset:0;display:grid;place-items:center;background:var(--ink);z-index:40;overflow-y:auto;padding:30px}
+.drop.hide{display:none}
+.dz{width:min(700px,92vw);border:1px dashed var(--rule2);border-radius:4px;padding:44px 40px;text-align:center;background:var(--panel2)}
+.dz.hot{border-color:var(--acc);background:var(--acc-bg)}
+.dz h1{font-size:26px;font-weight:700;letter-spacing:-.025em;margin:0 0 8px}
+.dz .kick{font-family:var(--f-mono);font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--acc-dim);margin-bottom:16px}
+.dz p{font-family:var(--f-prose);font-size:15.5px;line-height:1.55;color:var(--tx2);margin:0 auto 22px;max-width:48ch}
+.target{margin:0 auto 20px;max-width:560px;text-align:left;border:1px solid var(--rule);
+  border-radius:3px;padding:12px 14px;background:var(--ink)}
+.tlab{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--tx3);margin-bottom:8px}
+.topts{display:flex;gap:6px;flex-wrap:wrap}
+.tb{font-size:12px;padding:5px 10px;border:1px solid var(--rule);border-radius:2px;color:var(--tx2)}
+.tb:hover{border-color:var(--rule2);color:var(--tx)}
+.tb.on{border-color:var(--acc-dim);color:var(--acc);background:var(--acc-bg)}
+.tnew{margin-top:8px;width:100%;background:var(--panel2);border:1px solid var(--rule);border-radius:2px;
+  padding:6px 9px;font-family:var(--f-mono);font-size:12px}
+.dz .acts{display:flex;gap:9px;justify-content:center;flex-wrap:wrap}
+.dz .fine{margin-top:26px;padding-top:18px;border-top:1px solid var(--rule);font-family:var(--f-mono);font-size:10.5px;line-height:1.8;color:var(--tx3);text-align:left}
+.dz .fine b{color:var(--tx2);font-weight:500}
+.err{color:var(--crit);font-family:var(--f-mono);font-size:11.5px;margin-top:14px;min-height:16px;white-space:pre-line}
+.hint{padding:26px 18px;color:var(--tx3);font-family:var(--f-prose);font-size:15px;line-height:1.5}
+.legend{display:flex;gap:14px;font-family:var(--f-mono);font-size:9.5px;color:var(--tx3);align-items:center}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+
+@media (max-width:1250px){ .main{grid-template-columns:220px 1fr} .analysis{grid-column:1/-1;border-left:none;border-top:1px solid var(--rule);max-height:46vh} }
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div id="app" hidden>
+  <div class="hdr">
+    <div class="brand"><b>Registro de variadores</b><span>multi-formato</span></div>
+    <div class="unitsel" id="unitsel"></div>
+    <div class="hdr-act">
+      <span class="srvpill" id="srv">sin servidor</span>
+      <button class="btn tgl off" id="bCinta" title="mostrar u ocultar la cinta de navegación">▭</button>
+      <button class="btn" id="bTemp" title="unidad de temperatura">°F</button>
+      <button class="btn" id="bSize" title="tamaño de la interfaz">A</button>
+      <button class="btn" id="bTheme">Claro</button>
+      <button class="btn" id="bCopy">Copiar análisis</button>
+      <button class="btn" id="bRen">Renombrar</button>
+      <button class="btn pri" id="bAdd">Agregar días</button>
+    </div>
+  </div>
+
+  <div class="views" id="views"></div>
+
+  <div class="ribbon off" id="ribbon">
+    <canvas id="ribCv"></canvas>
+    <div class="rib-foot">
+      <div class="quick" id="quick"></div>
+      <span class="rib-win" id="ribWin"></span>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="rail rL" id="railL"><em>CANALES</em></div>
+    <div class="rail rR" id="railR"><em>ANÁLISIS</em></div>
+    <div class="col sidebar" id="paneL">
+      <div class="pane-top"><span>Canales y archivos</span><button class="pinb" data-side="L">Anclar</button></div>
+      <div class="sec" id="secHist" hidden>
+        <h3 class="sec-h">Historial guardado <em id="nHist"></em></h3><div id="hist"></div></div>
+      <div class="sec"><h3 class="sec-h">Archivos cargados <em id="nFiles"></em></h3><div id="files"></div></div>
+      <div class="sec" id="secGrupos"><h3 class="sec-h">Grupos</h3><div class="grp" id="grps"></div></div>
+      <div class="sec" id="secCanales">
+        <h3 class="sec-h">Canales <em id="nSel"></em></h3>
+        <div id="chans"></div>
+      </div>
+      <div class="sec" id="secModo"><h3 class="sec-h">Modo de panel</h3><div class="grp" id="modes"></div></div>
+      <div class="sec" id="secEventos"><h3 class="sec-h">Eventos en la ventana <em id="nEv"></em></h3><div id="evs"></div></div>
+    </div>
+    <div class="col plots" id="plots">
+      <div id="vTend">
+        <div id="pnls"></div>
+        <div class="axis"><canvas id="axCv"></canvas></div>
+      </div>
+      <div id="vAmp" hidden><div class="ampwrap"><canvas id="ampCv"></canvas><div class="days" id="days"></div></div></div>
+      <div id="vEvt" hidden>
+        <div class="efilt" id="efilt"></div>
+        <table class="evtbl" id="evtbl"></table>
+      </div>
+    </div>
+    <div class="col analysis" id="paneR">
+      <div class="pane-top"><span>Análisis</span><button class="pinb" data-side="R">Anclar</button></div>
+      <div class="sec"><h3 class="sec-h"><span id="anTit">Lectura de la ventana</span> <em id="anWin"></em></h3></div>
+      <div id="finds"></div>
+      <div class="sec"><h3 class="sec-h">Estadística por canal</h3><div style="overflow-x:auto"><table class="st" id="stats"></table></div></div>
+    </div>
+  </div>
+</div>
+
+<div id="tip"></div>
+<div class="drop" id="drop">
+  <div class="dz" id="dz">
+    <div class="kick">GCS · ADV · Triol · Summit</div>
+    <h1>Suelta uno o varios archivos</h1>
+    <p>Reconoce el formato solo, junta los días en una sola línea de tiempo y cruza tendencia,
+       eventos y acciones de operador. Agregar archivos suma días <b>a la misma unidad</b>; para
+       cargar otro pozo, elige «unidad nueva». Todo corre en tu navegador: nada se sube a ningún lado.</p>
+    <div class="target" id="target" hidden>
+      <div class="tlab">Agregar a</div>
+      <div class="topts" id="topts"></div>
+      <input class="tnew" id="tnew" placeholder="nombre del pozo — si lo dejas vacío se toma del archivo" spellcheck="false" hidden>
+    </div>
+    <div class="acts">
+      <button class="btn pri" id="bPick">Elegir archivos</button>
+      <button class="btn" id="bClose" hidden>Volver</button>
+    </div>
+    <input type="file" id="file" accept=".csv,.txt,.CSV" multiple hidden>
+    <div class="err" id="err"></div>
+    <div class="fine">
+      <b>Formatos reconocidos</b><br>
+      Baker Hughes GCS y ADV — <b>log</b> de tendencia, <b>SD_Hist</b>, <b>Event_Rec</b>, <b>Ampchart</b><br>
+      Triol — log de tendencia con canales DHG<br>
+      Halliburton Summit — tendencia diaria y registro de alarmas<br>
+      HMI — registro de operación con valor anterior y nuevo
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* ══════════════════════════════════════════════════════════════════
+   1 · CATÁLOGO DE ROLES CANÓNICOS
+══════════════════════════════════════════════════════════════════ */
+const R={
+ freq_out:["Frecuencia de salida","Hz","--c-lim"], freq_in:["Frecuencia de red","Hz","--c-ste"],
+ i_out_a:["Corriente salida A","A","--c-red"], i_out_b:["Corriente salida B","A","--c-amb"], i_out_c:["Corriente salida C","A","--c-blu"],
+ i_in_a:["Corriente entrada A","A","--c-red"], i_in_b:["Corriente entrada B","A","--c-amb"], i_in_c:["Corriente entrada C","A","--c-blu"],
+ i_motor:["Corriente del motor","A","--c-ora"],
+ v_out:["Tensión de salida","V","--c-vio"], v_motor:["Tensión del motor","V","--c-pnk"],
+ v_ab:["Tensión entrada AB","V","--c-red"], v_bc:["Tensión entrada BC","V","--c-amb"], v_ca:["Tensión entrada CA","V","--c-blu"],
+ v_bus:["Bus de continua","V","--c-cya"],
+ p_intake:["Presión de admisión","psi","--c-yel"], p_disch:["Presión de descarga","psi","--c-tea"],
+ p_oil:["Presión de aceite","psi","--c-pnk"],
+ t_intake:["Temp. de admisión","°C","--c-cya","T"], t_wind:["Temp. de devanado","°C","--c-red","T"],
+ t_brg1:["Rodamiento lado libre","°C","--c-ora","T"], t_brg2:["Rodamiento lado acople","°C","--c-pnk","T"],
+ t_oil:["Temp. de aceite","°C","--c-amb","T"], t_hs:["Disipador","°C","--c-vio","T"], t_igbt:["IGBT","°C","--c-lim","T"],
+ vib_1:["Vibración eje 1","G","--c-vio"], vib_2:["Vibración eje 2","G","--c-pnk"], vib_3:["Vibración eje 3","G","--c-cya"],
+ rpm:["Velocidad","RPM","--c-blu"], torque:["Par","%","--c-ste"],
+ pf:["Factor de potencia","","--c-ste"], p_act:["Potencia activa","kW","--c-lim"], p_apa:["Potencia aparente","kVA","--c-cya"],
+ leak:["Fuga del motor","mA","--c-ste"], sens_v:["Tensión del sensor","V","--c-ind"],
+ amp_max:["Amperaje máximo","A","--c-pnk"], amp_min:["Amperaje mínimo","A","--c-blu"], amp_avg:["Amperaje promedio","A","--c-yel"],
+ unb_i:["Desbalance de corriente","%","--c-vio"], unb_v:["Desbalance de tensión","%","--c-pnk"],
+ dp:["ΔP de la bomba","psi","--c-ind"], dt_wi:["Δ devanado − admisión","°C","--c-amb","dT"], vhz:["Relación V/Hz","V/Hz","--c-ste"]
+};
+const F2C=v=>(v-32)/1.8;
+const PAL=["--c-ste","--c-ind","--c-lim","--c-cya","--c-vio","--c-ora","--c-pnk","--c-yel","--c-tea","--c-amb"];
+let GENN=0;
+function ensureRole(id,label,unit){
+  if(!R[id]) R[id]=[label,unit||"",PAL[GENN++%PAL.length]];
+  return id;
+}
+let TUNIT="F";                                   // los canales se guardan en °C; esto es solo presentación
+const TV=v=>TUNIT==="F"? v*1.8+32 : v;           // temperatura absoluta
+const TD=v=>TUNIT==="F"? v*1.8 : v;              // diferencia de temperatura: sin el desplazamiento de 32
+const TU=()=>TUNIT==="F"?"°F":"°C";
+const CANON=C=>C._y0||C.y;
+function shimC(C){ return C? {t:C.t,y:CANON(C),n:C.n} : null; }
+function applyTempUnit(U){
+  for(const role in U.ch){
+    const C=U.ch[role], k=R[role]&&R[role][3];
+    if(!k||!C.n) continue;
+    if(!C._y0) C._y0=C.y;
+    if(TUNIT==="F"){
+      const y=new Float64Array(C.n), b=(k==="T"?32:0);
+      for(let i=0;i<C.n;i++) y[i]=C._y0[i]*1.8+b;
+      C.y=y;
+    } else C.y=C._y0;
+    C.unit=TU(); C._bad=undefined; C.pyr=null;
+  }
+}
+function setTempUnit(t){
+  TUNIT=t;
+  for(const k in DB.units){ applyTempUnit(DB.units[k]); }
+  const b=document.getElementById("bTemp"); if(b) b.textContent=TU();
+  if(DB.active) renderAll();
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2 · PERFILES
+══════════════════════════════════════════════════════════════════ */
+const PROFILES=[
+{ id:"gcs_trend", name:"Baker Hughes GCS · tendencia", genre:"serie", cls:"hps",
+  score:h=>(/date\/time/i.test(h)?2:0)+(/PRES ACEITE HTC|TEMP HTC RTD|RODAMIENTO/i.test(h)?6:0),
+  enc:"latin1", headerAux:2, dateFmt:"Y/M/D h:m:s", sparse:true,
+  keepUnknown:true,
+  map:{ "PRES SUCCION":"p_intake","PRESION DESCARGA":"p_disch","PRES ACEITE HTC":"p_oil",
+    "Output Frequency":"freq_out","Output Current A":"i_out_a","Output Current B":"i_out_b","Output Current C":"i_out_c",
+    "Output Volts":"v_out","Input Voltage AB":"v_ab","Input Voltage BC":"v_bc","Input Voltage CA":"v_ca",
+    "T. VIBRACION":"vib_1","Pump Revolutions Per Minute":"rpm","Bus Volts":"v_bus",
+    "RODAMIENTO LL":"t_brg1","RODAMIENTO LA":"t_brg2","TEMP HTC RTD":"t_oil","DEVANADO MOTOR":"t_wind",
+    "CORRI MOTOR":"i_motor","VOLTAJE MOTOR":"v_motor",
+    "Heatsink 1 Present Temperature":"t_hs","Heatsink 2 Present Temperature":null,
+    "Heatsink 3 Present Temperature":null,"Heatsink 4 Present Temperature":null } },
+
+{ id:"adv_trend", name:"Baker Hughes ADV · tendencia", genre:"serie", cls:"esp",
+  score:h=>(/ZIntake Pres|ZDschrge Pres|ZMotor Temp/i.test(h)?8:0),
+  enc:"auto", headerAux:2, dateFmt:"Y/M/D h:m:s", dropDupIdentical:true,
+  keepUnknown:true,
+  map:{ "Output Frequency":"freq_out","Output Current A":"i_out_a","Output Current B":"i_out_b","Output Current C":"i_out_c",
+    "Output Volts":"v_out","Bus Volts":"v_bus","Input Voltage AB":"v_ab","Input Voltage BC":"v_bc","Input Voltage CA":"v_ca",
+    "ZIntake Pres":"p_intake","ZDschrge Pres":"p_disch",
+    "ZIntake Temp":["t_intake",F2C],"ZMotor Temp":["t_wind",F2C],
+    "ZVibration X":"vib_1","ZVibration Z":"vib_2",
+    "Input Current Phase A":"i_in_a","Input Current Phase B":"i_in_b","Input Current Phase C":"i_in_c",
+    "Input frequency Present Value":"freq_in","Motor Torque":"torque" } },
+
+{ id:"triol_trend", name:"Triol · tendencia", genre:"serie", cls:"esp",
+  score:h=>(/TIME_STAMP/i.test(h)?4:0)+(/OutputFrequency|CurrentPhaseU/i.test(h)?5:0),
+  enc:"auto", headerAux:0, dateFmt:"Y/M/D h:m:s", tcol:"TIME_STAMP", byIndex:true,
+  keepUnknown:true,
+  map:{ "OutputFrequency":"freq_out","CurrentPhaseU":"i_motor","IoutPhaseU":"i_out_a","IoutPhaseV":"i_out_b",
+    "IoutPhaseW":"i_out_c","OutputVoltage":"v_out","Voltage":"v_motor",
+    "RSInputVoltage":"v_ab","STInputVoltage":"v_bc","TRInputVoltage":"v_ca",
+    "TempIGBTPhaseU":"t_igbt","ActivePower":"p_act","TotalPower":"p_apa",
+    "DHG_VIBRATION_X":"vib_1","DHG_VIBRATION_Z":"vib_2","DHG_Vibration_Y":"vib_3",
+    "DHG_INTAKE_PRESSURE":"p_intake","DHG_DISCHARGE_PRESSURE":"p_disch",
+    "DHG_INTAKE_TEMPERATURE":["t_intake",F2C],"DHG_MOTOR_TEMPERATURE":["t_wind",F2C],
+    "DHG_TOTAL_CURRENT":"leak","DHG_TOTALVOLTAGE":"sens_v" } },
+
+{ id:"summit_trend", name:"Halliburton Summit · tendencia", genre:"serie", cls:"esp",
+  score:h=>(/VSD FREQ/i.test(h)?5:0)+(/PUMP DIS|WIND TEMP|INTK PRESS/i.test(h)?5:0),
+  enc:"auto", headerAux:0, dateTime2:true, dateFmt:"y/M/D",
+  keepUnknown:true,
+  map:{ "VSD AMPS":"i_out_a","MTR AMPS":"i_motor","VSD VOLTS":"v_out","VSD FREQ":"freq_out","DC VOLTS":"v_bus",
+    "INTK PRESS":"p_intake","INTK TEMP":["t_intake",F2C],"WIND TEMP":["t_wind",F2C],"PUMP DIS":"p_disch",
+    "VIB X":"vib_1","VIB Y":"vib_2","LEAKAGE":"leak","VSD TEMP":"t_hs","SENS VOLTS":"sens_v" } },
+
+{ id:"bh_ampchart", name:"Baker Hughes · carta de amperaje", genre:"serie", cls:null, lowres:true,
+  score:h=>(/^\s*"?Date\/Time"?\s*,\s*"?Min"?\s*,\s*"?Max"?\s*,\s*"?Average"?/i.test(h)?10:0),
+  enc:"auto", headerAux:0, dateFmt:"Y/M/D h:m:s", ragged:true,
+  map:{ "Min":"amp_min","Max":"amp_max","Average":"amp_avg" } },
+
+{ id:"bh_trend", name:"Baker Hughes · tendencia", genre:"serie", cls:null, keepUnknown:true,
+  score:(h,all)=>{
+    if(!/^\s*"?Date\s*\/?\s*Time"?\s*,/i.test(h)) return 0;
+    if(/^\s*"?Date\/Time"?\s*,\s*"?Min"?\s*,/i.test(h)) return 0;   // eso es carta de amperaje
+    return 5;                                                          // menos que GCS/ADV, que son más específicos
+  },
+  enc:"auto", headerAux:2, dateFmt:"Y/M/D h:m:s", sparse:true,
+  map:{ "Output Frequency":"freq_out","Output Current A":"i_out_a","Output Current B":"i_out_b",
+    "Output Current C":"i_out_c","Output Volts":"v_out","Bus Volts":"v_bus",
+    "Input Voltage AB":"v_ab","Input Voltage BC":"v_bc","Input Voltage CA":"v_ca",
+    "Input Current Phase A":"i_in_a","Input Current Phase B":"i_in_b","Input Current Phase C":"i_in_c",
+    "Input frequency Present Value":"freq_in","Motor Torque":"torque","Pump Torque":"torque",
+    "Pump Revolutions Per Minute":"rpm",
+    "PRES SUCCION":"p_intake","PRESION DESCARGA":"p_disch","PRES ACEITE HTC":"p_oil",
+    "T. VIBRACION":"vib_1","RODAMIENTO LL":"t_brg1","RODAMIENTO LA":"t_brg2",
+    "TEMP HTC RTD":"t_oil","DEVANADO MOTOR":"t_wind","CORRI MOTOR":"i_motor","VOLTAJE MOTOR":"v_motor",
+    "Heatsink 1 Present Temperature":"t_hs",
+    "ZIntake Pres":"p_intake","ZDschrge Pres":"p_disch",
+    "ZIntake Temp":["t_intake",F2C],"ZMotor Temp":["t_wind",F2C],
+    "ZVibration X":"vib_1","ZVibration Z":"vib_2" } },
+
+{ id:"bh_sdhist", name:"Baker Hughes · histórico de paros", genre:"evento",
+  score:h=>(/^\s*"?Shutdown Cause"?/i.test(h)?10:0), enc:"auto", dateFmt:"Y/M/D", kind:"sdhist" },
+
+{ id:"bh_eventrec", name:"Baker Hughes · registro de eventos", genre:"evento",
+  score:h=>(/^\s*"?Event Id"?/i.test(h)?10:0), enc:"auto", dateFmt:"Y/M/D", kind:"eventrec" },
+
+{ id:"summit_alarm", name:"Halliburton Summit · alarmas", genre:"evento",
+  score:(h,all)=>(/Number of Message\(s\)/i.test(all.slice(0,300))?10:0), enc:"auto", dateFmt:"M/D/y",
+  kind:"summitalarm", headerRowMatch:/Trigger Date/i },
+
+{ id:"hmi_oplog", name:"HMI · registro de operación", genre:"accion",
+  score:h=>((/Parts ID/i.test(h)&&/Chg Value/i.test(h))?10:0), enc:"auto", dateFmt:"Y/M/D", kind:"oplog" }
+];
+
+/* ══════════════════════════════════════════════════════════════════
+   3 · LECTURA
+══════════════════════════════════════════════════════════════════ */
+function decode(buf,enc){
+  if(enc==="latin1") return new TextDecoder("windows-1252").decode(buf);
+  try{ return new TextDecoder("utf-8",{fatal:true}).decode(buf).replace(/^\uFEFF/,""); }
+  catch(e){ return new TextDecoder("windows-1252").decode(buf); }
+}
+function splitCSV(line){
+  const out=[]; let cur="",q=false;
+  for(let i=0;i<line.length;i++){
+    const c=line[i];
+    if(q){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; }
+    else if(c==='"') q=true;
+    else if(c===","){ out.push(cur); cur=""; }
+    else cur+=c;
+  }
+  out.push(cur); return out.map(s=>s.trim());
+}
+const RXD={ "Y/M/D h:m:s":/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})[ T](\d{1,2}):(\d{1,2}):(\d{1,2})/,
+            "Y/M/D":/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/,
+            "y/M/D":/^(\d{2})[\/\-](\d{1,2})[\/\-](\d{1,2})$/,
+            "M/D/y":/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2})$/ };
+function parseDate(s,fmt,timeStr){
+  s=(s||"").trim(); const m=RXD[fmt] && RXD[fmt].exec(s); if(!m) return NaN;
+  let Y,Mo,D,h=0,mi=0,se=0;
+  if(fmt==="Y/M/D h:m:s"){ [,Y,Mo,D,h,mi,se]=m.map(Number); }
+  else{
+    if(fmt==="Y/M/D"){ [,Y,Mo,D]=m.map(Number); }
+    if(fmt==="y/M/D"){ [,Y,Mo,D]=m.map(Number); Y+=2000; }
+    if(fmt==="M/D/y"){ [,Mo,D,Y]=m.map(Number); Y+=2000; }
+    const t=/(\d{1,2}):(\d{1,2}):(\d{1,2})/.exec(timeStr||"");
+    if(t){ h=+t[1]; mi=+t[2]; se=+t[3]; }
+  }
+  return new Date(Y,Mo-1,D,h,mi,se).getTime();
+}
+function detectProfile(text){
+  const lines=text.split(/\r?\n/,12);
+  let best=null,bs=0;
+  for(const p of PROFILES){
+    let s=0;
+    for(const l of lines){ s=Math.max(s, p.score(l, text)); }
+    if(s>bs){ bs=s; best=p; }
+  }
+  return bs>=4? best : null;
+}
+function reassign(fid,to){
+  const f=DB.files.find(x=>x.id===fid); if(!f||f.unit===to) return;
+  f.unit=to; f._forceUnit=to; rebuildAll(to);
+}
+function rebuildAll(active){
+  const keep=DB.files.map(f=>({t:f._text,n:f.name,u:f._forceUnit}));
+  DB.files=[]; DB.units={}; FID=0;
+  keep.forEach(k=>{ try{ const f=addFileFromText(k.t,k.n,k.u); f._text=k.t; }catch(e){} });
+  DB.active = (active&&DB.units[active])? active : Object.keys(DB.units)[0]||null;
+  if(DB.active) boot(); else { $("#app").hidden=true; $("#drop").classList.remove("hide"); }
+}
+function unitFromName(n){
+  const S="[ _\\-]";                                   // espacio, guion bajo o guion: da igual
+  let b=n.replace(/\.[^.]+$/,"");
+  b=b.replace(new RegExp(S+"(log|SD"+S+"?Hist|Event"+S+"?Rec|Ampchart"+S+"?w\\d+)$","i"),"");
+  b=b.replace(new RegExp("^\\d{6,8}"+S),"").replace(new RegExp(S+"\\d{8}$"),"")
+     .replace(new RegExp("^\\d{2}-\\d{2}-\\d{2}"+S),"");
+  b=b.replace(new RegExp(S+"w\\d+$","i"),"").replace(/[ _\-]+$/,"").replace(/^[ _\-]+/,"");
+  // si lo que queda es solo una fecha, el nombre no identifica al pozo
+  if(!b || /^\d{2,4}[ _\-\/]\d{1,2}[ _\-\/]\d{1,4}$/.test(b) || /^\d+$/.test(b)){
+    return DB.active || "sin nombre";
+  }
+  return b;
+}
+
+/* ── parseo por género ── */
+function parseSerie(text,prof,fname){
+  let lines=text.split(/\r?\n/);
+  let hi=0;
+  if(prof.tcol){ hi=lines.findIndex(l=>l.includes(prof.tcol)); }
+  else { hi=lines.findIndex(l=>/date\s*\/?\s*time|^\s*"?Date"?\s*,/i.test(l)); }
+  if(hi<0) throw new Error("no encontré la fila de cabecera");
+  let names=splitCSV(lines[hi]).map(s=>s.replace(/\t/g,"").trim());
+  while(names.length&&names[names.length-1]==="") names.pop();
+  let di=hi+1, units=[];
+  for(let k=0;k<(prof.headerAux||0);k++){
+    const c=splitCSV(lines[di]||"");
+    if(c.length>=names.length-1 && (c[0]||"")===""){ if(k===1) units=c; di++; }
+  }
+  const notes=[];
+  // índice de columnas -> rol
+  const cols=[]; const seen={};
+  names.forEach((nm,i)=>{
+    if(i===0 && !prof.dateTime2) return;
+    if(prof.dateTime2 && i<2) return;
+    let key=nm, spec=prof.map[key];
+    if(spec===null) return;                       // explícitamente ignorado por el perfil
+    let role,conv=null;
+    if(spec===undefined){
+      if(!prof.keepUnknown) return;
+      role="x_"+nm.toLowerCase().replace(/[^a-z0-9]+/g,"_").replace(/^_+|_+$/g,"").slice(0,30);
+      if(role==="x_") return;
+      ensureRole(role,nm,(units[i]||"").replace(/\s+/g,""));
+      notes.push("canal no catalogado: «"+nm+"» se muestra tal cual");
+    }
+    else if(Array.isArray(spec)){ role=spec[0]; conv=spec[1]; } else role=spec;
+    if(seen[role]){ notes.push(`columna «${nm}» duplica el rol ${role}, se ignora la segunda`); return; }
+    seen[role]=1;
+    cols.push({i,role,conv,src:nm,srcUnit:(units[i]||"").trim()});
+  });
+  if(!cols.length) throw new Error("ninguna columna coincide con el perfil");
+  const acc={}; cols.forEach(c=>acc[c.role]={t:[],y:[],src:c.src,srcUnit:c.srcUnit});
+  let n=0, unsorted=false, prevT=-Infinity;
+  for(let i=di;i<lines.length;i++){
+    const L=lines[i]; if(!L||!L.trim()) continue;
+    const c=splitCSV(L);
+    let ts;
+    if(prof.dateTime2) ts=parseDate(c[0],prof.dateFmt,c[1]);
+    else ts=parseDate(c[0],prof.dateFmt);
+    if(!Number.isFinite(ts)) continue;
+    if(ts<prevT) unsorted=true; prevT=ts;
+    n++;
+    for(const col of cols){
+      const raw=c[col.i]; if(raw===undefined) continue;
+      const s=raw.trim(); if(s==="") continue;      // fila dispersa: el canal simplemente no se muestreó
+      let v=parseFloat(s); if(!Number.isFinite(v)) continue;
+      if(col.conv) v=col.conv(v);
+      const a=acc[col.role]; a.t.push(ts); a.y.push(v);
+    }
+  }
+  if(!n) throw new Error("sin filas de datos legibles");
+  if(unsorted) notes.push("las filas venían desordenadas en el tiempo, se ordenaron al cargar");
+  return {acc,notes,rows:n};
+}
+function parseEvento(text,prof){
+  const lines=text.split(/\r?\n/);
+  let hi=0;
+  if(prof.headerRowMatch) hi=lines.findIndex(l=>prof.headerRowMatch.test(l));
+  if(hi<0) hi=0;
+  const H=splitCSV(lines[hi]).map(s=>s.replace(/\t/g,"").trim());
+  const ix=nm=>H.findIndex(h=>h.toLowerCase()===nm.toLowerCase());
+  const out=[],notes=[];
+  for(let i=hi+1;i<lines.length;i++){
+    const L=lines[i]; if(!L||!L.trim()) continue;
+    const c=splitCSV(L);
+    let t,label,detail="",sev="att";
+    if(prof.kind==="sdhist"){
+      t=parseDate(c[1],prof.dateFmt,c[2]); label=c[0];
+      if(!label) continue;
+      const extra=c.length>11? `, bus ${c[11]} V`:"";
+      detail=`A ${c[3]} B ${c[4]} C ${c[5]} · ${c[6]} V${extra}`;
+      sev=/reset|scada|manual|keypad|stopping/i.test(label)?"obs":"crit";
+    } else if(prof.kind==="eventrec"){
+      t=parseDate(c[3],prof.dateFmt,c[4]); label=(c[1]||"").trim();
+      const rp=(c[2]||"").trim();
+      if(!label) continue;
+      if(/setpoint/i.test(label)){ detail=`${rp}: ${c[5]} → ${c[6]}`; sev="accion"; }
+      else detail=rp;
+      if(/sag|surge|power failure|loss/i.test(label)) sev="att";
+      if(/shutdown/i.test(label)) sev="crit";
+      if(/startup|recovery|return to normal/i.test(label)) sev="ok";
+    } else if(prof.kind==="summitalarm"){
+      t=parseDate(c[0],prof.dateFmt,c[1]); label=(c[2]||"").trim();
+      if(!label) continue;
+      const occ=c[5]?` · ${c[5]} ocurrencias`:"";
+      detail=(c[4]? `recuperó ${c[4]}`:"sin recuperación registrada")+occ;
+      sev=/lockout|shutdown/i.test(label)?"crit": /warning|loss|failure/i.test(label)?"att":"ok";
+    } else if(prof.kind==="oplog"){
+      t=parseDate(c[1],prof.dateFmt,c[2]); label=(c[8]||"").trim()||"acción";
+      const addr=(c[9]||"").trim();
+      const pv=(c[11]||"").trim(), cv=(c[12]||"").trim();
+      if(!Number.isFinite(t)) continue;
+      detail = pv||cv ? `${addr}: ${pv||"—"} → ${cv||"—"}` : addr;
+      label = /Data Input/i.test(label)? "Cambio de valor" : label;
+      sev="accion";
+    }
+    if(!Number.isFinite(t)) continue;
+    out.push({t,label,detail,sev});
+  }
+  if(!out.length) throw new Error("sin eventos legibles");
+  return {events:out,notes};
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   4 · ALMACÉN
+══════════════════════════════════════════════════════════════════ */
+const DB={files:[],units:{},active:null};
+let TARGET=null;   // null = deducir del nombre; si no, clave de unidad destino
+let FID=0;
+
+function addFileFromText(text,fname,forceUnit){
+  const prof=detectProfile(text);
+  if(!prof){
+    const l1=(text.split(/\r?\n/).find(x=>x.trim())||"").slice(0,110);
+    throw new Error("formato no reconocido · primera línea: "+l1);
+  }
+  const unitKey=forceUnit||unitFromName(fname);
+  const f={id:++FID,name:fname,prof:prof.id,profName:prof.name,genre:prof.genre,unit:unitKey,notes:[],_forceUnit:forceUnit};
+  if(0){}
+  const existed=!!DB.units[unitKey];  // los avisos usan f, definido arriba
+  const U=DB.units[unitKey]||(DB.units[unitKey]={key:unitKey,cls:prof.cls||null,ch:{},events:[],cov:[],profs:new Set()});
+  if(!U.profs) U.profs=new Set();
+  if(existed && prof.cls && U.cls && prof.cls!==U.cls)
+    f.notes.push(`ojo: este archivo es de un equipo tipo «${prof.cls==="esp"?"ESP de fondo":"superficie"}» y la unidad «${unitKey}» venía siendo «${U.cls==="esp"?"ESP de fondo":"superficie"}». Probablemente sea otro pozo.`);
+  const otro=[...U.profs].find(x=>x!==prof.id&&/trend/.test(x)&&/trend/.test(prof.id));
+  if(otro) f.notes.push(`ojo: la unidad ya tenía tendencia de otro variador (${otro}). Verifica que sea el mismo pozo.`);
+  U.profs.add(prof.id);
+  if(prof.cls) U.cls=U.cls||prof.cls;
+  if(!U.cls&&prof.genre==="serie"){
+    const k=Object.keys(U.ch);
+    if(k.includes("t_intake")||k.includes("vib_2")) U.cls="esp";
+    else if(k.includes("p_oil")||k.includes("t_brg1")||k.includes("rpm")) U.cls="hps";
+  }
+
+  if(prof.genre==="serie"){
+    const {acc,notes,rows}=parseSerie(text,prof,fname);
+    f.notes.push(...notes);
+    let t0=Infinity,t1=-Infinity,added=0;
+    for(const role in acc){
+      const a=acc[role]; if(!a.t.length) continue;
+      if(!R[role]) ensureRole(role,a.src||role,a.srcUnit||"");
+      const C=U.ch[role]||(U.ch[role]={role,label:R[role][0],unit:R[role][1]||a.srcUnit||"",
+        cvar:R[role][2],lowres:!!prof.lowres,srcs:new Set(),T:[],Y:[],FI:[]});
+      C.srcs.add(a.src);
+      for(let i=0;i<a.t.length;i++){ C.T.push(a.t[i]); C.Y.push(a.y[i]); C.FI.push(f.id); }
+      t0=Math.min(t0,a.t[0]); t1=Math.max(t1,a.t[a.t.length-1]); added++;
+    }
+    f.t0=t0; f.t1=t1; f.n=rows; f.nch=added;
+    U.cov.push({t0,t1,genre:"serie",fid:f.id});
+  } else {
+    const {events,notes}=parseEvento(text,prof);
+    f.notes.push(...notes);
+    events.forEach(e=>{e.fid=f.id;});
+    U.events.push(...events);
+    f.t0=Math.min(...events.map(e=>e.t)); f.t1=Math.max(...events.map(e=>e.t)); f.n=events.length;
+    U.cov.push({t0:f.t0,t1:f.t1,genre:prof.genre,fid:f.id});
+  }
+  DB.files.push(f);
+  finalizeUnit(U,f);
+  if(!DB.active) DB.active=unitKey;
+  return f;
+}
+function finalizeUnit(U,f){
+  // ordenar, deduplicar y detectar saltos de escala en cada canal
+  let dups=0, jumps=[], dupT=new Set();
+  for(const role in U.ch){
+    const C=U.ch[role];
+    if(C.derived){ delete U.ch[role]; continue; }   // se recalculan abajo desde los canales fuente
+    const n=C.T?C.T.length:0; if(!n) continue;
+    const idx=Array.from({length:n},(_,i)=>i).sort((a,b)=>C.T[a]-C.T[b]||C.FI[a]-C.FI[b]);
+    const T=new Float64Array(n),Y=new Float64Array(n);
+    let m=0,last=NaN;
+    for(const i of idx){
+      if(C.T[i]===last){ dups++; dupT.add(C.T[i]); Y[m-1]=C.Y[i]; continue; }   // gana el más reciente
+      T[m]=C.T[i]; Y[m]=C.Y[i]; last=C.T[i]; m++;
+    }
+    C.t=T.subarray(0,m); C.y=Y.subarray(0,m); C.n=m;
+    C.pyr=null; C._bad=undefined; C._dt=0; C._y0=null;
+    // salto implausible en frontera de archivo (posible cambio de unidad de medida)
+    if(f&&/^t_/.test(role)&&m>20){
+      for(let i=1;i<m;i++){
+        if(Math.abs(C.y[i]-C.y[i-1])>40 && (C.t[i]-C.t[i-1])<3*60e3){
+          jumps.push(`${C.label}: salto de ${(C.y[i]-C.y[i-1]).toFixed(0)} ${C.unit} en ${fT(C.t[i])}`); break;
+        }
+      }
+    }
+  }
+  if(dupT.size&&f) f.notes.push(`${dupT.size} instantes ya cubiertos por otro archivo; se descartó la lectura repetida`);
+  if(jumps.length&&f) f.notes.push("posible cambio de escala — "+jumps[0]);
+  U.events.sort((a,b)=>a.t-b.t);
+  U.cov.sort((a,b)=>a.t0-b.t0);
+  buildDerived(U);
+  applyTempUnit(U);
+  computeSegments(U);
+}
+function pushCh(U,role,t,y){
+  const C=U.ch[role]||(U.ch[role]={role,label:R[role][0],unit:R[role][1],cvar:R[role][2],derived:true,srcs:new Set(["calc"])});
+  C.t=t; C.y=y; C.n=t.length; C.pyr=null; C.derived=true; C._y0=null; C._bad=undefined;
+}
+function alignedPairs(A,B){ // recorre dos canales y devuelve puntos donde ambos existen (vecino más cercano ≤ tol)
+  if(!A||!B||!A.n||!B.n) return null;
+  const tol=Math.max(medDt(A),medDt(B))*1.5+2000;
+  const T=[],Ya=[],Yb=[]; let j=0;
+  for(let i=0;i<A.n;i++){
+    while(j+1<B.n && Math.abs(B.t[j+1]-A.t[i])<=Math.abs(B.t[j]-A.t[i])) j++;
+    if(Math.abs(B.t[j]-A.t[i])<=tol){ T.push(A.t[i]); Ya.push(A.y[i]); Yb.push(B.y[j]); }
+  }
+  return T.length? {t:Float64Array.from(T),a:Float64Array.from(Ya),b:Float64Array.from(Yb)} : null;
+}
+function medDt(C){ if(C._dt)return C._dt; const a=[]; const st=Math.max(1,Math.floor(C.n/500));
+  for(let i=st;i<C.n;i+=st) a.push((C.t[i]-C.t[i-st])/st);
+  a.sort((x,y)=>x-y); return C._dt=(a[a.length>>1]||10000); }
+
+function buildDerived(U){
+  const g=r=>U.ch[r];
+  const P=alignedPairs(g("p_disch"),g("p_intake"));
+  if(P) pushCh(U,"dp",P.t,Float64Array.from(P.a.map((v,i)=>v-P.b[i])));
+  const W=alignedPairs(shimC(g("t_wind")),shimC(g("t_intake")));
+  if(W) pushCh(U,"dt_wi",W.t,Float64Array.from(W.a.map((v,i)=>v-W.b[i])));
+  const V=alignedPairs(g("v_out"),g("freq_out"));
+  if(V){ const t=[],y=[]; for(let i=0;i<V.t.length;i++) if(V.b[i]>5){t.push(V.t[i]);y.push(V.a[i]/V.b[i]);}
+    if(t.length) pushCh(U,"vhz",Float64Array.from(t),Float64Array.from(y)); }
+  const ia=g("i_out_a"),ib=g("i_out_b"),ic=g("i_out_c");
+  if(ia&&ib&&ic){
+    const p1=alignedPairs(ia,ib), p2=alignedPairs(ia,ic);
+    if(p1&&p2&&p1.t.length===p2.t.length){
+      const t=[],y=[];
+      for(let i=0;i<p1.t.length;i++){
+        const m=(p1.a[i]+p1.b[i]+p2.b[i])/3; if(m<20) continue;
+        t.push(p1.t[i]); y.push(Math.max(Math.abs(p1.a[i]-m),Math.abs(p1.b[i]-m),Math.abs(p2.b[i]-m))/m*100);
+      }
+      if(t.length) pushCh(U,"unb_i",Float64Array.from(t),Float64Array.from(y));
+    }
+  }
+  const va=g("v_ab"),vb=g("v_bc"),vc=g("v_ca");
+  if(va&&vb&&vc){
+    const p1=alignedPairs(va,vb), p2=alignedPairs(va,vc);
+    if(p1&&p2&&p1.t.length===p2.t.length){
+      const t=[],y=[];
+      for(let i=0;i<p1.t.length;i++){
+        const m=(p1.a[i]+p1.b[i]+p2.b[i])/3; if(m<50) continue;
+        t.push(p1.t[i]); y.push(Math.max(Math.abs(p1.a[i]-m),Math.abs(p1.b[i]-m),Math.abs(p2.b[i]-m))/m*100);
+      }
+      if(t.length) pushCh(U,"unb_v",Float64Array.from(t),Float64Array.from(y));
+    }
+  }
+}
+/* ── segmentos: marcha / paro / sin datos ── */
+function computeSegments(U){
+  const f=U.ch.freq_out||U.ch.rpm||U.ch.amp_max;
+  U.segs=[];
+  if(!f||!f.n){ U.t0=Math.min(...U.cov.map(c=>c.t0)); U.t1=Math.max(...U.cov.map(c=>c.t1)); return; }
+  const thr = f.role==="rpm"?60: f.role==="amp_max"?1:1;
+  const dt=medDt(f), gapLim=Math.max(dt*4, 180e3);
+  let cur=null;
+  for(let i=0;i<f.n;i++){
+    if(i>0 && f.t[i]-f.t[i-1]>gapLim){
+      if(cur){ cur.b=f.t[i-1]; U.segs.push(cur); }
+      U.segs.push({state:"nd",a:f.t[i-1],b:f.t[i]});
+      cur=null;
+    }
+    const st=f.y[i]>thr?"run":"off";
+    if(!cur||cur.state!==st){ if(cur){cur.b=f.t[i]; U.segs.push(cur);} cur={state:st,a:f.t[i],b:f.t[i],i0:i,i1:i}; }
+    cur.b=f.t[i]; cur.i1=i;
+  }
+  if(cur) U.segs.push(cur);
+  const cs=U.cov.filter(c=>c.genre==="serie");
+  U.t0=Math.min(...U.cov.map(c=>c.t0)); U.t1=Math.max(...U.cov.map(c=>c.t1));
+  U.covSerie=mergeIntervals(cs);
+}
+function mergeIntervals(a){
+  const s=a.map(x=>[x.t0,x.t1]).sort((p,q)=>p[0]-q[0]); const out=[];
+  for(const [x,y] of s){ if(out.length&&x<=out[out.length-1][1]+1000) out[out.length-1][1]=Math.max(out[out.length-1][1],y);
+    else out.push([x,y]); }
+  return out;
+}
+function removeFile(id){
+  DB.files=DB.files.filter(f=>f.id!==id);
+  rebuildAll(DB.active);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   5 · ESTADO DE VISTA
+══════════════════════════════════════════════════════════════════ */
+let sel=new Set(), mode="unit", view={a:0,b:0}, cross=null, panels=[];
+const $=s=>document.querySelector(s);
+const el=(t,c,x)=>{const e=document.createElement(t); if(c)e.className=c; if(x!=null)e.textContent=x; return e;};
+const U=()=>DB.units[DB.active];
+
+const p2=n=>String(n).padStart(2,"0");
+function fT(ms,d=true){ const x=new Date(ms);
+  const hm=p2(x.getHours())+":"+p2(x.getMinutes())+":"+p2(x.getSeconds());
+  return d? p2(x.getDate())+"/"+p2(x.getMonth()+1)+" "+hm : hm; }
+function fD(ms){ const x=new Date(ms); return p2(x.getDate())+"/"+p2(x.getMonth()+1)+"/"+String(x.getFullYear()).slice(2); }
+function fDur(ms){ const s=ms/1000;
+  if(s<90) return s.toFixed(0)+" s"; if(s<5400) return (s/60).toFixed(1)+" min";
+  if(s<172800) return (s/3600).toFixed(1)+" h"; return (s/86400).toFixed(1)+" d"; }
+function fN(v,u){ if(v==null||!Number.isFinite(v)) return "—";
+  const a=Math.abs(v);
+  const s= a>=1000? v.toFixed(0) : a>=100? v.toFixed(1) : a>=1? v.toFixed(2) : v.toFixed(3);
+  return u? s+" "+u : s; }
+
+function bs(t,v,n){ let lo=0,hi=n-1; if(hi<0)return 0;
+  while(lo<hi){ const m=(lo+hi)>>1; if(t[m]<v) lo=m+1; else hi=m; } return lo; }
+function rangeOf(C,a,b){ return [Math.max(0,bs(C.t,a,C.n)-1), Math.min(C.n-1,bs(C.t,b,C.n))]; }
+function stat(C,a,b){
+  const [i0,i1]=rangeOf(C,a,b);
+  let n=0,s=0,mn=Infinity,mx=-Infinity;
+  for(let i=i0;i<=i1;i++){ if(C.t[i]<a||C.t[i]>b) continue; const v=C.y[i];
+    if(Number.isFinite(v)){n++;s+=v; if(v<mn)mn=v; if(v>mx)mx=v;} }
+  if(!n) return null;
+  const mean=s/n; let q=0;
+  for(let i=i0;i<=i1;i++){ if(C.t[i]<a||C.t[i]>b) continue; const v=C.y[i]; if(Number.isFinite(v)) q+=(v-mean)*(v-mean); }
+  return {n,mean,sd:Math.sqrt(q/n),min:mn,max:mx,i0,i1};
+}
+function pctl(C,a,b,p){ const [i0,i1]=rangeOf(C,a,b); const arr=[];
+  for(let i=i0;i<=i1;i++) if(C.t[i]>=a&&C.t[i]<=b&&Number.isFinite(C.y[i])) arr.push(C.y[i]);
+  if(!arr.length) return null; arr.sort((x,z)=>x-z);
+  return arr[Math.min(arr.length-1,Math.max(0,Math.round(p*(arr.length-1))))]; }
+function slope(C,a,b){ const [i0,i1]=rangeOf(C,a,b);
+  let n=0,sx=0,sy=0,sxx=0,sxy=0;
+  for(let i=i0;i<=i1;i++){ if(C.t[i]<a||C.t[i]>b)continue; const v=C.y[i]; if(!Number.isFinite(v))continue;
+    const x=(C.t[i]-a)/3.6e6; n++;sx+=x;sy+=v;sxx+=x*x;sxy+=x*v; }
+  if(n<12) return null; const d=n*sxx-sx*sx; if(Math.abs(d)<1e-9) return null;
+  return (n*sxy-sx*sy)/d; }
+
+/* ── pirámide multi-resolución ── */
+function pyramid(C){
+  if(C.pyr) return C.pyr;
+  const lv=[]; let src={t:C.t,mn:C.y,mx:C.y,n:C.n};
+  const steps=[60e3,600e3,3600e3];
+  for(const st of steps){
+    if(src.n<3000){ break; }
+    const T=[],MN=[],MX=[];
+    let b=Math.floor(src.t[0]/st), mn=Infinity, mx=-Infinity, cnt=0;
+    for(let i=0;i<src.n;i++){
+      const bb=Math.floor(src.t[i]/st);
+      if(bb!==b){ if(cnt){T.push(b*st+st/2);MN.push(mn);MX.push(mx);} b=bb; mn=Infinity; mx=-Infinity; cnt=0; }
+      mn=Math.min(mn,src.mn[i]); mx=Math.max(mx,src.mx[i]); cnt++;
+    }
+    if(cnt){T.push(b*st+st/2);MN.push(mn);MX.push(mx);}
+    src={t:Float64Array.from(T),mn:Float64Array.from(MN),mx:Float64Array.from(MX),n:T.length,step:st};
+    lv.push(src);
+  }
+  return C.pyr=lv;
+}
+function levelFor(C,span,px){
+  const want=span/Math.max(px,1);      // ms por píxel
+  if(medDt(C)>=want/2) return null;    // resolución nativa ya es suficiente
+  const lv=pyramid(C);
+  let best=null;
+  for(const L of lv){ if(L.step<=want) best=L; }
+  return best;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   6 · UI
+══════════════════════════════════════════════════════════════════ */
+const GROUPS=[
+ ["Panorama",["freq_out","i_out_a","p_disch","vib_1","t_wind","amp_max"]],
+ ["Eléctrico · salida",["freq_out","i_out_a","i_out_b","i_out_c","v_out","i_motor","v_motor"]],
+ ["Eléctrico · entrada",["v_ab","v_bc","v_ca","v_bus","i_in_a","i_in_b","i_in_c","freq_in"]],
+ ["Hidráulico",["p_intake","p_disch","dp"]],
+ ["Térmico de fondo",["t_intake","t_wind","dt_wi"]],
+ ["Térmico de superficie",["t_brg1","t_brg2","t_oil","t_hs","t_igbt","p_oil"]],
+ ["Vibración",["vib_1","vib_2","vib_3","rpm"]],
+ ["Calidad de energía",["unb_i","unb_v","v_bus","vhz"]],
+ ["Carta de amperaje",["amp_min","amp_max","amp_avg"]],
+ ["Otros canales","__x__"]
+];
+function boot(){
+  const u=U(); if(!u) return;
+  const has=r=>u.ch[r]&&u.ch[r].n;
+  sel=new Set(GROUPS[0][1].filter(has));
+  if(!sel.size) sel=new Set(Object.keys(u.ch).slice(0,4));
+  const cs=u.covSerie&&u.covSerie.length? [u.covSerie[0][0],u.covSerie[u.covSerie.length-1][1]] : [u.t0,u.t1];
+  view={a:cs[0],b:cs[1]};
+  const run=(u.segs||[]).filter(s=>s.state==="run").sort((a,b)=>(b.b-b.a)-(a.b-a.a))[0];
+  if(run && run.b-run.a>6e5){ const p=(run.b-run.a)*.08; view={a:run.a-p,b:run.b+p}; }
+  $("#drop").classList.add("hide"); $("#app").hidden=false; $("#bClose").hidden=false;
+  buildUnits(); buildFiles(); buildGroups(); buildModes(); buildChans(); buildQuick();
+  renderAll();
+}
+function buildUnits(){
+  const c=$("#unitsel"); c.innerHTML="";
+  Object.values(DB.units).forEach(u=>{
+    const nf=DB.files.filter(f=>f.unit===u.key).length;
+    const b=el("button","ub"+(u.key===DB.active?" on":""));
+    b.appendChild(el("span",null,u.key));
+    b.appendChild(el("em",null,`${nf} arch · ${fD(u.t0)}–${fD(u.t1)}`));
+    b.onclick=()=>{ DB.active=u.key; boot(); };
+    c.appendChild(b);
+  });
+}
+function buildFiles(){
+  const box=$("#files"); box.innerHTML="";
+  DB.files.filter(f=>f.unit===DB.active).sort((a,b)=>a.t0-b.t0).forEach(f=>{
+    const d=el("div","fitem "+f.genre);
+    d.appendChild(el("i","bar"));
+    const m=el("div");
+    m.appendChild(el("div","nm",f.name));
+    m.appendChild(el("div","dt",`${f.profName.split("·")[1]||f.profName} · ${fD(f.t0)} ${fT(f.t0,false)} → ${fD(f.t1)} ${fT(f.t1,false)}`));
+    m.appendChild(el("div","dt",`${f.n.toLocaleString("es")} registros${f.nch?` · ${f.nch} canales`:""}`));
+    f.notes.forEach(w=>m.appendChild(el("div","warn","⚠ "+w)));
+    d.appendChild(m);
+    const ks=Object.keys(DB.units);
+    if(ks.length>1||f.genre!=="serie"){
+      const sl=document.createElement("select"); sl.className="usel";
+      const opts=new Set([...ks,f.unit]);
+      opts.forEach(k=>{ const o=document.createElement("option"); o.value=k; o.textContent=k;
+        if(k===f.unit) o.selected=true; sl.appendChild(o); });
+      sl.onchange=()=>reassign(f.id,sl.value);
+      sl.onclick=e=>e.stopPropagation();
+      m.appendChild(sl);
+    }
+    const x=el("button","x","×"); x.title="quitar"; x.onclick=()=>removeFile(f.id);
+    d.appendChild(x);
+    box.appendChild(d);
+  });
+  $("#nFiles").textContent=DB.files.filter(f=>f.unit===DB.active).length+" en "+DB.active;
+}
+function buildGroups(){
+  const u=U(),c=$("#grps"); c.innerHTML="";
+  GROUPS.forEach(([nm,roles])=>{
+    if(roles==="__x__") roles=Object.keys(u.ch).filter(r=>r.startsWith("x_"));
+    const av=roles.filter(r=>u.ch[r]&&u.ch[r].n);
+    if(!av.length) return;
+    const b=el("button","gb",nm);
+    b.onclick=()=>{ sel=new Set(av); buildChans(); renderAll(); };
+    c.appendChild(b);
+  });
+}
+function buildModes(){
+  const c=$("#modes"); c.innerHTML="";
+  [["unit","Agrupar por unidad"],["each","Un panel por canal"],["one","Todo superpuesto"]].forEach(([k,l])=>{
+    const b=el("button","gb"+(mode===k?" on":""),l);
+    b.onclick=()=>{ mode=k; buildModes(); renderAll(); }; c.appendChild(b);
+  });
+}
+function buildChans(){
+  const u=U(),box=$("#chans"); box.innerHTML="";
+  Object.values(u.ch).filter(C=>C.n).sort((a,b)=>a.label.localeCompare(b.label)).forEach(C=>{
+    const d=el("div","chan"+(sel.has(C.role)?" on":""));
+    const sw=el("i","sw"); sw.style.background=V(C.cvar); d.appendChild(sw);
+    d.appendChild(el("span","nm",C.label));
+    d.appendChild(el("span","tg",C.unit||""));
+    if(badCh(C)) d.classList.add("dead");
+    d.onclick=()=>{ sel.has(C.role)?sel.delete(C.role):sel.add(C.role); buildChans(); renderAll(); };
+    box.appendChild(d);
+  });
+  $("#nSel").textContent=sel.size+" activos";
+}
+function buildQuick(){
+  const u=U(),c=$("#quick"); c.innerHTML="";
+  const opts=[["Todo",()=>({a:u.t0,b:u.t1})]];
+  [["6 h",216e5],["24 h",864e5],["7 d",6048e5]].forEach(([l,ms])=>{
+    if(u.t1-u.t0>ms) opts.push([l,()=>{const m=(view.a+view.b)/2;return {a:m-ms/2,b:m+ms/2};}]);
+  });
+  const runs=(u.segs||[]).filter(s=>s.state==="run");
+  const last=runs[runs.length-1];
+  if(last) opts.push(["Última corrida",()=>{const p=(last.b-last.a)*.05;return{a:last.a-p,b:last.b+p};}]);
+  const crit=u.events.filter(e=>e.sev==="crit");
+  if(crit.length) opts.push(["Último disparo",()=>{const t=crit[crit.length-1].t;return{a:t-36e5,b:t+18e5};}]);
+  opts.forEach(([l,f])=>{ const b=el("button","qb",l); b.onclick=()=>setView(f()); c.appendChild(b); });
+  c.appendChild(el("span","klav","arrastra para zoom · rueda · ⇧arrastra desplaza · doble clic reinicia · ratón al borde abre el panel · ancla para fijarlo"));
+}
+function buildEvents(){
+  const u=U(),box=$("#evs"); box.innerHTML="";
+  const ins=u.events.filter(e=>e.t>=view.a&&e.t<=view.b);
+  ins.slice(0,60).forEach(e=>{
+    const b=el("button","ev "+(e.sev||"att"));
+    b.appendChild(el("i"));
+    const t=el("span");
+    t.appendChild(el("u",null,e.label));
+    t.appendChild(el("small",null,fT(e.t)+(e.detail?" · "+e.detail:"")));
+    b.appendChild(t);
+    b.onclick=()=>setView({a:e.t-9e5,b:e.t+9e5});
+    box.appendChild(b);
+  });
+  if(!ins.length) box.appendChild(el("div","dt","Sin eventos en esta ventana."));
+  $("#nEv").textContent=ins.length+(u.events.length>ins.length?` de ${u.events.length}`:"");
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   7 · RENDER
+══════════════════════════════════════════════════════════════════ */
+let VCACHE={};
+function V(n,fb){ if(!(n in VCACHE)){ const v=getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  VCACHE[n]=v||fb||"#888"; } return VCACHE[n]; }
+function cssFont(v){ return V(v,"monospace"); }
+function setTheme(t){
+  document.documentElement.dataset.theme=t; VCACHE={};
+  const b=document.querySelector("#bTheme"); if(b) b.textContent=t==="light"?"Oscuro":"Claro";
+  if(DB.active){ buildChans(); renderAll(); }
+}
+let UISCALE=1;
+const SIZES=[0.85,1,1.15,1.35,1.6], SLAB=["A⁻⁻","A⁻","A","A⁺","A⁺⁺"];
+function setScale(i){
+  UISCALE=SIZES[i]; document.documentElement.dataset.si=i;
+  const a=document.querySelector("#app"); if(a) a.style.zoom=UISCALE;
+  const b=document.querySelector("#bSize"); if(b) b.textContent=SLAB[i];
+  if(DB.active) setTimeout(renderAll,30);
+}
+function dpr(){ return Math.min(3,(window.devicePixelRatio||1)*UISCALE); }
+function fit(cv,h){ const w=cv.clientWidth||900,r=dpr();
+  cv.width=Math.round(w*r); cv.height=Math.round(h*r); cv.style.height=h+"px";
+  const g=cv.getContext("2d"); g.setTransform(r,0,0,r,0,0); return {g,w,h}; }
+function setView(v){
+  const u=U(), span=u.t1-u.t0, minSpan=8000;
+  let a=v.a,b=v.b;
+  if(b-a<minSpan){ const m=(a+b)/2; a=m-minSpan/2; b=m+minSpan/2; }
+  if(b-a>span*1.05){ a=u.t0; b=u.t1; }
+  const pad=span*0.02;
+  if(a<u.t0-pad){ const d=u.t0-pad-a; a+=d; b+=d; }
+  if(b>u.t1+pad){ const d=b-(u.t1+pad); a-=d; b-=d; }
+  view={a,b}; renderAll();
+}
+
+function renderRibbon(){
+  const u=U(),cv=$("#ribCv");
+  const rw0=$("#ribWin"); if(rw0) rw0.textContent=fT(view.a)+" → "+fT(view.b)+" · "+fDur(view.b-view.a);
+  if(!cv||!cv.clientWidth) return;                      // cinta oculta: nada que dibujar
+  const {g,w,h}=fit(cv,58);
+  const A=u.t0,B=u.t1,S=B-A||1,X=t=>(t-A)/S*w;
+  g.clearRect(0,0,w,h);
+  g.fillStyle=V("--cv-nodata"); g.fillRect(0,0,w,h);
+  (u.segs||[]).forEach(s=>{
+    g.fillStyle = s.state==="run"?V("--cv-run"): s.state==="off"?V("--cv-off"):V("--cv-nodata");
+    g.fillRect(X(s.a),0,Math.max(1,X(s.b)-X(s.a)),h);
+  });
+  // trazo guía
+  const guide=u.ch.freq_out||u.ch.amp_max||u.ch.i_out_a||Object.values(u.ch)[0];
+  if(guide&&guide.n){
+    const st=stat(guide,A,B);
+    if(st&&st.max>st.min){
+      g.strokeStyle=V(guide.cvar); g.lineWidth=1; g.beginPath();
+      const step=Math.max(1,Math.floor(guide.n/w/2));
+      for(let i=0,first=true;i<guide.n;i+=step){
+        const x=X(guide.t[i]), y=h-4-(guide.y[i]-st.min)/(st.max-st.min)*(h-10);
+        first?(g.moveTo(x,y),first=false):g.lineTo(x,y);
+      }
+      g.stroke();
+    }
+  }
+  // eventos críticos
+  const nc=u.events.filter(e=>e.sev==="crit").length;
+  u.events.forEach(e=>{ if(e.sev!=="crit") return;
+    g.strokeStyle=V("--crit"); g.globalAlpha=nc>60?.42:.8; g.lineWidth=1;
+    g.beginPath(); g.moveTo(X(e.t),0); g.lineTo(X(e.t),h); g.stroke(); g.globalAlpha=1; });
+  const xa=X(view.a),xb=X(view.b);
+  g.fillStyle=V("--cv-mask"); g.fillRect(0,0,Math.max(0,xa),h); g.fillRect(Math.min(w,xb),0,w-xb,h);
+  g.strokeStyle=V("--acc"); g.lineWidth=1.5;
+  g.strokeRect(Math.max(.75,xa),.75,Math.max(2,xb-xa),h-1.5);
+}
+function buildPanels(){
+  const u=U();
+  const list=[...sel].map(r=>u.ch[r]).filter(C=>C&&C.n);
+  if(mode==="one") return list.length?[{title:"Superpuesto · normalizado",chs:list,norm:true}]:[];
+  if(mode==="each") return list.map(C=>({title:C.label,chs:[C]}));
+  const m=new Map();
+  list.forEach(C=>{ const k=C.unit||"—"; if(!m.has(k))m.set(k,[]); m.get(k).push(C); });
+  return [...m].map(([un,chs])=>({title:un==="—"?"sin unidad":un,chs}));
+}
+function renderPlots(){
+  const host=$("#pnls"); host.innerHTML=""; panels=[];
+  const P=buildPanels();
+  if(!P.length){ host.appendChild(el("div","hint","Selecciona canales a la izquierda para dibujarlos.")); renderAxis(); return; }
+  const pc=document.getElementById("plots");
+  const colH=(pc&&pc.clientHeight)||(host.parentElement&&host.parentElement.clientHeight)||600;
+  const avail=Math.max(300,colH-46);                    // menos el eje pegado abajo
+  const chrome=46;                                       // cabecera y separación de cada panel
+  const ph=Math.max(130, Math.floor(avail/P.length)-chrome);
+  P.forEach(p=>{
+    const d=el("div","pnl"), hd=el("div","pnl-h");
+    hd.appendChild(el("span","pnl-t",p.title));
+    const lg=el("div","leg");
+    p.chs.forEach(C=>{
+      const s=el("span","lg"); const i=el("i"); i.style.background=V(C.cvar); s.appendChild(i);
+      s.appendChild(el("span",null,C.label));
+      const b=el("b",null,"—"); s.appendChild(b); C._ro=b; lg.appendChild(s);
+    });
+    hd.appendChild(lg); d.appendChild(hd);
+    const cv=document.createElement("canvas"); cv.className="pcv"; d.appendChild(cv);
+    host.appendChild(d); p.cv=cv; p.h=ph; panels.push(p); attachZoom(cv);
+  });
+  panels.forEach(drawPanel); renderAxis();
+}
+function niceTicks(lo,hi,n){
+  if(!(hi>lo)) hi=lo+1;
+  const raw=(hi-lo)/n,mag=Math.pow(10,Math.floor(Math.log10(raw))),nm=raw/mag;
+  const step=(nm<1.5?1:nm<3?2:nm<7?5:10)*mag, out=[];
+  for(let v=Math.ceil(lo/step)*step; v<=hi+step*1e-6; v+=step) out.push(+v.toFixed(10));
+  return out;
+}
+function fmtTick(v){ const a=Math.abs(v);
+  if(a>=10000) return (v/1000).toFixed(1)+"k"; if(a>=100) return v.toFixed(0);
+  if(a>=10) return v.toFixed(1); if(a>=1) return v.toFixed(2); return v.toFixed(3); }
+function drawPanel(p){
+  const u=U(),{g,w,h}=fit(p.cv,p.h);
+  const PADL=56,PADR=10,PADT=6,PADB=6, iw=w-PADL-PADR, ih=h-PADT-PADB;
+  g.clearRect(0,0,w,h);
+  let lo=Infinity,hi=-Infinity;
+  p.chs.forEach(C=>{ if(p.norm){lo=0;hi=100;return;} const s=stat(C,view.a,view.b); if(!s)return;
+    lo=Math.min(lo,s.min); hi=Math.max(hi,s.max); });
+  if(!Number.isFinite(lo)){ g.fillStyle=V("--tx3"); g.font="11px "+cssFont("--f-ui");
+    g.fillText("sin datos en esta ventana",PADL,h/2); p._geo={PADL,iw}; return; }
+  if(hi===lo){ const d=Math.max(1,Math.abs(lo)*.05); hi=lo+d; lo-=d; }
+  const pad=(hi-lo)*.08; lo-=pad; hi+=pad;
+  const Y=v=>PADT+ih-(v-lo)/(hi-lo)*ih, X=t=>PADL+(t-view.a)/(view.b-view.a)*iw;
+
+  // franjas de fondo: rojo tenue donde la unidad estuvo parada, gris donde no hay archivo
+  (u.segs||[]).forEach(sg=>{
+    if(sg.b<view.a||sg.a>view.b) return;
+    if(sg.state==="run") return;
+    g.fillStyle = sg.state==="off"? V("--band-off") : V("--band-nd");
+    const x1=Math.max(PADL,X(sg.a)), x2=Math.min(w-PADR,X(sg.b));
+    if(x2>x1) g.fillRect(x1,PADT,x2-x1,ih);
+  });
+  if(u.covSerie){
+    g.fillStyle=V("--band-nd");
+    let prev=view.a;
+    for(const [x,y] of u.covSerie){ if(y<view.a||x>view.b) continue;
+      if(x>prev){ const a1=Math.max(PADL,X(prev)),a2=Math.min(w-PADR,X(x)); if(a2>a1) g.fillRect(a1,PADT,a2-a1,ih); }
+      prev=Math.max(prev,y); }
+    if(prev<view.b){ const a1=Math.max(PADL,X(prev)); g.fillRect(a1,PADT,(w-PADR)-a1,ih); }
+  }
+  const ticks=niceTicks(lo,hi,Math.max(2,Math.round(ih/34)));
+  g.strokeStyle=V("--cv-grid"); g.lineWidth=1; g.font="10px "+cssFont("--f-mono");
+  g.fillStyle = (p.chs.length===1 && !p.norm)? V(p.chs[0].cvar) : V("--cv-tick");
+  ticks.forEach(v=>{ const y=Math.round(Y(v))+.5;
+    g.beginPath();g.moveTo(PADL,y);g.lineTo(w-PADR,y);g.stroke();
+    g.textAlign="right"; g.fillText(fmtTick(v),PADL-7,y+3.5); });
+  g.textAlign="left";
+
+  (u.segs||[]).forEach(s=>{
+    if(s.state!=="run") return;
+    [[s.a,"--ok"],[s.b,"--crit"]].forEach(([t,c])=>{
+      if(t<=view.a||t>=view.b) return;
+      g.strokeStyle=V(c); g.globalAlpha=.5; g.setLineDash([2,3]); g.lineWidth=1;
+      g.beginPath(); g.moveTo(X(t),PADT); g.lineTo(X(t),PADT+ih); g.stroke();
+      g.setLineDash([]); g.globalAlpha=1;
+    });
+  });
+  // eventos: con cientos en pantalla las líneas tapan la señal, así que se resume
+  const inview=u.events.filter(e=>e.t>=view.a&&e.t<=view.b);
+  const DENSE=inview.length>45;
+  const draw=DENSE? inview.filter(e=>e.sev==="crit") : inview;
+  if(DENSE){
+    // franja de densidad arriba: cuántos eventos por columna de píxel
+    const bins=new Int32Array(Math.ceil(iw)+1);
+    inview.forEach(e=>{ const px=Math.floor((e.t-view.a)/(view.b-view.a)*iw); if(px>=0&&px<=iw) bins[px]++; });
+    let mxb=1; for(const v of bins) if(v>mxb) mxb=v;
+    for(let px=0;px<=iw;px++){ if(!bins[px]) continue;
+      g.fillStyle=V("--g-evento"); g.globalAlpha=.18+.5*(bins[px]/mxb);
+      g.fillRect(PADL+px,PADT,1,6); }
+    g.globalAlpha=1;
+  }
+  const step=Math.max(1,Math.ceil(draw.length/60));
+  draw.forEach((e,k)=>{ if(draw.length>60 && k%step) return;
+    const c=e.sev==="crit"?"--crit": e.sev==="accion"?"--g-accion": e.sev==="ok"?"--ok":"--att";
+    g.strokeStyle=V(c); g.globalAlpha=e.sev==="crit"?(DENSE?.5:.75):.35; g.lineWidth=e.sev==="crit"?1.2:1;
+    g.beginPath(); g.moveTo(X(e.t),PADT+(DENSE?7:0)); g.lineTo(X(e.t),PADT+ih); g.stroke(); g.globalAlpha=1; });
+
+  p.chs.forEach(C=>{
+    const st=p.norm?stat(C,view.a,view.b):null;
+    const nv=v=>p.norm? (st&&st.max>st.min? (v-st.min)/(st.max-st.min)*100 : 50) : v;
+    const L=levelFor(C,view.b-view.a,iw);
+    const T=L?L.t:C.t, MN=L?L.mn:C.y, MX=L?L.mx:C.y, N=L?L.n:C.n;
+    const cols=Math.ceil(iw)+2;
+    const amn=new Float64Array(cols).fill(Infinity), amx=new Float64Array(cols).fill(-Infinity);
+    let i0=Math.max(0,bs(T,view.a,N)-1), i1=Math.min(N-1,bs(T,view.b,N)+1), any=false;
+    for(let i=i0;i<=i1;i++){
+      const px=Math.floor((T[i]-view.a)/(view.b-view.a)*iw);
+      if(px<0||px>iw) continue;
+      const a=nv(MN[i]), b=nv(MX[i]);
+      if(a<amn[px])amn[px]=a; if(b>amx[px])amx[px]=b; any=true;
+    }
+    if(!any) return;
+    g.strokeStyle=V(C.cvar); g.lineWidth=1.35; g.lineJoin="round";
+    g.beginPath(); let first=true;
+    for(let px=0;px<=iw;px++){
+      if(amn[px]===Infinity) continue;
+      const x=PADL+px+.5, y1=Y(amx[px]), y2=Y(amn[px]);
+      if(first){ g.moveTo(x,(y1+y2)/2); first=false; } else g.lineTo(x,(y1+y2)/2);
+      if(y2-y1>1.2){ g.moveTo(x,y1); g.lineTo(x,y2); g.moveTo(x,(y1+y2)/2); }
+    }
+    g.stroke();
+  });
+  if(cross!=null&&cross>=view.a&&cross<=view.b){
+    const x=Math.round(X(cross))+.5;
+    g.strokeStyle=V("--acc"); g.globalAlpha=.7; g.setLineDash([3,3]); g.lineWidth=1;
+    g.beginPath();g.moveTo(x,PADT);g.lineTo(x,PADT+ih);g.stroke(); g.setLineDash([]); g.globalAlpha=1;
+  }
+  p._geo={PADL,iw};
+}
+function renderAxis(){
+  const cv=$("#axCv"),{g,w,h}=fit(cv,28);
+  g.clearRect(0,0,w,h);
+  const PADL=56,PADR=10,iw=w-PADL-PADR,S=view.b-view.a;
+  const steps=[1e3,2e3,5e3,1e4,15e3,3e4,6e4,12e4,3e5,6e5,9e5,18e5,36e5,72e5,108e5,216e5,432e5,
+               864e5,1728e5,6048e5,12096e5,25920e5,51840e5,155520e5];
+  const tgt=S/Math.max(4,Math.floor(iw/100));
+  const st=steps.find(s=>s>=tgt*0.88)||steps[steps.length-1];
+  const lab=t=>{ const d=new Date(t);
+    if(st>=864e5) return p2(d.getDate())+"/"+p2(d.getMonth()+1)+"/"+String(d.getFullYear()).slice(2);
+    if(st>=36e5)  return p2(d.getDate())+"/"+p2(d.getMonth()+1)+" "+p2(d.getHours())+":"+p2(d.getMinutes());
+    return p2(d.getHours())+":"+p2(d.getMinutes())+":"+p2(d.getSeconds()); };
+  g.strokeStyle=V("--cv-axis"); g.beginPath();g.moveTo(PADL,.5);g.lineTo(w-PADR,.5);g.stroke();
+  g.font="10.5px "+cssFont("--f-mono"); g.fillStyle=V("--cv-tick"); g.textAlign="center";
+  const t0 = st>=864e5 ? (()=>{const d=new Date(view.a); d.setHours(0,0,0,0);
+      while(d.getTime()<view.a) d.setDate(d.getDate()+1); return d.getTime();})()
+    : Math.ceil(view.a/st)*st;
+  for(let t=t0;t<=view.b;t+=st){
+    const x=PADL+(t-view.a)/S*iw;
+    g.strokeStyle=V("--cv-axis"); g.beginPath();g.moveTo(x,0);g.lineTo(x,4);g.stroke();
+    g.fillText(lab(t),x,16);
+  }
+  g.textAlign="left";
+}
+function renderAll(){ if(!DB.active) return;
+  const step=(nm,fn)=>{ try{ fn(); }catch(e){ console.error(nm,e); fallo(nm,e); } };
+  step("vistas",()=>{ buildViews(); setViewMode(); });
+  step("cinta",renderRibbon);
+  if(VIEW==="tend") step("gráficas",()=>{ renderPlots(); buildEvents(); });
+  else if(VIEW==="amp") step("carta",renderAmp);
+  else step("eventos",renderEvtTable);
+  step("análisis",renderAnalysis);
+}
+function fallo(donde,e){
+  const b=$("#finds"); if(!b) return;
+  const d=el("div","find crit");
+  const h=el("h4"); h.appendChild(el("span",null,"Error al dibujar: "+donde));
+  h.appendChild(el("em",null,"CRÍTICO")); d.appendChild(h);
+  const q=el("p"); q.textContent=String(e&&e.message||e)+" — el resto de la pantalla sigue funcionando.";
+  d.appendChild(q); b.insertBefore(d,b.firstChild);
+}
+function refreshOnly(){ renderRibbon(); panels.forEach(drawPanel); renderAxis(); }
+
+/* ── interacción ── */
+let curDrag=null;
+function attachZoom(cv){
+  const tAt=e=>{ const r=cv.getBoundingClientRect(),PADL=56,PADR=10,iw=r.width-PADL-PADR;
+    return view.a+Math.min(1,Math.max(0,(e.clientX-r.left-PADL)/iw))*(view.b-view.a); };
+  cv.addEventListener("mousedown",e=>{ curDrag={cv,t0:tAt(e),x0:e.clientX,pan:e.shiftKey,a:view.a,b:view.b}; e.preventDefault(); });
+  cv.addEventListener("mousemove",e=>{
+    cross=tAt(e); updateReadouts(cross);
+    tipTend(e,cross);
+    const d=curDrag;
+    if(d&&d.cv===cv){
+      if(d.pan){ const r=cv.getBoundingClientRect(),iw=r.width-66;
+        const k=(e.clientX-d.x0)/iw*(d.b-d.a); view={a:d.a-k,b:d.b-k}; refreshOnly(); }
+      else { d.t1=tAt(e); drawSelection(cv,d); }
+    } else refreshOnly();
+  });
+  cv.addEventListener("dblclick",()=>{const u=U(); setView({a:u.t0,b:u.t1});});
+  cv.addEventListener("wheel",e=>{ e.preventDefault();
+    const t=tAt(e),k=e.deltaY>0?1.3:0.77;
+    setView({a:t-(t-view.a)*k,b:t+(view.b-t)*k}); },{passive:false});
+  cv.addEventListener("mouseleave",()=>{cross=null;updateReadouts(null);hideTip();refreshOnly();});
+}
+function tipTend(e,t){
+  const u=U(), rows=[];
+  panels.forEach(p=>p.chs.forEach(C=>{
+    const i=Math.max(0,Math.min(C.n-1,bs(C.t,t,C.n)));
+    const ok=Math.abs(C.t[i]-t)<=medDt(C)*3;
+    rows.push([C.label, ok? fN(C.y[i],C.unit):"sin dato", V(C.cvar)]);
+  }));
+  const near=u.events.filter(x=>Math.abs(x.t-t)<Math.max(6e4,(view.b-view.a)/120))
+    .sort((a,b)=>Math.abs(a.t-t)-Math.abs(b.t-t))[0];
+  if(near) rows.push([near.label.slice(0,34), fT(near.t,false), V(near.sev==="crit"?"--crit":near.sev==="accion"?"--g-accion":"--att")]);
+  if(rows.length) showTip(e, fT(t), rows);
+}
+let _rz; window.addEventListener("resize",()=>{ clearTimeout(_rz); _rz=setTimeout(()=>{ if(DB.active) renderAll(); },140); });
+window.addEventListener("mouseup",()=>{
+  const d=curDrag; if(!d) return; curDrag=null;
+  if(!d.pan&&d.t1!=null&&Math.abs(d.t1-d.t0)>3000) setView({a:Math.min(d.t0,d.t1),b:Math.max(d.t0,d.t1)});
+  else if(d.pan) renderAll();
+});
+function drawSelection(cv,d){
+  panels.forEach(drawPanel);
+  const g=cv.getContext("2d"),r=dpr(); g.setTransform(r,0,0,r,0,0);
+  const w=cv.clientWidth,h=cv.clientHeight,PADL=56,PADR=10,iw=w-PADL-PADR;
+  const X=t=>PADL+(t-view.a)/(view.b-view.a)*iw;
+  const x1=X(Math.min(d.t0,d.t1)),x2=X(Math.max(d.t0,d.t1));
+  g.fillStyle=V("--acc")+"26"; g.fillRect(x1,0,x2-x1,h);
+  g.strokeStyle=V("--acc"); g.lineWidth=1;
+  g.beginPath();g.moveTo(x1+.5,0);g.lineTo(x1+.5,h);g.moveTo(x2+.5,0);g.lineTo(x2+.5,h);g.stroke();
+}
+function updateReadouts(t){
+  panels.forEach(p=>p.chs.forEach(C=>{
+    if(!C._ro) return;
+    if(t==null){ C._ro.textContent="—"; return; }
+    const i=Math.max(0,Math.min(C.n-1,bs(C.t,t,C.n)));
+    const dt=medDt(C)*3;
+    C._ro.textContent = Math.abs(C.t[i]-t)>dt ? "—" : fN(C.y[i]);
+  }));
+}
+(function(){ // cinta y cobertura
+  [["#ribCv"]].forEach(([selr])=>{
+    const cv=document.querySelector(selr); if(!cv) return;
+    let dr=null;
+    const tAt=e=>{ const u=U(),r=cv.getBoundingClientRect();
+      return u.t0+Math.min(1,Math.max(0,(e.clientX-r.left)/r.width))*(u.t1-u.t0); };
+    cv.addEventListener("mousedown",e=>{ const t=tAt(e);
+      dr=(t>view.a&&t<view.b)?{m:"pan",t0:t,a:view.a,b:view.b}:{m:"sel",t0:t}; e.preventDefault(); });
+    window.addEventListener("mousemove",e=>{ if(!dr)return; const t=tAt(e);
+      if(dr.m==="pan"){ const d=t-dr.t0; view={a:dr.a+d,b:dr.b+d}; refreshOnly(); }
+      else { view={a:Math.min(dr.t0,t),b:Math.max(dr.t0,t)}; refreshOnly(); } });
+    window.addEventListener("mouseup",()=>{ if(dr){dr=null; setView(view);} });
+  });
+})();
+document.addEventListener("keydown",e=>{
+  if(!DB.active||$("#app").hidden||/input/i.test(e.target.tagName))return;
+  const u=U(),S=view.b-view.a,p=S*.2;
+  if(e.key==="ArrowLeft"){setView({a:view.a-p,b:view.b-p});e.preventDefault();}
+  if(e.key==="ArrowRight"){setView({a:view.a+p,b:view.b+p});e.preventDefault();}
+  if(e.key==="+"||e.key==="="){const m=(view.a+view.b)/2;setView({a:m-S*.35,b:m+S*.35});}
+  if(e.key==="-"){const m=(view.a+view.b)/2;setView({a:m-S*.7,b:m+S*.7});}
+  if(e.key==="0"){setView({a:u.t0,b:u.t1});}
+  if(e.key==="["){togglePane("L");} if(e.key==="]"){togglePane("R");}
+  if(e.key==="\\"){toggleRibbon();}
+});
+
+
+/* ══════════════════════════════════════════════════════════════════
+   VISTAS DEDICADAS · carta circular · eventos · ventanita de valores
+══════════════════════════════════════════════════════════════════ */
+let VIEW="tend", AMPDAY=null, EFILT="todos";
+const VIEWS=[["tend","Tendencias"],["amp","Carta amperimétrica"],["evt","Registro de eventos"]];
+
+function buildViews(){
+  const u=U(), c=$("#views"); c.innerHTML="";
+  VIEWS.forEach(([k,l])=>{
+    if(k==="amp" && !(u.ch.amp_max&&u.ch.amp_max.n)) return;
+    if(k==="evt" && !u.events.length) return;
+    const b=el("button","vb"+(VIEW===k?" on":""));
+    b.appendChild(el("span",null,l));
+    if(k==="evt") b.appendChild(el("em",null,String(u.events.length)));
+    if(k==="amp") b.appendChild(el("em",null,ampDays(u).length+" días"));
+    b.onclick=()=>{ VIEW=k; renderAll(); };
+    c.appendChild(b);
+  });
+  if(!VIEWS.some(([k])=>k===VIEW) ) VIEW="tend";
+}
+function setViewMode(){
+  $("#vTend").hidden = VIEW!=="tend";
+  $("#vAmp").hidden  = VIEW!=="amp";
+  $("#vEvt").hidden  = VIEW!=="evt";
+  document.querySelector(".ribbon").classList.toggle("min", VIEW!=="tend");
+  ["secGrupos","secCanales","secModo"].forEach(id=>{ const e=document.getElementById(id); if(e) e.hidden=(VIEW!=="tend"); });
+  const se=document.getElementById("secEventos"); if(se) se.hidden=(VIEW==="evt");
+}
+
+/* ── días disponibles en la carta ── */
+function ampDays(u){
+  const C=u.ch.amp_max; if(!C||!C.n) return [];
+  const m=new Map();
+  for(let i=0;i<C.n;i++){ const d=new Date(C.t[i]); d.setHours(0,0,0,0);
+    const k=d.getTime(); if(!m.has(k)) m.set(k,{d:k,i0:i,i1:i}); const o=m.get(k); o.i1=i; }
+  return [...m.values()].sort((a,b)=>a.d-b.d);
+}
+function ampStats(u,day){
+  const mx=u.ch.amp_max, mn=u.ch.amp_min, av=u.ch.amp_avg;
+  const a=day.d, b=day.d+864e5;
+  const S=c=>c&&c.n?stat(c,a,b):null;
+  const smx=S(mx), smn=S(mn), sav=S(av);
+  let zero=0,tot=0;
+  if(mx){ for(let i=day.i0;i<=day.i1;i++){ tot++; if(mx.y[i]<=1) zero++; } }
+  const cover=tot/1440;
+  return {smx,smn,sav,zero,tot,a,b,cover,parcial:cover<0.5,
+    band: (smx&&smn)? smx.mean-smn.mean : null,
+    ev: u.events.filter(e=>e.t>=a&&e.t<b)};
+}
+
+/* ── dibujo polar: una vuelta = 24 h, como la carta de papel ── */
+function drawCircular(cv,u,day,px,full){
+  const r=dpr(), w=px, h=px;
+  cv.width=Math.round(w*r); cv.height=Math.round(h*r); cv.style.height=h+"px";
+  if(full) cv.style.width=w+"px";
+  const g=cv.getContext("2d"); g.setTransform(r,0,0,r,0,0);
+  g.clearRect(0,0,w,h);
+  const cx=w/2, cy=h/2-(full?12:0), R=Math.min(w,h)/2-(full?54:8), r0=R*(full?0.30:0.26);
+  const mx=u.ch.amp_max, mn=u.ch.amp_min, av=u.ch.amp_avg;
+  if(!mx||!mx.n) return null;
+  // escala común a todos los días para que se puedan comparar
+  const gs=stat(mx,u.t0,u.t1), lo=0, hi=(gs?gs.max:100)*1.06||100;
+  const ang=t=>((t-day.d)/864e5)*Math.PI*2 - Math.PI/2;
+  const rad=v=>r0+Math.max(0,Math.min(1,(v-lo)/(hi-lo)))*(R-r0);
+  const P=(t,v)=>[cx+Math.cos(ang(t))*rad(v), cy+Math.sin(ang(t))*rad(v)];
+
+  // anillos
+  if(full){ g.beginPath(); g.arc(cx,cy,R,0,Math.PI*2); g.fillStyle=V("--panel"); g.fill(); }
+  const ticks=niceTicks(lo,hi,full?4:2);
+  g.strokeStyle=V("--cv-grid"); g.lineWidth=1;
+  ticks.forEach(v=>{ if(v<lo)return; g.beginPath(); g.arc(cx,cy,rad(v),0,Math.PI*2); g.stroke(); });
+  g.beginPath(); g.arc(cx,cy,R,0,Math.PI*2); g.strokeStyle=V("--cv-axis"); g.lineWidth=1.4; g.stroke();
+  g.beginPath(); g.arc(cx,cy,r0,0,Math.PI*2); g.strokeStyle=V("--cv-grid"); g.lineWidth=1; g.stroke();
+  // radios horarios
+  const hstep=full?2:6;
+  for(let hh=0;hh<24;hh+=hstep){
+    const t=day.d+hh*36e5, A=ang(t);
+    g.strokeStyle=V("--cv-grid"); g.beginPath();
+    g.moveTo(cx+Math.cos(A)*r0,cy+Math.sin(A)*r0); g.lineTo(cx+Math.cos(A)*R,cy+Math.sin(A)*R); g.stroke();
+    if(full){ const mayor=hh%6===0;
+      g.fillStyle=mayor?V("--tx2"):V("--cv-tick");
+      g.font=(mayor?"600 12px ":"11px ")+cssFont("--f-mono"); g.textAlign="center"; g.textBaseline="middle";
+      g.fillText(p2(hh)+"h", cx+Math.cos(A)*(R+18), cy+Math.sin(A)*(R+18)); }
+  }
+  // banda mín–máx
+  const i0=day.i0,i1=day.i1;
+  g.beginPath(); let started=false;
+  for(let i=i0;i<=i1;i++){ const [x,y]=P(mx.t[i],mx.y[i]); started?g.lineTo(x,y):(g.moveTo(x,y),started=true); }
+  if(mn&&mn.n){ for(let i=i1;i>=i0;i--){ const j=Math.min(mn.n-1,i); const [x,y]=P(mn.t[j],mn.y[j]); g.lineTo(x,y); } }
+  g.closePath();
+  g.fillStyle=V("--c-pnk")+(full?"1F":"26"); g.fill();          // relleno tenue: es el rango, no un dato
+  g.strokeStyle=V("--c-pnk"); g.lineWidth=full?1.5:1; g.stroke();
+  if(mn&&mn.n){                                                  // el mínimo con su propio color
+    g.beginPath(); let sm=false;
+    for(let i=i0;i<=i1;i++){ const j=Math.min(mn.n-1,i); const [x,y]=P(mn.t[j],mn.y[j]);
+      sm?g.lineTo(x,y):(g.moveTo(x,y),sm=true); }
+    g.strokeStyle=V("--c-blu"); g.lineWidth=full?1.3:0.8; g.stroke();
+  }
+  // promedio
+  if(av&&av.n){
+    g.beginPath(); let st2=false;
+    for(let i=0;i<av.n;i++){ if(av.t[i]<day.d||av.t[i]>=day.d+864e5) continue;
+      const [x,y]=P(av.t[i],av.y[i]); st2?g.lineTo(x,y):(g.moveTo(x,y),st2=true); }
+    g.strokeStyle=V("--c-yel"); g.lineWidth=full?1.9:1.1; g.stroke();
+  }
+  // eventos del día como marcas en el borde
+  u.events.forEach(e=>{ if(e.t<day.d||e.t>=day.d+864e5) return;
+    const A=ang(e.t), c=e.sev==="crit"?"--crit":e.sev==="accion"?"--g-accion":"--att";
+    g.strokeStyle=V(c); g.lineWidth=e.sev==="crit"?2:1; g.globalAlpha=e.sev==="crit"?1:.6;
+    g.beginPath(); g.moveTo(cx+Math.cos(A)*R,cy+Math.sin(A)*R);
+    g.lineTo(cx+Math.cos(A)*(R+(full?9:4)),cy+Math.sin(A)*(R+(full?9:4))); g.stroke(); g.globalAlpha=1; });
+  // etiquetas de escala y centro
+  if(full){
+    g.textAlign="left"; g.textBaseline="middle"; g.font="10.5px "+cssFont("--f-mono"); g.fillStyle=V("--cv-tick");
+    ticks.forEach(v=>{ if(v<=lo)return; g.fillText(fmtTick(v)+" A", cx+4, cy-rad(v)); });
+    g.textAlign="center"; g.fillStyle=V("--tx2"); g.font="600 13px "+cssFont("--f-ui");
+    g.fillText(fD(day.d), cx, cy-9);
+    const S=ampStats(u,day);
+    g.font="11px "+cssFont("--f-mono"); g.fillStyle=V("--tx3");
+    if(S.smx) g.fillText(`${S.smx.mean.toFixed(0)} A prom`, cx, cy+9);
+    if(S.zero) g.fillText(`${S.zero} min en cero`, cx, cy+23);
+    // leyenda de los tres trazos
+    const lg=[["máx","--c-pnk"],["prom","--c-yel"],["mín","--c-blu"]];
+    const lw=54, x0=cx-(lg.length*lw)/2;
+    g.textAlign="left"; g.font="10.5px "+cssFont("--f-mono");
+    lg.forEach(([t,c],k)=>{ const x=x0+k*lw, y=cy+R+30;
+      g.strokeStyle=V(c); g.lineWidth=2.4; g.beginPath(); g.moveTo(x,y); g.lineTo(x+15,y); g.stroke();
+      g.fillStyle=V("--tx2"); g.fillText(t, x+20, y); });
+  }
+  return {cx,cy,R,r0,lo,hi,ang,rad};
+}
+function renderAmp(){
+  const u=U(), host=$("#vAmp");
+  const days=ampDays(u);
+  if(!days.length){ host.innerHTML='<div class="hint">No hay carta de amperaje cargada para esta unidad.</div>'; return; }
+  if(AMPDAY==null||!days.some(d=>d.d===AMPDAY)){
+    const full=days.filter(d=>ampStats(u,d).cover>=0.5);
+    AMPDAY=(full.length?full[full.length-1]:days[days.length-1]).d;
+  }
+  const day=days.find(d=>d.d===AMPDAY);
+  const cv=$("#ampCv");
+  const box=cv.parentElement;
+  const px=Math.max(300,Math.min(box.clientHeight-32, (box.clientWidth-208)));
+  cv.style.width=px+"px";
+  const geo=drawCircular(cv,u,day,px,true);
+  cv._geo=geo; cv._day=day;
+  // miniaturas
+  const dc=$("#days"); dc.innerHTML="";
+  days.forEach(d=>{
+    const b=el("button","dayb"+(d.d===AMPDAY?" on":""));
+    const c2=document.createElement("canvas"); c2.style.width="100%"; b.appendChild(c2);
+    dc.appendChild(b);
+    const sz=Math.max(80,dc.clientWidth-30);
+    drawCircular(c2,u,d,sz,false);
+    b.appendChild(el("u",null,fD(d.d)));
+    const S=ampStats(u,d);
+    const nc=S.ev.filter(e=>e.sev==="crit").length;
+    b.appendChild(el("small",null, S.parcial? `parcial · ${S.tot} min`
+      : (S.smx?S.smx.mean.toFixed(0)+" A":"—")+(nc?` · ${nc}⚠`:"")));
+    if(S.parcial) b.style.opacity=".55";
+    b.onclick=()=>{ AMPDAY=d.d; renderAll(); };
+  });
+}
+(function(){
+  const cv=document.getElementById("ampCv"); if(!cv) return;
+  cv.addEventListener("mousemove",e=>{
+    const G=cv._geo, day=cv._day; if(!G||!day) return hideTip();
+    const r=cv.getBoundingClientRect();
+    const dx=(e.clientX-r.left)-G.cx, dy=(e.clientY-r.top)-G.cy;
+    const dist=Math.hypot(dx,dy);
+    if(dist<G.r0*0.85||dist>G.R*1.1) return hideTip();
+    let a=Math.atan2(dy,dx)+Math.PI/2; if(a<0)a+=Math.PI*2;
+    const t=day.d+(a/(Math.PI*2))*864e5;
+    const u=U(), mx=u.ch.amp_max, mn=u.ch.amp_min, av=u.ch.amp_avg;
+    const at=C=>{ if(!C||!C.n) return null; const i=Math.max(0,Math.min(C.n-1,bs(C.t,t,C.n)));
+      return Math.abs(C.t[i]-t)<=12e4? C.y[i] : null; };
+    const vx=at(mx), vn=at(mn), va=at(av);
+    const rows=[["Máximo", vx!=null?fN(vx,"A"):"—", V("--L1")],
+                ["Mínimo", vn!=null?fN(vn,"A"):"—", V("--L3")],
+                ["Promedio", va!=null?fN(va,"A"):"—", V("--L2")]];
+    if(vx!=null&&vn!=null) rows.push(["Banda", fN(vx-vn,"A"), null]);
+    const near=u.events.filter(x=>Math.abs(x.t-t)<9e5).sort((p,q)=>Math.abs(p.t-t)-Math.abs(q.t-t))[0];
+    if(near) rows.push([near.label.slice(0,32), fT(near.t,false), V(near.sev==="crit"?"--crit":"--att")]);
+    showTip(e, fD(day.d)+"  "+fT(t,false), rows);
+  });
+  cv.addEventListener("mouseleave",hideTip);
+})();
+/* ── registro de eventos como tabla ── */
+function renderEvtTable(){
+  const u=U(), t=$("#evtbl"); t.innerHTML="";
+  const kinds=["todos","crit","att","accion","ok"];
+  const LAB={todos:"Todos",crit:"Disparos",att:"Anomalías",accion:"Acciones de operador",ok:"Normales"};
+  const fb=$("#efilt"); fb.innerHTML="";
+  kinds.forEach(k=>{
+    const n=k==="todos"?u.events.length:u.events.filter(e=>e.sev===k).length;
+    if(!n) return;
+    const b=el("button","qb"+(EFILT===k?" on":""),`${LAB[k]} (${n})`);
+    b.style.borderColor = EFILT===k? V("--acc-dim"):"";
+    b.onclick=()=>{ EFILT=k; renderEvtTable(); }; fb.appendChild(b);
+  });
+  const hd=t.createTHead().insertRow();
+  ["","Fecha","Hora","Evento","Detalle"].forEach(x=>{const th=document.createElement("th");th.textContent=x;hd.appendChild(th);});
+  const tb=t.createTBody();
+  const list=u.events.filter(e=>EFILT==="todos"||e.sev===EFILT).slice().reverse();
+  list.slice(0,600).forEach(e=>{
+    const r=tb.insertRow(); r.className=e.sev||"att";
+    r.insertCell().className="sv";
+    const d=new Date(e.t);
+    const c1=r.insertCell(); c1.className="fh"; c1.textContent=p2(d.getDate())+"/"+p2(d.getMonth()+1)+"/"+d.getFullYear();
+    const c2=r.insertCell(); c2.className="fh"; c2.textContent=p2(d.getHours())+":"+p2(d.getMinutes())+":"+p2(d.getSeconds());
+    const c3=r.insertCell(); c3.className="tx"; c3.textContent=e.label;
+    const c4=r.insertCell(); c4.className="de"; c4.textContent=e.detail||"";
+    r.onclick=()=>{ VIEW="tend"; setView({a:e.t-18e5,b:e.t+9e5}); };
+  });
+  if(list.length>600){ const r=tb.insertRow(); const c=r.insertCell(); c.colSpan=5; c.className="de";
+    c.textContent=`… y ${list.length-600} más. Filtra por tipo para acotar.`; }
+}
+/* ── ventanita de valores ── */
+const TIP=()=>document.getElementById("tip");
+function showTip(ev,title,rows){
+  const t=TIP(); if(!t) return;
+  t.innerHTML=""; t.appendChild(el("div","th",title));
+  rows.forEach(([lab,val,col])=>{
+    const r=el("div","tr"); const l=el("span");
+    if(col){ const i=el("i"); i.style.background=col; l.appendChild(i); }
+    l.appendChild(el("span",null,lab)); r.appendChild(l); r.appendChild(el("b",null,val)); t.appendChild(r);
+  });
+  t.style.display="block";
+  const W=t.offsetWidth,H=t.offsetHeight;
+  let x=ev.clientX+16, y=ev.clientY+16;
+  if(x+W>innerWidth-8) x=ev.clientX-W-16;
+  if(y+H>innerHeight-8) y=Math.max(8,ev.clientY-H-16);
+  t.style.left=x+"px"; t.style.top=y+"px";
+}
+function hideTip(){ const t=TIP(); if(t) t.style.display="none"; }
+
+/* ══════════════════════════════════════════════════════════════════
+   8 · ANÁLISIS
+══════════════════════════════════════════════════════════════════ */
+const SEV={ok:"Normal",obs:"Observación",att:"Atención",crit:"Crítico",info:"Contexto"};
+function F(o,sev,title,...ps){ o.push({sev,title,paras:ps.filter(Boolean)}); }
+function analyze(){
+  if(VIEW==="amp") return analyzeAmp();
+  if(VIEW==="evt") return analyzeEvt();
+  const u=U(),o=[],a=view.a,b=view.b,dur=b-a;
+  const g=r=>u.ch[r];
+  // cobertura real
+  let covMs=0;
+  (u.covSerie||[]).forEach(([x,y])=>{ covMs+=Math.max(0,Math.min(y,b)-Math.max(x,a)); });
+  const segs=(u.segs||[]).filter(s=>s.b>a&&s.a<b);
+  const ov=s=>Math.max(0,Math.min(s.b,b)-Math.max(s.a,a));
+  const runMs=segs.filter(s=>s.state==="run").reduce((x,s)=>x+ov(s),0);
+  const ndMs=Math.max(0,dur-covMs);
+  const starts=segs.filter(s=>s.state==="run"&&s.a>=a).length;
+
+  F(o,"info","Ventana",
+    `<code>${fT(a)}</code> a <code>${fT(b)}</code> — ${fDur(dur)}.`,
+    ndMs>dur*0.02
+      ? `Hay <code>${fDur(ndMs)}</code> sin datos de tendencia dentro de la ventana (${(ndMs/dur*100).toFixed(0)} %). Ese tiempo no se cuenta como paro: simplemente no hay archivo que lo cubra. Sobre el tiempo que sí está cubierto, la unidad estuvo en marcha ${covMs>0?(runMs/covMs*100).toFixed(1):"0"} %.`
+      : `La unidad estuvo en marcha ${dur>0?(runMs/dur*100).toFixed(1):"0"} % del tiempo (${fDur(runMs)}), con ${starts} arranque${starts===1?"":"s"}.`);
+
+  // eventos de la ventana
+  const evs=u.events.filter(e=>e.t>=a&&e.t<=b);
+  if(evs.length){
+    const crit=evs.filter(e=>e.sev==="crit"), acc=evs.filter(e=>e.sev==="accion");
+    const cnt={}; evs.forEach(e=>cnt[e.label]=(cnt[e.label]||0)+1);
+    const top=Object.entries(cnt).sort((x,y)=>y[1]-x[1]).slice(0,4)
+      .map(([k,v])=>`<code>${k}</code>${v>1?` ×${v}`:""}`).join(", ");
+    F(o, crit.length?"crit":acc.length?"obs":"info", `Eventos registrados (${evs.length})`,
+      top+".",
+      crit.length? `El primer evento crítico de la ventana es <code>${crit[0].label}</code> a las <code>${fT(crit[0].t)}</code>${crit[0].detail?` — ${crit[0].detail}`:""}. Las marcas rojas verticales sobre las gráficas lo ubican contra las variables analógicas.`
+        : acc.length? `${acc.length} de ellos son acciones de operador. Sirven para separar «cambió porque alguien lo cambió» de «cambió solo», que es la distinción que no puedes hacer con la tendencia sola.`
+        : null);
+  }
+
+  const rs=segs.filter(s=>s.state==="run").sort((x,y)=>ov(y)-ov(x))[0];
+  if(!rs || ov(rs)<8*60e3){
+    F(o,"info","Sin marcha suficiente",`No hay tiempo de marcha continuo en esta ventana para evaluar comportamiento eléctrico o hidráulico.`);
+  } else {
+    const ra=Math.max(rs.a+Math.min(180e3,(rs.b-rs.a)*.08), a);
+    const rb=Math.min(rs.b-Math.min(60e3,(rs.b-rs.a)*.03), b);
+    if(rb-ra>60e3){
+      elec(o,u,ra,rb); mech(o,u,ra,rb); therm(o,u,ra,rb); hydro(o,u,ra,rb);
+      if(rs.a<a-1||rs.b>b+1) F(o,"info","Alcance",
+        `Las lecturas de proceso corresponden al tramo de marcha visible (<code>${fT(ra)}</code> a <code>${fT(rb)}</code>), no a la corrida completa.`);
+    }
+  }
+  sensors(o,u);
+  return o;
+}
+function elec(o,u,a,b){
+  const g=r=>u.ch[r];
+  const cur=["i_out_a","i_out_b","i_out_c"].map(g);
+  if(cur.every(c=>c&&c.n)){
+    const st=cur.map(c=>stat(c,a,b));
+    if(st.every(Boolean)){
+      const m=(st[0].mean+st[1].mean+st[2].mean)/3;
+      const dev=st.map(s=>Math.abs(s.mean-m)/m*100), unb=Math.max(...dev);
+      const hi=["A","B","C"][dev.indexOf(unb)];
+      const sev=unb<2?"ok":unb<5?"obs":unb<10?"att":"crit";
+      F(o,sev,"Balance de corriente",
+        `Por fase: <code>A ${fN(st[0].mean)}</code> · <code>B ${fN(st[1].mean)}</code> · <code>C ${fN(st[2].mean)} A</code>. Desbalance ${unb.toFixed(2)} %.`,
+        unb<2? "Por debajo del 2 % el reparto entre fases es sano."
+          : `La fase ${hi} corre alta de forma sostenida, lo que apunta a asimetría real en alimentación, conexiones o devanado.${unb>=5?" Por encima del 5 % ya hay calentamiento diferencial apreciable.":""}`);
+    }
+  }
+  const vin=["v_ab","v_bc","v_ca"].map(g);
+  if(vin.every(c=>c&&c.n)){
+    const st=vin.map(c=>stat(c,a,b));
+    if(st.every(Boolean)){
+      const m=(st[0].mean+st[1].mean+st[2].mean)/3;
+      const dev=st.map(s=>Math.abs(s.mean-m)/m*100), unb=Math.max(...dev);
+      const lo=Math.min(...st.map(s=>s.min)), mx=Math.max(...st.map(s=>s.max));
+      F(o, unb<1?"ok":unb<2?"obs":unb<3?"att":"crit","Red de entrada",
+        `<code>AB ${fN(st[0].mean)}</code> · <code>BC ${fN(st[1].mean)}</code> · <code>CA ${fN(st[2].mean)} V</code>, excursiones ${fN(lo)}–${fN(mx,"V")}. Desbalance ${unb.toFixed(2)} %.`,
+        unb<1? "Red equilibrada."
+          : `Según NEMA MG-1 un desbalance de tensión del ${unb.toFixed(1)} % obliga a derratear el motor y se multiplica varias veces en la corriente.`);
+    }
+  }
+  const bus=g("v_bus"), sb=bus&&bus.n?stat(bus,a,b):null;
+  if(sb){
+    const band=(pctl(bus,a,b,.95)||sb.max)-(pctl(bus,a,b,.05)||sb.min);
+    F(o, sb.sd/sb.mean<0.02?"ok":"obs","Bus de continua",
+      `Media ${fN(sb.mean,"V")}, rango ${fN(sb.min)}–${fN(sb.max,"V")}.`,
+      `La banda p5–p95 es de ${fN(band,"V")}, un ${(band/sb.mean*100).toFixed(1)} % del valor medio: ${sb.sd/sb.mean<0.02?"condensadores y rectificador en buen estado":"alto para un bus estable, revisa condensadores, puente y distorsión de red"}.`);
+  }
+  // balance de energía entre planos de medición (capa de plausibilidad)
+  const vo=g("v_out"), io=g("i_out_a"), vm=g("v_motor"), im=g("i_motor");
+  if(vo&&io&&vm&&im&&vo.n&&im.n){
+    const s1=stat(vo,a,b),s2=stat(io,a,b),s3=stat(vm,a,b),s4=stat(im,a,b);
+    if(s1&&s2&&s3&&s4&&s2.mean>5&&s4.mean>1){
+      const k1=Math.sqrt(3)*s1.mean*s2.mean/1000, k2=Math.sqrt(3)*s3.mean*s4.mean/1000;
+      const r=k2/k1;
+      F(o, (r>0.85&&r<1.15)?"ok":"att","Coherencia entre planos de medición",
+        `Lado variador ${fN(k1,"kVA")} (${fN(s1.mean,"V")} × ${fN(s2.mean,"A")}) contra lado motor ${fN(k2,"kVA")} (${fN(s3.mean,"V")} × ${fN(s4.mean,"A")}). Relación ${r.toFixed(2)}.`,
+        (r>0.85&&r<1.15)? `Las dos mediciones cuadran dentro del ${Math.abs(r-1)*100<10?"10":"15"} %, así que la instrumentación eléctrica es confiable y la relación del transformador es ${(s3.mean/s1.mean).toFixed(1)}:1.`
+          : "Las dos mediciones no cuadran. Un variador no puede entregar más de lo que recibe, así que el escalado de alguno de los transformadores de medida está mal. Cualquier cálculo de potencia con estos canales es inválido hasta corregirlo.");
+    }
+  }
+}
+function mech(o,u,a,b){
+  const g=r=>u.ch[r];
+  const rpm=g("rpm"),fr=g("freq_out");
+  if(rpm&&rpm.n&&fr&&fr.n){
+    const sr=stat(rpm,a,b),sf=stat(fr,a,b);
+    if(sr&&sf&&sf.mean>5&&sr.mean>100){
+      const poles=Math.max(2,Math.round(120*sf.mean/sr.mean/2)*2);
+      const sync=120*sf.mean/poles, slip=(sync-sr.mean)/sync*100;
+      F(o, slip<1?"obs":slip<4?"ok":slip<6?"obs":"att","Velocidad y deslizamiento",
+        `${fN(sr.mean,"RPM")} a ${fN(sf.mean,"Hz")}. Con ${poles} polos el sincronismo es ${sync.toFixed(0)} RPM y el deslizamiento <code>${slip.toFixed(2)} %</code>.`,
+        slip<1?"Deslizamiento muy bajo: el motor va casi descargado."
+        :slip<4?"Deslizamiento normal para un motor de inducción a carga alta."
+        :"Deslizamiento alto: el motor trabaja cerca o por encima de su carga nominal.");
+    }
+  }
+  [["vib_1","Vibración eje 1"],["vib_2","Vibración eje 2"],["vib_3","Vibración eje 3"]].forEach(([r,lab])=>{
+    const C=g(r); if(!C||!C.n) return;
+    const st=stat(C,a,b); if(!st) return;
+    const sl=slope(C,a,b), hrs=(b-a)/3.6e6, rise=sl!=null?sl*hrs:null;
+    const rel=(rise!=null&&st.mean>0)?rise/st.mean*100:null;
+    let sev=st.mean<0.3?"ok":st.mean<0.6?"obs":st.mean<1.0?"att":"crit";
+    const txt=[`Media ${fN(st.mean,"G")}, p95 ${fN(pctl(C,a,b,.95),"G")}, máximo ${fN(st.max,"G")}.`];
+    txt.push(st.mean<0.3?"Nivel bajo. Sin señales de problema de alineación, balanceo o rodamientos en esta ventana."
+      :st.mean<0.6?"Nivel moderado. Compáralo contra la línea base propia de la unidad."
+      :"Nivel alto. Revisa alineación, apriete de base, balanceo y juego de rodamientos.");
+    if(rel!=null&&rel>15&&hrs>1){ sev=sev==="ok"?"obs":"att";
+      txt.push(`Tendencia creciente de ${fN(sl,"G/h")}, un ${rel.toFixed(0)} % a lo largo de la ventana. Con velocidad y carga constantes, es la señal temprana más útil que tienes.`); }
+    txt.push("<em>Umbrales indicativos; ajústalos a los setpoints de alarma de tu unidad.</em>");
+    F(o,sev,lab,...txt);
+  });
+}
+function therm(o,u,a,b){
+  const g=r=>u.ch[r], hrs=(b-a)/3.6e6;
+  const dtw=g("dt_wi");
+  if(dtw&&dtw.n){
+    const st=stat(dtw,a,b);
+    if(st){
+      const sev=st.mean<TD(25)?"ok":st.mean<TD(40)?"obs":"att";
+      F(o,sev,"Refrigeración del motor",
+        `El devanado corre <code>${fN(st.mean,TU())}</code> por encima de la admisión (rango ${fN(st.min)}–${fN(st.max,TU())}).`,
+        `Este delta es la mejor medida de refrigeración porque no depende de qué tan caliente esté el yacimiento: mide solo cuánto calor logra sacar el fluido que pasa por el motor. ${
+          st.mean<TD(25)?"Un delta bajo indica buen caudal de refrigeración."
+          :st.mean<TD(40)?"Un delta intermedio; conviene compararlo con otras unidades del campo."
+          :"Un delta alto deja poco margen térmico: si el caudal cae, el devanado se calienta rápido."}`);
+    }
+  }
+  [["t_wind","Temperatura de devanado",150,180],["t_intake","Temperatura de admisión",130,150],
+   ["t_oil","Aceite de la cámara de empuje",70,85],["t_brg1","Rodamiento lado libre",85,95],
+   ["t_brg2","Rodamiento lado acople",85,95],["t_hs","Disipador",70,85],["t_igbt","IGBT",80,95]].forEach(([r,lab,warn,crit])=>{
+    const C=g(r); if(!C||!C.n||badCh(C)) return;
+    const st=stat(C,a,b); if(!st) return;
+    const sl=slope(C,a,b);
+    const W=TV(warn), K=TV(crit);
+    let sev=st.max>=K?"crit":st.max>=W?"att":"ok";
+    const txt=[`Media ${fN(st.mean,TU())}, máximo ${fN(st.max,TU())}.`];
+    if(sl!=null&&hrs>0.5&&Math.abs(sl*hrs)>TD(2)){
+      txt.push(`Tendencia de ${fN(sl,TU()+"/h")} (${sl>0?"+":""}${(sl*hrs).toFixed(1)} ${TU()} en la ventana).`);
+      if(sl>TD(2)&&hrs>1){ sev=sev==="ok"?"obs":sev;
+        txt.push("Un ascenso sostenido a velocidad y carga constantes apunta a pérdida de refrigeración."); }
+    }
+    if(sev==="ok"&&txt.length===1) txt.push("Dentro de rango normal.");
+    F(o,sev,lab,...txt);
+  });
+}
+function hydro(o,u,a,b){
+  const g=r=>u.ch[r];
+  const su=g("p_intake"),di=g("p_disch"),dp=g("dp");
+  if(su&&su.n){
+    const st=stat(su,a,b);
+    if(st&&Math.abs(st.mean)>1){
+      const cv=st.sd/Math.abs(st.mean)*100;
+      // la interferencia de gas es OSCILACIÓN en fase, no deriva: se quita la tendencia antes de correlacionar
+      const ia=g("i_out_a")||g("i_motor");
+      let r=null,cvI=null,osc=null,cyc=0,cycRate=0;
+      if(ia&&ia.n){
+        const P=alignedPairs(su,ia);
+        if(P){
+          const X=[],A=[],B=[];
+          for(let i=0;i<P.t.length;i++){ if(P.t[i]<a||P.t[i]>b) continue; X.push(P.t[i]);A.push(P.a[i]);B.push(P.b[i]); }
+          if(X.length>30){
+            const detr=Y=>{ let n=Y.length,sx=0,sy=0,sxx=0,sxy=0;
+              for(let i=0;i<n;i++){ const x=(X[i]-X[0])/3.6e6; sx+=x;sy+=Y[i];sxx+=x*x;sxy+=x*Y[i]; }
+              const d=n*sxx-sx*sx; const m=Math.abs(d)<1e-9?0:(n*sxy-sx*sy)/d, c=(sy-m*sx)/n;
+              return Y.map((v,i)=>v-(m*(X[i]-X[0])/3.6e6+c)); };
+            const ra=detr(A), rb=detr(B);
+            let n=ra.length,sa=0,sb2=0,saa=0,sbb=0,sab=0;
+            for(let i=0;i<n;i++){ sa+=ra[i];sb2+=rb[i];saa+=ra[i]*ra[i];sbb+=rb[i]*rb[i];sab+=ra[i]*rb[i]; }
+            const num=n*sab-sa*sb2, den=Math.sqrt((n*saa-sa*sa)*(n*sbb-sb2*sb2));
+            if(Math.abs(den)>1e-9) r=num/den;
+            const sdA=Math.sqrt(saa/n-(sa/n)**2);
+            osc = Math.abs(st.mean)>0 ? sdA/Math.abs(st.mean)*100 : 0;   // amplitud de la oscilación, sin la deriva
+            // ¿realmente oscila, o es una rampa curva? contar cruces por cero del residuo
+            let cross=0; for(let i=1;i<n;i++) if((ra[i-1]<0)!==(ra[i]<0)) cross++;
+            cyc = cross/2; cycRate = cyc/Math.max((b-a)/3.6e6,1e-6);   // ciclos por hora
+          }
+        }
+        const si=stat(ia,a,b); if(si&&si.mean) cvI=si.sd/si.mean*100;
+      }
+      const gas = osc!=null && osc>=3 && r!=null && Math.abs(r)>0.6 && cyc>=4 && cycRate>=2;
+      F(o, gas?"att": cv<5?"ok":"obs","Presión de admisión",
+        `Media ${fN(st.mean,"psi")}, rango ${fN(st.min)}–${fN(st.max,"psi")}, variación ${cv.toFixed(1)} %.`,
+        r!=null? `Quitando la deriva: amplitud de oscilación ${osc.toFixed(1)} %, <code>${cyc.toFixed(0)} ciclos</code> (${cycRate.toFixed(1)}/h), correlación con la corriente <code>r = ${r.toFixed(2)}</code>. ${
+          gas? "Oscila de forma repetida y en fase con la corriente: es la firma de gas libre o cavitación. Revisa nivel de fluido, separador y sumergencia."
+             : cyc<4? "No hay ciclos repetidos: lo que ves es una deriva del sistema, no interferencia de gas. La correlación con la corriente viene de que ambas se mueven en la misma dirección, no de que oscilen juntas."
+             : "Oscila, pero no en fase con la corriente, así que no hay firma de interferencia de gas."}`
+          : (cv<5?"Estable.":"Fluctuación por encima de lo ideal."));
+    }
+  }
+  if(dp&&dp.n){
+    const st=stat(dp,a,b), sl=slope(dp,a,b), hrs=(b-a)/3.6e6;
+    if(st){
+      const txt=[`ΔP desarrollado por la bomba: media ${fN(st.mean,"psi")}, rango ${fN(st.min)}–${fN(st.max,"psi")}.`];
+      let sev="ok";
+      const si=di?stat(di,a,b):null;
+      if(si) txt[0]=`Descarga ${fN(si.mean,"psi")} · ΔP ${fN(st.mean,"psi")} (rango ${fN(st.min)}–${fN(st.max)}).`;
+      if(Math.abs(st.mean)<Math.max(20,Math.abs(si?si.mean:100)*0.02)){
+        sev="crit";
+        txt.push("El diferencial es prácticamente cero. Si el motor está cargado, una bomba que gira y no desarrolla cabeza no existe: lo que falla es el transductor de descarga, muy probablemente leyendo el mismo puerto que el de admisión. Sin ese dato no se puede calcular cabeza ni eficiencia.");
+      } else if(sl!=null&&hrs>1&&Math.abs(sl*hrs)>Math.abs(st.mean)*0.05){
+        sev="att";
+        txt.push(`El ΔP ${sl>0?"sube":"cae"} ${fN(Math.abs(sl),"psi/h")} de forma sostenida (${(sl*hrs).toFixed(0)} psi en la ventana). ${sl<0?"Con velocidad constante, una caída así es desgaste de etapas, sólidos o cambio de condición del pozo.":"Una subida del diferencial con velocidad constante indica que la bomba se está acercando a su punto de cierre: revisa restricciones aguas abajo."}`);
+      } else txt.push("Sin deriva sostenida: la bomba mantiene su punto de operación.");
+      F(o,sev,"Comportamiento hidráulico",...txt);
+    }
+  }
+}
+function badCh(C){
+  if(C._bad!==undefined) return C._bad;
+  if(!C.n) return C._bad=true;
+  const s=new Set();                       // recorre TODO el canal: un tramo constante no es un canal muerto
+  for(let i=0;i<C.n;i++){ s.add(C.y[i]); if(s.size>2) break; }
+  if(s.size<=1) return C._bad=true;
+  if(/^t_/.test(C.role)){ const yc=CANON(C); let mn=Infinity,mx=-Infinity;   // el rango físico se juzga en °C, no en la unidad mostrada
+    for(let i=0;i<C.n;i++){ if(yc[i]<mn)mn=yc[i]; if(yc[i]>mx)mx=yc[i]; }
+    if(mx<-5||mn>250) return C._bad=true; }
+  return C._bad=false;
+}
+function sensors(o,u){
+  const bad=[];
+  Object.values(u.ch).forEach(C=>{
+    if(C.derived||!C.n) return;
+    if(!badCh(C)) return;
+    const s=stat(C,u.t0,u.t1);
+    const uniq=new Set(); for(let i=0;i<C.n;i++){ uniq.add(C.y[i]); if(uniq.size>1) break; }
+    bad.push([C, uniq.size<=1? `congelado en ${fN(s.mean,C.unit)}`
+      : `fija entre ${fN(s.min)} y ${fN(s.max,C.unit)}, fuera de rango físico`]);
+  });
+  if(bad.length){
+    const critical=bad.some(([C])=>/^t_(wind|brg)/.test(C.role));
+    F(o, critical?"crit":"att", `Canales en falla (${bad.length})`,
+      bad.map(([C,w])=>`<code>${C.label}</code> — ${w}`).join("; ")+". Evaluado sobre todo el archivo, no solo la ventana.",
+      critical? "Entre los canales muertos están temperaturas de devanado o rodamientos: estás operando sin protección térmica en el punto donde una falla mecánica se manifiesta primero. Verifica continuidad de las RTD, cableado y escalado antes de la próxima corrida."
+        : "Revisa cableado, escalado y configuración. Mientras estén así, cualquier conclusión sobre esas variables es inválida.");
+  } else F(o,"ok","Integridad de sensores","Todos los canales reportan variación coherente y dentro de rango físico.");
+}
+function analyzeAmp(){
+  const u=U(),o=[],days=ampDays(u);
+  if(!days.length) return [{sev:"info",title:"Sin carta",paras:["No hay carta de amperaje cargada."]}];
+  const day=days.find(d=>d.d===AMPDAY)||days[days.length-1];
+  const S=ampStats(u,day);
+  F(o, S.parcial?"obs":"info", `Día ${fD(day.d)}`,
+    S.smx? `Amperaje máximo medio <code>${fN(S.smx.mean,"A")}</code>, pico <code>${fN(S.smx.max,"A")}</code>. Mínimo medio ${S.smn?fN(S.smn.mean,"A"):"—"}. Cobertura: <code>${S.tot} de 1440 minutos</code> (${(S.cover*100).toFixed(0)} %).`:"Sin datos.",
+    S.parcial? `Este día está incompleto en la carta: el archivo solo trae ${S.tot} minutos. Los promedios de arriba salen de esa muestra y no representan la jornada. La carta guarda una ventana móvil de siete días, así que los extremos del archivo casi siempre vienen recortados.`:null,
+    S.band!=null? `La banda entre máximo y mínimo promedia <code>${fN(S.band,"A")}</code>. Una banda estrecha significa carga pareja; una banda ancha, que la corriente golpea dentro de cada minuto — golpe de fluido, gas o arranques repetidos.`:null);
+  if(S.zero) F(o,"att","Tiempo con la unidad caída",
+    `<code>${S.zero} minutos</code> de los ${S.tot} registrados con amperaje en cero (${(S.zero/S.tot*100).toFixed(1)} %).`,
+    `Cada tramo en cero sobre la carta es una parada. Cruza la hora con el registro de eventos para saber la causa.`);
+  else F(o,"ok","Continuidad", S.parcial
+    ? `Sin minutos en cero dentro de los ${S.tot} registrados, pero el día está incompleto: no se puede afirmar que corriera las 24 horas.`
+    : `Sin minutos en cero en los ${S.tot} registrados: la unidad corrió de forma continua.`);
+  const crit=S.ev.filter(e=>e.sev==="crit"), acc=S.ev.filter(e=>e.sev==="accion");
+  if(S.ev.length) F(o, crit.length?"crit":"obs", `Eventos de ese día (${S.ev.length})`,
+    S.ev.slice(0,6).map(e=>`<code>${fT(e.t,false)}</code> ${e.label}`).join(" · ")+(S.ev.length>6?" …":"")+".",
+    crit.length? `Las marcas rojas en el borde de la carta son esos disparos. Mira si el amperaje ya venía cambiando antes de cada marca: ahí está la diferencia entre una causa externa y una degradación.`
+      : acc.length? `Son acciones de operador. Si ves un escalón en la carta a esa misma hora, el cambio lo hizo una persona, no el equipo.`:null);
+  else F(o,"ok","Sin eventos","Ese día no registró alarmas, paros ni cambios de setpoint.");
+  // comparación entre días
+  if(days.length>2){
+    const todos=days.map(d=>({d,S:ampStats(u,d)})).filter(x=>x.S.smx);
+    const rows=todos.filter(x=>!x.S.parcial);
+    const excl=todos.length-rows.length;
+    if(rows.length<3){
+      F(o,"info","Comparación entre días",
+        `Solo ${rows.length} de los ${todos.length} días del archivo están completos, así que no hay base para comparar. Carga más semanas de carta para tener historia.`);
+      return o;
+    }
+    const ms=rows.map(x=>x.S.smx.mean);
+    const mu=ms.reduce((a,b)=>a+b,0)/ms.length;
+    const sd=Math.sqrt(ms.reduce((a,v)=>a+(v-mu)**2,0)/ms.length);
+    const cur=rows.find(x=>x.d.d===day.d);
+    const z=(cur&&sd>0)? (cur.S.smx.mean-mu)/sd : 0;
+    const out=rows.filter(x=>sd>0&&Math.abs((x.S.smx.mean-mu)/sd)>2);
+    const first=rows[0].S.smx.mean, last=rows[rows.length-1].S.smx.mean;
+    const dspan=(rows[rows.length-1].d.d-rows[0].d.d)/864e5;
+    const drift=(last-first)/first*100;
+    F(o, Math.abs(z)>2?"att": Math.abs(drift)>5?"obs":"ok", `Comparación entre los ${rows.length} días`,
+      `Promedio del periodo <code>${fN(mu,"A")}</code> con desviación ${fN(sd,"A")}. El día que estás viendo está ${z>=0?"+":""}${z.toFixed(1)} desviaciones del promedio.`,
+      out.length? `Se salen de la banda: ${out.map(x=>`<code>${fD(x.d.d)}</code> (${fN(x.S.smx.mean,"A")})`).join(", ")}. Empieza por esos días.`
+        : `Ningún día se sale de dos desviaciones: el amperaje es consistente en todo el periodo.`,
+      excl? `Se dejaron fuera ${excl} día${excl>1?"s":""} incompleto${excl>1?"s":""} del extremo del archivo; incluirlos falsearía la comparación.`:null,
+      Math.abs(drift)>3? `Entre el ${fD(rows[0].d.d)} y el ${fD(rows[rows.length-1].d.d)} (${dspan.toFixed(0)} días) el amperaje medio ${drift>0?"subió":"bajó"} ${Math.abs(drift).toFixed(1)} %. ${drift>0?"Una subida sostenida a velocidad constante es más carga: viscosidad, sólidos o rozamiento.":"Una bajada sostenida es menos carga hidráulica: desgaste de etapas o menos contrapresión."}`:null);
+  }
+  return o;
+}
+function analyzeEvt(){
+  const u=U(),o=[],E=u.events;
+  if(!E.length) return [{sev:"info",title:"Sin eventos",paras:["No hay registro de eventos cargado."]}];
+  const dias=(E[E.length-1].t-E[0].t)/864e5;
+  F(o,"info","Alcance del registro",
+    `${E.length} eventos entre <code>${fD(E[0].t)}</code> y <code>${fD(E[E.length-1].t)}</code>, ${dias.toFixed(0)} días.`);
+  const crit=E.filter(e=>e.sev==="crit");
+  if(crit.length){
+    const c={}; crit.forEach(e=>c[e.label]=(c[e.label]||0)+1);
+    const top=Object.entries(c).sort((a,b)=>b[1]-a[1]);
+    const dom=top[0], share=dom[1]/crit.length*100;
+    F(o, share>50?"crit":"att", `Paros y disparos (${crit.length})`,
+      top.slice(0,5).map(([k,v])=>`<code>${k}</code> ×${v}`).join(", ")+".",
+      `Ritmo de ${(crit.length/Math.max(dias,1)).toFixed(2)} por día.`,
+      share>50? `El ${share.toFixed(0)} % son <code>${dom[0]}</code>. Cuando una sola causa domina así, o la condición es real y persistente, o el umbral que la dispara está mal ajustado. Los arranques y paros repetidos desgastan más que la condición que la protección intenta evitar.`:null);
+  }
+  const acc=E.filter(e=>e.sev==="accion");
+  if(acc.length){
+    const c={}; acc.forEach(e=>{ const k=(e.detail||"").split(":")[0]||e.label; c[k]=(c[k]||0)+1; });
+    const top=Object.entries(c).sort((a,b)=>b[1]-a[1]).slice(0,5);
+    const dis=acc.filter(e=>/enable/i.test(e.detail||"")&&/:\s*1\s*→\s*0/.test(e.detail||""));
+    F(o, dis.length?"crit":"obs", `Acciones de operador (${acc.length})`,
+      top.map(([k,v])=>`<code>${k}</code> ×${v}`).join(", ")+".",
+      dis.length? `Atención: ${dis.length} de ellas <b>deshabilitan una protección</b> — ${dis.slice(0,3).map(e=>`<code>${(e.detail||"").split(":")[0]}</code> el ${fT(e.t)}`).join(", ")}. Confirma si fue intencional y temporal.`
+        : `Sirven para separar «cambió porque alguien lo cambió» de «cambió solo». Haz clic en cualquier fila para ver ese momento en las tendencias.`);
+  }
+  // ráfagas
+  const win=36e5; let best=0,bt=null;
+  for(let i=0;i<crit.length;i++){ let n=0;
+    for(let j=i;j<crit.length&&crit[j].t-crit[i].t<=win;j++) n++;
+    if(n>best){best=n;bt=crit[i].t;} }
+  if(best>=3) F(o,"att","Racha de disparos",
+    `El peor momento concentra <code>${best} disparos en una hora</code>, a partir del ${fT(bt)}.`,
+    `Rachas así rara vez son fallas mecánicas distintas: casi siempre son reintentos automáticos contra una misma condición externa. Revisa la tendencia de ese tramo.`);
+  return o;
+}
+function renderAnalysis(){
+  const box=$("#finds"); box.innerHTML="";
+  $("#anWin").textContent = VIEW==="tend"? fDur(view.b-view.a)
+    : VIEW==="amp"? (AMPDAY?fD(AMPDAY):"") : "todo el registro";
+  let f=[];
+  try{ f=analyze(); }catch(e){ f=[{sev:"att",title:"No se pudo completar el análisis",paras:[String(e.message||e)]}]; }
+  f.forEach(x=>{
+    const d=el("div","find "+x.sev), h=el("h4");
+    h.appendChild(el("span",null,x.title)); h.appendChild(el("em",null,SEV[x.sev]));
+    d.appendChild(h);
+    x.paras.forEach(p=>{ const q=el("p"); q.innerHTML=p; d.appendChild(q); });
+    box.appendChild(d);
+  });
+  renderStats();
+}
+function renderStats(){
+  const u=U(),t=$("#stats"); t.innerHTML="";
+  const at=document.getElementById("anTit");
+  if(at) at.textContent = VIEW==="tend"?"Lectura de la ventana": VIEW==="amp"?"Lectura de la carta":"Lectura del registro";
+  if(VIEW==="evt") return;
+  const hd=t.insertRow();
+  ["Canal","Media","Mín","Máx","σ","Tend/h"].forEach(x=>{const th=document.createElement("th");th.textContent=x;hd.appendChild(th);});
+  const list=[...sel].map(r=>u.ch[r]).filter(C=>C&&C.n);
+  const hrs=(view.b-view.a)/3.6e6;
+  (list.length?list:Object.values(u.ch).filter(C=>C.n).slice(0,12)).forEach(C=>{
+    const s=stat(C,view.a,view.b); if(!s) return;
+    const sl=hrs>0.3?slope(C,view.a,view.b):null;
+    const r=t.insertRow(), add=v=>r.insertCell().textContent=v;
+    add(C.label); add(fN(s.mean)); add(fN(s.min)); add(fN(s.max)); add(fN(s.sd));
+    add(sl==null||Math.abs(sl)<Math.abs(s.mean)*1e-4?"—":(sl>0?"+":"")+fN(sl));
+  });
+}
+function analysisText(){
+  const u=U(),strip=s=>s.replace(/<[^>]+>/g,"");
+  const L=[`LECTURA — ${u.key}`,`${fT(view.a)} → ${fT(view.b)}  (${fDur(view.b-view.a)})`,
+    `Archivos: ${DB.files.filter(f=>f.unit===u.key).map(f=>f.name).join(", ")}`,""];
+  analyze().forEach(f=>{ L.push(`[${SEV[f.sev].toUpperCase()}] ${f.title}`);
+    f.paras.forEach(p=>L.push("  "+strip(p))); L.push(""); });
+  return L.join("\n");
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   8b · HISTORIAL — solo activo si corre sobre el servidor local
+══════════════════════════════════════════════════════════════════ */
+let SRV=null;
+const api=(u,o)=>fetch(u,o).then(r=>{ if(!r.ok) throw new Error("HTTP "+r.status); return r.json(); });
+function pill(){ const p=$("#srv"); if(!p||!SRV) return;
+  p.classList.add("on"); p.textContent=`historial · ${SRV.archivos} arch`; }
+async function initServidor(){
+  try{ SRV=await api("/api/estado"); pill(); await pintarHistorial(); }
+  catch(e){ SRV=null; }
+}
+async function pintarHistorial(){
+  if(!SRV) return;
+  let us=[]; try{ us=await api("/api/unidades"); }catch(e){ return; }
+  const box=$("#hist"), sec=$("#secHist"); if(!box||!sec) return;
+  sec.hidden = !us.length; box.innerHTML="";
+  us.forEach(u=>{
+    const d=el("div","hitem"), m=el("div");
+    m.appendChild(el("div","hn",u.unidad));
+    const f=t=>t? t.slice(8,10)+"/"+t.slice(5,7)+"/"+t.slice(2,4) : "?";
+    m.appendChild(el("div","hd",`${u.n} archivos · ${f(u.t0)} → ${f(u.t1)} · ${(u.bytes/1e6).toFixed(1)} MB`));
+    d.appendChild(m);
+    const x=el("button","hx","×"); x.title="quitar del historial";
+    x.onclick=async ev=>{ ev.stopPropagation();
+      const fs=await api("/api/archivos?unidad="+encodeURIComponent(u.unidad));
+      for(const a of fs) await fetch("/api/archivo/"+a.id,{method:"DELETE"});
+      SRV=await api("/api/estado"); pill(); pintarHistorial(); };
+    d.appendChild(x);
+    d.onclick=()=>abrirDelHistorial(u.unidad);
+    box.appendChild(d);
+  });
+  $("#nHist").textContent = us.length+" unidades";
+}
+async function abrirDelHistorial(unidad){
+  const e=$("#err"); if(e) e.textContent="Recuperando "+unidad+"…";
+  try{
+    const lista=await api("/api/archivos?unidad="+encodeURIComponent(unidad));
+    for(const meta of lista){
+      if(DB.files.some(f=>f.name===meta.nombre&&f.unit===unidad)) continue;
+      const a=await api("/api/archivo/"+meta.id);
+      try{ const f=addFileFromText(a.contenido,a.nombre,unidad); f._text=a.contenido; f._enBase=true; }
+      catch(err){ console.warn(a.nombre,err); }
+    }
+    DB.active=unidad; if(e) e.textContent="";
+    $("#drop").classList.add("hide"); boot();
+  }catch(err){ if(e) e.textContent="No se pudo recuperar: "+(err.message||err); }
+}
+async function guardarEnHistorial(){
+  if(!SRV) return;
+  for(const f of DB.files){
+    if(f._enBase||!f._text) continue;
+    try{
+      await api("/api/archivo",{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({nombre:f.name,unidad:f.unit,contenido:f._text,perfil:f.prof,genero:f.genre,
+          t0:new Date(f.t0).toISOString(),t1:new Date(f.t1).toISOString(),registros:f.n})});
+      f._enBase=true;
+    }catch(e){ console.warn("no se guardó",f.name,e); }
+  }
+  try{ SRV=await api("/api/estado"); pill(); }catch(e){}
+  pintarHistorial();
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   9 · ENTRADA
+══════════════════════════════════════════════════════════════════ */
+const fi=$("#file"), dz=$("#dz");
+$("#bPick").onclick=()=>fi.click();
+$("#bAdd").onclick=()=>{ TARGET=DB.active; $("#drop").classList.remove("hide"); $("#err").textContent="";
+  $("#dz").querySelector("h1").textContent="Agregar días a "+DB.active;
+  buildTarget(); };
+$("#bClose").onclick=()=>{ if(DB.files.length){ $("#drop").classList.add("hide"); } };
+function toggleRibbon(){
+  const r=$("#ribbon"); r.classList.toggle("off");
+  $("#bCinta").classList.toggle("off", r.classList.contains("off"));
+  if(DB.active) setTimeout(renderAll,30);
+}
+/* ── paneles que se asoman al llevar el ratón al borde ── */
+const PANE={L:{pin:false},R:{pin:false}};
+function paneEl(s){ return document.getElementById(s==="L"?"paneL":"paneR"); }
+function railEl(s){ return document.getElementById(s==="L"?"railL":"railR"); }
+function paneShow(s,on){
+  const p=paneEl(s); if(!p) return;
+  p.classList.toggle("open", !!on || PANE[s].pin);
+}
+function togglePane(s,forzar){
+  PANE[s].pin = forzar===undefined? !PANE[s].pin : !!forzar;
+  const on=PANE[s].pin;
+  const r=railEl(s); if(r) r.classList.toggle("pin",on);
+  const m=document.querySelector(".main"); if(m) m.classList.toggle(s==="L"?"dockL":"dockR", on);
+  const b=document.querySelector('.pinb[data-side="'+s+'"]');
+  if(b){ b.classList.toggle("on",on); b.textContent=on?"Anclado":"Anclar"; }
+  paneShow(s,on);
+  setTimeout(()=>{ if(DB.active) renderAll(); },210);
+}
+(function(){
+  const EDGE=18, DELAY=300;
+  ["L","R"].forEach(sd=>{
+    const p=paneEl(sd), r=railEl(sd); if(!p||!r) return;
+    let t=null;
+    const abrir =()=>{ clearTimeout(t); paneShow(sd,true); };
+    const cerrar=()=>{ clearTimeout(t); t=setTimeout(()=>paneShow(sd,false),DELAY); };
+    r.addEventListener("mouseenter",abrir);
+    r.addEventListener("mouseleave",cerrar);
+    r.addEventListener("click",()=>togglePane(sd));
+    p.addEventListener("mouseenter",abrir);
+    p.addEventListener("mouseleave",cerrar);
+    const pb=p.querySelector(".pinb");
+    if(pb) pb.addEventListener("click",ev=>{ if(ev.stopPropagation) ev.stopPropagation(); clearTimeout(t); togglePane(sd); });
+  });
+  document.addEventListener("mousemove",e=>{
+    if(curDrag) return;                        // no interrumpir una selección de zoom
+    if(e.clientY<110) return;                  // la cabecera y las pestañas no cuentan
+    if(e.clientX<=EDGE) paneShow("L",true);
+    else if(e.clientX>=window.innerWidth-EDGE) paneShow("R",true);
+  });
+})();
+$("#bCinta").onclick=toggleRibbon;
+$("#bTemp").onclick=()=>setTempUnit(TUNIT==="F"?"C":"F");
+$("#bSize").onclick=()=>{ const i=(+document.documentElement.dataset.si+1)%SIZES.length; setScale(i); };
+$("#bRen").onclick=()=>{
+  const cur=DB.active, nn=prompt("Nombre de la unidad:",cur);
+  if(!nn||nn===cur) return;
+  DB.files.forEach(f=>{ if(f.unit===cur) f._forceUnit=nn; });
+  if(SRV) fetch(`/api/renombrar?de=${encodeURIComponent(cur)}&a=${encodeURIComponent(nn)}`,{method:"POST"})
+            .then(()=>pintarHistorial()).catch(()=>{});
+  rebuildAll(nn);
+};
+$("#bTheme").onclick=()=>setTheme(document.documentElement.dataset.theme==="light"?"dark":"light");
+$("#bCopy").onclick=async e=>{ try{ await navigator.clipboard.writeText(analysisText());
+  e.target.textContent="Copiado"; setTimeout(()=>e.target.textContent="Copiar análisis",1400);}catch(x){} };
+fi.onchange=()=>{ if(fi.files.length) readMany([...fi.files]); fi.value=""; };
+["dragenter","dragover"].forEach(ev=>document.addEventListener(ev,e=>{
+  e.preventDefault();
+  if($("#drop").classList.contains("hide")){
+    if(DB.active){ TARGET=DB.active; $("#dz").querySelector("h1").textContent="Agregar días a "+DB.active; }
+    $("#drop").classList.remove("hide"); buildTarget();
+  }
+  dz.classList.add("hot"); }));
+["dragleave","drop"].forEach(ev=>document.addEventListener(ev,e=>{
+  e.preventDefault(); if(ev==="dragleave"&&e.relatedTarget)return; dz.classList.remove("hot"); }));
+document.addEventListener("drop",e=>{ e.preventDefault();
+  const fs=[...(e.dataTransfer?.files||[])]; if(fs.length) readMany(fs); });
+
+function buildTarget(){
+  const box=$("#topts"), wrap=$("#target"), ni=$("#tnew");
+  const keys=Object.keys(DB.units);
+  if(!keys.length){ wrap.hidden=true; TARGET=null; return; }
+  wrap.hidden=false; box.innerHTML="";
+  const mk=(lab,val)=>{ const b=el("button","tb"+(TARGET===val?" on":""),lab);
+    b.onclick=()=>{ TARGET=val; ni.hidden=(val!=="__new__"); buildTarget(); if(val==="__new__") ni.focus(); };
+    box.appendChild(b); };
+  keys.forEach(k=>mk(k===DB.active?`${k} (la que estás viendo)`:k,k));
+  mk("Unidad nueva","__new__");
+  mk("Deducir del nombre del archivo",null);
+  ni.hidden=(TARGET!=="__new__");
+}
+function nombreComun(files){
+  // ¿los nombres de archivo apuntan todos al mismo pozo?
+  const n=[...files].map(f=>unitFromName(f.name)).filter(x=>x&&x!=="sin nombre"&&x!==DB.active);
+  if(!n.length) return null;
+  const c={}; n.forEach(x=>c[x]=(c[x]||0)+1);
+  const top=Object.entries(c).sort((a,b)=>b[1]-a[1])[0];
+  return top[1]>=Math.ceil(n.length/2)? top[0] : null;
+}
+function readMany(files){
+  $("#err").textContent=`Leyendo ${files.length} archivo${files.length>1?"s":""}…`;
+  let done=0; const errs=[];
+  const antes=new Set(Object.keys(DB.units));
+  let DEST=TARGET;
+  if(DEST==="__new__"){                        // se calcula aquí, no una vez por archivo
+    const puesto=($("#tnew").value||"").trim();
+    DEST = puesto || nombreComun(files) || ("unidad "+(Object.keys(DB.units).length+1));
+  }
+  files.forEach(file=>{
+    const r=new FileReader();
+    r.onload=()=>{
+      const buf=r.result;
+      try{
+        let text=decode(buf,"auto");
+        const prof=detectProfile(text);
+        if(prof&&prof.enc==="latin1") text=decode(buf,"latin1");
+        const f=addFileFromText(text,file.name,DEST||undefined);
+        f._text=text;
+      }catch(err){ errs.push(`${file.name}: ${err.message||err}`); }
+      if(++done===files.length) finishLoad(errs,antes);
+    };
+    r.onerror=()=>{ errs.push(`${file.name}: no se pudo leer`); if(++done===files.length) finishLoad(errs,antes); };
+    r.readAsArrayBuffer(file);
+  });
+}
+function finishLoad(errs,antes){
+  const nuevas=Object.keys(DB.units).filter(k=>!antes||!antes.has(k));
+  const avisos=[...errs];
+  if(nuevas.length>1) avisos.push(
+    `Se crearon ${nuevas.length} unidades (${nuevas.join(", ")}). Si todos los archivos son del mismo pozo, `+
+    `usa el selector de unidad en cada archivo para juntarlos, o vuelve a cargarlos eligiendo un destino único.`);
+  $("#err").textContent=avisos.length? avisos.join("\n") : "";
+  if(!DB.files.length) return;
+  guardarEnHistorial();
+  if(nuevas.length===1) DB.active=nuevas[0];
+  else if(!DB.active||!DB.units[DB.active]) DB.active=Object.keys(DB.units)[0];
+  boot();
+  if(!avisos.length){ $("#drop").classList.add("hide");
+    $("#dz").querySelector("h1").textContent="Suelta uno o varios archivos"; TARGET=DB.active; }
+}
+setTheme((window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches)?"light":"dark");
+setScale(window.innerWidth>2200?3: window.innerWidth>1700?2:1);
+if(location.protocol!=="file:") initServidor();   // arranca acorde a la pantalla
+</script>
