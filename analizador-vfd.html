@@ -379,8 +379,9 @@ const R={
  t_intake:["Temp. de admisión","°C","--c-cya","T"], t_wind:["Temp. de devanado","°C","--c-red","T"],
  t_brg1:["Rodamiento lado libre","°C","--c-ora","T"], t_brg2:["Rodamiento lado acople","°C","--c-pnk","T"],
  t_oil:["Temp. de aceite","°C","--c-amb","T"], t_hs:["Disipador","°C","--c-vio","T"], t_igbt:["IGBT","°C","--c-lim","T"],
+ t_ind:["Inductor","°C","--c-tea","T"],
  vib_1:["Vibración eje 1","G","--c-vio"], vib_2:["Vibración eje 2","G","--c-pnk"], vib_3:["Vibración eje 3","G","--c-cya"],
- rpm:["Velocidad","RPM","--c-blu"], torque:["Par","%","--c-ste"],
+ rpm:["Velocidad","RPM","--c-blu"], torque:["Par","%","--c-ste"], torque_bba:["Par de la bomba","lbft","--c-yel"],
  pf:["Factor de potencia","","--c-ste"], p_act:["Potencia activa","kW","--c-lim"], p_apa:["Potencia aparente","kVA","--c-cya"],
  leak:["Fuga del motor","mA","--c-ste"], sens_v:["Tensión del sensor","V","--c-ind"],
  amp_max:["Amperaje máximo","A","--c-pnk"], amp_min:["Amperaje mínimo","A","--c-blu"], amp_avg:["Amperaje promedio","A","--c-yel"],
@@ -434,6 +435,7 @@ const PROFILES=[
     "T. VIBRACION":"vib_1","Pump Revolutions Per Minute":"rpm","Bus Volts":"v_bus",
     "RODAMIENTO LL":"t_brg1","RODAMIENTO LA":"t_brg2","TEMP HTC RTD":"t_oil","DEVANADO MOTOR":"t_wind",
     "CORRI MOTOR":"i_motor","VOLTAJE MOTOR":"v_motor",
+    "Pump Torque":"torque_bba",
     "Heatsink 1 Present Temperature":"t_hs","Heatsink 2 Present Temperature":null,
     "Heatsink 3 Present Temperature":null,"Heatsink 4 Present Temperature":null } },
 
@@ -486,7 +488,7 @@ const PROFILES=[
     "Output Current C":"i_out_c","Output Volts":"v_out","Bus Volts":"v_bus",
     "Input Voltage AB":"v_ab","Input Voltage BC":"v_bc","Input Voltage CA":"v_ca",
     "Input Current Phase A":"i_in_a","Input Current Phase B":"i_in_b","Input Current Phase C":"i_in_c",
-    "Input frequency Present Value":"freq_in","Motor Torque":"torque","Pump Torque":"torque",
+    "Input frequency Present Value":"freq_in","Motor Torque":"torque","Pump Torque":"torque_bba",
     "Pump Revolutions Per Minute":"rpm",
     "PRES SUCCION":"p_intake","PRESION DESCARGA":"p_disch","PRES ACEITE HTC":"p_oil",
     "T. VIBRACION":"vib_1","RODAMIENTO LL":"t_brg1","RODAMIENTO LA":"t_brg2",
@@ -494,7 +496,19 @@ const PROFILES=[
     "Heatsink 1 Present Temperature":"t_hs",
     "ZIntake Pres":"p_intake","ZDschrge Pres":"p_disch",
     "ZIntake Temp":["t_intake",F2C],"ZMotor Temp":["t_wind",F2C],
-    "ZVibration X":"vib_1","ZVibration Z":"vib_2" } },
+    "ZVibration X":"vib_1","ZVibration Z":"vib_2",
+    /* Sensor de fondo Baker/Centrilift: etiquetas de dos y tres letras. La fila
+       de unidades del propio archivo las desambigua sin adivinar — CT viene en
+       mA, o sea corriente de fuga y no temperatura; TI y TM vienen en °F
+       aunque los disipadores del mismo archivo estén en °C. */
+    "PIP":"p_intake","PD":"p_disch","PDP":"p_disch",
+    "TI":["t_intake",F2C],"TM":["t_wind",F2C],
+    "VX":"vib_1","VY":"vib_3","VZ":"vib_2",
+    "CT":"leak",
+    "VOL MOTOR":"v_motor","AMP B MOTOR":"i_motor",
+    "Heatsink 2 Present Temperature":null,"Heatsink 3 Present Temperature":null,
+    "Heatsink 4 Present Temperature":null,
+    "Inductor Present Temperature":"t_ind" } },
 
 { id:"bh_sdhist", name:"Baker Hughes · histórico de paros", genre:"evento",
   score:h=>(/^\s*"?Shutdown Cause"?/i.test(h)?10:0), enc:"auto", dateFmt:"Y/M/D", kind:"sdhist" },
