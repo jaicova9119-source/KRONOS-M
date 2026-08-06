@@ -75,6 +75,14 @@ html,body{height:100%;margin:0;}
 .navbar.modulo-documental .nav-item[data-modulo="documental"]{display:flex;}
 .navbar.modulo-ensayos .nav-item[data-modulo="ensayos"]{display:flex;}
 .navbar.modulo-programacion .nav-item[data-modulo="programacion"]{display:flex;}
+.navbar.modulo-vfd .nav-item[data-modulo="vfd"]{display:flex;}
+
+/* El analizador de bitacoras corre en un iframe y no pegado en este archivo:
+   define su propia paleta en :root, escribe data-theme sobre <html> y usa
+   clases como .sidebar que ya existen aqui. En iframe no hay nada que
+   aislar a mano, y el archivo se carga solo cuando se abre el modulo. */
+#vfd-marco{width:100%;height:100%;border:0;display:block;background:var(--bg-0)}
+#panel-vfd .panel-body{padding:0;overflow:hidden}
 .ee-pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;margin:0 3px}
 .ee-ok{background:#E8F5E9;color:#2E7D32}.ee-warn{background:#FFF3E0;color:#E08600}
 .ee-bad{background:#FFEBEE;color:#C62828}.ee-na{background:#F2F2F2;color:#666}
@@ -712,6 +720,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <option value="documental">Gestión Documental</option>
     <option value="ensayos">Ensayos Eléctricos</option>
     <option value="programacion">Programación</option>
+    <option value="vfd">Analizador VFD</option>
   </select>
 </div>
 
@@ -835,6 +844,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <button class="nav-item" data-tab="ee-maquinas" data-modulo="ensayos">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 10h3l2 2-2 2h-3"/><path d="M9 4l-1 3h3l-1 3"/></svg>
     Máquinas
+  </button>
+
+  <button class="nav-item" data-tab="vfd" data-modulo="vfd">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l3-4 3 3 4-6"/></svg>
+    Bitácoras
   </button>
 
   <button class="nav-item" data-tab="prog-dia" data-modulo="programacion">
@@ -1578,6 +1592,15 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 </div>
 
 <!-- ===== Panel: Ensayos · informe ===== -->
+<div class="panel" id="panel-vfd">
+  <div class="panel-header">
+    <h2>Analizador de bitácoras VFD</h2>
+  </div>
+  <div class="panel-body">
+    <iframe id="vfd-marco" title="Analizador de bitácoras VFD"></iframe>
+  </div>
+</div>
+
 <div class="panel" id="panel-ee-informe">
   <div class="panel-header no-print">
     <button class="icon-btn" onclick="abrirMaquina(eeMaquinaActual.id)">&#8592;</button>
@@ -1996,7 +2019,8 @@ function aplicarModulo(modulo, irVistaDefault = true) {
   localStorage.setItem(MODULO_KEY, modulo);
 
   const navbar = document.getElementById("navbar-principal");
-  navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental", "modulo-ensayos", "modulo-programacion");
+  navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental",
+                          "modulo-ensayos", "modulo-programacion", "modulo-vfd");
   navbar.classList.add("modulo-" + modulo);
   document.getElementById("selector-modulo").value = modulo;
 
@@ -2025,6 +2049,11 @@ function aplicarModulo(modulo, irVistaDefault = true) {
     document.querySelector('[data-tab="ee-maquinas"]').classList.add("active");
     abrirPanel("panel-ee-maquinas");
     cargarMaquinas();
+  } else if (modulo === "vfd") {
+    app.classList.add("modulo-completo");
+    document.querySelector('[data-tab="vfd"]').classList.add("active");
+    abrirPanel("panel-vfd");
+    abrirAnalizadorVFD();
   } else if (modulo === "programacion") {
     app.classList.add("modulo-completo");
     document.querySelector('[data-tab="prog-dia"]').classList.add("active");
@@ -2036,6 +2065,14 @@ function aplicarModulo(modulo, irVistaDefault = true) {
 document.getElementById("selector-modulo").addEventListener("change", (e) => {
   aplicarModulo(e.target.value);
 });
+
+/* El analizador pesa lo suyo y no lo usa todo el mundo: el iframe se apunta
+   la primera vez que se abre el modulo y de ahi en adelante conserva su
+   estado, con los archivos que ya se hayan cargado en esa sesion. */
+function abrirAnalizadorVFD() {
+  const marco = document.getElementById("vfd-marco");
+  if (marco && !marco.src) marco.src = "analizador-vfd.html";
+}
 
 function fmtCOP(n) {
   return new Intl.NumberFormat("es-CO", { style: "currency", currency: "COP", maximumFractionDigits: 0 }).format(n || 0);
