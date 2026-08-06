@@ -83,6 +83,19 @@ html,body{height:100%;margin:0;}
    aislar a mano, y el archivo se carga solo cuando se abre el modulo. */
 #vfd-marco{width:100%;height:100%;border:0;display:block;background:var(--bg-0)}
 #panel-vfd .panel-body{padding:0;overflow:hidden}
+/* Barra minima: el analizador ya trae su propio encabezado, asi que aqui
+   solo quedan los controles de espacio. Un panel-header normal le robaria
+   50 px de alto por nada. */
+#panel-vfd .panel-header{padding:5px 8px;gap:8px}
+#panel-vfd .panel-header h2{font-size:12.5px;font-weight:500;color:var(--text-2)}
+#panel-vfd .panel-header .btn-secondary{
+  width:auto;margin:0;padding:5px 11px;font-size:12.5px;flex-shrink:0;
+}
+/* En este modulo la barra de navegacion solo tendria un boton, el de este
+   mismo modulo. Ocultarla devuelve 84 px de ancho, que es lo que le falta
+   a la fila de botones del analizador para no cortarse. */
+#app.modulo-vfd .navbar{display:none}
+#panel-vfd .panel-body:fullscreen{background:var(--bg-0)}
 .ee-pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;margin:0 3px}
 .ee-ok{background:#E8F5E9;color:#2E7D32}.ee-warn{background:#FFF3E0;color:#E08600}
 .ee-bad{background:#FFEBEE;color:#C62828}.ee-na{background:#F2F2F2;color:#666}
@@ -1594,7 +1607,9 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <!-- ===== Panel: Ensayos · informe ===== -->
 <div class="panel" id="panel-vfd">
   <div class="panel-header">
-    <h2>Analizador de bitácoras VFD</h2>
+    <h2>Analizador de bitácoras</h2>
+    <button class="btn-secondary" onclick="vfdPantallaCompleta()">Pantalla completa</button>
+    <button class="btn-secondary" onclick="window.open('analizador-vfd.html','_blank')">Pestaña aparte</button>
   </div>
   <div class="panel-body">
     <iframe id="vfd-marco" title="Analizador de bitácoras VFD"></iframe>
@@ -2031,6 +2046,7 @@ function aplicarModulo(modulo, irVistaDefault = true) {
   if (!irVistaDefault) return;
 
   const app = document.getElementById("app");
+  app.classList.toggle("modulo-vfd", modulo === "vfd");
   if (modulo === "activos") {
     app.classList.remove("modulo-completo");
     document.querySelector('[data-tab="inicio"]').classList.add("active");
@@ -2051,6 +2067,7 @@ function aplicarModulo(modulo, irVistaDefault = true) {
     cargarMaquinas();
   } else if (modulo === "vfd") {
     app.classList.add("modulo-completo");
+    app.classList.add("modulo-vfd");
     document.querySelector('[data-tab="vfd"]').classList.add("active");
     abrirPanel("panel-vfd");
     abrirAnalizadorVFD();
@@ -2072,6 +2089,18 @@ document.getElementById("selector-modulo").addEventListener("change", (e) => {
 function abrirAnalizadorVFD() {
   const marco = document.getElementById("vfd-marco");
   if (marco && !marco.src) marco.src = "analizador-vfd.html";
+}
+
+/* Pantalla completa nativa sobre el contenedor del iframe: le da al
+   analizador toda la pantalla fisica, mas incluso que abrirlo solo en el
+   navegador. Se sale con Escape, sin boton flotante que tape su barra. */
+function vfdPantallaCompleta() {
+  const cont = document.querySelector("#panel-vfd .panel-body");
+  if (!cont) return;
+  if (document.fullscreenElement) { document.exitFullscreen(); return; }
+  const pedir = cont.requestFullscreen || cont.webkitRequestFullscreen;
+  if (!pedir) { toast("Este navegador no permite pantalla completa"); return; }
+  Promise.resolve(pedir.call(cont)).catch(() => toast("El navegador bloqueó la pantalla completa"));
 }
 
 function fmtCOP(n) {
