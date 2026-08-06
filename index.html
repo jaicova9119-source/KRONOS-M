@@ -106,12 +106,51 @@ html,body{height:100%;margin:0;}
 #ee-informe .inf-firmas{width:100%;margin-top:26px;font-size:12px}
 #ee-informe .inf-firmas td{width:50%;padding-top:10px}
 #ee-informe .inf-pie{font-size:10px;color:#666;margin-top:16px;border-top:1px solid #ccc;padding-top:5px}
+/* Contenedor temporal: eeImprimirInforme() mueve aqui el informe justo antes
+   de llamar a window.print() y lo devuelve al terminar. Es la unica forma de
+   sacarlo de .panel-body (overflow:auto) y de .panel (max-width:520px), que
+   son los que recortaban el documento a una sola pagina y lo dejaban en una
+   franja angosta en el centro de la hoja. */
+#print-root{display:none}
+
 @media print{
-  body *{visibility:hidden!important}
-  #ee-informe,#ee-informe *{visibility:visible!important}
-  #ee-informe{position:absolute;left:0;top:0;width:100%;padding:0;border-radius:0}
+  html,body{
+    overflow:visible!important;height:auto!important;
+    margin:0!important;padding:0!important;
+    background:#fff!important;color:#000!important;
+  }
+  body.imprimiendo > *{display:none!important}
+  body.imprimiendo > #print-root{display:block!important}
   .no-print{display:none!important}
-  @page{margin:14mm}
+
+  #print-root #ee-informe{
+    position:static!important;width:auto!important;max-width:none!important;
+    margin:0!important;padding:0!important;border-radius:0!important;
+    background:#fff!important;color:#000!important;font-size:10pt!important;
+  }
+  #print-root h3{font-size:10.5pt!important;margin:11pt 0 3pt!important}
+  #print-root .inf-titulo{font-size:15pt!important}
+  #print-root .inf-sub,#print-root .inf-min,#print-root .inf-nota{font-size:8pt!important}
+  #print-root .inf-tabla{font-size:8.5pt!important}
+  #print-root .inf-tabla td,#print-root .inf-tabla th{padding:2.5pt 4pt!important}
+  #print-root .inf-veredicto{font-size:12pt!important}
+  #print-root .inf-logo{max-height:42pt!important}
+  #print-root .inf-pie{font-size:7.5pt!important}
+
+  /* Fondos e hilos de color: sin esto Chrome/Edge imprimen los encabezados
+     de tabla en blanco sobre blanco. */
+  #print-root *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}
+
+  /* Cortes de pagina: una tabla, el dictamen o las firmas nunca deben
+     quedar partidos entre dos hojas. */
+  #print-root table,#print-root .inf-dictamen,#print-root .inf-firmas{
+    break-inside:avoid;page-break-inside:avoid;
+  }
+  #print-root h3{break-after:avoid;page-break-after:avoid}
+  #print-root tr{break-inside:avoid;page-break-inside:avoid}
+  #print-root thead{display:table-header-group}
+
+  @page{size:letter portrait;margin:12mm}
 }
 body{
   background:var(--bg-0);color:var(--text-0);font-family:var(--sans);
@@ -4445,10 +4484,12 @@ const EE_unidadActual = () => document.getElementById("ee-e-unidad")?.value || "
 const EE_simbolo = u => (EE_UNIDADES[u] || EE_UNIDADES.Mohm).simbolo;
 const EE_aMohm = (v, u) => (v == null || !isFinite(v)) ? null
   : v * (EE_UNIDADES[u] || EE_UNIDADES.Mohm).factor;
-const EE_num = v => v == null ? "—" : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 1 });
+// Sin separador de miles: en un informe tecnico "3.970" se confunde con 3,97.
+const EE_num = v => v == null ? "—"
+  : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 1, useGrouping: false });
 const EE_fmtMohm = v => v == null ? "—" : EE_num(v) + " MΩ";
 const EE_fmtMedido = (v, u) => v == null ? "—"
-  : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 4 }) + " " + EE_simbolo(u);
+  : Number(v).toLocaleString("es-CO", { maximumFractionDigits: 4, useGrouping: false }) + " " + EE_simbolo(u);
 
 // Tabla 3. El minimo depende del tipo de devanado y de la tension,
 // nunca de la potencia.
@@ -5419,7 +5460,30 @@ async function verInforme(ensayoId) {
     : '<span class="mat-stock">Sin logo. El informe sale sin imagen.</span>';
 }
 
-function eeImprimirInforme() { window.print(); }
+function eeImprimirInforme() {
+  const inf = document.getElementById("ee-informe");
+  if (!inf) return;
+  const ancla = document.createComment("ee-informe");
+  inf.parentNode.insertBefore(ancla, inf);
+  const root = document.createElement("div");
+  root.id = "print-root";
+  root.appendChild(inf);
+  document.body.appendChild(root);
+  document.body.classList.add("imprimiendo");
+
+  let restaurado = false;
+  const restaurar = () => {
+    if (restaurado) return;
+    restaurado = true;
+    if (ancla.parentNode) ancla.parentNode.insertBefore(inf, ancla);
+    ancla.remove();
+    root.remove();
+    document.body.classList.remove("imprimiendo");
+    window.removeEventListener("afterprint", restaurar);
+  };
+  window.addEventListener("afterprint", restaurar);
+  try { window.print(); } finally { setTimeout(restaurar, 0); }
+}
 
 // Word abre HTML empaquetado como .doc conservando tablas y colores, y el
 // documento queda editable. No es un .docx nativo, pero para adjuntar a una
@@ -5452,7 +5516,7 @@ function eeDescargarWord() {
     xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
     <head><meta charset="utf-8"><title>Informe de ensayo</title>
     <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
-    <style>@page{size:21cm 27.9cm;margin:2cm}${estilos}</style></head>
+    <style>@page{size:21cm 27.9cm;margin:1.5cm}${estilos}</style></head>
     <body>${document.getElementById("ee-informe").innerHTML}</body></html>`;
 
   const blob = new Blob(["\ufeff", doc], { type: "application/msword" });
