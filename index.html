@@ -103,11 +103,12 @@ html,body{height:100%;margin:0;}
 #ee-informe .inf-veredicto{font-size:15px;font-weight:800}
 #ee-informe .inf-nota{font-size:11px;color:#555}
 #ee-informe .inf-obs{font-size:12px}
-#ee-informe .inf-firmas{width:100%;margin-top:14px;font-size:12px}
+#ee-informe .inf-cierre{margin-top:16px;border-top:1px solid #ccc;padding-top:5px}
+#ee-informe .inf-idpag{font-size:9px;color:#666}
+#ee-informe .inf-pie{font-size:10px;color:#666;margin-top:3px}
+#ee-informe .inf-firmas{width:100%;margin-top:12px;font-size:12px}
 #ee-informe .inf-firmas td{width:50%;padding-top:6px;vertical-align:bottom}
 #ee-informe .inf-espacio{height:34px}
-#ee-informe .inf-idpag{font-size:9px;color:#666;margin-top:16px;border-top:1px solid #ccc;padding-top:4px}
-#ee-informe .inf-pie{font-size:10px;color:#666;margin-top:16px;border-top:1px solid #ccc;padding-top:5px}
 /* Contenedor temporal: eeImprimirInforme() mueve aqui el informe justo antes
    de llamar a window.print() y lo devuelve al terminar. Es la unica forma de
    sacarlo de .panel-body (overflow:auto) y de .panel (max-width:520px), que
@@ -130,20 +131,24 @@ html,body{height:100%;margin:0;}
     margin:0!important;padding:0!important;border-radius:0!important;
     background:#fff!important;color:#000!important;font-size:10pt!important;
   }
-  #print-root h3{font-size:10.5pt!important;margin:8pt 0 2.5pt!important}
-  #print-root p{margin:4pt 0!important}
-  #print-root .inf-dictamen{padding:7pt!important;margin-top:3pt!important}
-  #print-root .inf-idpag{margin-top:10pt!important;padding-top:3pt!important;font-size:7.5pt!important}
-  #print-root .inf-firmas{margin-top:8pt!important;font-size:9.5pt!important}
-  #print-root .inf-firmas td{padding-top:2pt!important}
-  #print-root .inf-espacio{height:26pt!important}
-  #print-root .inf-pie{margin-top:9pt!important;padding-top:3pt!important}
-  /* La identificacion, las firmas y el pie son un solo bloque: si alguna vez
-     el informe pasa de una hoja, viajan juntos y nunca se parten. */
-  #print-root .inf-idpag,#print-root .inf-firmas,#print-root .inf-pie{
+  #print-root h3{font-size:10pt!important;margin:7pt 0 2pt!important}
+  #print-root p{margin:3.5pt 0!important}
+  #print-root .inf-cab{margin-bottom:8pt!important}
+  #print-root .inf-dictamen{padding:6pt!important;margin-top:2pt!important}
+  #print-root .inf-datos .inf-tabla{font-size:8pt!important}
+  #print-root .inf-datos .inf-tabla td{padding:1.5pt 4pt!important}
+  /* Identificacion, descargo y firmas son un solo bloque indivisible: si el
+     informe llegara a pasar de una hoja, viajan juntos y la pagina firmada
+     nunca queda sin identificar el equipo ni la fecha del ensayo. */
+  #print-root .inf-cierre{
+    margin-top:8pt!important;padding-top:3pt!important;
     break-inside:avoid;page-break-inside:avoid;
   }
-  #print-root .inf-idpag{break-after:avoid;page-break-after:avoid}
+  #print-root .inf-idpag{font-size:7.5pt!important}
+  #print-root .inf-pie{margin-top:2pt!important;padding-top:0!important;border-top:none!important}
+  #print-root .inf-firmas{margin-top:7pt!important;font-size:9.5pt!important}
+  #print-root .inf-firmas td{padding-top:2pt!important}
+  #print-root .inf-espacio{height:22pt!important}
   #print-root .inf-titulo{font-size:15pt!important}
   #print-root .inf-sub,#print-root .inf-min,#print-root .inf-nota{font-size:8pt!important}
   #print-root .inf-tabla{font-size:8.5pt!important}
@@ -5465,14 +5470,16 @@ async function verInforme(ensayoId) {
 
     ${e.observaciones ? `<h3>Observaciones del técnico</h3><p class="inf-obs">${e.observaciones}</p>` : ""}
 
-    <div class="inf-idpag">${(m.nombre_efectivo || "").toString()} · SAP ${m.sap_efectivo || "—"} · Ensayo del ${e.fecha}</div>
-    <table class="inf-firmas">
-      <tr><td>Realizó<div class="inf-espacio"></div>______________________<br>${e.tecnico || ""}</td>
-          <td>Revisó<div class="inf-espacio"></div>______________________<br>&nbsp;</td></tr>
-    </table>
-    <div class="inf-pie">
-      El dictamen es un apoyo al diagnóstico generado a partir de los datos registrados y no reemplaza el criterio del ingeniero responsable.
-      Informe generado el ${new Date().toLocaleDateString("es-CO")} desde Kronos-M.
+    <div class="inf-cierre">
+      <div class="inf-idpag">${(m.nombre_efectivo || "").toString()} · SAP ${m.sap_efectivo || "—"} · Ensayo del ${e.fecha}</div>
+      <div class="inf-pie">
+        El dictamen es un apoyo al diagnóstico generado a partir de los datos registrados y no reemplaza el criterio del ingeniero responsable.
+        Informe generado el ${new Date().toLocaleDateString("es-CO")} desde Kronos-M.
+      </div>
+      <table class="inf-firmas">
+        <tr><td>Realizó<div class="inf-espacio"></div>______________________<br>${e.tecnico || ""}</td>
+            <td>Revisó<div class="inf-espacio"></div>______________________<br>&nbsp;</td></tr>
+      </table>
     </div>`;
 
   document.getElementById("ee-logo-estado").innerHTML = logo
@@ -5527,11 +5534,12 @@ function eeDescargarWord() {
     .inf-d-bad{border-color:#C62828}.inf-d-warn{border-color:#E08600}.inf-d-ok{border-color:#359E68}
     .inf-veredicto{font-size:12pt;font-weight:bold}
     .inf-nota{font-size:8.5pt;color:#555}
-    .inf-firmas{width:100%;margin-top:8pt;font-size:9.5pt}
+    .inf-cierre{margin-top:8pt;border-top:1px solid #ccc;padding-top:3pt}
+    .inf-idpag{font-size:7.5pt;color:#666}
+    .inf-firmas{width:100%;margin-top:7pt;font-size:9.5pt}
     .inf-firmas td{width:50%;padding-top:2pt;vertical-align:bottom}
-    .inf-espacio{height:26pt}
-    .inf-idpag{font-size:7.5pt;color:#666;margin-top:10pt;border-top:1px solid #ccc;padding-top:3pt}
-    .inf-pie{font-size:8pt;color:#666;margin-top:14pt;border-top:1px solid #ccc;padding-top:4pt}
+    .inf-espacio{height:22pt}
+    .inf-pie{font-size:8pt;color:#666;margin-top:2pt}
     .inf-logo{max-height:48pt}
     .inf-cab{margin-bottom:10pt}`;
   const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
