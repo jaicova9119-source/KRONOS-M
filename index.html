@@ -91,10 +91,6 @@ html,body{height:100%;margin:0;}
 #panel-vfd .panel-header .btn-secondary{
   width:auto;margin:0;padding:5px 11px;font-size:12.5px;flex-shrink:0;
 }
-/* En este modulo la barra de navegacion solo tendria un boton, el de este
-   mismo modulo. Ocultarla devuelve 84 px de ancho, que es lo que le falta
-   a la fila de botones del analizador para no cortarse. */
-#app.modulo-vfd .navbar{display:none}
 #panel-vfd .panel-body:fullscreen{background:var(--bg-0)}
 .ee-pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;margin:0 3px}
 .ee-ok{background:#E8F5E9;color:#2E7D32}.ee-warn{background:#FFF3E0;color:#E08600}
@@ -642,6 +638,13 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   }
   .pane-list{max-width:400px;min-width:340px;flex-shrink:0;border-right:1px solid var(--line);}
   #app.modulo-completo .pane-list{display:none;}
+
+  /* En el modulo VFD la barra lateral solo tendria un boton, el del propio
+     modulo. Se oculta y se recupera el padding de 84 px que reservaba: es
+     justo el ancho que le falta a la fila de botones del analizador para no
+     cortarse. Solo en escritorio; en movil esa barra es la unica navegacion. */
+  #app.modulo-vfd{padding-left:0;}
+  #app.modulo-vfd .navbar{display:none;}
   .pane-detail{
     display:flex;flex:1;position:relative;background:var(--bg-1);overflow:hidden;
   }
