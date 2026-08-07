@@ -90,6 +90,22 @@ button{cursor:pointer;background:none;border:none}
 #tip .tr span{color:var(--tx2);display:flex;align-items:center;gap:6px}
 #tip .tr i{width:9px;height:2.5px;border-radius:2px;display:inline-block}
 #tip .tr b{font-family:var(--f-mono);font-weight:500;color:var(--tx);font-variant-numeric:tabular-nums}
+/* Punto fijado: mismo aspecto que el tooltip pero anclado abajo a la
+   izquierda y con el ratón activo, para poder copiarlo o soltarlo. */
+#fijo{position:fixed;left:14px;bottom:14px;z-index:59;display:none;max-width:330px;
+  background:var(--panel);border:1px solid var(--g-accion);border-radius:3px;padding:10px 12px;
+  box-shadow:0 6px 24px rgba(0,0,0,.35)}
+:root[data-theme="light"] #fijo{box-shadow:0 6px 24px rgba(30,60,80,.18)}
+#fijo .fx-h{display:flex;align-items:center;gap:8px;margin-bottom:7px;
+  border-bottom:1px solid var(--rule3);padding-bottom:6px}
+#fijo .fx-t{font-family:var(--f-mono);font-size:11.5px;color:var(--g-accion);flex:1}
+#fijo .fx-b{font:inherit;font-size:11px;background:none;border:1px solid var(--rule);border-radius:2px;
+  color:var(--tx3);padding:1px 7px;cursor:pointer}
+#fijo .fx-b:hover{border-color:var(--g-accion);color:var(--g-accion)}
+#fijo .tr{display:flex;justify-content:space-between;gap:16px;font-size:12.5px;line-height:1.7}
+#fijo .tr span{color:var(--tx2);display:flex;align-items:center;gap:6px}
+#fijo .tr i{width:9px;height:2.5px;border-radius:2px;display:inline-block}
+#fijo .tr b{font-family:var(--f-mono);font-weight:500;color:var(--tx);font-variant-numeric:tabular-nums}
 
 .ampwrap{display:grid;grid-template-columns:1fr 190px;gap:18px;padding:16px 0;height:100%}
 #ampCv{display:block;width:100%;cursor:crosshair}
@@ -342,6 +358,7 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
 </div>
 
 <div id="tip"></div>
+<div id="fijo"></div>
 <div class="drop" id="drop">
   <div class="dz" id="dz">
     <div class="kick">GCS · ADV · Triol · Summit</div>
@@ -1137,6 +1154,11 @@ function removeUnit(key){
    5 · ESTADO DE VISTA
 ══════════════════════════════════════════════════════════════════ */
 let sel=new Set(), mode="unit", view={a:0,b:0}, cross=null, panels=[];
+/* Punto fijado con un clic sobre la tendencia. Queda en pantalla mientras se
+   navega a otra hora, y el tooltip pasa a mostrar la diferencia contra el.
+   Es lo que hace falta para escribir un reporte: dos lecturas y su delta. */
+let fijo=null;          // {t, filas:[[etiqueta, valor, color, num, unidad]]}
+let _movio=false;       // distinguir un clic de un arrastre de zoom
 const $=s=>document.querySelector(s);
 const el=(t,c,x)=>{const e=document.createElement(t); if(c)e.className=c; if(x!=null)e.textContent=x; return e;};
 const U=()=>DB.units[DB.active];
@@ -1224,6 +1246,8 @@ const GROUPS=[
 ];
 function boot(){
   const u=U(); if(!u) return;
+  // la lectura fijada es de un pozo concreto; al cambiar de pozo deja de aplicar
+  if(fijo && fijo.unit!==DB.active){ fijo=null; const c=$("#fijo"); if(c) c.style.display="none"; }
   const has=r=>u.ch[r]&&u.ch[r].n;
   sel=new Set(GROUPS[0][1].filter(has));
   if(!sel.size) sel=new Set(Object.keys(u.ch).slice(0,4));
@@ -1320,7 +1344,7 @@ function buildQuick(){
   const crit=u.events.filter(e=>e.sev==="crit");
   if(crit.length) opts.push(["Último disparo",()=>{const t=crit[crit.length-1].t;return{a:t-36e5,b:t+18e5};}]);
   opts.forEach(([l,f])=>{ const b=el("button","qb",l); b.onclick=()=>setView(f()); c.appendChild(b); });
-  c.appendChild(el("span","klav","arrastra para zoom · rueda · ⇧arrastra desplaza · doble clic reinicia · ratón al borde abre el panel · ancla para fijarlo"));
+  c.appendChild(el("span","klav","arrastra para zoom · rueda · ⇧arrastra desplaza · clic fija una lectura · doble clic reinicia · ratón al borde abre el panel · ancla para fijarlo"));
 }
 function buildEvents(){
   const u=U(),box=$("#evs"); box.innerHTML="";
@@ -1558,6 +1582,12 @@ function drawPanel(p){
     }
     g.stroke();
   });
+  if(fijo&&fijo.t>=view.a&&fijo.t<=view.b){
+    const x=Math.round(X(fijo.t))+.5;
+    g.strokeStyle=V("--g-accion"); g.globalAlpha=.85; g.lineWidth=1.4;
+    g.beginPath();g.moveTo(x,PADT);g.lineTo(x,PADT+ih);g.stroke();
+    g.fillStyle=V("--g-accion"); g.beginPath(); g.arc(x,PADT+4,3.2,0,7); g.fill(); g.globalAlpha=1;
+  }
   if(cross!=null&&cross>=view.a&&cross<=view.b){
     const x=Math.round(X(cross))+.5;
     g.strokeStyle=V("--acc"); g.globalAlpha=.7; g.setLineDash([3,3]); g.lineWidth=1;
@@ -1613,12 +1643,14 @@ let curDrag=null;
 function attachZoom(cv){
   const tAt=e=>{ const r=cv.getBoundingClientRect(),PADL=56,PADR=10,iw=r.width-PADL-PADR;
     return view.a+Math.min(1,Math.max(0,(e.clientX-r.left-PADL)/iw))*(view.b-view.a); };
-  cv.addEventListener("mousedown",e=>{ curDrag={cv,t0:tAt(e),x0:e.clientX,pan:e.shiftKey,a:view.a,b:view.b}; e.preventDefault(); });
+  cv.addEventListener("mousedown",e=>{ _movio=false; curDrag={cv,t0:tAt(e),x0:e.clientX,pan:e.shiftKey,a:view.a,b:view.b}; e.preventDefault(); });
+  cv.addEventListener("click",e=>{ if(_movio) return; fijarPunto(tAt(e)); });
   cv.addEventListener("mousemove",e=>{
     cross=tAt(e); updateReadouts(cross);
     tipTend(e,cross);
     const d=curDrag;
     if(d&&d.cv===cv){
+      if(Math.abs(e.clientX-d.x0)>3) _movio=true;
       if(d.pan){ const r=cv.getBoundingClientRect(),iw=r.width-66;
         const k=(e.clientX-d.x0)/iw*(d.b-d.a); view={a:d.a-k,b:d.b-k}; refreshOnly(); }
       else { d.t1=tAt(e); drawSelection(cv,d); }
@@ -1630,17 +1662,71 @@ function attachZoom(cv){
     setView({a:t-(t-view.a)*k,b:t+(view.b-t)*k}); },{passive:false});
   cv.addEventListener("mouseleave",()=>{cross=null;updateReadouts(null);hideTip();refreshOnly();});
 }
-function tipTend(e,t){
-  const u=U(), rows=[];
+/* Lectura de todos los canales en un instante. Devuelve tambien el numero
+   crudo y la unidad, para poder restar dos lecturas sin volver a parsear. */
+function lecturaEn(t){
+  const filas=[];
   panels.forEach(p=>p.chs.forEach(C=>{
     const i=Math.max(0,Math.min(C.n-1,bs(C.t,t,C.n)));
-    const ok=Math.abs(C.t[i]-t)<=medDt(C)*3;
-    rows.push([C.label, ok? fN(C.y[i],C.unit):"sin dato", V(C.cvar)]);
+    const ok=C.n>0 && Math.abs(C.t[i]-t)<=medDt(C)*3;
+    filas.push([C.label, ok? fN(C.y[i],C.unit):"sin dato", V(C.cvar), ok? C.y[i]:null, C.unit]);
   }));
+  return filas;
+}
+function fijarPunto(t){
+  const filas=lecturaEn(t);
+  if(!filas.length) return;
+  // volver a hacer clic casi en el mismo sitio suelta el punto
+  if(fijo && Math.abs(fijo.t-t) < (view.b-view.a)/300){ soltarPunto(); return; }
+  fijo={t, filas, unit:DB.active};
+  pintarFijo(); refreshOnly();
+}
+function soltarPunto(){ fijo=null; const c=$("#fijo"); if(c) c.style.display="none"; refreshOnly(); }
+
+function pintarFijo(){
+  const c=$("#fijo"); if(!c||!fijo) return;
+  c.innerHTML="";
+  const h=el("div","fx-h");
+  h.appendChild(el("span","fx-t",`${DB.active} · ${fT(fijo.t)}`));
+  const bc=el("button","fx-b","Copiar"); bc.onclick=copiarFijo;
+  const bx=el("button","fx-b","×"); bx.title="soltar el punto"; bx.onclick=soltarPunto;
+  h.appendChild(bc); h.appendChild(bx); c.appendChild(h);
+  fijo.filas.forEach(([lab,val,col])=>{
+    const r=el("div","tr"), l=el("span");
+    if(col){ const i=el("i"); i.style.background=col; l.appendChild(i); }
+    l.appendChild(el("span",null,lab)); r.appendChild(l); r.appendChild(el("b",null,val)); c.appendChild(r);
+  });
+  c.style.display="block";
+}
+function copiarFijo(){
+  if(!fijo) return;
+  const txt=[`${DB.active}  ${fT(fijo.t)}`,
+    ...fijo.filas.map(([lab,val])=>`  ${lab}: ${val}`)].join("\n");
+  navigator.clipboard?.writeText(txt).then(
+    ()=>{ $("#err").textContent="Lectura copiada al portapapeles."; setTimeout(()=>{$("#err").textContent="";},2500); },
+    ()=>{});
+}
+
+function tipTend(e,t){
+  const u=U();
+  const filas=lecturaEn(t);
+  const rows=filas.map(([lab,val,col,num,uni],k)=>{
+    // con un punto fijado, cada linea lleva ademas la diferencia contra el
+    if(fijo && fijo.filas[k] && fijo.filas[k][0]===lab){
+      const ref=fijo.filas[k][3];
+      if(num!=null && ref!=null){
+        const dv=num-ref;
+        return [lab, `${val}   ${dv>=0?"+":"−"}${fN(Math.abs(dv),uni)}`, col];
+      }
+    }
+    return [lab,val,col];
+  });
   const near=u.events.filter(x=>Math.abs(x.t-t)<Math.max(6e4,(view.b-view.a)/120))
     .sort((a,b)=>Math.abs(a.t-t)-Math.abs(b.t-t))[0];
   if(near) rows.push([near.label.slice(0,34), fT(near.t,false), V(near.sev==="crit"?"--crit":near.sev==="accion"?"--g-accion":"--att")]);
-  if(rows.length) showTip(e, fT(t), rows);
+  let tit=`${DB.active} · ${fT(t)}`;
+  if(fijo) tit+=`   Δt ${t>=fijo.t?"+":"−"}${fDur(Math.abs(t-fijo.t))}`;
+  if(rows.length) showTip(e, tit, rows);
 }
 let _rz; window.addEventListener("resize",()=>{ clearTimeout(_rz); _rz=setTimeout(()=>{ if(DB.active) renderAll(); },140); });
 window.addEventListener("mouseup",()=>{
@@ -1877,7 +1963,7 @@ function renderAmp(){
     if(vx!=null&&vn!=null) rows.push(["Banda", fN(vx-vn,"A"), null]);
     const near=u.events.filter(x=>Math.abs(x.t-t)<9e5).sort((p,q)=>Math.abs(p.t-t)-Math.abs(q.t-t))[0];
     if(near) rows.push([near.label.slice(0,32), fT(near.t,false), V(near.sev==="crit"?"--crit":"--att")]);
-    showTip(e, fD(day.d)+"  "+fT(t,false), rows);
+    showTip(e, `${DB.active} · ${fD(day.d)}  ${fT(t,false)}`, rows);
   });
   cv.addEventListener("mouseleave",hideTip);
 })();
