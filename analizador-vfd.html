@@ -1479,29 +1479,34 @@ function drawPanel(p){
   });
   // eventos: con cientos en pantalla las líneas tapan la señal, así que se resume
   const inview=u.events.filter(e=>e.t>=view.a&&e.t<=view.b);
-  const DENSE=inview.length>45 || MARCAS<2;
-  const draw=MARCAS===0? [] : (DENSE? inview.filter(e=>e.sev==="crit") : inview);
-  if(DENSE||MARCAS===0){
-    // franja de densidad arriba: cuántos eventos por columna de píxel
-    const bins=new Int32Array(Math.ceil(iw)+1);
-    inview.forEach(e=>{ const px=Math.floor((e.t-view.a)/(view.b-view.a)*iw); if(px>=0&&px<=iw) bins[px]++; });
-    let mxb=1; for(const v of bins) if(v>mxb) mxb=v;
-    for(let px=0;px<=iw;px++){ if(!bins[px]) continue;
-      g.fillStyle=V("--g-evento"); g.globalAlpha=.18+.5*(bins[px]/mxb);
-      g.fillRect(PADL+px,PADT,1,6); }
-    g.globalAlpha=1;
+  const MUCHOS=inview.length>45;
+  // «ninguna» es ninguna: ni líneas, ni marcas cortas, ni franja de densidad.
+  // Los tramos parados se siguen viendo porque son banda sombreada, no marca.
+  if(MARCAS>0){
+    const draw = MUCHOS? inview.filter(e=>e.sev==="crit") : inview;
+    // La franja de densidad solo aparece cuando hay tantos eventos que no se
+    // pueden dibujar uno por uno; con pocos, las marcas ya los muestran todos.
+    if(MUCHOS){
+      const bins=new Int32Array(Math.ceil(iw)+1);
+      inview.forEach(e=>{ const px=Math.floor((e.t-view.a)/(view.b-view.a)*iw); if(px>=0&&px<=iw) bins[px]++; });
+      let mxb=1; for(const v of bins) if(v>mxb) mxb=v;
+      for(let px=0;px<=iw;px++){ if(!bins[px]) continue;
+        g.fillStyle=V("--g-evento"); g.globalAlpha=.18+.5*(bins[px]/mxb);
+        g.fillRect(PADL+px,PADT,1,6); }
+      g.globalAlpha=1;
+    }
+    // En modo discreto la marca es un trazo corto pegado al borde superior:
+    // se ve dónde cayó el evento sin partir la curva por la mitad.
+    const alto = MARCAS>=2 ? ih : Math.min(14, ih*0.16);
+    const y0 = PADT + (MUCHOS?7:0);
+    const step=Math.max(1,Math.ceil(draw.length/60));
+    draw.forEach((e,k)=>{ if(draw.length>60 && k%step) return;
+      const c=e.sev==="crit"?"--crit": e.sev==="accion"?"--g-accion": e.sev==="ok"?"--ok":"--att";
+      g.strokeStyle=V(c);
+      g.globalAlpha = MARCAS>=2 ? (e.sev==="crit"?(MUCHOS?.5:.75):.35) : (e.sev==="crit"?.9:.5);
+      g.lineWidth=e.sev==="crit"?1.2:1;
+      g.beginPath(); g.moveTo(X(e.t),y0); g.lineTo(X(e.t),y0+alto); g.stroke(); g.globalAlpha=1; });
   }
-  const step=Math.max(1,Math.ceil(draw.length/60));
-  // En modo discreto la marca es un trazo corto pegado al borde superior: se
-  // ve dónde cayó el evento sin partir la curva por la mitad.
-  const alto = MARCAS>=2 ? ih : Math.min(14, ih*0.16);
-  draw.forEach((e,k)=>{ if(draw.length>60 && k%step) return;
-    const c=e.sev==="crit"?"--crit": e.sev==="accion"?"--g-accion": e.sev==="ok"?"--ok":"--att";
-    g.strokeStyle=V(c);
-    g.globalAlpha = MARCAS>=2 ? (e.sev==="crit"?(DENSE?.5:.75):.35) : (e.sev==="crit"?.9:.5);
-    g.lineWidth=e.sev==="crit"?1.2:1;
-    const y0=PADT+(DENSE?7:0);
-    g.beginPath(); g.moveTo(X(e.t),y0); g.lineTo(X(e.t),y0+alto); g.stroke(); g.globalAlpha=1; });
 
   p.chs.forEach(C=>{
     const st=p.norm?stat(C,view.a,view.b):null;
