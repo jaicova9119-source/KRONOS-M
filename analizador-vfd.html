@@ -722,6 +722,17 @@ const DAT_IGNORAR=/^(Remote Device|Exp I\/O|Analog Input|Digital Input|APC\/PCM 
 // comparable con el de los demas; sin esto, alignedPairs() no cruza nada.
 const DAT_RELLENO=10000;
 
+/* El .dat guarda un entero de 32 bits que, leido como epoch UTC, devuelve la
+   hora de pared del variador. parseDate() construye las fechas de los CSV con
+   new Date(Y,M,D,...), o sea en hora local del navegador. Sin convertir, en
+   Colombia el .dat cae cinco horas antes que el CSV del mismo dia y la carta
+   amperimetrica termina contradiciendo a la tendencia. */
+function datTs(seg){
+  const w=new Date(seg*1000);
+  return new Date(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate(),
+                  w.getUTCHours(), w.getUTCMinutes(), w.getUTCSeconds()).getTime();
+}
+
 function esDat(buf){
   if(!(buf instanceof ArrayBuffer) || buf.byteLength<64) return false;
   const d=new DataView(buf);
@@ -796,12 +807,12 @@ function parseDat(buf){
   }
 
   let i=0;
-  { const ln=d.getUint16(0); ultTs=d.getUint32(2)*1000; i=pares(6,ln,ultTs); filas++; }
+  { const ln=d.getUint16(0); ultTs=datTs(d.getUint32(2)); i=pares(6,ln,ultTs); filas++; }
   while(i<buf.byteLength-4){
     const m=d.getUint16(i), ln=d.getUint16(i+2);
     if(m===0x03ff){ i=leerDic(i+8); }
     else if(m===0x01ff||m===0x02ff){
-      ultTs=d.getUint32(i+4)*1000;
+      ultTs=datTs(d.getUint32(i+4));
       i=pares(i+8,ln,ultTs);
       rellenar(ultTs);
       filas++;
