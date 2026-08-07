@@ -66,6 +66,8 @@ button{cursor:pointer;background:none;border:none}
 .ub:hover{border-color:var(--rule2);color:var(--tx)}
 .ub.on{border-color:var(--acc-dim);color:var(--acc);background:var(--acc-bg)}
 .ub em{font-style:normal;color:var(--tx3);margin-left:6px}
+.ub .ubx{font-style:normal;margin-left:9px;padding:0 3px;color:var(--tx3);font-size:14px;line-height:1;border-radius:2px}
+.ub .ubx:hover{color:#fff;background:var(--crit)}
 .hdr-act{display:flex;gap:8px;flex:0 0 auto}
 .btn{border:1px solid var(--rule2);border-radius:3px;padding:7px 13px;font-size:13.5px;color:var(--tx2);transition:.13s}
 .btn:hover{border-color:var(--acc-dim);color:var(--acc)}
@@ -185,6 +187,9 @@ button{cursor:pointer;background:none;border:none}
 .srvpill{font-family:var(--f-mono);font-size:10px;padding:4px 9px;border-radius:2px;
   border:1px solid var(--rule2);color:var(--tx3);align-self:center}
 .srvpill.on{border-color:var(--ok);color:var(--ok)}
+.sec-h .secb{float:right;font:inherit;font-size:10.5px;letter-spacing:.04em;text-transform:none;
+  background:none;border:1px solid var(--rule);border-radius:2px;color:var(--tx3);padding:1px 7px;cursor:pointer}
+.sec-h .secb:hover{border-color:var(--crit);color:var(--crit)}
 .fitem .x{color:var(--tx3);font-size:15px;line-height:1;padding:0 2px}
 .fitem .x:hover{color:var(--crit)}
 .usel{margin-top:4px;width:100%;background:var(--ink);border:1px solid var(--rule);
@@ -304,7 +309,10 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
       <div class="pane-top"><span>Canales y archivos</span><button class="pinb" data-side="L">Anclar</button></div>
       <div class="sec" id="secHist" hidden>
         <h3 class="sec-h">Historial guardado <em id="nHist"></em></h3><div id="hist"></div></div>
-      <div class="sec"><h3 class="sec-h">Archivos cargados <em id="nFiles"></em></h3><div id="files"></div></div>
+      <div class="sec">
+        <h3 class="sec-h">Archivos cargados <em id="nFiles"></em>
+          <button class="secb" id="bDelUnit">Quitar pozo</button></h3>
+        <div id="files"></div></div>
       <div class="sec" id="secGrupos"><h3 class="sec-h">Grupos</h3><div class="grp" id="grps"></div></div>
       <div class="sec" id="secCanales">
         <h3 class="sec-h">Canales <em id="nSel"></em></h3>
@@ -1112,6 +1120,19 @@ function removeFile(id){
   rebuildAll(DB.active);
 }
 
+/* Los pozos son independientes entre si: cada uno tiene sus propios canales,
+   eventos y segmentos. Quitar uno no obliga a releer los demas, asi que esto
+   es inmediato aunque haya seis dias de .dat cargados. */
+function removeUnit(key){
+  const arch=DB.files.filter(f=>f.unit===key).length;
+  if(arch>1 && !confirm(`Quitar el pozo «${key}» con sus ${arch} archivos?`)) return;
+  DB.files=DB.files.filter(f=>f.unit!==key);
+  delete DB.units[key];
+  DB.active = DB.units[DB.active]? DB.active : (Object.keys(DB.units)[0]||null);
+  if(DB.active) boot();
+  else { $("#app").hidden=true; $("#drop").classList.remove("hide"); $("#err").textContent=""; }
+}
+
 /* ══════════════════════════════════════════════════════════════════
    5 · ESTADO DE VISTA
 ══════════════════════════════════════════════════════════════════ */
@@ -1222,6 +1243,10 @@ function buildUnits(){
     b.appendChild(el("span",null,u.key));
     b.appendChild(el("em",null,`${nf} arch · ${fD(u.t0)}–${fD(u.t1)}`));
     b.onclick=()=>{ DB.active=u.key; boot(); };
+    const q=el("i","ubx","×");
+    q.title=`quitar el pozo ${u.key} y sus ${nf} archivo${nf>1?"s":""}`;
+    q.onclick=ev=>{ ev.stopPropagation(); removeUnit(u.key); };
+    b.appendChild(q);
     c.appendChild(b);
   });
 }
@@ -2407,6 +2432,7 @@ function togglePane(s,forzar){
   });
 })();
 $("#bCinta").onclick=toggleRibbon;
+$("#bDelUnit").onclick=()=>{ if(DB.active) removeUnit(DB.active); };
 $("#bMarcas").onclick=()=>setMarcas(MARCAS+1);
 setMarcas(MARCAS);
 $("#bTemp").onclick=()=>setTempUnit(TUNIT==="F"?"C":"F");
