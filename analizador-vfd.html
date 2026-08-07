@@ -277,6 +277,7 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
     <div class="hdr-act">
       <span class="srvpill" id="srv">sin servidor</span>
       <button class="btn tgl off" id="bCinta" title="mostrar u ocultar la cinta de navegación">▭</button>
+      <button class="btn" id="bMarcas" title="cuánto marcar sobre las gráficas">Marcas</button>
       <button class="btn" id="bTemp" title="unidad de temperatura">°F</button>
       <button class="btn" id="bSize" title="tamaño de la interfaz">A</button>
       <button class="btn" id="bTheme">Claro</button>
@@ -410,6 +411,23 @@ function ensureRole(id,label,unit){
   if(!R[id]) R[id]=[label,unit||"",PAL[GENN++%PAL.length]];
   return id;
 }
+/* Cuánto se dibuja encima de la señal.
+   2 completas — líneas de altura completa en cada evento y en cada inicio y
+                 fin de corrida. Preciso, pero con decenas de arranques la
+                 empalizada tapa lo que se quiere leer.
+   1 discretas — por defecto. Los tramos parados ya se ven como banda
+                 sombreada, así que las líneas de inicio y fin sobran. Los
+                 eventos quedan como marcas cortas en el borde superior.
+   0 ninguna   — solo la banda de paradas y la franja de densidad. */
+let MARCAS=+(localStorage.getItem("vfd_marcas") ?? 1);
+const MARCAS_TXT=["Marcas: ninguna","Marcas: discretas","Marcas: completas"];
+function setMarcas(v){
+  MARCAS=(v+3)%3;
+  localStorage.setItem("vfd_marcas",MARCAS);
+  const b=document.getElementById("bMarcas"); if(b) b.textContent=MARCAS_TXT[MARCAS];
+  if(DB.active) renderAll();
+}
+
 let TUNIT="F";                                   // los canales se guardan en °C; esto es solo presentación
 const TV=v=>TUNIT==="F"? v*1.8+32 : v;           // temperatura absoluta
 const TD=v=>TUNIT==="F"? v*1.8 : v;              // diferencia de temperatura: sin el desplazamiento de 32
@@ -1436,7 +1454,10 @@ function drawPanel(p){
     g.textAlign="right"; g.fillText(fmtTick(v),PADL-7,y+3.5); });
   g.textAlign="left";
 
-  (u.segs||[]).forEach(s=>{
+  // Inicio y fin de corrida: solo en modo completo. La banda --band-off ya
+  // marca los tramos parados, así que estas líneas son información repetida
+  // que además cruza la señal de arriba abajo.
+  if(MARCAS>=2) (u.segs||[]).forEach(s=>{
     if(s.state!=="run") return;
     [[s.a,"--ok"],[s.b,"--crit"]].forEach(([t,c])=>{
       if(t<=view.a||t>=view.b) return;
@@ -1447,9 +1468,9 @@ function drawPanel(p){
   });
   // eventos: con cientos en pantalla las líneas tapan la señal, así que se resume
   const inview=u.events.filter(e=>e.t>=view.a&&e.t<=view.b);
-  const DENSE=inview.length>45;
-  const draw=DENSE? inview.filter(e=>e.sev==="crit") : inview;
-  if(DENSE){
+  const DENSE=inview.length>45 || MARCAS<2;
+  const draw=MARCAS===0? [] : (DENSE? inview.filter(e=>e.sev==="crit") : inview);
+  if(DENSE||MARCAS===0){
     // franja de densidad arriba: cuántos eventos por columna de píxel
     const bins=new Int32Array(Math.ceil(iw)+1);
     inview.forEach(e=>{ const px=Math.floor((e.t-view.a)/(view.b-view.a)*iw); if(px>=0&&px<=iw) bins[px]++; });
@@ -1460,10 +1481,16 @@ function drawPanel(p){
     g.globalAlpha=1;
   }
   const step=Math.max(1,Math.ceil(draw.length/60));
+  // En modo discreto la marca es un trazo corto pegado al borde superior: se
+  // ve dónde cayó el evento sin partir la curva por la mitad.
+  const alto = MARCAS>=2 ? ih : Math.min(14, ih*0.16);
   draw.forEach((e,k)=>{ if(draw.length>60 && k%step) return;
     const c=e.sev==="crit"?"--crit": e.sev==="accion"?"--g-accion": e.sev==="ok"?"--ok":"--att";
-    g.strokeStyle=V(c); g.globalAlpha=e.sev==="crit"?(DENSE?.5:.75):.35; g.lineWidth=e.sev==="crit"?1.2:1;
-    g.beginPath(); g.moveTo(X(e.t),PADT+(DENSE?7:0)); g.lineTo(X(e.t),PADT+ih); g.stroke(); g.globalAlpha=1; });
+    g.strokeStyle=V(c);
+    g.globalAlpha = MARCAS>=2 ? (e.sev==="crit"?(DENSE?.5:.75):.35) : (e.sev==="crit"?.9:.5);
+    g.lineWidth=e.sev==="crit"?1.2:1;
+    const y0=PADT+(DENSE?7:0);
+    g.beginPath(); g.moveTo(X(e.t),y0); g.lineTo(X(e.t),y0+alto); g.stroke(); g.globalAlpha=1; });
 
   p.chs.forEach(C=>{
     const st=p.norm?stat(C,view.a,view.b):null;
@@ -2364,6 +2391,8 @@ function togglePane(s,forzar){
   });
 })();
 $("#bCinta").onclick=toggleRibbon;
+$("#bMarcas").onclick=()=>setMarcas(MARCAS+1);
+setMarcas(MARCAS);
 $("#bTemp").onclick=()=>setTempUnit(TUNIT==="F"?"C":"F");
 $("#bSize").onclick=()=>{ const i=(+document.documentElement.dataset.si+1)%SIZES.length; setScale(i); };
 $("#bRen").onclick=()=>{
