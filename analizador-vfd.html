@@ -381,7 +381,7 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
       <button class="btn" id="bDir">Cargar carpeta del pozo</button>
       <button class="btn" id="bClose" hidden>Volver</button>
     </div>
-    <input type="file" id="file" accept=".csv,.txt,.dat,.CSV,.DAT" multiple hidden>
+    <input type="file" id="file" accept=".csv,.txt,.dat,.jrn,.CSV,.DAT,.JRN" multiple hidden>
     <input type="file" id="dir" webkitdirectory directory multiple hidden>
     <div class="err" id="err"></div>
     <div class="fine">
@@ -389,6 +389,7 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
       Baker Hughes GCS y ADV — <b>log</b> de tendencia, <b>SD_Hist</b>, <b>Event_Rec</b>, <b>Ampchart</b><br>
       Triol — log de tendencia con canales DHG<br>
       Baker Hughes — <b>WellData</b> diario, en CSV y en <b>.dat</b> binario<br>
+      Triol <b>Umka-03</b> — diario binario <b>.JRN</b>, ventanas de 10 min<br>
       Halliburton Summit — tendencia diaria y registro de alarmas<br>
       HMI — registro de operación con valor anterior y nuevo
     </div>
@@ -614,6 +615,9 @@ const PROFILES=[
 { id:"bh_dat", name:"Baker Hughes · WellData binario (.dat)", genre:"serie", cls:null, bin:true,
   score:()=>0 },
 
+{ id:"triol_umka3", name:"Triol Umka-03 · diario binario (.JRN)", genre:"serie", cls:null, bin:"jrn",
+  score:()=>0 },
+
 { id:"bh_sdhist", name:"Baker Hughes · histórico de paros", genre:"evento",
   score:h=>(/^\s*"?Shutdown Cause"?/i.test(h)?10:0), enc:"auto", dateFmt:"Y/M/D", kind:"sdhist" },
 
@@ -665,8 +669,11 @@ function parseDate(s,fmt,timeStr){
   return new Date(Y,Mo-1,D,h,mi,se).getTime();
 }
 function detectProfile(text){
-  if(text instanceof ArrayBuffer)
-    return esDat(text)? PROFILES.find(p=>p.id==="bh_dat") : null;
+  if(text instanceof ArrayBuffer){
+    if(esDat(text)) return PROFILES.find(p=>p.id==="bh_dat");
+    if(esJrn(text)) return PROFILES.find(p=>p.id==="triol_umka3");
+    return null;
+  }
   const lines=text.split(/\r?\n/,12);
   let best=null,bs=0;
   for(const p of PROFILES){
@@ -756,6 +763,100 @@ function datTs(seg){
   const w=new Date(seg*1000);
   return new Date(w.getUTCFullYear(), w.getUTCMonth(), w.getUTCDate(),
                   w.getUTCHours(), w.getUTCMinutes(), w.getUTCSeconds()).getTime();
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   2c · LECTOR BINARIO .JRN  (Triol · controlador Umka-03)
+
+   Diario circular del controlador: ventanas de 10 minutos, unos tres meses
+   de historia en 2 MB. Estructura deducida y verificada sobre el archivo:
+
+     registro de 104 bytes  (autocorrelacion con armonicos en 208, 312, 416)
+     +29  marca de inicio  epoch Unix uint32 LE
+     +77  marca de fin     = inicio + 600 s, y es el inicio del siguiente
+     resto: enteros uint16 LE escalados
+
+   A diferencia del .dat de Baker, el archivo NO trae diccionario: ni un
+   nombre de canal en 2 MB. Lo que sigue se identifico por fisica, no por
+   conjetura, y lo que no se pudo probar se muestra crudo con su posicion.
+
+   Identificacion:
+   · 12/14/16 y 30 — la razon entre el canal 30 y la media del trio da
+     1,3549 con desviacion 0,0015 sobre 13.454 muestras. Es el 1,35 teorico
+     de un rectificador trifasico de 6 pulsos: trio = tension de entrada,
+     30 = bus de continua.
+   · 18/20/22 — trio con 0,50 % de desbalance, mediana 1204. A escala /10 son
+     120,4 A, la corriente de motor del pozo.
+   · 34 — cambia solo en el 1,6 % de las muestras: es un setpoint. A /100 da
+     58,50 Hz, con rango 40,3-58,5 Hz.
+   · 28 — a /10 da 86,6 kW. Con S = 98,4 kVA sale un factor de potencia de
+     0,881, coherente con un motor ESP cargado.
+
+   Los demas canales se exponen como «Triol +NN» con su valor crudo. Se
+   identifican comparando contra la pantalla del Umka-03 en sitio.
+══════════════════════════════════════════════════════════════════ */
+const JRN_ROL={
+  12:"v_ab", 14:"v_bc", 16:"v_ca",          // tension de entrada, V
+  30:"v_bus",                                // bus de continua, V
+  18:["i_out_a",v=>v/10], 20:["i_out_b",v=>v/10], 22:["i_out_c",v=>v/10],
+  34:["freq_out",v=>v/100],                  // Hz
+  28:["p_act",v=>v/10],                      // kW
+  8:null                                     // media de las tres corrientes: redundante
+};
+// Posiciones que en el archivo analizado estan siempre en cero o son basura.
+const JRN_MUDOS=new Set([-28,-26,-24,-22,-20,-18,-16,-10,-8,-6,-4,-2,24,56,58,64,66,68,70,72]);
+
+function esJrn(buf){
+  if(!(buf instanceof ArrayBuffer) || buf.byteLength<200000) return false;
+  const c=new Uint8Array(buf,0,64);
+  let s=""; for(let i=0;i<48 && c[i];i++) s+=String.fromCharCode(c[i]);
+  return /^field_\d+_well_\d+_/i.test(s);
+}
+
+function parseJrn(buf){
+  const d=new DataView(buf), acc={}, notes=[];
+  const LO=Date.UTC(2015,0,1)/1000, HI=Date.UTC(2100,0,1)/1000;
+  const val=o=>d.getUint32(o,true);
+  // anclas: marca valida seguida de la misma mas 600 s a 48 bytes
+  const anclas=[];
+  for(let o=0;o+104<buf.byteLength;o++){
+    const t=val(o);
+    if(t>LO && t<HI && val(o+48)===t+600) anclas.push(o);
+  }
+  if(anclas.length<10) throw new Error("el .JRN no trae registros reconocibles");
+
+  const POS=[]; for(let p=-28;p<76;p+=2) if(p<0||p>=8) if(p<48||p>=56) if(!JRN_MUDOS.has(p)) POS.push(p);
+  let extra=0;
+  const canal=new Map();
+  function canalDe(p){
+    if(canal.has(p)) return canal.get(p);
+    let spec=JRN_ROL[p], rol, conv=null;
+    if(spec===null){ canal.set(p,null); return null; }
+    if(spec===undefined){
+      rol="x_triol_"+(p<0?"m":"")+Math.abs(p);
+      ensureRole(rol, "Triol "+(p<0?"−":"+")+Math.abs(p), "");
+      extra++;
+    } else if(Array.isArray(spec)){ rol=spec[0]; conv=spec[1]; }
+    else rol=spec;
+    if(!acc[rol]) acc[rol]={t:[],y:[],src:"Umka-03 "+(p<0?"−":"+")+Math.abs(p),srcUnit:""};
+    const c={conv,a:acc[rol]}; canal.set(p,c); return c;
+  }
+
+  let filas=0;
+  for(const o of anclas){
+    if(o-28<0 || o+76>buf.byteLength) continue;
+    const ts=datTs(val(o));            // misma convencion de hora de pared que el .dat
+    for(const p of POS){
+      const c=canalDe(p); if(!c) continue;
+      const v=d.getUint16(o+p,true);
+      c.a.t.push(ts); c.a.y.push(c.conv? c.conv(v) : v);
+    }
+    filas++;
+  }
+  notes.push("Diario del Umka-03: ventanas de 10 minutos; el controlador solo escribe con la unidad en marcha.");
+  if(extra) notes.push(`${extra} canales sin identificar se muestran crudos como «Triol ±NN». Compáralos contra la pantalla del equipo para nombrarlos.`);
+  notes.push("La potencia activa está tomada del registro +28 a escala /10; contrástala una vez contra el equipo antes de usarla en un informe.");
+  return {acc,notes,rows:filas};
 }
 
 function esDat(buf){
@@ -991,7 +1092,8 @@ function addFileFromText(text,fname,forceUnit){
   }
 
   if(prof.genre==="serie"){
-    const {acc,notes,rows}= prof.bin? parseDat(text) : parseSerie(text,prof,fname);
+    const {acc,notes,rows}= prof.bin==="jrn"? parseJrn(text)
+                          : prof.bin? parseDat(text) : parseSerie(text,prof,fname);
     f.notes.push(...notes);
     let t0=Infinity,t1=-Infinity,added=0;
     for(const role in acc){
@@ -2561,7 +2663,7 @@ di.onchange=()=>{
   /* El .dat y el .csv del mismo dia traen lo mismo, pero el .dat trae ademas
      el eje Z de vibracion y la tension del sensor. Cuando estan los dos, se
      carga solo el .dat y se descarta el CSV duplicado. */
-  const util=todos.filter(f=>!BASURA.test(f.name) && /\.(csv|dat)$/i.test(f.name));
+  const util=todos.filter(f=>!BASURA.test(f.name) && /\.(csv|dat|jrn)$/i.test(f.name));
   const clave=f=>(f.webkitRelativePath||f.name).replace(/\.[^.]+$/,"").toLowerCase();
   const conDat=new Set(util.filter(f=>/\.dat$/i.test(f.name)).map(clave));
   const buenos=util.filter(f=>!(/\.csv$/i.test(f.name) && conDat.has(clave(f))))
@@ -2629,7 +2731,7 @@ function readMany(files,opts){
       try{
         // El .dat se pasa como binario tal cual; el resto sigue por texto.
         let text;
-        if(esDat(buf)) text=buf;
+        if(esDat(buf)||esJrn(buf)) text=buf;
         else{
           text=decode(buf,"auto");
           const prof=detectProfile(text);
