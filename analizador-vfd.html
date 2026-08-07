@@ -426,6 +426,8 @@ const R={
  pf:["Factor de potencia","","--c-ste"], p_act:["Potencia activa","kW","--c-lim"], p_apa:["Potencia aparente","kVA","--c-cya"],
  leak:["Fuga del motor","mA","--c-ste"], sens_v:["Tensión del sensor","V","--c-ind"],
  tool_i:["Corriente del tool","mA","--c-ora"],
+ i_act:["Corriente activa","A","--c-lim"], carga:["Carga del motor","%","--c-tea"],
+ r_isol:["Resistencia de aislamiento","MΩ","--c-cya"],
  amp_max:["Amperaje máximo","A","--c-pnk"], amp_min:["Amperaje mínimo","A","--c-blu"], amp_avg:["Amperaje promedio","A","--c-yel"],
  unb_i:["Desbalance de corriente","%","--c-vio"], unb_v:["Desbalance de tensión","%","--c-pnk"],
  dp:["ΔP de la bomba","psi","--c-ind"], dt_wi:["Δ devanado − admisión","°C","--c-amb","dT"], vhz:["Relación V/Hz","V/Hz","--c-ste"]
@@ -789,19 +791,30 @@ function datTs(seg){
      120,4 A, la corriente de motor del pozo.
    · 34 — cambia solo en el 1,6 % de las muestras: es un setpoint. A /100 da
      58,50 Hz, con rango 40,3-58,5 Hz.
-   · 28 — a /10 da 86,6 kW. Con S = 98,4 kVA sale un factor de potencia de
-     0,881, coherente con un motor ESP cargado.
+   · 28 — Cos Phi a escala /1000 = 0,866. Confirmado contra el software del
+     equipo, que lista una columna «Cos Phi». Con S = 98,4 kVA da P = 85,2 kW,
+     y el canal 36 a /10 marca 85,3 kW: cierra con 0,1 kW.
+   · 10 — corriente activa: Itotal x cos phi = 104,4 A contra 103,1 medidos.
+   · 24 — Rinsul, resistencia de aislamiento en MOhm. Alterna 0 y 20000, los
+     mismos valores que muestra el registro de eventos del software. El cero
+     no es una lectura: es que no se midio con la unidad en marcha.
+   · 40, 26 — Uout.ACVOT (V) y ESM loading (%), por nombre y magnitud.
 
    Los demas canales se exponen como «Triol +NN» con su valor crudo. Se
    identifican comparando contra la pantalla del Umka-03 en sitio.
 ══════════════════════════════════════════════════════════════════ */
 const JRN_ROL={
-  12:"v_ab", 14:"v_bc", 16:"v_ca",          // tension de entrada, V
-  30:"v_bus",                                // bus de continua, V
-  18:["i_out_a",v=>v/10], 20:["i_out_b",v=>v/10], 22:["i_out_c",v=>v/10],
-  34:["freq_out",v=>v/100],                  // Hz
-  28:["p_act",v=>v/10],                      // kW
-  8:null                                     // media de las tres corrientes: redundante
+  12:"v_ab", 14:"v_bc", 16:"v_ca",             // Uin.AB / BC / CA, V
+  30:"v_bus",                                   // Ud, V
+  18:["i_out_a",v=>v/10], 20:["i_out_b",v=>v/10], 22:["i_out_c",v=>v/10],  // Ia/Ib/Ic ESM, A
+  34:["freq_out",v=>v/100],                     // Fact, Hz
+  40:["v_out",v=>v/10],                         // Uout.ACVOT, V
+  36:["p_act",v=>v/10],                         // potencia activa, kW
+  28:["pf",v=>v/1000],                          // Cos Phi
+  10:["i_act",v=>v/10],                         // ESM active current, A
+  26:["carga",v=>v/10],                         // ESM loading, %
+  24:"r_isol",                                  // Rinsul, MOhm
+  8:null                                        // Total ESM current: es la media de las tres
 };
 // Posiciones que en el archivo analizado estan siempre en cero o son basura.
 const JRN_MUDOS=new Set([-28,-26,-24,-22,-20,-18,-16,-10,-8,-6,-4,-2,24,56,58,64,66,68,70,72]);
@@ -855,7 +868,7 @@ function parseJrn(buf){
   }
   notes.push("Diario del Umka-03: ventanas de 10 minutos; el controlador solo escribe con la unidad en marcha.");
   if(extra) notes.push(`${extra} canales sin identificar se muestran crudos como «Triol ±NN». Compáralos contra la pantalla del equipo para nombrarlos.`);
-  notes.push("La potencia activa está tomada del registro +28 a escala /10; contrástala una vez contra el equipo antes de usarla en un informe.");
+  notes.push("La resistencia de aislamiento solo se mide con la unidad parada: los ceros no son lecturas.");
   return {acc,notes,rows:filas};
 }
 
