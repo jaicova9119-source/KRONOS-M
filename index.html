@@ -86,8 +86,9 @@ html,body{height:100%;margin:0;}
 /* Barra minima: el analizador ya trae su propio encabezado, asi que aqui
    solo quedan los controles de espacio. Un panel-header normal le robaria
    50 px de alto por nada. */
-#panel-vfd .panel-header{padding:5px 8px;gap:8px}
-#panel-vfd .panel-header h2{font-size:12.5px;font-weight:500;color:var(--text-2)}
+/* Sin título: el analizador ya se identifica solo. La barra queda solo con
+   los dos controles de espacio, alineados a la derecha. */
+#panel-vfd .panel-header{padding:4px 8px;gap:8px;justify-content:flex-end}
 #panel-vfd .panel-header .btn-secondary{
   width:auto;margin:0;padding:5px 11px;font-size:12.5px;flex-shrink:0;
 }
@@ -742,7 +743,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <option value="documental">Gestión Documental</option>
     <option value="ensayos">Ensayos Eléctricos</option>
     <option value="programacion">Programación</option>
-    <option value="vfd">Analizador VFD</option>
+    <option value="vfd">Analizador de DATA</option>
   </select>
 </div>
 
@@ -870,7 +871,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
   <button class="nav-item" data-tab="vfd" data-modulo="vfd">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l3-4 3 3 4-6"/></svg>
-    Bitácoras
+    Data
   </button>
 
   <button class="nav-item" data-tab="prog-dia" data-modulo="programacion">
@@ -1616,12 +1617,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <!-- ===== Panel: Ensayos · informe ===== -->
 <div class="panel" id="panel-vfd">
   <div class="panel-header">
-    <h2>Analizador de bitácoras</h2>
     <button class="btn-secondary" onclick="vfdPantallaCompleta()">Pantalla completa</button>
     <button class="btn-secondary" onclick="window.open('analizador-vfd.html','_blank')">Pestaña aparte</button>
   </div>
   <div class="panel-body">
-    <iframe id="vfd-marco" title="Analizador de bitácoras VFD"></iframe>
+    <iframe id="vfd-marco" title="Analizador de DATA"></iframe>
   </div>
 </div>
 

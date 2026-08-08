@@ -59,7 +59,14 @@ button{cursor:pointer;background:none;border:none}
 .brand{display:flex;align-items:baseline;gap:10px;flex:0 0 auto}
 .brand b{font-weight:700;letter-spacing:-.02em;font-size:16px}
 .brand span{font-family:var(--f-mono);font-size:10.5px;color:var(--tx3);letter-spacing:.11em;text-transform:uppercase}
-.unitsel{display:flex;gap:5px;flex:1 1 auto;overflow-x:auto;scrollbar-width:none}
+.unitsel{display:flex;gap:7px;flex:1 1 auto;align-items:center;min-width:0;overflow-x:auto;scrollbar-width:none}
+.usel-lab{font-family:var(--f-mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tx3);flex:0 0 auto}
+.usel{font-family:var(--f-mono);font-size:12.5px;padding:6px 10px;border:1px solid var(--acc-dim);border-radius:2px;
+  background:var(--acc-bg);color:var(--acc);max-width:min(460px,42vw);min-width:0}
+.usel:hover{border-color:var(--acc)}
+.usel-x{font-size:15px;line-height:1;padding:2px 7px;border:1px solid var(--rule);border-radius:2px;
+  color:var(--tx3);background:none;cursor:pointer;flex:0 0 auto}
+.usel-x:hover{border-color:var(--crit);color:var(--crit)}
 .unitsel::-webkit-scrollbar{display:none}
 .ub{font-family:var(--f-mono);font-size:12.5px;padding:6px 12px;border:1px solid var(--rule);border-radius:2px;
   color:var(--tx2);white-space:nowrap}
@@ -293,10 +300,8 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
 
 <div id="app" hidden>
   <div class="hdr">
-    <div class="brand"><b>Registro de variadores</b><span>multi-formato</span></div>
     <div class="unitsel" id="unitsel"></div>
     <div class="hdr-act">
-      <span class="srvpill" id="srv">sin servidor</span>
       <button class="btn tgl off" id="bCinta" title="mostrar u ocultar la cinta de navegación">▭</button>
       <button class="btn" id="bMarcas" title="cuánto marcar sobre las gráficas">Marcas</button>
       <button class="btn" id="bTemp" title="unidad de temperatura">°F</button>
@@ -1447,20 +1452,41 @@ function boot(){
   buildUnits(); buildFiles(); buildGroups(); buildModes(); buildChans(); buildQuick();
   renderAll();
 }
+/* Con una sola data se muestra la ficha completa. Con dos o mas se pasa a
+   desplegable: en fila se solapaban y la cabecera no daba de si. */
 function buildUnits(){
   const c=$("#unitsel"); c.innerHTML="";
-  Object.values(DB.units).forEach(u=>{
-    const nf=DB.files.filter(f=>f.unit===u.key).length;
-    const b=el("button","ub"+(u.key===DB.active?" on":""));
-    b.appendChild(el("span",null,u.key));
-    b.appendChild(el("em",null,`${nf} arch · ${fD(u.t0)}–${fD(u.t1)}`));
-    b.onclick=()=>{ DB.active=u.key; boot(); };
-    const q=el("i","ubx","×");
-    q.title=`quitar el pozo ${u.key} y sus ${nf} archivo${nf>1?"s":""}`;
-    q.onclick=ev=>{ ev.stopPropagation(); removeUnit(u.key); };
-    b.appendChild(q);
-    c.appendChild(b);
+  const us=Object.values(DB.units);
+  const nArch=k=>DB.files.filter(f=>f.unit===k).length;
+
+  if(us.length<=1){
+    us.forEach(u=>{
+      const nf=nArch(u.key);
+      const b=el("button","ub on");
+      b.appendChild(el("span",null,u.key));
+      b.appendChild(el("em",null,`${nf} arch · ${fD(u.t0)}–${fD(u.t1)}`));
+      const q=el("i","ubx","×");
+      q.title=`quitar ${u.key} y sus ${nf} archivo${nf>1?"s":""}`;
+      q.onclick=ev=>{ ev.stopPropagation(); removeUnit(u.key); };
+      b.appendChild(q);
+      c.appendChild(b);
+    });
+    return;
+  }
+
+  const lab=el("span","usel-lab",`${us.length} datas`);
+  const sel=el("select","usel");
+  us.forEach(u=>{
+    const o=el("option",null,`${u.key}  ·  ${nArch(u.key)} arch  ·  ${fD(u.t0)}–${fD(u.t1)}`);
+    o.value=u.key;
+    if(u.key===DB.active) o.selected=true;
+    sel.appendChild(o);
   });
+  sel.onchange=()=>{ DB.active=sel.value; boot(); };
+  const q=el("button","usel-x","×");
+  q.title="quitar la data seleccionada";
+  q.onclick=()=>removeUnit(DB.active);
+  c.appendChild(lab); c.appendChild(sel); c.appendChild(q);
 }
 function buildFiles(){
   const box=$("#files"); box.innerHTML="";
