@@ -878,28 +878,55 @@ function parseJrn(buf){
     marcas.push([ts, d.getUint16(o+34,true)/100]);
     filas++;
   }
-  /* Eventos derivados. El .JRN no guarda el texto de los eventos: eso lo arma
-     el software del equipo. Pero el controlador solo escribe con la unidad en
-     marcha, asi que un corte en la cadena de 10 minutos ES una parada, con su
-     hora de inicio, su hora de fin y su duracion. Y el salto de frecuencia al
-     volver es la rampa de arranque. Nada de esto se supone: se mide. */
   marcas.sort((a,b)=>a[0]-b[0]);
   const eventos=[];
+
+  /* ── eventos reales, con su causa ──
+     Los ultimos 135.168 bytes del archivo son un anillo de 32 ranuras de
+     4.224 bytes: el oscilograma de cada disparo, que es lo que el software
+     dibuja en «Plot of emergencies». Cada ranura empieza con la fecha y el
+     codigo del evento. Verificado contra el registro del propio software:
+     once de once coinciden en fecha, hora y segundo. */
+  const ANILLO=135168, RANURA=4224;
+  const CODIGO={0x0400:["Shutdown Udmin · disparo por baja tensión","crit"],
+                0x04FF:["Start (Operator) · arranque manual","ok"]};
+  const base=buf.byteLength-ANILLO;
+  let reales=0, desconocidos=0;
+  if(base>0) for(let k=0;k<ANILLO/RANURA;k++){
+    const o=base+k*RANURA;
+    const t=val(o); if(!(t>LO && t<HI)) continue;      // ranura sin usar
+    const cod=d.getUint16(o+6,true);
+    const c=CODIGO[cod];
+    eventos.push({t:datTs(t), sev:c? c[1]:"att",
+      label:c? c[0] : `Evento sin catalogar (código 0x${cod.toString(16).toUpperCase().padStart(4,"0")})`});
+    c? reales++ : desconocidos++;
+  }
+
+  /* ── paradas deducidas ──
+     El controlador solo escribe con la unidad en marcha, asi que un corte en
+     la cadena de 10 minutos apunta a una parada. Pero un corte corto puede ser
+     solo una escritura perdida, asi que se exige ademas que al volver la
+     frecuencia arranque por debajo: eso es la rampa de arranque y no se
+     confunde con un hueco de registro. */
   for(let i=1;i<marcas.length;i++){
     const hueco=marcas[i][0]-marcas[i-1][0];
-    if(hueco>900000){                                   // mas de 15 min sin escribir
-      eventos.push({t:marcas[i-1][0], label:`Parada · sin registro durante ${fDur(hueco)}`, sev:"crit"});
-      eventos.push({t:marcas[i][0],   label:`Arranque · tras ${fDur(hueco)} detenido`,     sev:"ok"});
-    } else if(Math.abs(marcas[i][1]-marcas[i-1][1])>0.05 && hueco<=900000){
-      eventos.push({t:marcas[i][0],
-        label:`Frecuencia ${marcas[i-1][1].toFixed(2)} → ${marcas[i][1].toFixed(2)} Hz`, sev:"accion"});
+    const rampa=marcas[i-1][1]-marcas[i][1];
+    if(hueco>1800000 && rampa>3){
+      eventos.push({t:marcas[i-1][0], sev:"att",
+        label:`Parada deducida · ${fDur(hueco)} sin registro, reinicia en ${marcas[i][1].toFixed(1)} Hz`});
+    } else if(hueco<=1800000 && Math.abs(marcas[i][1]-marcas[i-1][1])>0.05){
+      eventos.push({t:marcas[i][0], sev:"accion",
+        label:`Frecuencia ${marcas[i-1][1].toFixed(2)} → ${marcas[i][1].toFixed(2)} Hz`});
     }
   }
-  const paradas=eventos.filter(e=>e.sev==="crit").length;
+  eventos.sort((a,b)=>a.t-b.t);
+  const paradas=eventos.filter(e=>e.sev==="att"&&e.label.startsWith("Parada")).length;
   acc.__eventos=eventos;
 
   notes.push("Diario del Umka-03: ventanas de 10 minutos; el controlador solo escribe con la unidad en marcha.");
-  if(paradas) notes.push(`${paradas} paradas detectadas por corte en la cadena de registros. El .JRN no guarda el texto de los eventos —eso lo arma el software del equipo—, así que estas se deducen del propio dato.`);
+  if(reales) notes.push(`${reales} eventos leídos con su causa del anillo de oscilogramas del archivo. El equipo solo guarda los últimos 32, así que los disparos más antiguos no traen causa.`);
+  if(desconocidos) notes.push(`${desconocidos} eventos con un código que aún no está catalogado; se muestran con su código en hexadecimal.`);
+  if(paradas) notes.push(`${paradas} paradas más deducidas por corte en la cadena de registros con rampa de arranque al volver. Son inferencia del dato, no lectura del equipo.`);
   notes.push("La carta de amperaje se construye con el máximo, el mínimo y la media entre las tres fases de cada ventana de 10 minutos.");
   if(extra) notes.push(`${extra} canales sin identificar se muestran crudos como «Triol ±NN». Compáralos contra la pantalla del equipo para nombrarlos.`);
   notes.push("La resistencia de aislamiento solo se mide con la unidad parada: los ceros no son lecturas.");
