@@ -2757,7 +2757,9 @@ fi.onchange=()=>{ if(fi.files.length) readMany([...fi.files]); fi.value=""; };
    terminarian en unidades distintas. */
 const di=$("#dir");
 $("#bDir").onclick=()=>di.click();
-const CARPETA_FECHA=/^(\d{4}[-_ ]?\d{2}|\d{4}\s*W\s*\d{1,2}|\d{2}[-_]\d{2}[-_]\d{2}|\d{4}[-_]\d{2}[-_]\d{2}|\d{6,8})$/i;
+/* Carpetas que son una fecha y no el nombre del pozo. Cubre aaaa-mm, aaaaWnn,
+   dd-mm-aa, aaaa-mm-dd, dd-mm-aaaa, mm-aaaa y bloques de 6 a 8 dígitos. */
+const CARPETA_FECHA=/^(\d{4}[-_ .]?\d{2}|\d{4}\s*W\s*\d{1,2}|\d{2}[-_.\/]\d{2}[-_.\/]\d{2}|\d{4}[-_.\/]\d{2}[-_.\/]\d{2}|\d{2}[-_.\/]\d{2}[-_.\/]\d{4}|\d{2}[-_.\/]\d{4}|\d{6,8})$/i;
 const BASURA=/^(desktop\.ini|thumbs\.db|\.ds_store)$/i;
 
 function pozoDeRuta(f){
@@ -2765,7 +2767,10 @@ function pozoDeRuta(f){
   partes.pop();                                  // el nombre del archivo no cuenta
   let ult=null;
   for(const c of partes){ if(CARPETA_FECHA.test(c.trim())) break; ult=c.trim(); }
-  return ult||null;                              // null: que lo deduzca como siempre
+  // Si aun asi lo que queda parece una fecha, mejor no nombrar nada y dejar
+  // que se deduzca del archivo o que lo ponga el usuario.
+  if(ult && CARPETA_FECHA.test(ult)) ult=null;
+  return ult||null;
 }
 
 di.onchange=()=>{
@@ -2849,8 +2854,10 @@ function readMany(files,opts){
           const prof=detectProfile(text);
           if(prof&&prof.enc==="latin1") text=decode(buf,"latin1");
         }
+        // El nombre elegido a mano manda sobre el deducido de la carpeta.
+        // Al reves se perdia lo que el usuario acababa de teclear.
         const propia=opts.unidadDe? opts.unidadDe(file) : null;
-        const f=addFileFromText(text,file.name,propia||DEST||undefined);
+        const f=addFileFromText(text,file.name,DEST||propia||undefined);
         f._text=text;
       }catch(err){ errs.push(`${file.name}: ${err.message||err}`); }
       if(++done===files.length) finishLoad(errs,antes,opts);
