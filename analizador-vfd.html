@@ -855,7 +855,14 @@ function parseJrn(buf){
     const c={conv,a:acc[rol]}; canal.set(p,c); return c;
   }
 
-  let filas=0;
+  // Carta de amperaje: el Umka no la guarda aparte, pero cada ventana de 10
+  // minutos trae las tres corrientes de fase. El maximo, el minimo y la media
+  // entre fases dan la banda de amperaje y ademas dejan ver el desbalance.
+  acc.amp_max={t:[],y:[],src:"máx. entre fases",srcUnit:"A"};
+  acc.amp_min={t:[],y:[],src:"mín. entre fases",srcUnit:"A"};
+  acc.amp_avg={t:[],y:[],src:"media de las tres fases",srcUnit:"A"};
+
+  let filas=0; const marcas=[];
   for(const o of anclas){
     if(o-28<0 || o+76>buf.byteLength) continue;
     const ts=datTs(val(o));            // misma convencion de hora de pared que el .dat
@@ -864,9 +871,36 @@ function parseJrn(buf){
       const v=d.getUint16(o+p,true);
       c.a.t.push(ts); c.a.y.push(c.conv? c.conv(v) : v);
     }
+    const ia=d.getUint16(o+18,true)/10, ib=d.getUint16(o+20,true)/10, ic=d.getUint16(o+22,true)/10;
+    acc.amp_max.t.push(ts); acc.amp_max.y.push(Math.max(ia,ib,ic));
+    acc.amp_min.t.push(ts); acc.amp_min.y.push(Math.min(ia,ib,ic));
+    acc.amp_avg.t.push(ts); acc.amp_avg.y.push((ia+ib+ic)/3);
+    marcas.push([ts, d.getUint16(o+34,true)/100]);
     filas++;
   }
+  /* Eventos derivados. El .JRN no guarda el texto de los eventos: eso lo arma
+     el software del equipo. Pero el controlador solo escribe con la unidad en
+     marcha, asi que un corte en la cadena de 10 minutos ES una parada, con su
+     hora de inicio, su hora de fin y su duracion. Y el salto de frecuencia al
+     volver es la rampa de arranque. Nada de esto se supone: se mide. */
+  marcas.sort((a,b)=>a[0]-b[0]);
+  const eventos=[];
+  for(let i=1;i<marcas.length;i++){
+    const hueco=marcas[i][0]-marcas[i-1][0];
+    if(hueco>900000){                                   // mas de 15 min sin escribir
+      eventos.push({t:marcas[i-1][0], label:`Parada · sin registro durante ${fDur(hueco)}`, sev:"crit"});
+      eventos.push({t:marcas[i][0],   label:`Arranque · tras ${fDur(hueco)} detenido`,     sev:"ok"});
+    } else if(Math.abs(marcas[i][1]-marcas[i-1][1])>0.05 && hueco<=900000){
+      eventos.push({t:marcas[i][0],
+        label:`Frecuencia ${marcas[i-1][1].toFixed(2)} → ${marcas[i][1].toFixed(2)} Hz`, sev:"accion"});
+    }
+  }
+  const paradas=eventos.filter(e=>e.sev==="crit").length;
+  acc.__eventos=eventos;
+
   notes.push("Diario del Umka-03: ventanas de 10 minutos; el controlador solo escribe con la unidad en marcha.");
+  if(paradas) notes.push(`${paradas} paradas detectadas por corte en la cadena de registros. El .JRN no guarda el texto de los eventos —eso lo arma el software del equipo—, así que estas se deducen del propio dato.`);
+  notes.push("La carta de amperaje se construye con el máximo, el mínimo y la media entre las tres fases de cada ventana de 10 minutos.");
   if(extra) notes.push(`${extra} canales sin identificar se muestran crudos como «Triol ±NN». Compáralos contra la pantalla del equipo para nombrarlos.`);
   notes.push("La resistencia de aislamiento solo se mide con la unidad parada: los ceros no son lecturas.");
   return {acc,notes,rows:filas};
@@ -1108,6 +1142,12 @@ function addFileFromText(text,fname,forceUnit){
     const {acc,notes,rows}= prof.bin==="jrn"? parseJrn(text)
                           : prof.bin? parseDat(text) : parseSerie(text,prof,fname);
     f.notes.push(...notes);
+    // Un lector de serie puede además deducir eventos del propio dato
+    // (por ejemplo, las paradas del Umka-03 salen de los cortes en la cadena).
+    if(acc.__eventos){
+      acc.__eventos.forEach(e=>U.events.push({...e, fi:f.id}));
+      delete acc.__eventos;
+    }
     let t0=Infinity,t1=-Infinity,added=0;
     for(const role in acc){
       const a=acc[role]; if(!a.t.length) continue;
