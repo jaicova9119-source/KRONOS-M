@@ -2886,4 +2886,316 @@ function finishLoad(errs,antes,opts){
 setTheme((window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches)?"light":"dark");
 setScale(window.innerWidth>2200?3: window.innerWidth>1700?2:1);
 if(location.protocol!=="file:") initServidor();   // arranca acorde a la pantalla
+  /* =====================================================================
+   dp-features.js  —  Kronos-M | Modulo DataPredictiva
+   Puente entre el Analizador DATA y el motor determinista.
+
+   Se apoya en lo que el analizador ya construyo:
+     U.ch[rol] = {t: Float64Array, y: Float64Array, n, label, unit}
+     U.segs    = [{state:'run'|'off'|'nd', a, b}]
+   incluyendo los canales derivados de buildDerived(): unb_i, unb_v,
+   dp, dt_wi, vhz. Nada de eso se vuelve a calcular aqui.
+
+   Pegar dentro del <script> de analizador-vfd.html.
+   ===================================================================== */
+
+/* Zona horaria de operacion. Los dias son dias locales de campo, no UTC:
+   un turno de noche no debe partirse en dos filas. */
+const DP_TZ_OFFSET_MIN = -5 * 60;   // Colombia, UTC-5
+
+function dpDiaLocal(ms) {
+  const d = new Date(ms + DP_TZ_OFFSET_MIN * 60000);
+  return d.toISOString().slice(0, 10);
+}
+
+/* --- estadistica ---------------------------------------------------- */
+const dpProm = a => a.length ? a.reduce((s, x) => s + x, 0) / a.length : null;
+const dpMax  = a => a.length ? Math.max(...a) : null;
+const dpMin  = a => a.length ? Math.min(...a) : null;
+
+function dpPct(a, p) {
+  if (!a.length) return null;
+  const s = [...a].sort((x, y) => x - y);
+  return s[Math.min(s.length - 1, Math.max(0, Math.round(p / 100 * (s.length - 1))))];
+}
+
+/* Pendiente por regresion lineal, en unidades por dia. */
+function dpPendiente(ts, ys) {
+  if (ys.length < 3) return null;
+  const t0 = ts[0];
+  const xs = ts.map(t => (t - t0) / 86400000);
+  const n = xs.length;
+  const mx = dpProm(xs), my = dpProm(ys);
+  let num = 0, den = 0;
+  for (let i = 0; i < n; i++) { num += (xs[i] - mx) * (ys[i] - my); den += (xs[i] - mx) ** 2; }
+  return den === 0 ? null : num / den;
+}
+
+/* Agrupa un canal por dia local -> {dia: {t:[], y:[]}} */
+function dpPorDia(C) {
+  const out = {};
+  if (!C || !C.n) return out;
+  for (let i = 0; i < C.n; i++) {
+    const d = dpDiaLocal(C.t[i]);
+    (out[d] || (out[d] = { t: [], y: [] }));
+    out[d].t.push(C.t[i]);
+    out[d].y.push(C.y[i]);
+  }
+  return out;
+}
+
+/* Une varios canales del mismo tipo (las tres fases, por ejemplo). */
+function dpPorDiaVarios(U, roles) {
+  const out = {};
+  for (const r of roles) {
+    const porDia = dpPorDia(U.ch[r]);
+    for (const d in porDia) {
+      (out[d] || (out[d] = { t: [], y: [] }));
+      out[d].t.push(...porDia[d].t);
+      out[d].y.push(...porDia[d].y);
+    }
+  }
+  return out;
+}
+
+/* --- operacion, desde los segmentos que ya calculo el analizador ---- */
+function dpOperacionPorDia(U) {
+  const out = {};
+  const dia = d => out[d] || (out[d] = { ms_run: 0, ms_dato: 0, arranques: 0, paradas: 0 });
+
+  for (const s of (U.segs || [])) {
+    // Partir el segmento en los limites de dia local.
+    let a = s.a;
+    while (a < s.b) {
+      const d = dpDiaLocal(a);
+      const finDia = Date.parse(d + 'T00:00:00Z') - DP_TZ_OFFSET_MIN * 60000 + 86400000;
+      const b = Math.min(s.b, finDia);
+      const o = dia(d);
+      if (s.state !== 'nd') o.ms_dato += (b - a);
+      if (s.state === 'run') o.ms_run += (b - a);
+      a = b;
+    }
+  }
+
+  // Transiciones: un arranque es off -> run, una parada es run -> off.
+  const segs = (U.segs || []).filter(s => s.state !== 'nd');
+  for (let i = 1; i < segs.length; i++) {
+    const d = dia(dpDiaLocal(segs[i].a));
+    if (segs[i - 1].state === 'off' && segs[i].state === 'run') d.arranques++;
+    if (segs[i - 1].state === 'run' && segs[i].state === 'off') d.paradas++;
+  }
+  return out;
+}
+
+/* =====================================================================
+   Calculo del vector diario
+   ===================================================================== */
+function dpCalcularFeatures(U, placa) {
+  placa = placa || {};
+
+  const iOut  = dpPorDiaVarios(U, ['i_out_a', 'i_out_b', 'i_out_c']);
+  const iAlt  = dpPorDia(U.ch.i_motor);
+  const vIn   = dpPorDiaVarios(U, ['v_ab', 'v_bc', 'v_ca']);
+  const canal = {
+    v_out: dpPorDia(U.ch.v_out),
+    freq:  dpPorDia(U.ch.freq_out),
+    unb_i: dpPorDia(U.ch.unb_i),
+    unb_v: dpPorDia(U.ch.unb_v),
+    pf:    dpPorDia(U.ch.pf),
+    carga: dpPorDia(U.ch.carga),
+    pip:   dpPorDia(U.ch.p_intake),
+    pdis:  dpPorDia(U.ch.p_disch),
+    dp:    dpPorDia(U.ch.dp),
+    twind: dpPorDia(U.ch.t_wind),
+    tint:  dpPorDia(U.ch.t_intake),
+    dtwi:  dpPorDia(U.ch.dt_wi),
+    vib1:  dpPorDia(U.ch.vib_1),
+    vib2:  dpPorDia(U.ch.vib_2),
+    vib3:  dpPorDia(U.ch.vib_3),
+  };
+  const oper = dpOperacionPorDia(U);
+
+  // Resolucion mediana real y numero de canales con dato.
+  const canales = Object.keys(U.ch).filter(r => U.ch[r].n > 0);
+  const dtMed = canales.length
+    ? Math.round(dpProm(canales.map(r => medDt(U.ch[r]))) / 1000)
+    : 60;
+  const resolucion = Math.max(1, dtMed);
+
+  // Todos los dias que aparecen en cualquier canal.
+  const dias = new Set();
+  [iOut, iAlt, vIn, ...Object.values(canal), oper]
+    .forEach(m => Object.keys(m).forEach(d => dias.add(d)));
+
+  const filas = [];
+  for (const dia of [...dias].sort()) {
+    const f = { fecha: dia };
+    const g = (m, k) => (m[dia] ? m[dia][k] : []);
+
+    // --- corriente ---
+    let ia = g(iOut, 'y');
+    if (!ia.length) ia = g(iAlt, 'y');
+    if (ia.length) { f.i_prom_a = dpProm(ia); f.i_max_a = dpMax(ia); }
+
+    if (g(canal.unb_i, 'y').length) {
+      f.i_desbal_pct_prom = dpProm(g(canal.unb_i, 'y'));
+      f.i_desbal_pct_max  = dpMax(g(canal.unb_i, 'y'));
+    }
+
+    // --- tension ---
+    if (g(canal.v_out, 'y').length) f.v_salida_prom_v = dpProm(g(canal.v_out, 'y'));
+    if (g(vIn, 'y').length)         f.v_entrada_prom_v = dpProm(g(vIn, 'y'));
+    // unb_v se calcula sobre v_ab/v_bc/v_ca, que son de ENTRADA.
+    if (g(canal.unb_v, 'y').length) f.v_entrada_desbal_pct = dpProm(g(canal.unb_v, 'y'));
+
+    // --- frecuencia ---
+    const fr = g(canal.freq, 'y');
+    if (fr.length) {
+      f.frec_prom_hz = dpProm(fr);
+      f.frec_min_hz  = dpMin(fr);
+      f.frec_max_hz  = dpMax(fr);
+      if (f.frec_prom_hz > 0 && f.i_prom_a != null) {
+        f.ratio_i_frec = f.i_prom_a / f.frec_prom_hz;
+      }
+    }
+
+    if (g(canal.pf, 'y').length) f.fp_prom = dpProm(g(canal.pf, 'y'));
+
+    // --- carga: el dato del equipo gana sobre el calculo por placa ---
+    const cg = g(canal.carga, 'y');
+    if (cg.length) {
+      f.carga_pct_prom = dpProm(cg);
+      f.carga_pct_p95  = dpPct(cg, 95);
+    } else if (placa.motor_i_nominal_a > 0 && ia.length) {
+      f.carga_pct_prom = 100 * dpProm(ia) / placa.motor_i_nominal_a;
+      f.carga_pct_p95  = 100 * dpPct(ia, 95) / placa.motor_i_nominal_a;
+    }
+    // Sin ninguna de las dos, queda nulo. Nunca cero: un cero se lee
+    // como motor descargado y en realidad es "no se".
+
+    // --- fondo ---
+    const pip = g(canal.pip, 'y');
+    if (pip.length) {
+      f.pip_prom_psi = dpProm(pip);
+      f.pip_min_psi  = dpMin(pip);
+      f.pip_pendiente_psi_dia = dpPendiente(g(canal.pip, 't'), pip);
+    }
+    if (g(canal.pdis, 'y').length) f.p_descarga_prom_psi = dpProm(g(canal.pdis, 'y'));
+    if (g(canal.dp, 'y').length)   f.dp_bomba_psi = dpProm(g(canal.dp, 'y'));
+
+    // --- temperaturas ---
+    const tw = g(canal.twind, 'y');
+    if (tw.length) { f.t_motor_prom_c = dpProm(tw); f.t_motor_max_c = dpMax(tw); }
+    if (g(canal.tint, 'y').length) f.t_intake_prom_c = dpProm(g(canal.tint, 'y'));
+    if (g(canal.dtwi, 'y').length) f.delta_t_motor_intake = dpProm(g(canal.dtwi, 'y'));
+
+    // --- vibracion ---
+    if (g(canal.vib1, 'y').length) f.vib_x_prom = dpProm(g(canal.vib1, 'y'));
+    if (g(canal.vib2, 'y').length) f.vib_y_prom = dpProm(g(canal.vib2, 'y'));
+    const todasVib = [...g(canal.vib1, 'y'), ...g(canal.vib2, 'y'), ...g(canal.vib3, 'y')];
+    if (todasVib.length) f.vib_max = dpMax(todasVib);
+
+    // --- operacion ---
+    const o = oper[dia];
+    if (o) {
+      f.minutos_operando   = Math.round(o.ms_run / 60000);
+      f.disponibilidad_pct = o.ms_dato > 0 ? 100 * o.ms_run / o.ms_dato : null;
+      f.n_arranques        = o.arranques;
+      f.n_paradas          = o.paradas;
+    }
+
+    // --- calidad del dato ---
+    // Sin esto no se distingue "todo normal" de "no llego dato", y el
+    // motor marca el dia como no evaluable en vez de inventar un cero.
+    let recibidas = 0;
+    for (const r of canales) {
+      const pd = dpPorDia(U.ch[r]);
+      if (pd[dia]) recibidas += pd[dia].y.length;
+    }
+    f.muestras_esperadas  = Math.round(86400 / resolucion) * canales.length;
+    f.muestras_recibidas  = recibidas;
+    f.variables_sin_dato  = canales.length -
+      canales.filter(r => { const pd = dpPorDia(U.ch[r]); return pd[dia]; }).length;
+
+    f.version_motor = '1.0.0';
+    filas.push(f);
+  }
+
+  return { filas, resolucion };
+}
+
+/* =====================================================================
+   Subida
+   ===================================================================== */
+
+async function dpSha256(buf) {
+  const h = await crypto.subtle.digest('SHA-256', buf);
+  return [...new Uint8Array(h)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * @param sb       cliente supabase con { db: { schema: 'datapredictiva' } }
+ * @param U        unidad activa del analizador (DB.units[DB.active])
+ * @param opciones { pozoId, empresaId, formato, archivoNombre, archivoBuffer,
+ *                   serieEquipo, offsetRelojSeg }
+ */
+async function dpSubirFeatures(sb, U, opciones) {
+  const {
+    pozoId, empresaId, formato, archivoNombre, archivoBuffer,
+    serieEquipo = null, offsetRelojSeg = null,
+  } = opciones;
+
+  const { data: placas } = await sb
+    .from('placas_pozo').select('*').eq('pozo_id', pozoId).maybeSingle();
+
+  const { filas, resolucion } = dpCalcularFeatures(U, placas || {});
+  if (!filas.length) throw new Error('el archivo no produjo ningun dia con datos');
+
+  const hash = await dpSha256(archivoBuffer);
+
+  // El hash unico impide contar dos veces el mismo archivo.
+  const { data: carga, error: eCarga } = await sb
+    .from('cargas_datos')
+    .insert({
+      empresa_id:       empresaId,
+      pozo_id:          pozoId,
+      formato,
+      archivo_nombre:   archivoNombre,
+      archivo_hash:     hash,
+      archivo_bytes:    archivoBuffer.byteLength,
+      serie_equipo:     serieEquipo,
+      periodo_desde:    new Date(U.t0).toISOString(),
+      periodo_hasta:    new Date(U.t1).toISOString(),
+      n_registros:      filas.reduce((s, f) => s + (f.muestras_recibidas || 0), 0),
+      resolucion_seg:   resolucion,
+      offset_reloj_seg: offsetRelojSeg,
+      tz_origen:        formato === 'DAT_BH' ? 'wall-clock-as-utc' : null,
+    })
+    .select()
+    .single();
+
+  if (eCarga) {
+    if (eCarga.code === '23505') {
+      throw new Error('este archivo ya fue cargado antes (hash repetido)');
+    }
+    throw eCarga;
+  }
+
+  const { data: res, error: eIng } = await sb.rpc('dp_ingestar_features', {
+    p_carga_id: carga.id,
+    p_filas:    filas,
+  });
+  if (eIng) throw eIng;
+
+  // Evaluar el motor determinista sobre cada dia ingresado.
+  for (const f of filas) {
+    await sb.rpc('dp_evaluar', { p_pozo_id: pozoId, p_fecha: f.fecha });
+  }
+
+  return {
+    cargaId: carga.id,
+    dias: filas.length,
+    resultado: res,
+  };
+}
 </script>
