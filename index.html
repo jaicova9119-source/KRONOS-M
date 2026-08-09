@@ -9386,6 +9386,195 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
     console.warn("No se pudo registrar el service worker:", err);
   });
 }
+
+/* ============================================================
+   DATAPREDICTIVA · recepción desde el Analizador de DATA
+   ============================================================
+   El analizador corre en iframe y no sube nada por su cuenta: solo
+   calcula el vector diario y lo manda por postMessage. La escritura
+   ocurre aquí, donde ya está la sesión y el control de acceso.
+   ============================================================ */
+
+const DP_SCHEMA = "datapredictiva";
+
+/* Cliente aparte apuntado al esquema del módulo. No se toca `sb`,
+   del que cuelgan todos los demás módulos. */
+const sbDP = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  db: { schema: DP_SCHEMA }
+});
+
+/* La sesión vive en el cliente principal; se replica aquí. */
+async function dpSincronizarSesion() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return false;
+  await sbDP.auth.setSession({
+    access_token: session.access_token,
+    refresh_token: session.refresh_token
+  });
+  return true;
+}
+
+let dpPendiente = null;   // mensaje a la espera de que se elija el pozo
+
+window.addEventListener("message", async (e) => {
+  const d = e.data;
+  if (!d || d.tipo !== "dp:features") return;
+  if (e.source !== document.getElementById("vfd-marco")?.contentWindow) return;
+  dpPendiente = d;
+  dpAbrirDialogo(d);
+});
+
+function dpResponder(ok, extra) {
+  const marco = document.getElementById("vfd-marco");
+  if (marco && marco.contentWindow) {
+    marco.contentWindow.postMessage({ tipo: "dp:resultado", ok, ...extra }, "*");
+  }
+}
+
+/* ── Diálogo de confirmación ───────────────────────────────── */
+async function dpAbrirDialogo(msg) {
+  let dlg = document.getElementById("dp-dialogo");
+  if (!dlg) {
+    dlg = document.createElement("div");
+    dlg.id = "dp-dialogo";
+    dlg.style.cssText =
+      "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);" +
+      "display:flex;align-items:center;justify-content:center;padding:16px";
+    document.body.appendChild(dlg);
+  }
+
+  const { data: pozos } = await sbDP
+    .from("pozos").select("id,nombre,campo,marca_variador")
+    .eq("activo", true).order("nombre");
+
+  const ops = (pozos || [])
+    .map(p => `<option value="${p.id}">${p.nombre}${p.campo ? " · " + p.campo : ""}</option>`)
+    .join("");
+
+  dlg.innerHTML = `
+    <div style="background:var(--card,#fff);color:var(--fg,#111);border-radius:12px;
+                max-width:460px;width:100%;padding:20px;font-size:14px">
+      <h3 style="margin:0 0 4px">Enviar a DataPredictiva</h3>
+      <p style="margin:0 0 14px;opacity:.7">
+        ${msg.filas.length} día(s) · ${msg.formato} ·
+        ${msg.periodo_desde.slice(0,10)} a ${msg.periodo_hasta.slice(0,10)}
+      </p>
+
+      <label style="display:block;margin-bottom:4px">Pozo</label>
+      <select id="dp-pozo" style="width:100%;padding:8px;margin-bottom:12px">
+        <option value="">— elegir —</option>${ops}
+      </select>
+
+      <label style="display:block;margin-bottom:4px">
+        Desfase del reloj del equipo (segundos)
+      </label>
+      <input id="dp-offset" type="number" value="0" style="width:100%;padding:8px">
+      <p style="margin:4px 0 14px;opacity:.6;font-size:12px">
+        Diferencia entre el reloj del variador y la hora real al momento de
+        descargar. Sin este dato no se puede afirmar el orden entre fuentes.
+      </p>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn-secondary" onclick="dpCerrarDialogo()">Cancelar</button>
+        <button class="btn-primary" id="dp-ok">Guardar</button>
+      </div>
+      <p id="dp-msg" style="margin:10px 0 0;font-size:13px"></p>
+    </div>`;
+
+  dlg.style.display = "flex";
+  document.getElementById("dp-ok").onclick = dpGuardar;
+}
+
+function dpCerrarDialogo() {
+  const d = document.getElementById("dp-dialogo");
+  if (d) d.style.display = "none";
+  dpPendiente = null;
+}
+
+/* ── Escritura ─────────────────────────────────────────────── */
+async function dpGuardar() {
+  const msg = dpPendiente;
+  const aviso = document.getElementById("dp-msg");
+  const btn = document.getElementById("dp-ok");
+  const pozoId = document.getElementById("dp-pozo").value;
+
+  if (!msg) return;
+  if (!pozoId) { aviso.textContent = "elige el pozo"; return; }
+
+  btn.disabled = true;
+  aviso.textContent = "guardando…";
+
+  try {
+    if (!await dpSincronizarSesion()) throw new Error("sesión no válida");
+
+    const { data: pozo, error: ePozo } = await sbDP
+      .from("pozos").select("id,empresa_id,nombre").eq("id", pozoId).single();
+    if (ePozo) throw ePozo;
+
+    /* La placa se consulta aquí y no en el iframe: la carga porcentual
+       se recalcula solo si el equipo no la reportó. */
+    const { data: placa } = await sbDP
+      .from("placas_pozo").select("*").eq("pozo_id", pozoId).maybeSingle();
+
+    const filas = msg.filas.map(f => {
+      if (f.carga_pct_prom == null && placa?.motor_i_nominal_a > 0 && f.i_prom_a != null) {
+        f.carga_pct_prom = 100 * f.i_prom_a / placa.motor_i_nominal_a;
+      }
+      return f;
+    });
+
+    const { data: carga, error: eCarga } = await sbDP
+      .from("cargas_datos")
+      .insert({
+        empresa_id:       pozo.empresa_id,
+        pozo_id:          pozo.id,
+        formato:          msg.formato,
+        archivo_nombre:   msg.archivo_nombre,
+        archivo_hash:     msg.archivo_hash,
+        archivo_bytes:    msg.archivo_bytes,
+        periodo_desde:    msg.periodo_desde,
+        periodo_hasta:    msg.periodo_hasta,
+        n_registros:      filas.reduce((s, f) => s + (f.muestras_recibidas || 0), 0),
+        resolucion_seg:   msg.resolucion_seg,
+        offset_reloj_seg: parseInt(document.getElementById("dp-offset").value || "0", 10),
+        tz_origen:        msg.formato === "DAT_BH" ? "wall-clock-as-utc" : null,
+        nota:             msg.archivos.join(", ").slice(0, 500)
+      })
+      .select().single();
+
+    if (eCarga) {
+      if (eCarga.code === "23505") throw new Error("este conjunto de archivos ya fue cargado");
+      throw eCarga;
+    }
+
+    const { error: eIng } = await sbDP.rpc("dp_ingestar_features", {
+      p_carga_id: carga.id,
+      p_filas: filas
+    });
+    if (eIng) throw eIng;
+
+    /* Evaluar el motor determinista día por día. */
+    let atencion = 0;
+    for (const f of filas) {
+      const { data: dict } = await sbDP.rpc("dp_evaluar", {
+        p_pozo_id: pozo.id, p_fecha: f.fecha
+      });
+      const r = Array.isArray(dict) ? dict[0] : dict;
+      if (r?.requiere_atencion) atencion++;
+    }
+
+    dpCerrarDialogo();
+    toast(`DataPredictiva: ${filas.length} día(s) guardados en ${pozo.nombre}` +
+          (atencion ? ` · ${atencion} requieren atención` : ""));
+    dpResponder(true, { dias: filas.length, atencion });
+
+  } catch (err) {
+    aviso.textContent = "no se guardó: " + (err.message || err);
+    btn.disabled = false;
+    dpResponder(false, { error: err.message || String(err) });
+  }
+}
+
 </script>
 </body>
 </html>
