@@ -2906,7 +2906,7 @@ if(location.protocol!=="file:") initServidor();   // arranca acorde a la pantall
    partirse en dos filas por el cambio de fecha en Greenwich. */
 const DP_TZ_OFFSET_MIN = -5 * 60;          // Colombia, UTC-5
 const DP_ESTABILIZACION_S = 120;           // descarte tras cada arranque
-const DP_VERSION_MOTOR = "1.0.1";
+const DP_VERSION_MOTOR = "1.0.2";
 
 function dpDiaLocal(ms){
   return new Date(ms + DP_TZ_OFFSET_MIN*60000).toISOString().slice(0,10);
@@ -3007,24 +3007,34 @@ function dpOperacionPorDia(U){
    coberturas por encima del 100%. */
 function dpCalidadPorDia(U){
   const roles=Object.keys(U.ch).filter(r=>U.ch[r].n>0);
-  const acum={};
+
+  /* Lo esperado se mide contra el universo COMPLETO de canales de la
+     unidad, no contra los que reportaron ese día. Contando solo los
+     presentes, un día con 3 de 20 canales daba 100% de cobertura, que
+     es exactamente lo que esta columna existe para impedir: que
+     "no llegó dato" se vea igual que "todo normal". */
+  let espTotalDia=0;
+  for(const r of roles) espTotalDia += 86400/Math.max(1,medDt(U.ch[r])/1000);
+  const esp=Math.round(espTotalDia);
+
+  const dias=new Set(), rec={}, pres={};
   for(const r of roles){
-    const C=U.ch[r], dtSeg=Math.max(1,medDt(C)/1000), espDia=86400/dtSeg;
-    const pd=dpPorDia(C);
+    const pd=dpPorDia(U.ch[r]);
     for(const d in pd){
-      const a=acum[d]||(acum[d]={esp:0,rec:0,pres:0});
-      a.esp+=espDia; a.rec+=pd[d].y.length; a.pres++;
+      dias.add(d);
+      rec[d]=(rec[d]||0)+pd[d].y.length;
+      pres[d]=(pres[d]||0)+1;
     }
   }
+
   const out={};
-  for(const d in acum){
-    const a=acum[d];
+  for(const d of dias){
     out[d]={
-      muestras_esperadas: Math.round(a.esp),
+      muestras_esperadas: esp,
       // Un canal irregular puede entregar más de lo esperado; se acota
       // para que cobertura_pct siga significando lo que dice.
-      muestras_recibidas: Math.min(Math.round(a.rec), Math.round(a.esp)),
-      variables_sin_dato: roles.length-a.pres
+      muestras_recibidas: Math.min(Math.round(rec[d]||0), esp),
+      variables_sin_dato: roles.length-(pres[d]||0)
     };
   }
   return out;
@@ -3038,6 +3048,10 @@ function dpCalcularFeatures(U,placa){
 
   const iOut=dpPorDiaVarios(U,["i_out_a","i_out_b","i_out_c"]);
   const iAlt=dpPorDia(U.ch.i_motor);
+  /* La carta amperimétrica (perfil bh_ampchart) entrega amp_min, amp_max
+     y amp_avg. Es dato válido de corriente y quedaba fuera del cálculo. */
+  const iAmpAvg=dpPorDia(U.ch.amp_avg);
+  const iAmpMax=dpPorDia(U.ch.amp_max);
   const vIn =dpPorDiaVarios(U,["v_ab","v_bc","v_ca"]);   // son de ENTRADA
   const c={
     v_out:dpPorDia(U.ch.v_out), freq:dpPorDia(U.ch.freq_out),
@@ -3062,8 +3076,20 @@ function dpCalcularFeatures(U,placa){
     const f={fecha:dia};
     const g=(m,k)=>(m[dia]?m[dia][k]:[]);
 
-    let ia=g(iOut,"y"); if(!ia.length) ia=g(iAlt,"y");
-    if(ia.length){ f.i_prom_a=dpProm(ia); f.i_max_a=dpMax(ia); }
+    /* Prioridad: tres fases > corriente de motor > carta amperimétrica.
+       La carta es de menor resolución y no permite desbalance, pero para
+       promedio y máximo sirve. Se deja anotado de dónde salió. */
+    let ia=g(iOut,"y"), fuenteI="fases";
+    if(!ia.length){ ia=g(iAlt,"y");    fuenteI="motor"; }
+    if(!ia.length){ ia=g(iAmpAvg,"y"); fuenteI="carta"; }
+    if(ia.length){
+      f.i_prom_a=dpProm(ia);
+      // La carta trae su propio máximo por intervalo: es más fiel que el
+      // máximo de los promedios.
+      const amx=g(iAmpMax,"y");
+      f.i_max_a=(fuenteI==="carta"&&amx.length)? dpMax(amx) : dpMax(ia);
+      f.extra=Object.assign(f.extra||{},{fuente_corriente:fuenteI});
+    }
 
     if(g(c.unb_i,"y").length){
       f.i_desbal_pct_prom=dpProm(g(c.unb_i,"y"));
