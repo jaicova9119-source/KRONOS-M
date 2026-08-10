@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <meta name="theme-color" content="#134B70">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23134B70'/%3E%3Cpath d='M5 17h5l3-7 4 13 3-6h7' stroke='%231B8E9E' stroke-width='2.4' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
 <title>Captura de datos de campo &middot; Kronos-M</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -704,7 +705,8 @@
       </div>
     </section>
 
-    <div class="foot">Captura de datos de campo &middot; ESP/VFD &middot; UBH &middot; HPUM</div>
+    <div class="foot">Captura de datos de campo &middot; ESP/VFD &middot; UBH &middot; HPUM
+      &middot; <span id="dp-build">v4</span></div>
   </main>
 </div>
 
@@ -714,13 +716,24 @@
    Los mismos valores que usa Kronos-M.
    ============================================================ */
 const DP = {
-  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.coL',
+  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.co',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
 };
 
-var sb = window.supabase.createClient(DP.SUPABASE_URL, DP.SUPABASE_ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true }
-});
+var sb = null, dpErrorInicio = null;
+try {
+  if (!DP.SUPABASE_URL || DP.SUPABASE_URL.indexOf('PEGAR_AQUI') === 0)
+    throw new Error('Falta pegar la URL de Supabase en el archivo.');
+  if (!DP.SUPABASE_ANON_KEY || DP.SUPABASE_ANON_KEY.indexOf('PEGAR_AQUI') === 0)
+    throw new Error('Falta pegar la anon key de Supabase en el archivo.');
+  if (!window.supabase)
+    throw new Error('No cargo la libreria de Supabase. Revisa la conexion.');
+  sb = window.supabase.createClient(DP.SUPABASE_URL, DP.SUPABASE_ANON_KEY, {
+    auth: { persistSession: true, autoRefreshToken: true }
+  });
+} catch (e) {
+  dpErrorInicio = e.message;
+}
 
 /* Identificador propio por registro. Es la clave de la
    idempotencia: si la cola reintenta un envio que en realidad si
@@ -1575,7 +1588,25 @@ function iniciarSesion(){
     return;
   }
 
+  if (dpErrorInicio){
+    ocupado(false);
+    estado.innerHTML = '<span style="color:#C62828;">' + dpErrorInicio + '</span>';
+    return;
+  }
+
+  /* Si la respuesta no llega, el boton tiene que volver y decir algo.
+     Un boton girando para siempre no le dice nada al tecnico. */
+  var respondio = false;
+  setTimeout(function(){
+    if (respondio) return;
+    ocupado(false);
+    dpLimpiarCandados();
+    estado.innerHTML = '<span style="color:#C62828;">Sin respuesta tras 20 segundos. '
+      + 'Se limpio el almacenamiento local: vuelve a intentar. Si sigue igual, revisa la senal.</span>';
+  }, 20000);
+
   sb.auth.signInWithPassword({ email: correo, password: clave }).then(function(r){
+    respondio = true;
     ocupado(false);
     if (r.error){
       estado.innerHTML = '<span style="color:#C62828;">' + r.error.message + '</span>';
@@ -1584,6 +1615,7 @@ function iniciarSesion(){
     }
     dpEntrar(r.data.user);
   }).catch(function(e){
+    respondio = true;
     ocupado(false);
     /* Sin senal no se puede autenticar por primera vez, pero si ya
        hubo sesion en este dispositivo, se reanuda al abrir. */
@@ -1623,15 +1655,50 @@ function dpEntrar(user){
   intentarSincronizarTodo();
 }
 
+/* Supabase v2 pone un candado en localStorage para que dos
+   pestanas no refresquen el token a la vez. Si la sesion se cierra
+   dejando el candado puesto, la siguiente autenticacion espera
+   para siempre a que lo liberen. Se limpia a mano.
+   Ademas el cierre es de alcance local: no necesita red, asi que
+   funciona igual sin senal. */
+function dpLimpiarCandados(){
+  try {
+    var borrar = [];
+    for (var i = 0; i < localStorage.length; i++){
+      var k = localStorage.key(i);
+      if (!k) continue;
+      if (k.indexOf('lock:') === 0) borrar.push(k);
+      else if (k.indexOf('sb-') === 0 && k.indexOf('auth-token') > -1) borrar.push(k);
+    }
+    borrar.forEach(function(k){ localStorage.removeItem(k); });
+    return borrar.length;
+  } catch(e){ return 0; }
+}
+
 function dpSalir(){
-  sb.auth.signOut().then(function(){ location.reload(); });
+  var listo = function(){ dpLimpiarCandados(); location.reload(); };
+  if (!sb) { listo(); return; }
+  sb.auth.signOut({ scope: 'local' }).then(listo).catch(listo);
+  /* Si signOut se demora, se sale igual: la sesion local ya se borro. */
+  setTimeout(listo, 2500);
 }
 
 /* Sesion previa en este dispositivo: entra directo sin pedir clave. */
-sb.auth.getSession().then(function(r){
-  var ses = r && r.data && r.data.session;
-  if (ses && ses.user) dpEntrar(ses.user);
-});
+if (sb) {
+  sb.auth.getSession().then(function(r){
+    var ses = r && r.data && r.data.session;
+    if (ses && ses.user) { dpEntrar(ses.user); return; }
+    /* Sin sesion, cualquier candado que quede es huerfano: lo dejo
+       una pestana que ya no existe y solo estorba. */
+    dpLimpiarCandados();
+  }).catch(function(){ dpLimpiarCandados(); });
+} else {
+  /* Se avisa al abrir, no al intentar entrar. */
+  window.addEventListener('DOMContentLoaded', function(){
+    var e = document.getElementById('login-status');
+    if (e) e.innerHTML = '<span style="color:#C62828;">' + dpErrorInicio + '</span>';
+  });
+}
 
 document.getElementById('login-clave').addEventListener('keydown', function(e){
   if (e.key === 'Enter'){ e.preventDefault(); iniciarSesion(); }
