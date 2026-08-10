@@ -709,7 +709,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; ESP/VFD &middot; UBH &middot; HPUM
-      &middot; <span id="dp-build">v6</span></div>
+      &middot; <span id="dp-build">v7</span></div>
   </main>
 </div>
 
@@ -719,7 +719,7 @@
    Los mismos valores que usa Kronos-M.
    ============================================================ */
 const DP = {
-  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.co',
+  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.coL',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
 };
 
@@ -1434,35 +1434,62 @@ function dpListarBorradores(){
 
 function dpAbrirBorrador(id){
   sb.rpc('dp_borrador', { p_id: id }).then(function(r){
-    if (r.error || !r.data || !r.data.medicion){
-      alert('No se pudo abrir el borrador. Puede que ya lo hayan confirmado.');
+    if (r.error){
+      alert('No se pudo abrir el borrador.\n\n' + r.error.message);
+      return;
+    }
+    if (!r.data || !r.data.medicion){
+      alert('Ese borrador ya no esta disponible. Puede que lo hayan confirmado.');
       dpListarBorradores();
       return;
     }
+
     var m = r.data.medicion, v = r.data.valores || {};
-    abrirMedicion(m.pozo);
+
+    /* El formulario se construye desde el selector de pozo, asi que
+       primero se apunta ahi y despues se reusa iniciarMedicion. */
+    var sel = document.getElementById('med-pozo-select');
+    var existe = false;
+    for (var i = 0; i < sel.options.length; i++){
+      if (sel.options[i].value === m.pozo){ existe = true; break; }
+    }
+    if (!existe){
+      var op = document.createElement('option');
+      op.value = m.pozo; op.textContent = m.pozo;
+      sel.appendChild(op);
+    }
+    sel.value = m.pozo;
+
+    iniciarMedicion();
+    /* iniciarMedicion limpia el borrador abierto, por eso se
+       reasigna despues y no antes. */
     medBorradorId = id;
 
     var poner = function(idc, val){
       var e = document.getElementById(idc);
-      if (e && val != null) e.value = val;
+      if (e && val !== null && val !== undefined && val !== '') e.value = val;
     };
     if (m.medido_en){
       poner('med-fecha', String(m.medido_en).slice(0,10));
       poner('med-hora',  String(m.medido_en).slice(11,16));
     }
-    poner('med-realizo',   m.realizado_por);
     poner('med-modo',      m.control_mode);
     poner('med-condicion', m.condicion);
     poner('med-frecop',    m.frecuencia_operacion_hz);
     poner('med-frecset',   m.frec_setpoint_hz);
     poner('med-hsc',       m.hsc);
     poner('med-lsc',       m.lsc);
+
+    var n = 0;
     Object.keys(v).forEach(function(cod){
-      if (MED_MAPA[cod]) poner(MED_MAPA[cod], v[cod]);
+      if (MED_MAPA[cod]){ poner(MED_MAPA[cod], v[cod]); n++; }
     });
-  }).catch(function(){
-    alert('Sin conexion. Los borradores se pueden continuar cuando vuelva la senal.');
+    if (n === 0) alert('El borrador se abrio, pero no tenia valores guardados.');
+  }).catch(function(e){
+    /* Se reporta el error real. Atribuirlo a falta de senal manda a
+       buscar el problema donde no esta. */
+    alert('Error al abrir el borrador.\n\n'
+        + (e && e.message ? e.message : 'causa desconocida'));
   });
 }
 
