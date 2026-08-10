@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>An&aacute;lisis Predictivo</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
   --kp-teal:#12a5b8; --kp-green:#35a853;
@@ -118,10 +119,9 @@ body{background:var(--kp-page);color:var(--kp-ink);
    CONFIGURACION
    ============================================================ */
 const KP = {
-  MODO_DEMO: true,
-  SUPABASE_URL: '',
-  SUPABASE_ANON_KEY: '',
-  SCHEMA: 'datapredictiva'
+  MODO_DEMO: false,
+  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.co',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
 };
 
 /* ============================================================
@@ -129,36 +129,110 @@ const KP = {
    Unico punto que toca la base. Al pasar MODO_DEMO a false,
    completar las dos funciones marcadas PENDIENTE.
    ============================================================ */
+/* Las RPC viven en public, asi que el cliente va con el esquema por
+   defecto. La sesion se toma sola de localStorage porque el iframe
+   corre en el mismo origen que Kronos-M. */
 let kpSb = null;
 function kpCliente(){
   if (KP.MODO_DEMO) return null;
   if (kpSb) return kpSb;
-  kpSb = window.supabase.createClient(KP.SUPABASE_URL, KP.SUPABASE_ANON_KEY, {
-    db: { schema: KP.SCHEMA }
-  });
+  kpSb = window.supabase.createClient(KP.SUPABASE_URL, KP.SUPABASE_ANON_KEY);
   return kpSb;
 }
 
 async function kpCargarFlota(){
   if (KP.MODO_DEMO) return kpDemoFlota;
-  /* PENDIENTE: reemplazar por la consulta real.
-     Requiere confirmar nombres de tabla y columnas del schema datapredictiva.
-     Forma esperada por la vista:
-       [{ pozo, campo, sistema, estado, resumen, fecha_vector }]
-       estado en: 'crit' | 'warn' | 'ok' | 'none'                     */
-  throw new Error('Consulta de flota no implementada');
+  const { data, error } = await kpCliente().rpc('dp_flota');
+  if (error) throw new Error(error.message);
+  return (data || []).map(r => ({
+    pozo_id:      r.pozo_id,
+    pozo:         r.pozo,
+    campo:        r.campo || '\u2014',
+    sistema:      r.sistema || '\u2014',
+    estado:       r.estado,
+    resumen:      kpResumen(r),
+    fecha_vector: r.fecha_vector || '\u2014'
+  }));
 }
 
-async function kpCargarPozo(codigo){
+/* El resumen dice por que el pozo esta como esta. Un pozo sin vector
+   no es un pozo sano: hay que decir que no se pudo evaluar. */
+function kpResumen(r){
+  if (!r.fecha_vector) return 'Sin vector calculado';
+  if (r.evaluable !== true)
+    return r.motivo_no_evaluable || 'No evaluable';
+  const n = (r.n_alta || 0) + (r.n_atencion_alta || 0) + (r.n_atencion || 0);
+  if (n === 0) return 'Sin hallazgos';
+  return n + (n === 1 ? ' hallazgo' : ' hallazgos');
+}
+
+async function kpCargarPozo(codigo, pozoId){
   if (KP.MODO_DEMO) return kpDemoPozo[codigo] || null;
-  /* PENDIENTE: reemplazar por la consulta real.
-     Forma esperada por la vista:
-       { pozo, campo, sistema, estado, fecha_vector,
-         indicadores: [{ etiqueta, valor, unidad, referencia, estado }],
-         cadena:      [{ nodo, detalle, medido, nominal, unidad, estado }],
-         reglas:      [{ codigo, nombre, estado, detalle, fuente }] }
-     estado en: 'crit' | 'warn' | 'ok' | 'baseline' | 'sindato' | 'sinumbral' */
-  throw new Error('Consulta de pozo no implementada');
+  const { data, error } = await kpCliente().rpc('dp_dictamen', { p_pozo_id: pozoId });
+  if (error) throw new Error(error.message);
+  if (!data || !data.dictamen) return null;
+  return kpArmarPozo(data);
+}
+
+/* Traduce lo que devuelve la RPC a lo que la vista ya sabe pintar. */
+function kpArmarPozo(d){
+  const f  = d.features || {};
+  const dc = d.dictamen || {};
+  const hs = d.hallazgos || [];
+  const porRegla = {};
+  hs.forEach(h => { porRegla[h.regla_codigo] = h; });
+
+  const nivel = n => (n === 'alta' ? 'crit' : 'warn');
+
+  const reglas = (d.reglas || []).map(r => {
+    const h = porRegla[r.codigo];
+    if (h) return {
+      codigo: r.codigo, nombre: r.nombre, estado: nivel(h.nivel),
+      detalle: h.mensaje || (kpNum(h.valor_observado) + ' \u2014 umbral ' + kpNum(h.umbral_aplicado)),
+      fuente: r.fuente_tipo || '\u2014'
+    };
+    const sinUmbral = (r.umbral_inf == null && r.umbral_sup == null);
+    return {
+      codigo: r.codigo, nombre: r.nombre,
+      estado:  (!r.activa || sinUmbral) ? 'sinumbral' : 'ok',
+      detalle: (!r.activa || sinUmbral) ? 'Regla inactiva o umbral sin parametrizar'
+                                        : 'Dentro de umbral',
+      fuente: r.fuente_tipo || '\u2014'
+    };
+  });
+
+  const ind = [];
+  const add = (etq, val, uni, ref) => {
+    if (val == null) return;
+    ind.push({ etiqueta: etq, valor: kpNum(val), unidad: uni, referencia: ref, estado: 'ok' });
+  };
+  add('Carga motor',    f.carga_pct_prom,  '%',   'p95 ' + kpNum(f.carga_pct_p95) + ' %');
+  add('Frecuencia',     f.frec_prom_hz,    'Hz',  'Rango ' + kpNum(f.frec_min_hz) + ' \u2014 ' + kpNum(f.frec_max_hz));
+  add('Presi\u00f3n intake', f.pip_prom_psi, 'psi', 'M\u00ednima ' + kpNum(f.pip_min_psi));
+  add('Temp. motor',    f.t_motor_prom_c,  '\u00b0C', 'M\u00e1xima ' + kpNum(f.t_motor_max_c) + ' \u00b0C');
+  add('Vibraci\u00f3n',     f.vib_max,     'G',   'Vx ' + kpNum(f.vib_x_prom));
+  add('Desbalance I',   f.i_desbal_pct_prom, '%', 'M\u00e1ximo ' + kpNum(f.i_desbal_pct_max) + ' %');
+  add('Disponibilidad', f.disponibilidad_pct, '%', kpNum(f.n_arranques) + ' arranques');
+  add('Cobertura',      dc.cobertura_pct,  '%',   kpNum(f.muestras_recibidas) + ' muestras');
+
+  return {
+    pozo:    d.pozo ? d.pozo.nombre : '\u2014',
+    campo:   d.pozo ? (d.pozo.campo || '\u2014') : '\u2014',
+    sistema: d.pozo ? (d.pozo.sistema || '\u2014') : '\u2014',
+    estado:  dc.n_alta > 0 ? 'crit'
+             : ((dc.n_atencion_alta > 0 || dc.n_atencion > 0) ? 'warn' : 'ok'),
+    fecha_vector: dc.fecha || '\u2014',
+    indicadores:  ind,
+    cadena:       [],
+    reglas:       reglas
+  };
+}
+
+function kpNum(v){
+  if (v == null) return '\u2014';
+  const n = Number(v);
+  if (!isFinite(n)) return '\u2014';
+  return (Math.abs(n) >= 100) ? n.toFixed(0) : n.toFixed(2);
 }
 
 /* ============================================================
@@ -278,7 +352,7 @@ function kpPintarFlota(){
     h += '<div class="kp-list">';
     d.forEach(x => {
       const e = KP_EST[x.estado];
-      h += '<div class="kp-row" onclick="kpVerPozo(\'' + x.pozo + '\')">'
+      h += '<div class="kp-row" onclick="kpVerPozo(\'' + x.pozo + '\',\'' + (x.pozo_id||'') + '\')">'
         +  '<div style="flex:1;min-width:0">'
         +  '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
         +  '<span class="nm">' + x.pozo + '</span>'
@@ -296,7 +370,7 @@ function kpPintarFlota(){
 /* ============================================================
    VISTA: POZO
    ============================================================ */
-async function kpVerPozo(codigo){
+async function kpVerPozo(codigo, pozoId){
   document.getElementById("kpBack").style.display = "block";
   document.getElementById("kpFiltros").style.display = "none";
   const v = document.getElementById("kpVista");
@@ -304,7 +378,7 @@ async function kpVerPozo(codigo){
 
   let p;
   try {
-    p = await kpCargarPozo(codigo);
+    p = await kpCargarPozo(codigo, pozoId);
   } catch (e) {
     v.innerHTML = '<div class="kp-msg">No se pudo cargar el pozo.<br>' + e.message + '</div>';
     return;
@@ -324,9 +398,11 @@ async function kpVerPozo(codigo){
 
   let h = '';
 
-  h += '<h2>Cadena energ&eacute;tica</h2>';
-  h += '<p class="hint">Estado de cada nodo seg&uacute;n su medici&oacute;n m&aacute;s desfavorable</p>';
-  h += '<div class="kp-card">' + kpDibujarCadena(p.cadena) + kpLeyenda() + '</div>';
+  if (p.cadena && p.cadena.length){
+    h += '<h2>Cadena energ&eacute;tica</h2>';
+    h += '<p class="hint">Estado de cada nodo seg&uacute;n su medici&oacute;n m&aacute;s desfavorable</p>';
+    h += '<div class="kp-card">' + kpDibujarCadena(p.cadena) + kpLeyenda() + '</div>';
+  }
 
   h += '<h2>Indicadores operativos</h2>';
   h += '<p class="hint">Vector diario del ' + p.fecha_vector + '</p><div class="kp-kpis">';
