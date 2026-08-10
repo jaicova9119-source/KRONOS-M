@@ -139,10 +139,13 @@ function kpCredencial(nombre){
   return null;
 }
 
+/* Se dejan sin resolver a proposito: se leen al usarlas, no al
+   cargar este archivo, para que no dependa de cual de los dos
+   documentos termine de cargar primero. */
 const KP = {
   MODO_DEMO: false,
-  SUPABASE_URL: kpCredencial('https://cxprmbnjnnldqyzaqsvf.supabase.co'),
-  SUPABASE_ANON_KEY: kpCredencial('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg')
+  SUPABASE_URL: null,
+  SUPABASE_ANON_KEY: null
 };
 
 /* ============================================================
@@ -154,13 +157,40 @@ const KP = {
    defecto. La sesion se toma sola de localStorage porque el iframe
    corre en el mismo origen que Kronos-M. */
 let kpSb = null;
+
+/* Primero se intenta reusar el cliente de Kronos-M. Crear uno nuevo
+   sobre la misma llave de almacenamiento produce el aviso "Multiple
+   GoTrueClient instances" y puede dejar la sesion en un estado raro.
+   Solo si no se encuentra se crea uno propio. */
+function kpClienteHeredado(){
+  var fuentes = [];
+  try { if (window.parent && window.parent !== window) fuentes.push(window.parent); } catch(e){}
+  try { if (window.opener) fuentes.push(window.opener); } catch(e){}
+  for (var i = 0; i < fuentes.length; i++){
+    try {
+      var c = fuentes[i].sb;
+      if (c && c.rpc) return c;
+    } catch(e){}
+  }
+  return null;
+}
+
 function kpCliente(){
   if (KP.MODO_DEMO) return null;
   if (kpSb) return kpSb;
+
+  kpSb = kpClienteHeredado();
+  if (kpSb) return kpSb;
+
+  if (!KP.SUPABASE_URL)      KP.SUPABASE_URL      = kpCredencial('SUPABASE_URL');
+  if (!KP.SUPABASE_ANON_KEY) KP.SUPABASE_ANON_KEY = kpCredencial('SUPABASE_ANON_KEY');
+
   if (!KP.SUPABASE_URL || !KP.SUPABASE_ANON_KEY)
-    throw new Error('No se pudieron leer las credenciales de Kronos-M. '
-      + 'Abre este modulo desde el selector de Kronos-M, no como archivo suelto. '
-      + 'Si persiste, verifica que index.html publique SUPABASE_URL en window.');
+    throw new Error('No se pudo tomar la conexion de Kronos-M. '
+      + 'Lo mas probable es que el index.html desplegado sea una version anterior: '
+      + 'recarga con Ctrl+Shift+R. Para comprobarlo, escribe window.sb en la consola '
+      + 'con Kronos-M abierto; si dice undefined, hay que subir el index.html nuevo.');
+
   kpSb = window.supabase.createClient(KP.SUPABASE_URL, KP.SUPABASE_ANON_KEY);
   return kpSb;
 }

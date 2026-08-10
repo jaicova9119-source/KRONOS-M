@@ -2026,6 +2026,12 @@ window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+/* Se publica el cliente para que los modulos en iframe lo reusen en
+   lugar de crear el suyo. Varias instancias sobre la misma llave de
+   almacenamiento producen el aviso "Multiple GoTrueClient instances"
+   y pueden dejar el inicio de sesion esperando. */
+window.sb = sb;
+
 /* El manifest ahora vive en un archivo real: ./manifest.json
    (antes se generaba aquí como data URI, pero eso impedía que
    los navegadores resolvieran bien las rutas de los íconos) */
