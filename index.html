@@ -76,6 +76,7 @@ html,body{height:100%;margin:0;}
 .navbar.modulo-ensayos .nav-item[data-modulo="ensayos"]{display:flex;}
 .navbar.modulo-programacion .nav-item[data-modulo="programacion"]{display:flex;}
 .navbar.modulo-vfd .nav-item[data-modulo="vfd"]{display:flex;}
+.navbar.modulo-predictivo .nav-item[data-modulo="predictivo"]{display:flex;}
 
 /* El analizador de bitacoras corre en un iframe y no pegado en este archivo:
    define su propia paleta en :root, escribe data-theme sobre <html> y usa
@@ -93,6 +94,15 @@ html,body{height:100%;margin:0;}
   width:auto;margin:0;padding:5px 11px;font-size:12.5px;flex-shrink:0;
 }
 #panel-vfd .panel-body:fullscreen{background:var(--bg-0)}
+/* Modulo predictivo: mismo patron que el analizador. Corre en iframe propio
+   y define su paleta adentro; aqui solo se le da el marco. */
+#pred-marco{width:100%;height:100%;border:0;display:block;background:var(--bg-0)}
+#panel-predictivo .panel-body{padding:0;overflow:hidden}
+#panel-predictivo .panel-header{padding:4px 8px;gap:8px;justify-content:flex-end}
+#panel-predictivo .panel-header .btn-secondary{
+  width:auto;margin:0;padding:5px 11px;font-size:12.5px;flex-shrink:0;
+}
+#panel-predictivo .panel-body:fullscreen{background:var(--bg-0)}
 .ee-pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;margin:0 3px}
 .ee-ok{background:#E8F5E9;color:#2E7D32}.ee-warn{background:#FFF3E0;color:#E08600}
 .ee-bad{background:#FFEBEE;color:#C62828}.ee-na{background:#F2F2F2;color:#666}
@@ -652,6 +662,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   }
   #app.modulo-vfd .navbar{display:none;}
   #app.modulo-vfd{padding-left:0;}
+  #panel-predictivo.open{
+    position:fixed;top:46px;left:0;right:0;bottom:0;
+    width:auto;height:auto;max-width:none;margin:0;z-index:31;
+  }
+  #app.modulo-predictivo .navbar{display:none;}
+  #app.modulo-predictivo{padding-left:0;}
   .pane-detail{
     display:flex;flex:1;position:relative;background:var(--bg-1);overflow:hidden;
   }
@@ -744,6 +760,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <option value="ensayos">Ensayos Eléctricos</option>
     <option value="programacion">Programación</option>
     <option value="vfd">Analizador de DATA</option>
+    <option value="predictivo">Análisis Predictivo</option>
   </select>
 </div>
 
@@ -872,6 +889,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <button class="nav-item" data-tab="vfd" data-modulo="vfd">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="M7 15l3-4 3 3 4-6"/></svg>
     Data
+  </button>
+
+  <button class="nav-item" data-tab="predictivo" data-modulo="predictivo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>
+    Predictivo
   </button>
 
   <button class="nav-item" data-tab="prog-dia" data-modulo="programacion">
@@ -1625,6 +1647,16 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
 </div>
 
+<div class="panel" id="panel-predictivo">
+  <div class="panel-header">
+    <button class="btn-secondary" onclick="predPantallaCompleta()">Pantalla completa</button>
+    <button class="btn-secondary" onclick="window.open('predictivo.html','_blank')">Pestaña aparte</button>
+  </div>
+  <div class="panel-body">
+    <iframe id="pred-marco" title="Análisis Predictivo"></iframe>
+  </div>
+</div>
+
 <div class="panel" id="panel-ee-informe">
   <div class="panel-header no-print">
     <button class="icon-btn" onclick="abrirMaquina(eeMaquinaActual.id)">&#8592;</button>
@@ -2044,7 +2076,8 @@ function aplicarModulo(modulo, irVistaDefault = true) {
 
   const navbar = document.getElementById("navbar-principal");
   navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental",
-                          "modulo-ensayos", "modulo-programacion", "modulo-vfd");
+                          "modulo-ensayos", "modulo-programacion", "modulo-vfd",
+                          "modulo-predictivo");
   navbar.classList.add("modulo-" + modulo);
   document.getElementById("selector-modulo").value = modulo;
 
@@ -2056,6 +2089,7 @@ function aplicarModulo(modulo, irVistaDefault = true) {
 
   const app = document.getElementById("app");
   app.classList.toggle("modulo-vfd", modulo === "vfd");
+  app.classList.toggle("modulo-predictivo", modulo === "predictivo");
   if (modulo === "activos") {
     app.classList.remove("modulo-completo");
     document.querySelector('[data-tab="inicio"]').classList.add("active");
@@ -2085,6 +2119,12 @@ function aplicarModulo(modulo, irVistaDefault = true) {
     document.querySelector('[data-tab="prog-dia"]').classList.add("active");
     abrirPanel("panel-prog-dia");
     abrirProgramacion();
+  } else if (modulo === "predictivo") {
+    app.classList.add("modulo-completo");
+    app.classList.add("modulo-predictivo");
+    document.querySelector('[data-tab="predictivo"]').classList.add("active");
+    abrirPanel("panel-predictivo");
+    abrirPredictivo();
   }
 }
 
@@ -2105,6 +2145,22 @@ function abrirAnalizadorVFD() {
    navegador. Se sale con Escape, sin boton flotante que tape su barra. */
 function vfdPantallaCompleta() {
   const cont = document.querySelector("#panel-vfd .panel-body");
+  if (!cont) return;
+  if (document.fullscreenElement) { document.exitFullscreen(); return; }
+  const pedir = cont.requestFullscreen || cont.webkitRequestFullscreen;
+  if (!pedir) { toast("Este navegador no permite pantalla completa"); return; }
+  Promise.resolve(pedir.call(cont)).catch(() => toast("El navegador bloqueó la pantalla completa"));
+}
+
+/* Mismo criterio que el analizador: el iframe se apunta la primera vez que
+   se abre el modulo y de ahi en adelante conserva su estado. */
+function abrirPredictivo() {
+  const marco = document.getElementById("pred-marco");
+  if (marco && !marco.src) marco.src = "predictivo.html";
+}
+
+function predPantallaCompleta() {
+  const cont = document.querySelector("#panel-predictivo .panel-body");
   if (!cont) return;
   if (document.fullscreenElement) { document.exitFullscreen(); return; }
   const pedir = cont.requestFullscreen || cont.webkitRequestFullscreen;
