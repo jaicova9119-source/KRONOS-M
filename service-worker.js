@@ -12,7 +12,7 @@
  * cargue sin señal.
  */
 
-const CACHE_NAME = "kronos-m-v29";
+const CACHE_NAME = "kronos-m-v30";
 
 /* Archivos propios. Estos tienen que quedar guardados si o si: sin ellos
    la app no abre sin señal. */
@@ -26,6 +26,22 @@ const ARCHIVOS_PROPIOS = [
   "./icons/apple-touch-icon.png",
   "./icons/favicon-32.png",
   "./icons/favicon-16.png",
+
+  /* App de captura de campo. Se instala aparte y tiene su propio
+     manifiesto, pero comparte este service worker: dos workers en la
+     misma raiz se disputan el alcance y uno termina desplazando al
+     otro sin avisar.
+
+     Va en la lista de precarga y no solo por la rama de navegacion,
+     para que quede disponible sin señal desde la instalacion y no
+     haya que abrirla una vez con datos primero. En campo esa
+     diferencia importa. */
+  "./captura-campo.html",
+  "./manifest-captura.json",
+  "./icons/captura-192.png",
+  "./icons/captura-512.png",
+  "./icons/captura-maskable-512.png",
+  "./icons/captura-apple-180.png",
 ];
 
 /* Librerias externas. Se guardan aparte de las propias porque dependen de
