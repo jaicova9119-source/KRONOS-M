@@ -351,36 +351,36 @@ const KP_ETAPAS = [
    v:['pst_in_v_ab','pst_in_v_ac','pst_in_v_bc'],
    nom:'pst_i_entrada_a'},
 
-  {nodo:'PST \u0394', detalle:'Secundario delta',
+  {nodo:'PST \u0394', detalle:'Sec. delta',
    i:['conv1_i_a','conv1_i_b','conv1_i_c'],
    v:['conv1_v_ab','conv1_v_ac','conv1_v_bc'],
    nom:'pst_i_secundario_a'},
 
-  {nodo:'PST Y', detalle:'Secundario estrella',
+  {nodo:'PST Y', detalle:'Sec. estrella',
    i:['conv2_i_a','conv2_i_b','conv2_i_c'],
    v:['conv2_v_ab','conv2_v_ac','conv2_v_bc'],
    nom:'pst_i_secundario_a'},
 
   /* La entrada del VFD no se mide: es la suma de los dos
      secundarios del PST, contrastada contra el Amp Input. */
-  {nodo:'VFD entrada', detalle:'Suma de secundarios',
+  {nodo:'VFD entrada', detalle:'Suma \u0394 + Y',
    i_suma:[['conv1_i_a','conv1_i_b','conv1_i_c'],
            ['conv2_i_a','conv2_i_b','conv2_i_c']],
    v:['conv1_v_ab','conv1_v_ac','conv1_v_bc'],
    nom:'vfd_i_entrada_a'},
 
-  {nodo:'VFD salida', detalle:'Hacia el SUT',
+  {nodo:'VFD salida', detalle:'Salida',
    i:['vfdout_i_a','vfdout_i_b','vfdout_i_c'],
    v:['vfdout_v_ab','vfdout_v_ac','vfdout_v_bc'],
    nom:'vfd_i_nominal_a'},
 
-  {nodo:'SUT salida', detalle:'Al cable de potencia',
+  {nodo:'SUT salida', detalle:'Al cable',
    i:['sutout_i_a','sutout_i_b','sutout_i_c'],
    v:['sutout_v_ab','sutout_v_ac','sutout_v_bc'],
    nom:'sut_i_nominal_a'},
 
   /* Mismo valor medido que el SUT, contra el nominal del motor. */
-  {nodo:'Motor', detalle:'Motor de fondo',
+  {nodo:'Motor', detalle:'De fondo',
    i:['sutout_i_a','sutout_i_b','sutout_i_c'],
    v:['sutout_v_ab','sutout_v_ac','sutout_v_bc'],
    nom:'motor_i_nominal_a'}
@@ -795,40 +795,50 @@ function kpRenderMedicion(m){
 }
 
 function kpDibujarCadena(nodos){
-  const alto = 150;
-  const anchoTot = Math.max(680, nodos.length * 132);
   const n = nodos.length;
-  const gap = 22;
-  const w = Math.floor((anchoTot - 40 - gap * (n - 1)) / n);
+  const w = 132, gap = 20, mx = 20, alto = 178;
+  const anchoTot = mx * 2 + n * w + (n - 1) * gap;
+
+  /* Tope duro de ancho: si el texto estimado excede la caja, se
+     comprime con textLength en lugar de desbordarse. */
+  const cab = (txt, cx, y, px, peso, color, max) => {
+    const est = String(txt).length * px * 0.53;
+    const tl = (est > max) ? ' textLength="' + max + '" lengthAdjust="spacingAndGlyphs"' : '';
+    return '<text x="' + cx + '" y="' + y + '" text-anchor="middle" font-size="' + px
+         + '" font-weight="' + peso + '" fill="' + color + '" font-family="inherit"'
+         + tl + '>' + txt + '</text>';
+  };
+
   let s = '<svg class="kp-chain" viewBox="0 0 ' + anchoTot + ' ' + alto
         + '" role="img" xmlns="http://www.w3.org/2000/svg">'
         + '<title>Cadena energ&eacute;tica</title>'
-        + '<defs><marker id="kpAr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
-        + 'orient="auto"><path d="M2 1L8 5L2 9" fill="none" stroke="#94949a" stroke-width="1.5" '
-        + 'stroke-linecap="round" stroke-linejoin="round"/></marker></defs>';
+        + '<defs><marker id="kpAr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" '
+        + 'markerHeight="6" orient="auto"><path d="M2 1L8 5L2 9" fill="none" stroke="#94949a" '
+        + 'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>';
 
   nodos.forEach((nd, i) => {
-    const x = 20 + i * (w + gap);
-    const col = KP_HEX[nd.estado] || KP_HEX.none;
-    const pct = nd.nominal ? Math.round(nd.medido / nd.nominal * 100) : null;
+    const x = mx + i * (w + gap);
     const cx = x + w / 2;
+    const col = KP_HEX[nd.estado] || KP_HEX.none;
+    const pct = (nd.nominal && nd.medido != null) ? (nd.medido / nd.nominal * 100) : null;
+    const max = w - 12;
 
-    s += '<rect x="' + x + '" y="20" width="' + w + '" height="112" rx="8" fill="#fff" '
+    s += '<rect x="' + x + '" y="18" width="' + w + '" height="132" rx="8" fill="#fff" '
       +  'stroke="' + col + '" stroke-width="1.5"/>';
-    s += '<rect x="' + x + '" y="20" width="' + w + '" height="5" rx="2" fill="' + col + '"/>';
-    s += kpSimbolo(nd.nodo, cx, 52, col);
-    s += '<text x="' + cx + '" y="88" text-anchor="middle" font-size="13" font-weight="600" '
-      +  'fill="#1c1c1e" font-family="inherit">' + nd.nodo + '</text>';
-    s += '<text x="' + cx + '" y="105" text-anchor="middle" font-size="11.5" fill="#6b6b70" '
-      +  'font-family="inherit">' + (pct === null ? nd.detalle : pct + ' % &middot; ' + nd.detalle) + '</text>';
-    s += '<text x="' + cx + '" y="121" text-anchor="middle" font-size="11" fill="#94949a" '
-      +  'font-family="inherit">' + (nd.nominal ? nd.medido + ' / ' + nd.nominal + ' ' + nd.unidad
-      :  'sin placa') + '</text>';
+    s += '<rect x="' + x + '" y="18" width="' + w + '" height="5" rx="2" fill="' + col + '"/>';
+    s += kpSimbolo(nd.nodo, cx, 50, col);
+
+    s += cab(nd.nodo, cx, 90, 13, 600, '#1c1c1e', max);
+    s += cab(pct == null ? 'Sin placa' : (Math.round(pct * 10) / 10) + ' %',
+             cx, 110, pct == null ? 12 : 16, 600, pct == null ? '#94949a' : col, max);
+    s += cab(nd.detalle || '', cx, 126, 10.5, 400, '#6b6b70', max);
+    s += cab(nd.nominal ? (kpNum(nd.medido) + ' / ' + kpNum(nd.nominal) + ' ' + nd.unidad)
+                        : (kpNum(nd.medido) + ' ' + nd.unidad),
+             cx, 141, 10.5, 400, '#94949a', max);
 
     if (i < n - 1){
-      const x1 = x + w + 3, x2 = x + w + gap - 3;
-      s += '<line x1="' + x1 + '" y1="76" x2="' + x2 + '" y2="76" stroke="#94949a" '
-        +  'stroke-width="1.5" marker-end="url(#kpAr)"/>';
+      s += '<line x1="' + (x + w + 3) + '" y1="84" x2="' + (x + w + gap - 3) + '" y2="84" '
+        +  'stroke="#94949a" stroke-width="1.5" marker-end="url(#kpAr)"/>';
     }
   });
   return s + '</svg>';
