@@ -121,7 +121,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
 const KP = {
   MODO_DEMO: false,
   SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.co',
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
+  SUPABASE_ANON_KEY: 'PeyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
 };
 
 /* ============================================================
@@ -149,10 +149,23 @@ async function kpCargarFlota(){
     pozo:         r.pozo,
     campo:        r.campo || '\u2014',
     sistema:      r.sistema || '\u2014',
-    estado:       r.estado,
+    estado:       kpAfinar(r),
     resumen:      kpResumen(r),
     fecha_vector: r.fecha_vector || '\u2014'
   }));
+}
+
+/* Un pozo no evaluable puede serlo por dos razones muy distintas:
+   nunca se le cargo un archivo, o el archivo llego incompleto. La
+   primera se resuelve cargando datos; la segunda, averiguando por que
+   faltan muestras. Mostrarlas juntas esconde esa diferencia. */
+function kpAfinar(r){
+  if (r.estado !== 'none') return r.estado;
+  if (!r.fecha_vector) return 'sindatos';
+  if (r.cobertura_pct != null) return 'cobertura';
+  const m = (r.motivo_no_evaluable || '').toLowerCase();
+  if (m.indexOf('cobertura') >= 0) return 'cobertura';
+  return 'sindatos';
 }
 
 /* El resumen dice por que el pozo esta como esta. Un pozo sin vector
@@ -228,6 +241,13 @@ function kpArmarPozo(d){
   };
 }
 
+async function kpCargarMedicion(pozoId){
+  if (KP.MODO_DEMO || !pozoId) return null;
+  const { data, error } = await kpCliente().rpc('dp_medicion', { p_pozo_id: pozoId });
+  if (error) throw new Error(error.message);
+  return data || null;
+}
+
 function kpNum(v){
   if (v == null) return '\u2014';
   const n = Number(v);
@@ -287,6 +307,137 @@ const kpDemoPozo = {
  }
 };
 
+
+/* ============================================================
+   CALCULO ELECTRICO SOBRE LA MEDICION DE CAMPO
+   Formulas verificadas contra resultados conocidos:
+     desbalance = max(|x - promedio|) / promedio * 100   (NEMA)
+     carga      = I_promedio / I_nominal * 100
+     kVA        = raiz(3) * V_promedio * I_promedio / 1000
+     balance de rectificadores = |I1 - I2| / promedio(I1,I2) * 100
+   ============================================================ */
+const RT3 = Math.sqrt(3);
+
+function kpProm(vs){
+  const l = vs.filter(v => v != null && isFinite(v));
+  if (!l.length) return null;
+  return l.reduce((a,b) => a + b, 0) / l.length;
+}
+function kpDesbal(vs){
+  const l = vs.filter(v => v != null && isFinite(v));
+  if (l.length < 2) return null;
+  const p = kpProm(l);
+  if (!p) return null;
+  return Math.max.apply(null, l.map(v => Math.abs(v - p))) / p * 100;
+}
+function kpEstadoCarga(pct){
+  if (pct == null) return 'none';
+  if (pct > 100) return 'crit';
+  if (pct >= 95) return 'warn';
+  return 'ok';
+}
+function kpEstadoDesbal(pct){
+  if (pct == null) return 'none';
+  if (pct > 2)   return 'crit';
+  if (pct > 1)   return 'warn';
+  return 'ok';
+}
+
+/* Cada etapa declara sus tres corrientes, sus tres tensiones y de
+   donde sale su nominal. Si no hay nominal, no se inventa carga. */
+const KP_ETAPAS = [
+  {nodo:'PST',   detalle:'Entrada',    i:['pst_in_i_a','pst_in_i_b','pst_in_i_c'],
+                 v:['pst_in_v_ab','pst_in_v_ac','pst_in_v_bc'],   nom:null},
+  {nodo:'Conv 1',detalle:'Salida PST', i:['conv1_i_a','conv1_i_b','conv1_i_c'],
+                 v:['conv1_v_ab','conv1_v_ac','conv1_v_bc'],      nom:null},
+  {nodo:'Conv 2',detalle:'Salida PST', i:['conv2_i_a','conv2_i_b','conv2_i_c'],
+                 v:['conv2_v_ab','conv2_v_ac','conv2_v_bc'],      nom:null},
+  {nodo:'VFD',   detalle:'Salida',     i:['vfdout_i_a','vfdout_i_b','vfdout_i_c'],
+                 v:['vfdout_v_ab','vfdout_v_ac','vfdout_v_bc'],   nom:'vfd_i_nominal_a'},
+  {nodo:'Motor', detalle:'Salida SUT', i:['sutout_i_a','sutout_i_b','sutout_i_c'],
+                 v:['sutout_v_ab','sutout_v_ac','sutout_v_bc'],   nom:'motor_i_nominal_a'}
+];
+
+function kpCalcularCadena(val, placa){
+  const out = [];
+  KP_ETAPAS.forEach(e => {
+    const ii = e.i.map(c => val[c]);
+    const vv = e.v.map(c => val[c]);
+    const ip = kpProm(ii), vp = kpProm(vv);
+    if (ip == null) return;
+    const nominal = e.nom && placa ? placa[e.nom] : null;
+    const pct = nominal ? (ip / nominal * 100) : null;
+    out.push({
+      nodo: e.nodo, detalle: e.detalle,
+      medido: Math.round(ip * 10) / 10,
+      nominal: nominal || null,
+      unidad: 'A',
+      v_prom: vp,
+      kva: (vp != null) ? RT3 * vp * ip / 1000 : null,
+      desbal_i: kpDesbal(ii),
+      desbal_v: kpDesbal(vv),
+      carga_pct: pct,
+      estado: nominal ? kpEstadoCarga(pct) : 'none'
+    });
+  });
+  return out;
+}
+
+function kpBalanceRectificadores(val){
+  const i1 = kpProm([val.conv1_i_a, val.conv1_i_b, val.conv1_i_c]);
+  const i2 = kpProm([val.conv2_i_a, val.conv2_i_b, val.conv2_i_c]);
+  if (i1 == null || i2 == null) return null;
+  const prom = (i1 + i2) / 2;
+  const dif = Math.abs(i1 - i2) / prom * 100;
+  return {
+    conv1: i1, conv2: i2, diferencia_pct: dif,
+    mayor: (i1 >= i2) ? 'Convertidor 1' : 'Convertidor 2',
+    estado: dif > 10 ? 'crit' : (dif > 5 ? 'warn' : 'ok')
+  };
+}
+
+/* Umbrales de FP y THD: los de FP son criterio operativo comun en
+   O&G; los de THD de tension en salida de VFD no aplican como falla
+   porque la onda PWM distorsiona por diseno. Se marcan como
+   informativos y no como hallazgo. */
+function kpCalidadEnergia(val){
+  const p = [];
+  const punto = (pref, nombre, esSalidaVfd) => {
+    const fp = val[pref+'_fp'], thdv = val[pref+'_thdv'], thdi = val[pref+'_thd'];
+    if (fp == null && thdv == null && thdi == null) return;
+    const al = [];
+    if (fp != null){
+      if (fp <= 0.80)      al.push({t:'crit', m:'Factor de potencia ' + fp.toFixed(2) + ' (critico si es 0.80 o menos)'});
+      else if (fp <= 0.85) al.push({t:'warn', m:'Factor de potencia ' + fp.toFixed(2) + ' (atencion si es 0.85 o menos)'});
+    }
+    if (thdv != null && esSalidaVfd)
+      al.push({t:'info', m:'THD de tension ' + thdv.toFixed(1) + ' %. Valor esperable en salida de VFD sin filtro senoidal: la onda PWM distorsiona por diseno. No es falla.'});
+    else if (thdv != null && thdv > 8)
+      al.push({t:'warn', m:'THD de tension ' + thdv.toFixed(1) + ' % en red (IEEE 519 sugiere 8 % para sistemas de este nivel)'});
+    p.push({
+      nombre: nombre, fp: fp, thdv: thdv, thdi: thdi,
+      factork: val[pref+'_factork'],
+      kw: val[pref+'_kw'], kvar: val[pref+'_kvar'], kva: val[pref+'_kva'],
+      alertas: al
+    });
+  };
+  punto('pst_in',  'Entrada PST (red)', false);
+  punto('vfdout',  'Salida VFD (al motor)', true);
+  return p;
+}
+
+function kpTemperaturas(val){
+  const defs = [
+    ['hs1_c','Disipador 1'], ['hs2_c','Disipador 2'],
+    ['hs3_c','Disipador 3'], ['hs4_c','Disipador 4'],
+    ['temp_inductor_c','Inductor'], ['temp_controller_c','Controlador'],
+    ['temp_igbt_u_c','IGBT U'], ['temp_igbt_v_c','IGBT V'], ['temp_igbt_w_c','IGBT W'],
+    ['temp_pst_c','PST'], ['temp_sut_c','SUT']
+  ];
+  return defs.filter(d => val[d[0]] != null)
+             .map(d => ({ nombre: d[1], valor: val[d[0]] }));
+}
+
 /* ============================================================
    ESTADO Y UTILIDADES
    ============================================================ */
@@ -294,7 +445,9 @@ const KP_EST = {
   crit:     {txt:"Cr&iacute;tico", cls:"crit", ord:0},
   warn:     {txt:"Atenci&oacute;n",cls:"warn", ord:1},
   ok:       {txt:"Normal",         cls:"ok",   ord:2},
-  none:     {txt:"Sin vector",     cls:"none", ord:3},
+  cobertura:{txt:"Cobertura baja", cls:"none", ord:3},
+  sindatos: {txt:"Sin datos",      cls:"none", ord:4},
+  none:     {txt:"Sin vector",     cls:"none", ord:5},
   baseline: {txt:"Baseline",       cls:"none", ord:4},
   sindato:  {txt:"Sin dato",       cls:"none", ord:5},
   sinumbral:{txt:"Sin umbral",     cls:"none", ord:6}
@@ -336,11 +489,13 @@ function kpPintarFlota(){
   const d = kpFlota
     .filter(x => kpFiltro === "all" || x.sistema === kpFiltro)
     .sort((a,b) => KP_EST[a.estado].ord - KP_EST[b.estado].ord);
-  const n = e => d.filter(x => x.estado === e).length;
+  const n = e => (e === 'none')
+    ? d.filter(x => ['none','sindatos','cobertura'].includes(x.estado)).length
+    : d.filter(x => x.estado === e).length;
 
   let h = '<h2>Flota</h2><p class="hint">' + d.length +
     ' pozos &middot; ordenados por severidad</p><div class="kp-stats">';
-  [["Cr&iacute;tico","crit"],["Atenci&oacute;n","warn"],["Normal","ok"],["Sin vector","none"]]
+  [["Cr&iacute;tico","crit"],["Atenci&oacute;n","warn"],["Normal","ok"],["No evaluable","none"]]
     .forEach(([t,e]) => {
       h += '<div class="kp-stat"><div class="k">' + t + '</div><div class="v">' + n(e) + '</div></div>';
     });
@@ -376,35 +531,43 @@ async function kpVerPozo(codigo, pozoId){
   const v = document.getElementById("kpVista");
   v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
 
-  let p;
+  let p = null, med = null;
   try {
-    p = await kpCargarPozo(codigo, pozoId);
+    const r = await Promise.all([
+      kpCargarPozo(codigo, pozoId).catch(() => null),
+      kpCargarMedicion(pozoId).catch(() => null)
+    ]);
+    p = r[0]; med = r[1];
   } catch (e) {
     v.innerHTML = '<div class="kp-msg">No se pudo cargar el pozo.<br>' + e.message + '</div>';
     return;
   }
-  if (!p){
+
+  if (!p && !med){
     document.getElementById("kpTitulo").textContent = codigo;
-    document.getElementById("kpSub").innerHTML = "Sin vector calculado";
+    document.getElementById("kpSub").innerHTML = "Sin datos";
     v.innerHTML = '<div class="kp-card"><div class="kp-msg">'
-      + 'Este pozo no tiene vector diario calculado.<br>'
-      + 'Carga un archivo en el Analizador DATA para generarlo.</div></div>';
+      + 'Este pozo no tiene medici&oacute;n el&eacute;ctrica registrada '
+      + 'ni vector diario calculado.</div></div>';
     return;
+  }
+
+  if (!p){
+    p = { pozo: codigo, campo: '\u2014', sistema: '\u2014', estado: 'ok',
+          fecha_vector: null, indicadores: [], cadena: [], reglas: [] };
   }
 
   document.getElementById("kpTitulo").textContent = p.pozo;
   document.getElementById("kpSub").innerHTML =
-    "Sistema " + p.sistema + " &middot; " + p.campo + " &middot; vector " + p.fecha_vector;
+    "Sistema " + p.sistema + " &middot; " + p.campo
+    + (p.fecha_vector ? (" &middot; vector " + p.fecha_vector) : "");
 
   let h = '';
 
-  if (p.cadena && p.cadena.length){
-    h += '<h2>Cadena energ&eacute;tica</h2>';
-    h += '<p class="hint">Estado de cada nodo seg&uacute;n su medici&oacute;n m&aacute;s desfavorable</p>';
-    h += '<div class="kp-card">' + kpDibujarCadena(p.cadena) + kpLeyenda() + '</div>';
-  }
+  if (med) h += kpRenderMedicion(med);
 
-  h += '<h2>Indicadores operativos</h2>';
+  if (p.indicadores.length){
+  h += '<h2 style="margin-top:22px">Indicadores operativos (SCADA)</h2>';
   h += '<p class="hint">Vector diario del ' + p.fecha_vector + '</p><div class="kp-kpis">';
   p.indicadores.forEach(i => {
     const c = KP_EST[i.estado].cls;
@@ -414,11 +577,14 @@ async function kpVerPozo(codigo, pozoId){
       +  '<span class="kp-pill ' + c + '">' + KP_EST[i.estado].txt + '</span></div>';
   });
   h += '</div>';
+  }
 
+  if (p.reglas.length){
   h += '<h2 style="margin-top:22px">Diagn&oacute;stico predictivo</h2>';
   const ev = p.reglas.filter(r => ["crit","warn","ok"].includes(r.estado)).length;
   h += '<p class="hint">' + p.reglas.length + ' reglas &middot; ' + ev + ' evaluadas</p>';
   h += '<div class="kp-list">' + kpDibujarReglas(p.reglas) + '</div>';
+  }
 
   v.innerHTML = h;
 }
@@ -456,6 +622,138 @@ function kpDibujarReglas(reglas){
       });
     }
   });
+  return h;
+}
+
+
+/* ============================================================
+   RENDER DE LA MEDICION ELECTRICA
+   ============================================================ */
+function kpRenderMedicion(m){
+  const val   = m.valores || {};
+  const placa = m.placa || {};
+  const mc    = m.medicion || {};
+  const cad   = kpCalcularCadena(val, placa);
+  const bal   = kpBalanceRectificadores(val);
+  const cal   = kpCalidadEnergia(val);
+  const tmp   = kpTemperaturas(val);
+  let h = '';
+
+  const f = mc.medido_en ? String(mc.medido_en).slice(0,16).replace('T',' ') : '\u2014';
+  h += '<h2>Medici&oacute;n el&eacute;ctrica de campo</h2>';
+  h += '<p class="hint">' + f
+     + (mc.realizado_por ? ' &middot; ' + mc.realizado_por : '')
+     + (mc.frecuencia_hz != null ? ' &middot; ' + kpNum(mc.frecuencia_hz) + ' Hz' : '')
+     + (mc.control_mode ? ' &middot; ' + mc.control_mode : '')
+     + '</p>';
+
+  if (cad.length){
+    h += '<div class="kp-card">' + kpDibujarCadena(cad) + kpLeyenda() + '</div>';
+
+    h += '<div class="kp-list" style="margin-bottom:18px">';
+    h += '<div class="kp-grp">Detalle por etapa</div>';
+    cad.forEach(n => {
+      const e = KP_EST[n.estado] || KP_EST.none;
+      h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"><div>'
+        +  '<div><span class="nm">' + n.nodo + '</span> '
+        +  '<span class="id">' + n.detalle + '</span></div>'
+        +  '<div class="dt">' + kpNum(n.medido) + ' A'
+        +  (n.nominal ? ' de ' + kpNum(n.nominal) + ' A nominal' : ' &middot; sin placa')
+        +  (n.v_prom != null ? ' &middot; ' + kpNum(n.v_prom) + ' V' : '')
+        +  (n.kva != null ? ' &middot; ' + kpNum(n.kva) + ' kVA' : '')
+        +  '</div>'
+        +  '<div class="src">Desbalance de corriente ' + kpNum(n.desbal_i) + ' %'
+        +  (n.desbal_v != null ? ' &middot; de tensi&oacute;n ' + kpNum(n.desbal_v) + ' %' : '')
+        +  '</div></div>'
+        +  '<span class="kp-pill ' + e.cls + '">'
+        +  (n.carga_pct != null ? kpNum(n.carga_pct) + ' %' : 'Sin placa')
+        +  '</span></div>';
+    });
+    h += '</div>';
+  }
+
+  if (bal){
+    const e = KP_EST[bal.estado];
+    h += '<h2>Balance de rectificadores</h2>';
+    h += '<p class="hint">Reparto de corriente entre los dos secundarios del PST</p>';
+    h += '<div class="kp-card"><div style="display:flex;justify-content:space-between;'
+      +  'align-items:baseline;gap:12px;flex-wrap:wrap">'
+      +  '<div><div style="font-size:24px;font-weight:600">' + kpNum(bal.diferencia_pct) + ' %</div>'
+      +  '<div style="font-size:13px;color:var(--kp-ink2);margin-top:4px">'
+      +  'Conv 1 ' + kpNum(bal.conv1) + ' A &middot; Conv 2 ' + kpNum(bal.conv2) + ' A'
+      +  ' &middot; mayor en ' + bal.mayor + '</div>'
+      +  '<div style="font-size:12px;color:var(--kp-ink3);margin-top:6px;max-width:640px">'
+      +  'Cierto desbalance es inherente a un VFD multipulso: los devanados secundarios '
+      +  'reparten corriente sin aislaci&oacute;n galv&aacute;nica plena. Por s&iacute; solo no constituye falla.'
+      +  '</div></div>'
+      +  '<span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div></div>';
+  }
+
+  if (cal.length){
+    h += '<h2>Calidad de energ&iacute;a</h2>';
+    h += '<p class="hint">Medida con instrumento en campo</p>';
+    h += '<div class="kp-kpis" style="margin-bottom:8px">';
+    cal.forEach(pt => {
+      const peor = pt.alertas.some(a => a.t === 'crit') ? 'crit'
+                 : (pt.alertas.some(a => a.t === 'warn') ? 'warn' : 'ok');
+      h += '<div class="kp-kpi ' + peor + '" style="grid-column:span 2">'
+        +  '<div class="k">' + pt.nombre + '</div>'
+        +  '<div class="v">' + (pt.fp != null ? pt.fp.toFixed(2) : '\u2014')
+        +  '<small>factor de potencia</small></div>'
+        +  '<div class="r">'
+        +  (pt.kw   != null ? kpNum(pt.kw)   + ' kW &middot; ' : '')
+        +  (pt.kvar != null ? kpNum(pt.kvar) + ' kVAR &middot; ' : '')
+        +  (pt.kva  != null ? kpNum(pt.kva)  + ' kVA' : '')
+        +  '</div>'
+        +  '<div class="r">THD tensi&oacute;n ' + kpNum(pt.thdv) + ' %'
+        +  ' &middot; THD corriente ' + kpNum(pt.thdi) + ' %'
+        +  (pt.factork != null ? ' &middot; Factor K ' + kpNum(pt.factork) : '') + '</div>';
+      pt.alertas.forEach(a => {
+        const cls = (a.t === 'info') ? 'none' : a.t;
+        h += '<div style="margin-top:6px"><span class="kp-pill ' + cls + '">'
+          +  (a.t === 'info' ? 'Informativo' : (a.t === 'crit' ? 'Cr&iacute;tico' : 'Atenci&oacute;n'))
+          +  '</span></div>'
+          +  '<div class="r" style="margin-top:5px">' + a.m + '</div>';
+      });
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  if (tmp.length){
+    h += '<h2>Temperaturas</h2>';
+    h += '<p class="hint">Puntos medidos en el gabinete y transformadores</p>';
+    h += '<div class="kp-kpis" style="margin-bottom:8px">';
+    tmp.forEach(t => {
+      h += '<div class="kp-kpi"><div class="k">' + t.nombre + '</div>'
+        +  '<div class="v">' + kpNum(t.valor) + '<small>\u00b0C</small></div></div>';
+    });
+    h += '</div>';
+  }
+
+  if (placa.motor_i_nominal_a || placa.motor_potencia_hp){
+    h += '<h2>Placa</h2>';
+    h += '<p class="hint">Origen: ' + (placa.fuente || 'no indicado')
+      +  (placa.actualizado_en ? ' &middot; actualizada ' + String(placa.actualizado_en).slice(0,10) : '')
+      +  '</p>';
+    h += '<div class="kp-kpis" style="margin-bottom:8px">';
+    const pl = [
+      ['Motor', placa.motor_potencia_hp, 'hp'],
+      ['Tensi&oacute;n motor', placa.motor_v_nominal_v, 'V'],
+      ['Corriente motor', placa.motor_i_nominal_a, 'A'],
+      ['Corriente VFD', placa.vfd_i_nominal_a, 'A'],
+      ['Motores', placa.n_motores, ''],
+      ['Aislamiento', placa.motor_clase_aisl, '']
+    ];
+    pl.forEach(x => {
+      if (x[1] == null) return;
+      const vv = (typeof x[1] === 'number') ? kpNum(x[1]) : x[1];
+      h += '<div class="kp-kpi"><div class="k">' + x[0] + '</div>'
+        +  '<div class="v">' + vv + (x[2] ? '<small>' + x[2] + '</small>' : '') + '</div></div>';
+    });
+    h += '</div>';
+  }
+
   return h;
 }
 
