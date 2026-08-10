@@ -150,10 +150,10 @@
     color:var(--ubh);font-size:11.5px;padding:10px 12px;border-radius:10px;margin-bottom:12px;line-height:1.4;}
   .sync-note svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;}
 
-  .submit-bar{position:sticky;bottom:0;background:linear-gradient(180deg, rgba(245,246,248,0) 0%, var(--bg) 32%);
+  .submit-bar{position:sticky;bottom:0;background:linear-gradient(180deg, rgba(247,249,250,0) 0%, var(--bg) 32%);
     padding:16px 0 4px;margin-top:6px;}
   .btn-primary{width:100%;padding:15px 18px;border:none;border-radius:14px;
-    background:linear-gradient(180deg,#F0602E 0%,var(--orange) 100%);color:#fff;
+    background:linear-gradient(180deg,#22a3b4 0%,var(--orange) 100%);color:#fff;
     font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.02em;
     display:flex;align-items:center;justify-content:center;gap:8px;
     box-shadow:0 6px 18px rgba(27,142,158,.32);}
@@ -207,9 +207,9 @@
     border:2px solid var(--line);border-radius:20px;padding:18px;box-shadow:var(--shadow);}
   .sistema-card .badge{width:64px;height:64px;border-radius:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
   .sistema-card .badge svg{width:36px;height:36px;}
-  .sistema-card.bes .badge{background:linear-gradient(150deg, #E8F5EE 0%, #CDEBDB 100%); color:var(--bes);}
-  .sistema-card.hpum .badge{background:linear-gradient(150deg, #E9F0F9 0%, #CFE0F3 100%); color:var(--hpum);}
-  .sistema-card.ubh .badge{background:linear-gradient(150deg, #F5EDE4 0%, #E9D8C4 100%); color:var(--ubh);}
+  .sistema-card.bes .badge{background:var(--bes-bg); color:var(--bes);}
+  .sistema-card.hpum .badge{background:var(--hpum-bg); color:var(--hpum);}
+  .sistema-card.ubh .badge{background:var(--ubh-bg); color:var(--ubh);}
   .sistema-card .body{flex:1;min-width:0;}
   .sistema-card .name{font-family:'Barlow Condensed';font-weight:800;font-size:21px;color:var(--navy);line-height:1.05;}
   .sistema-card .full{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px;}
@@ -316,7 +316,7 @@
           <div class="body">
             <div class="name">HPUM</div>
             <div class="full">Bombeo Hidraulico &middot; Inyeccion</div>
-            <div class="desc">Estructura de listas el sistema anterior pendiente de definir</div>
+            <div class="desc">Pendiente de definir</div>
           </div>
           <div class="badge-lbl">Proximamente</div>
         </div>
@@ -332,7 +332,7 @@
           <div class="body">
             <div class="name">UBH</div>
             <div class="full">Bombeo Hidraulico Jet Pump</div>
-            <div class="desc">Estructura de listas el sistema anterior pendiente de definir</div>
+            <div class="desc">Pendiente de definir</div>
           </div>
           <div class="badge-lbl">Proximamente</div>
         </div>
@@ -412,11 +412,11 @@
       <button class="back-btn" onclick="ir('medicion-pozo')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Cambiar pozo</button>
       <div class="sys-banner bes">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div><div class="t">Medicion <span id="med-pozo-label" class="mono"></span></div><div class="s">Mediciones_Predictivas - 67 variables</div></div>
+        <div><div class="t">Medicion <span id="med-pozo-label" class="mono"></span></div><div class="s">62 puntos de medida</div></div>
       </div>
       <form id="form-medicion"></form>
       <div class="submit-bar">
-        <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Conexion a el sistema anterior pendiente (Parte E). El registro queda listo para sincronizar.</div>
+        <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Se guarda en Kronos-M. Sin señal queda en este dispositivo y se sincroniza solo al recuperarla.</div>
         <button class="btn-primary" onclick="guardarMedicion()">Guardar medicion
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
@@ -427,7 +427,7 @@
       <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
       <div class="sys-banner evt">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6l1 3H8l1-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 6h12v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
-        <div><div class="t">Evento / Bitacora</div><div class="s">Bitacora_Eventos</div></div>
+        <div><div class="t">Evento / Bit&aacute;cora</div><div class="s">Registro de intervenciones</div></div>
       </div>
       <form id="form-bitacora">
         <div class="group-card">
@@ -510,7 +510,7 @@
       <div class="field"><label>Pozo</label><select id="setup-pozo-select"></select></div>
       <div class="readonly-note">
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
-        Se carga la configuracion actual del pozo. Todos los campos son editables; cualquier cambio queda registrado con una nota historica en Bitacora_Eventos al guardar.
+        Se carga la configuracion actual del pozo. Todos los campos son editables; cualquier cambio queda registrado como nota historica en la bitacora al guardar.
       </div>
       <div class="submit-bar" style="position:static;">
         <button class="btn-primary" onclick="cargarSetup()">Cargar configuracion actual
@@ -714,7 +714,7 @@
    Los mismos valores que usa Kronos-M.
    ============================================================ */
 const DP = {
-  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.co',
+  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.coL',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
 };
 
@@ -1109,7 +1109,7 @@ function cargarSetup(){
         'No hay configuracion registrada para ' + pozo + '. Completa los valores iniciales.</div>';
     } else {
       html = '<div class="readonly-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>' +
-        'Configuracion real cargada desde el sistema anterior. Los campos en naranja son editables.</div>';
+        'Configuracion cargada. Los campos resaltados son editables.</div>';
     }
 
     SETUP_CAMPOS.forEach(function(grupo){
@@ -1225,8 +1225,8 @@ function guardarSetup(){
     { item_id: setupItemId, cambios: setupCambiosPendientes, nota: nota },
     boton,
     setupModoCreacion
-      ? 'Configuracion inicial registrada en el sistema anterior para ' + setupPozoActivo + '.'
-      : 'Configuracion actualizada en el sistema anterior para ' + setupPozoActivo + ', y quedo la nota en Bitacora_Eventos para el historico.',
+      ? 'Configuracion inicial registrada para ' + setupPozoActivo + '.'
+      : 'Configuracion actualizada para ' + setupPozoActivo + ', con nota en la bitacora.',
     'Setup ' + setupPozoActivo
   );
 }
@@ -1536,7 +1536,8 @@ function guardarPozoNuevo(){
   };
 
   var boton = event.target.closest('button');
-  guardarOEncolar('/campo/api/pozo-nuevo', payload, boton, 'Pozo nuevo creado en el sistema anterior (Catalogo + Motor + VFD + PST + SUT).', 'Pozo nuevo ' + pozo);
+  guardarOEncolar('dp_guardar_pozo_nuevo', payload, boton,
+    'Pozo nuevo creado.', 'Pozo nuevo ' + pozo);
 }
 
 var tecnicoActual = '';
@@ -1618,7 +1619,7 @@ document.getElementById('login-clave').addEventListener('keydown', function(e){
 });
 
 function proximamente(nombreSistema){
-  alert(nombreSistema + ' esta en construccion: la estructura de listas el sistema anterior para este sistema todavia no esta definida. Por ahora, continua con BES.');
+  alert(nombreSistema + ' esta en construccion: la estructura de captura para este sistema todavia no esta definida. Por ahora, continua con BES.');
 }
 
 poblarSelects();
