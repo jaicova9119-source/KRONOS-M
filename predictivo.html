@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>An&aacute;lisis Predictivo</title>
+<style>
+:root{
+  --kp-teal:#12a5b8; --kp-green:#35a853;
+  --kp-ink:#1c1c1e; --kp-ink2:#6b6b70; --kp-ink3:#94949a;
+  --kp-line:#e3e3e6; --kp-page:#f5f6f7; --kp-card:#fff;
+  --kp-ok:#2ea44f; --kp-warn:#c77700; --kp-crit:#c0392b; --kp-null:#9a9aa0;
+  --kp-ok-bg:#e8f6ec; --kp-warn-bg:#fdf2e0; --kp-crit-bg:#fbeae8; --kp-null-bg:#f0f0f2;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--kp-page);color:var(--kp-ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px}
+
+.kp-top{background:linear-gradient(100deg,var(--kp-teal),var(--kp-green));color:#fff;
+  padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.kp-top h1{margin:0;font-size:20px;font-weight:600}
+.kp-top .sub{margin:3px 0 0;font-size:13px;opacity:.9}
+.kp-back{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;
+  border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer}
+
+.kp-bar{background:#fff;border-bottom:1px solid var(--kp-line);padding:10px 20px;
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.kp-bar .lb{font-size:13px;color:var(--kp-ink2);margin-right:2px}
+.kp-chip{border:1px solid var(--kp-line);background:#fff;border-radius:6px;padding:5px 13px;
+  font-size:13px;cursor:pointer;color:var(--kp-ink)}
+.kp-chip.on{background:#2f9fd4;border-color:#2f9fd4;color:#fff}
+
+.kp-wrap{padding:18px 20px;max-width:1180px}
+.kp-wrap h2{font-size:17px;font-weight:600;margin:0 0 4px}
+.kp-wrap .hint{margin:0 0 14px;font-size:13px;color:var(--kp-ink2)}
+
+.kp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px;margin-bottom:16px}
+.kp-stat{background:#fff;border:1px solid var(--kp-line);border-radius:8px;padding:10px 14px}
+.kp-stat .k{font-size:11px;color:var(--kp-ink3);text-transform:uppercase;letter-spacing:.7px}
+.kp-stat .v{font-size:22px;font-weight:600;margin-top:3px}
+
+.kp-list{background:#fff;border:1px solid var(--kp-line);border-radius:8px;overflow:hidden}
+.kp-row{display:flex;gap:12px;align-items:center;padding:12px 15px;
+  border-bottom:1px solid var(--kp-line);cursor:pointer}
+.kp-row:last-child{border-bottom:none}
+.kp-row:hover{background:#fafafb}
+.kp-row .nm{font-size:15px;font-weight:600}
+.kp-row .sys{font-size:11px;color:var(--kp-ink3);border:1px solid var(--kp-line);
+  padding:1px 7px;border-radius:4px}
+.kp-row .ds{font-size:13px;color:var(--kp-ink2);margin-top:3px}
+.kp-row .ts{font-size:11px;color:var(--kp-ink3);margin-top:2px}
+
+.kp-pill{font-size:11px;padding:3px 10px;border-radius:4px;white-space:nowrap;font-weight:500}
+.kp-pill.ok{background:var(--kp-ok-bg);color:#1d6b32}
+.kp-pill.warn{background:var(--kp-warn-bg);color:#8a5300}
+.kp-pill.crit{background:var(--kp-crit-bg);color:#8f2a1f}
+.kp-pill.none{background:var(--kp-null-bg);color:#5f5f66;border:1px solid var(--kp-line)}
+
+.kp-card{background:#fff;border:1px solid var(--kp-line);border-radius:8px;padding:16px;margin-bottom:18px}
+.kp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.kp-kpi{background:#fff;border:1px solid var(--kp-line);border-left:4px solid var(--kp-ok);
+  border-radius:8px;padding:12px 14px}
+.kp-kpi.warn{border-left-color:var(--kp-warn)}
+.kp-kpi.crit{border-left-color:var(--kp-crit)}
+.kp-kpi.none{border-left-color:var(--kp-null)}
+.kp-kpi .k{font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--kp-ink3)}
+.kp-kpi .v{font-size:24px;font-weight:600;margin:4px 0 2px}
+.kp-kpi .v small{font-size:12px;font-weight:400;color:var(--kp-ink2);margin-left:3px}
+.kp-kpi .r{font-size:12px;color:var(--kp-ink2);margin-bottom:8px}
+
+.kp-grp{padding:8px 15px;background:#fafafb;border-bottom:1px solid var(--kp-line);
+  font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--kp-ink3)}
+.kp-rule{padding:12px 15px;border-bottom:1px solid var(--kp-line);display:flex;
+  justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.kp-rule:last-child{border-bottom:none}
+.kp-rule.crit{border-left:3px solid var(--kp-crit)}
+.kp-rule.warn{border-left:3px solid var(--kp-warn)}
+.kp-rule .id{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--kp-ink3)}
+.kp-rule .nm{font-size:14px;font-weight:500}
+.kp-rule .dt{font-size:12.5px;color:var(--kp-ink2);margin-top:3px}
+.kp-rule .src{font-size:11px;color:var(--kp-ink3);margin-top:2px}
+
+.kp-chain{width:100%;height:auto;display:block}
+.kp-leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--kp-ink2)}
+.kp-leg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+.kp-msg{padding:26px 18px;text-align:center;color:var(--kp-ink2);font-size:14px}
+.kp-demo{background:#fff6d9;border:1px solid #e8d08a;color:#6b5410;
+  padding:8px 20px;font-size:12.5px}
+@media(max-width:640px){.kp-wrap{padding:14px}.kp-top{padding:12px 14px}.kp-bar{padding:9px 14px}}
+</style>
+</head>
+<body>
+
+<div id="kpDemo" class="kp-demo">Modo demostraci&oacute;n &mdash; datos de ejemplo. No consulta la base de datos.</div>
+
+<div class="kp-top">
+  <div>
+    <h1 id="kpTitulo">An&aacute;lisis Predictivo</h1>
+    <p class="sub" id="kpSub">Motor determinista &mdash; Kronos&#8209;M</p>
+  </div>
+  <button class="kp-back" id="kpBack" style="display:none" onclick="kpVerFlota()">&larr; Volver a flota</button>
+</div>
+
+<div class="kp-bar" id="kpFiltros">
+  <span class="lb">Sistema</span>
+  <button class="kp-chip on" data-s="all">Todos</button>
+  <button class="kp-chip" data-s="BES">BES</button>
+  <button class="kp-chip" data-s="HPUM">HPUM</button>
+  <button class="kp-chip" data-s="UBH">UBH</button>
+</div>
+
+<div class="kp-wrap" id="kpVista"><div class="kp-msg">Cargando&hellip;</div></div>
+
+<script>
+/* ============================================================
+   CONFIGURACION
+   ============================================================ */
+const KP = {
+  MODO_DEMO: true,
+  SUPABASE_URL: '',
+  SUPABASE_ANON_KEY: '',
+  SCHEMA: 'datapredictiva'
+};
+
+/* ============================================================
+   CAPA DE DATOS
+   Unico punto que toca la base. Al pasar MODO_DEMO a false,
+   completar las dos funciones marcadas PENDIENTE.
+   ============================================================ */
+let kpSb = null;
+function kpCliente(){
+  if (KP.MODO_DEMO) return null;
+  if (kpSb) return kpSb;
+  kpSb = window.supabase.createClient(KP.SUPABASE_URL, KP.SUPABASE_ANON_KEY, {
+    db: { schema: KP.SCHEMA }
+  });
+  return kpSb;
+}
+
+async function kpCargarFlota(){
+  if (KP.MODO_DEMO) return kpDemoFlota;
+  /* PENDIENTE: reemplazar por la consulta real.
+     Requiere confirmar nombres de tabla y columnas del schema datapredictiva.
+     Forma esperada por la vista:
+       [{ pozo, campo, sistema, estado, resumen, fecha_vector }]
+       estado en: 'crit' | 'warn' | 'ok' | 'none'                     */
+  throw new Error('Consulta de flota no implementada');
+}
+
+async function kpCargarPozo(codigo){
+  if (KP.MODO_DEMO) return kpDemoPozo[codigo] || null;
+  /* PENDIENTE: reemplazar por la consulta real.
+     Forma esperada por la vista:
+       { pozo, campo, sistema, estado, fecha_vector,
+         indicadores: [{ etiqueta, valor, unidad, referencia, estado }],
+         cadena:      [{ nodo, detalle, medido, nominal, unidad, estado }],
+         reglas:      [{ codigo, nombre, estado, detalle, fuente }] }
+     estado en: 'crit' | 'warn' | 'ok' | 'baseline' | 'sindato' | 'sinumbral' */
+  throw new Error('Consulta de pozo no implementada');
+}
+
+/* ============================================================
+   DATOS DE DEMOSTRACION
+   ============================================================ */
+const kpDemoFlota = [
+ {pozo:"CYC-09",  campo:"Put Norte", sistema:"BES",  estado:"crit", resumen:"2 hallazgos &middot; arranques repetidos",      fecha_vector:"hoy 06:10"},
+ {pozo:"MQT-28",  campo:"Moqueta",   sistema:"BES",  estado:"crit", resumen:"3 hallazgos &middot; temperatura de motor",     fecha_vector:"hoy 06:10"},
+ {pozo:"CSTK-18", campo:"Costayaco", sistema:"BES",  estado:"warn", resumen:"1 hallazgo &middot; desbalance de corriente",   fecha_vector:"hoy 06:10"},
+ {pozo:"TRY-04",  campo:"Toroyaco",  sistema:"HPUM", estado:"warn", resumen:"1 hallazgo &middot; factor de potencia",        fecha_vector:"hoy 06:08"},
+ {pozo:"STN-11",  campo:"Santana",   sistema:"UBH",  estado:"warn", resumen:"1 hallazgo &middot; disponibilidad",            fecha_vector:"ayer 06:09"},
+ {pozo:"CSTK-07", campo:"Costayaco", sistema:"BES",  estado:"ok",   resumen:"Sin hallazgos",                                 fecha_vector:"hoy 06:10"},
+ {pozo:"MRY-02",  campo:"Mary",      sistema:"HPUM", estado:"ok",   resumen:"Sin hallazgos",                                 fecha_vector:"hoy 06:09"},
+ {pozo:"CSTK-22", campo:"Costayaco", sistema:"BES",  estado:"ok",   resumen:"Sin hallazgos",                                 fecha_vector:"hoy 06:10"},
+ {pozo:"MQT-31",  campo:"Moqueta",   sistema:"BES",  estado:"none", resumen:"Sin archivo cargado",                           fecha_vector:"&mdash;"},
+ {pozo:"TRY-09",  campo:"Toroyaco",  sistema:"UBH",  estado:"none", resumen:"Sin archivo cargado",                           fecha_vector:"&mdash;"}
+];
+
+const kpDemoPozo = {
+ "CYC-09":{
+  pozo:"CYC-09", campo:"Put Norte", sistema:"BES", estado:"crit", fecha_vector:"2026-08-09 06:10",
+  indicadores:[
+   {etiqueta:"Carga motor",     valor:"76.3", unidad:"%",   referencia:"Media 95.4 A", estado:"ok"},
+   {etiqueta:"Frecuencia",      valor:"53.15",unidad:"Hz",  referencia:"Rango 0 &mdash; 54.1", estado:"ok"},
+   {etiqueta:"Presi&oacute;n intake", valor:"488", unidad:"psi", referencia:"Rango 0 &mdash; 3360", estado:"ok"},
+   {etiqueta:"Temp. motor",     valor:"236",  unidad:"&deg;F", referencia:"Pico 491 &deg;F", estado:"crit"},
+   {etiqueta:"Vibraci&oacute;n Vx",   valor:"2.01", unidad:"G",   referencia:"Pico 4.17 G", estado:"crit"},
+   {etiqueta:"Volt. motor",     valor:"3534", unidad:"V",   referencia:"Nominal 3940 V", estado:"ok"}
+  ],
+  cadena:[
+   {nodo:"PST",  detalle:"Secundario 1", medido:448, nominal:435, unidad:"A", estado:"crit"},
+   {nodo:"VFD",  detalle:"Entrada",      medido:888, nominal:946, unidad:"A", estado:"warn"},
+   {nodo:"SUT",  detalle:"Tap 3",        medido:91,  nominal:107, unidad:"A", estado:"ok"},
+   {nodo:"Motor",detalle:"800 hp",       medido:97,  nominal:125, unidad:"A", estado:"ok"}
+  ],
+  reglas:[
+   {codigo:"R12", nombre:"Arranques repetidos",        estado:"crit",     detalle:"7 arranques en 24 h &mdash; umbral 3", fuente:"Fabricante"},
+   {codigo:"R01", nombre:"Desbalance de corriente",    estado:"warn",     detalle:"4.8 % &mdash; umbral 3.5 %",           fuente:"Fabricante"},
+   {codigo:"R02", nombre:"Desbalance de voltaje",      estado:"ok",       detalle:"1.1 % &mdash; umbral 2.0 %",           fuente:"Norma"},
+   {codigo:"R07", nombre:"Temperatura de motor",       estado:"ok",       detalle:"236 &deg;F &mdash; umbral 260 &deg;F", fuente:"Norma"},
+   {codigo:"R13", nombre:"Disponibilidad",             estado:"ok",       detalle:"98.4 % &mdash; umbral 95 %",           fuente:"Operativo"},
+   {codigo:"R08", nombre:"Delta T motor - intake",     estado:"baseline", detalle:"12 de 30 d&iacute;as de l&iacute;nea base", fuente:"Baseline"},
+   {codigo:"R10", nombre:"Deriva de PIP",              estado:"baseline", detalle:"12 de 30 d&iacute;as de l&iacute;nea base", fuente:"Baseline"},
+   {codigo:"R14", nombre:"Deriva de corriente por Hz", estado:"baseline", detalle:"12 de 30 d&iacute;as de l&iacute;nea base", fuente:"Baseline"},
+   {codigo:"R03", nombre:"Distorsi&oacute;n arm&oacute;nica de corriente", estado:"sindato", detalle:"THD no disponible en el formato de origen", fuente:"Norma"},
+   {codigo:"R04", nombre:"Distorsi&oacute;n arm&oacute;nica de voltaje",   estado:"sindato", detalle:"THD no disponible en el formato de origen", fuente:"Norma"},
+   {codigo:"R05", nombre:"Factor de potencia bajo",    estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Fabricante"},
+   {codigo:"R06", nombre:"Carga del motor",            estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Fabricante"},
+   {codigo:"R09", nombre:"PIP bajo",                   estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Operativo"},
+   {codigo:"R11", nombre:"Vibraci&oacute;n",           estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Fabricante"}
+  ]
+ }
+};
+
+/* ============================================================
+   ESTADO Y UTILIDADES
+   ============================================================ */
+const KP_EST = {
+  crit:     {txt:"Cr&iacute;tico", cls:"crit", ord:0},
+  warn:     {txt:"Atenci&oacute;n",cls:"warn", ord:1},
+  ok:       {txt:"Normal",         cls:"ok",   ord:2},
+  none:     {txt:"Sin vector",     cls:"none", ord:3},
+  baseline: {txt:"Baseline",       cls:"none", ord:4},
+  sindato:  {txt:"Sin dato",       cls:"none", ord:5},
+  sinumbral:{txt:"Sin umbral",     cls:"none", ord:6}
+};
+const KP_HEX = {crit:"#c0392b", warn:"#c77700", ok:"#2ea44f", none:"#9a9aa0"};
+
+let kpFiltro = "all";
+let kpFlota = [];
+
+function kpPeor(lista){
+  let r = "ok";
+  for (const x of lista){
+    if (x.estado === "crit") return "crit";
+    if (x.estado === "warn") r = "warn";
+  }
+  return r;
+}
+
+/* ============================================================
+   VISTA: FLOTA
+   ============================================================ */
+async function kpVerFlota(){
+  document.getElementById("kpBack").style.display = "none";
+  document.getElementById("kpFiltros").style.display = "flex";
+  document.getElementById("kpTitulo").textContent = "An\u00e1lisis Predictivo";
+  document.getElementById("kpSub").innerHTML = "Motor determinista &mdash; Kronos&#8209;M";
+  const v = document.getElementById("kpVista");
+  v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
+  try {
+    kpFlota = await kpCargarFlota();
+  } catch (e) {
+    v.innerHTML = '<div class="kp-msg">No se pudo cargar la flota.<br>' + e.message + '</div>';
+    return;
+  }
+  kpPintarFlota();
+}
+
+function kpPintarFlota(){
+  const d = kpFlota
+    .filter(x => kpFiltro === "all" || x.sistema === kpFiltro)
+    .sort((a,b) => KP_EST[a.estado].ord - KP_EST[b.estado].ord);
+  const n = e => d.filter(x => x.estado === e).length;
+
+  let h = '<h2>Flota</h2><p class="hint">' + d.length +
+    ' pozos &middot; ordenados por severidad</p><div class="kp-stats">';
+  [["Cr&iacute;tico","crit"],["Atenci&oacute;n","warn"],["Normal","ok"],["Sin vector","none"]]
+    .forEach(([t,e]) => {
+      h += '<div class="kp-stat"><div class="k">' + t + '</div><div class="v">' + n(e) + '</div></div>';
+    });
+  h += '</div>';
+
+  if (!d.length){
+    h += '<div class="kp-list"><div class="kp-msg">Sin pozos para este filtro.</div></div>';
+  } else {
+    h += '<div class="kp-list">';
+    d.forEach(x => {
+      const e = KP_EST[x.estado];
+      h += '<div class="kp-row" onclick="kpVerPozo(\'' + x.pozo + '\')">'
+        +  '<div style="flex:1;min-width:0">'
+        +  '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+        +  '<span class="nm">' + x.pozo + '</span>'
+        +  '<span class="sys">' + x.sistema + '</span>'
+        +  '<span style="font-size:12px;color:var(--kp-ink3)">' + x.campo + '</span></div>'
+        +  '<div class="ds">' + x.resumen + '</div>'
+        +  '<div class="ts">Vector: ' + x.fecha_vector + '</div></div>'
+        +  '<span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
+    });
+    h += '</div>';
+  }
+  document.getElementById("kpVista").innerHTML = h;
+}
+
+/* ============================================================
+   VISTA: POZO
+   ============================================================ */
+async function kpVerPozo(codigo){
+  document.getElementById("kpBack").style.display = "block";
+  document.getElementById("kpFiltros").style.display = "none";
+  const v = document.getElementById("kpVista");
+  v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
+
+  let p;
+  try {
+    p = await kpCargarPozo(codigo);
+  } catch (e) {
+    v.innerHTML = '<div class="kp-msg">No se pudo cargar el pozo.<br>' + e.message + '</div>';
+    return;
+  }
+  if (!p){
+    document.getElementById("kpTitulo").textContent = codigo;
+    document.getElementById("kpSub").innerHTML = "Sin vector calculado";
+    v.innerHTML = '<div class="kp-card"><div class="kp-msg">'
+      + 'Este pozo no tiene vector diario calculado.<br>'
+      + 'Carga un archivo en el Analizador DATA para generarlo.</div></div>';
+    return;
+  }
+
+  document.getElementById("kpTitulo").textContent = p.pozo;
+  document.getElementById("kpSub").innerHTML =
+    "Sistema " + p.sistema + " &middot; " + p.campo + " &middot; vector " + p.fecha_vector;
+
+  let h = '';
+
+  h += '<h2>Cadena energ&eacute;tica</h2>';
+  h += '<p class="hint">Estado de cada nodo seg&uacute;n su medici&oacute;n m&aacute;s desfavorable</p>';
+  h += '<div class="kp-card">' + kpDibujarCadena(p.cadena) + kpLeyenda() + '</div>';
+
+  h += '<h2>Indicadores operativos</h2>';
+  h += '<p class="hint">Vector diario del ' + p.fecha_vector + '</p><div class="kp-kpis">';
+  p.indicadores.forEach(i => {
+    const c = KP_EST[i.estado].cls;
+    h += '<div class="kp-kpi ' + c + '"><div class="k">' + i.etiqueta + '</div>'
+      +  '<div class="v">' + i.valor + '<small>' + i.unidad + '</small></div>'
+      +  '<div class="r">' + i.referencia + '</div>'
+      +  '<span class="kp-pill ' + c + '">' + KP_EST[i.estado].txt + '</span></div>';
+  });
+  h += '</div>';
+
+  h += '<h2 style="margin-top:22px">Diagn&oacute;stico predictivo</h2>';
+  const ev = p.reglas.filter(r => ["crit","warn","ok"].includes(r.estado)).length;
+  h += '<p class="hint">' + p.reglas.length + ' reglas &middot; ' + ev + ' evaluadas</p>';
+  h += '<div class="kp-list">' + kpDibujarReglas(p.reglas) + '</div>';
+
+  v.innerHTML = h;
+}
+
+function kpDibujarReglas(reglas){
+  const bloques = [
+    ["Hallazgos",     r => r.estado === "crit" || r.estado === "warn", true],
+    ["Sin hallazgo",  r => r.estado === "ok",        false],
+    ["No evaluadas",  r => ["baseline","sindato","sinumbral"].includes(r.estado), false]
+  ];
+  let h = '';
+  bloques.forEach(([titulo, filtro, individual]) => {
+    const g = reglas.filter(filtro);
+    if (!g.length) return;
+    h += '<div class="kp-grp">' + titulo + '</div>';
+    if (individual){
+      g.sort((a,b) => KP_EST[a.estado].ord - KP_EST[b.estado].ord).forEach(r => {
+        const e = KP_EST[r.estado];
+        h += '<div class="kp-rule ' + e.cls + '"><div>'
+          +  '<div><span class="id">' + r.codigo + '</span> <span class="nm">' + r.nombre + '</span></div>'
+          +  '<div class="dt">' + r.detalle + '</div>'
+          +  '<div class="src">Fuente: ' + r.fuente + '</div></div>'
+          +  '<span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
+      });
+    } else {
+      const sub = {};
+      g.forEach(r => { (sub[r.estado] = sub[r.estado] || []).push(r); });
+      Object.keys(sub).forEach(k => {
+        const l = sub[k];
+        h += '<div class="kp-rule"><div>'
+          +  '<div><span class="id">' + l.map(r => r.codigo).join(" &middot; ") + '</span></div>'
+          +  '<div class="dt">' + l.map(r => r.nombre).join(", ") + '</div>'
+          +  '<div class="src">' + l[0].detalle + '</div></div>'
+          +  '<span class="kp-pill ' + KP_EST[k].cls + '">' + KP_EST[k].txt + '</span></div>';
+      });
+    }
+  });
+  return h;
+}
+
+function kpDibujarCadena(nodos){
+  const anchoTot = 680, alto = 150;
+  const n = nodos.length;
+  const gap = 22;
+  const w = Math.floor((anchoTot - 40 - gap * (n - 1)) / n);
+  let s = '<svg class="kp-chain" viewBox="0 0 ' + anchoTot + ' ' + alto
+        + '" role="img" xmlns="http://www.w3.org/2000/svg">'
+        + '<title>Cadena energ&eacute;tica</title>'
+        + '<defs><marker id="kpAr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" '
+        + 'orient="auto"><path d="M2 1L8 5L2 9" fill="none" stroke="#94949a" stroke-width="1.5" '
+        + 'stroke-linecap="round" stroke-linejoin="round"/></marker></defs>';
+
+  nodos.forEach((nd, i) => {
+    const x = 20 + i * (w + gap);
+    const col = KP_HEX[nd.estado] || KP_HEX.none;
+    const pct = nd.nominal ? Math.round(nd.medido / nd.nominal * 100) : null;
+    const cx = x + w / 2;
+
+    s += '<rect x="' + x + '" y="20" width="' + w + '" height="112" rx="8" fill="#fff" '
+      +  'stroke="' + col + '" stroke-width="1.5"/>';
+    s += '<rect x="' + x + '" y="20" width="' + w + '" height="5" rx="2" fill="' + col + '"/>';
+    s += kpSimbolo(nd.nodo, cx, 52, col);
+    s += '<text x="' + cx + '" y="88" text-anchor="middle" font-size="13" font-weight="600" '
+      +  'fill="#1c1c1e" font-family="inherit">' + nd.nodo + '</text>';
+    s += '<text x="' + cx + '" y="105" text-anchor="middle" font-size="11.5" fill="#6b6b70" '
+      +  'font-family="inherit">' + (pct === null ? nd.detalle : pct + ' % &middot; ' + nd.detalle) + '</text>';
+    s += '<text x="' + cx + '" y="121" text-anchor="middle" font-size="11" fill="#94949a" '
+      +  'font-family="inherit">' + (nd.nominal ? nd.medido + ' / ' + nd.nominal + ' ' + nd.unidad
+      :  'sin placa') + '</text>';
+
+    if (i < n - 1){
+      const x1 = x + w + 3, x2 = x + w + gap - 3;
+      s += '<line x1="' + x1 + '" y1="76" x2="' + x2 + '" y2="76" stroke="#94949a" '
+        +  'stroke-width="1.5" marker-end="url(#kpAr)"/>';
+    }
+  });
+  return s + '</svg>';
+}
+
+function kpSimbolo(nombre, cx, cy, col){
+  const t = (nombre || "").toUpperCase();
+  if (t.indexOf("VFD") >= 0){
+    return '<rect x="' + (cx - 17) + '" y="' + (cy - 13) + '" width="34" height="26" rx="3" '
+      + 'fill="none" stroke="' + col + '" stroke-width="1.6"/>'
+      + '<path d="M' + (cx - 12) + ' ' + cy + ' q4 -10 7 0 q4 10 7 0" fill="none" stroke="' + col
+      + '" stroke-width="1.4"/>';
+  }
+  if (t.indexOf("MOTOR") >= 0){
+    return '<circle cx="' + cx + '" cy="' + cy + '" r="15" fill="none" stroke="' + col
+      + '" stroke-width="1.6"/>'
+      + '<text x="' + cx + '" y="' + (cy + 4) + '" text-anchor="middle" font-size="12" '
+      + 'fill="' + col + '" font-family="inherit">M</text>';
+  }
+  return '<circle cx="' + (cx - 7) + '" cy="' + cy + '" r="11" fill="none" stroke="' + col
+    + '" stroke-width="1.6"/>'
+    + '<circle cx="' + (cx + 7) + '" cy="' + cy + '" r="11" fill="none" stroke="' + col
+    + '" stroke-width="1.6"/>';
+}
+
+function kpLeyenda(){
+  return '<div class="kp-leg">'
+    + '<span><i style="background:' + KP_HEX.ok   + '"></i>hasta 95 %</span>'
+    + '<span><i style="background:' + KP_HEX.warn + '"></i>95 a 100 %</span>'
+    + '<span><i style="background:' + KP_HEX.crit + '"></i>sobre 100 %</span>'
+    + '<span><i style="background:' + KP_HEX.none + '"></i>sin dato de placa</span></div>';
+}
+
+/* ============================================================
+   ARRANQUE
+   ============================================================ */
+document.getElementById("kpFiltros").addEventListener("click", ev => {
+  const b = ev.target.closest(".kp-chip");
+  if (!b) return;
+  kpFiltro = b.dataset.s;
+  document.querySelectorAll(".kp-chip").forEach(x => x.classList.toggle("on", x === b));
+  kpPintarFlota();
+});
+
+if (!KP.MODO_DEMO) document.getElementById("kpDemo").style.display = "none";
+kpVerFlota();
+</script>
+</body>
+</html>
