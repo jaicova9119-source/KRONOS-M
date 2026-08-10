@@ -1573,14 +1573,32 @@ function iniciarSesion(){
   });
 }
 
-/* El nombre para "Realizado por" sale de los metadatos del usuario,
-   no de un campo escrito a mano: asi no hay dos formas de escribir
-   el mismo nombre en la base. */
+/* El nombre para "Realizado por" sale de public.usuarios, la misma
+   tabla que usan estoy_activo() y mi_rol(). Asi el nombre guardado
+   coincide con el del historico ("Anderson Lopez" y no su correo),
+   y no hay dos formas de escribir la misma persona en la base. */
+var perfilActual = null;
+
 function dpEntrar(user){
-  var meta = (user && user.user_metadata) || {};
-  tecnicoActual = meta.nombre || meta.full_name || (user && user.email) || '';
+  tecnicoActual = (user && user.email) || '';
   document.getElementById('tech-name').textContent = tecnicoActual;
   ir('sistema');
+
+  sb.rpc('dp_perfil').then(function(r){
+    if (r.error || !r.data){
+      /* Sin fila en usuarios no hay rol, y el RLS va a rechazar el
+         guardado. Mejor decirlo ahora que en campo. */
+      document.getElementById('tech-name').textContent = tecnicoActual + ' (sin perfil)';
+      alert('Tu cuenta entro, pero no tiene perfil asignado en el sistema.\n\n'
+          + 'Sin perfil no vas a poder guardar registros. Avisa a quien administra '
+          + 'Kronos-M antes de salir a campo.');
+      return;
+    }
+    perfilActual = r.data;
+    tecnicoActual = perfilActual.nombre || tecnicoActual;
+    document.getElementById('tech-name').textContent = tecnicoActual;
+  }).catch(function(){});
+
   poblarSelects();
   intentarSincronizarTodo();
 }
