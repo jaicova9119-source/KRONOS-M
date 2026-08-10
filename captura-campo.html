@@ -1,0 +1,1608 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<meta name="theme-color" content="#0B1F3A">
+<title>Captura de Campo</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --navy:#0B1F3A; --navy-2:#132A4C; --orange:#E8542A; --orange-dim:#F2A088;
+    --bg:#F5F6F8; --card:#FFFFFF; --line:#E2E5EA; --ink:#14202E; --ink-soft:#5B6774;
+    --bes:#1E8E5A; --bes-bg:#E8F5EE;
+    --hpum:#2B6CB0; --hpum-bg:#E9F0F9;
+    --ubh:#8A5A2E; --ubh-bg:#F5EDE4;
+    --danger:#C4392B; --radius:14px;
+    --shadow:0 1px 2px rgba(11,31,58,.06), 0 8px 24px rgba(11,31,58,.08);
+    --maxw:520px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
+    font-family:'IBM Plex Sans',system-ui,sans-serif;}
+  h1,h2,h3,.display{font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.01em;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  button{font-family:inherit; cursor:pointer;}
+  :focus-visible{outline:3px solid var(--orange); outline-offset:2px;}
+
+  .app{max-width:var(--maxw); margin:0 auto; min-height:100vh; background:var(--bg);
+    display:flex; flex-direction:column; position:relative;}
+
+  header.top{background:linear-gradient(180deg,var(--navy) 0%,var(--navy-2) 100%);
+    color:#fff; padding:16px 20px 20px; position:sticky; top:0; z-index:30;
+    box-shadow:0 4px 16px rgba(11,31,58,.25);}
+  .brand-row{display:flex; align-items:center; gap:12px;}
+  .brand-mark{width:40px;height:40px;border-radius:11px;flex-shrink:0;
+    background:radial-gradient(120% 120% at 30% 20%, #FF7A50 0%, var(--orange) 55%, #B33A18 100%);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 3px 10px rgba(232,84,42,.45), inset 0 1px 0 rgba(255,255,255,.25);}
+  .brand-mark svg{width:22px;height:22px;}
+  .brand-text{line-height:1.05;}
+  .brand-text .co{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#B9C6DA;font-weight:600;}
+  .brand-text .app-name{font-size:20px;font-weight:800;color:#fff;}
+  .brand-text .app-name em{color:var(--orange-dim);font-style:normal;}
+  .tech-strip{display:flex;align-items:center;justify-content:space-between;
+    margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);}
+  .tech-strip .who{font-size:12.5px;color:#CBD6E6;}
+  .tech-strip .who b{color:#fff;font-weight:600;}
+  .chip-online{display:flex;align-items:center;gap:6px;font-size:11px;color:#8FE3B0;font-weight:600;}
+  .chip-online .dot{width:7px;height:7px;border-radius:50%;background:#3DDC84;box-shadow:0 0 0 3px rgba(61,220,132,.22);}
+  .chip-online.offline{color:#F2A088;}
+  .chip-online.offline .dot{background:#E8542A;box-shadow:0 0 0 3px rgba(232,84,42,.22);}
+
+  main{flex:1; padding:18px 16px 110px;}
+  .hidden{display:none !important;}
+
+  .screen-title{margin:2px 2px 14px;}
+  .screen-title h1{font-size:24px;margin:0 0 2px;color:var(--navy);}
+  .screen-title p{margin:0;font-size:14px;color:var(--ink-soft);}
+
+  .section-label{display:flex;align-items:center;gap:8px;font-size:11px;text-transform:uppercase;
+    letter-spacing:.13em;color:var(--ink-soft);font-weight:600;margin:20px 2px 10px;}
+  .section-label .bar{width:14px;height:2px;background:var(--orange);display:inline-block;}
+  .section-label:first-child{margin-top:0;}
+
+  .action-card{display:flex;align-items:center;gap:14px;background:var(--card);
+    border:1px solid var(--line);border-radius:16px;padding:16px;margin-bottom:10px;
+    box-shadow:var(--shadow); transition:transform .1s ease, border-color .15s ease;}
+  .action-card:active{transform:scale(.985);}
+  .action-card .ic{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;
+    justify-content:center;flex-shrink:0;}
+  .action-card .ic svg{width:24px;height:24px;}
+  .action-card .body{flex:1;min-width:0;}
+  .action-card .ttl{font-family:'Barlow Condensed';font-weight:700;font-size:17px;color:var(--navy);line-height:1.15;}
+  .action-card .sub{font-size:12.5px;color:var(--ink-soft);margin-top:1px;}
+  .action-card .chev{color:#B7C0CC;flex-shrink:0;}
+  .action-card .chev svg{width:18px;height:18px;}
+  .action-card.disabled{opacity:.55;}
+  .action-card.disabled .ttl::after{content:" - Proximamente"; font-size:10.5px; color:var(--ink-soft); font-family:'IBM Plex Sans'; font-weight:600; text-transform:none;}
+
+  .card-medicion .ic{background:var(--bes-bg);color:var(--bes);}
+  .card-bitacora .ic{background:#FDEDEA;color:var(--danger);}
+  .card-setup .ic{background:#EFF1F4;color:var(--navy);}
+  .card-aislamiento .ic{background:#E8F5E9;color:#2E7D32;}
+  .card-nuevo .ic{background:#FFF3EA;color:var(--orange);}
+  .card-hpum .ic{background:var(--hpum-bg);color:var(--hpum);}
+  .card-ubh .ic{background:var(--ubh-bg);color:var(--ubh);}
+
+  .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;
+    color:var(--navy);font-weight:600;font-size:14px;padding:8px 4px 8px 0;}
+  .back-btn svg{width:16px;height:16px;}
+
+  .sys-banner{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;margin:8px 0 16px;}
+  .sys-banner .ic{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.6);
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+  .sys-banner .ic svg{width:20px;height:20px;}
+  .sys-banner .t{font-family:'Barlow Condensed';font-weight:700;font-size:17px;line-height:1.1;}
+  .sys-banner .s{font-size:11.5px;margin-top:2px;}
+  .sys-banner.bes{background:var(--bes-bg);color:var(--bes);}
+  .sys-banner.evt{background:#FDEDEA;color:var(--danger);}
+  .sys-banner.setup{background:#EFF1F4;color:var(--navy);}
+  .sys-banner.nuevo{background:#FFF3EA;color:var(--orange);}
+
+  fieldset{border:none;margin:0 0 20px;padding:0;}
+  legend{font-family:'Barlow Condensed';font-weight:700;font-size:14.5px;color:var(--navy);
+    text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;padding:0;
+    display:flex;align-items:center;gap:8px; width:100%;}
+  legend::before{content:'';width:4px;height:15px;background:var(--orange);border-radius:2px;display:inline-block;flex-shrink:0;}
+  legend .count{margin-left:auto; font-family:'IBM Plex Sans'; font-weight:600; font-size:10.5px;
+    color:var(--ink-soft); text-transform:none; letter-spacing:0; background:#EEF0F3; padding:2px 8px; border-radius:100px;}
+
+  .field{margin-bottom:12px;}
+  .field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:5px;}
+  .field input,.field select,.field textarea{width:100%;padding:12px 13px;border:1.5px solid var(--line);
+    border-radius:11px;font-size:15px;background:#fff;color:var(--ink);font-family:'IBM Plex Sans';}
+  .field input.mono-input{font-family:'IBM Plex Mono';font-weight:600;font-size:15.5px;}
+  .field select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9'%3E%3Cpath d='M1 1l6 6 6-6' stroke='%235B6774' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat:no-repeat;background-position:right 13px center;}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--navy);}
+  .field input:disabled{background:#F3F4F6; color:var(--ink-soft); border-color:var(--line);}
+  .field.readonly input{background:#F7F8F9; color:var(--ink-soft); font-family:'IBM Plex Mono'; font-weight:500;}
+  .field.editable label{color:var(--orange);}
+  .field.editable input, .field.editable select{border-color:var(--orange-dim);}
+
+  .grid-fields{display:grid; grid-template-columns:1fr 1fr; gap:10px 12px;}
+  .grid-fields.g3{grid-template-columns:1fr 1fr 1fr;}
+  .unit-input{position:relative;}
+  .unit-input .unit{position:absolute;right:12px;top:50%;transform:translateY(-50%);
+    font-size:11.5px;color:var(--ink-soft);font-weight:600;pointer-events:none;}
+  .unit-input input{padding-right:40px;}
+
+  .group-card{background:var(--card); border:1px solid var(--line); border-radius:16px;
+    padding:16px 14px 4px; margin-bottom:14px; box-shadow:var(--shadow);}
+
+  .readonly-note{display:flex;align-items:flex-start;gap:8px;background:#EFF1F4;color:var(--navy);
+    font-size:12px;padding:10px 12px;border-radius:10px;margin:6px 0 16px;line-height:1.4;}
+  .readonly-note svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;}
+  .change-note-box{background:#FFF7ED;border:1.5px dashed #F0B27A;border-radius:14px;padding:14px;margin-top:4px;}
+  .change-note-box .lbl{font-family:'Barlow Condensed';font-weight:700;font-size:14px;color:#8A5A2E;margin-bottom:8px;}
+  .nota-anterior-box{background:#F5F6F8;border:1px solid #DDE3E8;border-radius:14px;padding:12px 14px;margin-bottom:10px;}
+  .nota-anterior-box .lbl-anterior{font-family:'Barlow Condensed';font-weight:700;font-size:13px;color:#6B7680;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.02em;}
+  .nota-anterior-box .txt-anterior{font-size:14px;color:#37474F;white-space:pre-wrap;}
+
+  .sync-note{display:flex;align-items:flex-start;gap:8px;background:#FFF7ED;border:1px solid #FBE0C4;
+    color:#8A5A2E;font-size:11.5px;padding:10px 12px;border-radius:10px;margin-bottom:12px;line-height:1.4;}
+  .sync-note svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;}
+
+  .submit-bar{position:sticky;bottom:0;background:linear-gradient(180deg, rgba(245,246,248,0) 0%, var(--bg) 32%);
+    padding:16px 0 4px;margin-top:6px;}
+  .btn-primary{width:100%;padding:15px 18px;border:none;border-radius:14px;
+    background:linear-gradient(180deg,#F0602E 0%,var(--orange) 100%);color:#fff;
+    font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.02em;
+    display:flex;align-items:center;justify-content:center;gap:8px;
+    box-shadow:0 6px 18px rgba(232,84,42,.35);}
+  .btn-primary svg{width:17px;height:17px;}
+
+  .step-dots{display:flex;gap:6px;justify-content:center;margin:2px 0 16px;}
+  .step-dots .d{width:8px;height:8px;border-radius:50%;background:var(--line);}
+  .step-dots .d.active{background:var(--orange); width:20px; border-radius:5px;}
+  .step-dots .d.done{background:var(--bes);}
+
+  .foot{text-align:center;padding:16px 0 6px;font-size:10.5px;color:#9AA5B1;}
+
+  @media (min-width:640px){
+    :root{--maxw:900px;}
+    main{padding:24px 28px 120px;}
+    .grid-fields{grid-template-columns:repeat(3, 1fr);}
+    .grid-fields.g3{grid-template-columns:repeat(4, 1fr);}
+    .action-card{padding:18px 20px;}
+  }
+  @media (min-width:1024px){
+    :root{--maxw:1180px;}
+    .app{border-left:1px solid var(--line);border-right:1px solid var(--line);box-shadow:0 0 40px rgba(11,31,58,.06);}
+    .grid-fields{grid-template-columns:repeat(4, 1fr);}
+    .grid-fields.g3{grid-template-columns:repeat(6, 1fr);}
+    .home-grid{display:grid; grid-template-columns:1fr 1fr; gap:0 16px;}
+    .submit-bar{max-width:520px; margin-left:auto; margin-right:auto;}
+  }
+
+  /* ---- Login ---- */
+  .login-wrap{min-height:calc(100vh - 130px); display:flex; flex-direction:column; justify-content:center; padding:20px 4px;}
+  .login-hero{text-align:center; margin-bottom:28px;}
+  .login-hero .mark{width:72px;height:72px;border-radius:20px;margin:0 auto 16px;
+    background:radial-gradient(120% 120% at 30% 20%, #FF7A50 0%, var(--orange) 55%, #B33A18 100%);
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 24px rgba(232,84,42,.35), inset 0 1px 0 rgba(255,255,255,.25);}
+  .login-hero .mark svg{width:38px;height:38px;}
+  .login-hero h1{font-size:28px;color:var(--navy);margin:0 0 4px;}
+  .login-hero p{margin:0;color:var(--ink-soft);font-size:14px;}
+  .login-card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px 20px;box-shadow:var(--shadow);}
+  .tech-list{display:flex;flex-direction:column;gap:8px;margin-top:6px;}
+  .tech-pick{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);
+    border-radius:12px;background:#fbfbfc; cursor:pointer;}
+  .tech-pick .av{width:34px;height:34px;border-radius:50%;background:var(--navy);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed';font-weight:700;font-size:14px;flex-shrink:0;}
+  .tech-pick.sel{border-color:var(--orange);background:#FFF7ED;}
+  .tech-pick .nm{font-weight:600;font-size:14.5px;color:var(--ink);}
+
+  /* ---- Selector de sistema (hero badges) ---- */
+  .sistema-track{display:flex;flex-direction:column;gap:14px;}
+  .sistema-card{position:relative;display:flex;align-items:center;gap:16px;background:var(--card);
+    border:2px solid var(--line);border-radius:20px;padding:18px;box-shadow:var(--shadow);}
+  .sistema-card .badge{width:64px;height:64px;border-radius:18px;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+  .sistema-card .badge svg{width:36px;height:36px;}
+  .sistema-card.bes .badge{background:linear-gradient(150deg, #E8F5EE 0%, #CDEBDB 100%); color:var(--bes);}
+  .sistema-card.hpum .badge{background:linear-gradient(150deg, #E9F0F9 0%, #CFE0F3 100%); color:var(--hpum);}
+  .sistema-card.ubh .badge{background:linear-gradient(150deg, #F5EDE4 0%, #E9D8C4 100%); color:var(--ubh);}
+  .sistema-card .body{flex:1;min-width:0;}
+  .sistema-card .name{font-family:'Barlow Condensed';font-weight:800;font-size:21px;color:var(--navy);line-height:1.05;}
+  .sistema-card .full{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px;}
+  .sistema-card .desc{font-size:12.5px;color:var(--ink-soft);margin-top:6px;line-height:1.35;}
+  .sistema-card .go{position:absolute; top:16px; right:16px; color:#B7C0CC;}
+  .sistema-card .go svg{width:20px;height:20px;}
+  .sistema-card.soon{opacity:.6;}
+  .sistema-card.soon .badge-lbl{position:absolute; bottom:14px; right:16px; font-size:9.5px; font-weight:700;
+    letter-spacing:.06em; text-transform:uppercase; color:#fff; background:var(--ink-soft); padding:3px 8px; border-radius:100px;}
+  .sistema-card:active{transform:scale(.99);}
+
+  /* ---- Iconos de seccion (legend) ---- */
+  legend .sec-ic{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-right:2px;}
+  legend .sec-ic svg{width:15px;height:15px;}
+  legend::before{display:none;}
+  legend{gap:10px;}
+
+  .chg-tech{background:none;border:none;color:#CBD6E6;font-size:11px;text-decoration:underline;padding:0;}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <header class="top">
+    <div class="brand-row">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M2 12h4l2-7 4 14 3-9 2 5h5" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <div class="brand-text">
+        <div class="co">Confipetrol SAS</div>
+        <div class="app-name">Data<em>Predictiva</em></div>
+      </div>
+    </div>
+    <div class="tech-strip">
+      <div class="who">Tecnico: <b id="tech-name">Sin iniciar sesion</b> &middot; <button class="chg-tech" onclick="ir('login')">cambiar</button></div>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button id="pendientes-badge" class="chg-tech hidden" style="color:#FFB37A; font-weight:600;" onclick="intentarSincronizarTodo()"></button>
+        <div class="chip-online" id="chip-conexion"><span class="dot"></span><span id="chip-conexion-txt">En linea</span></div>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- ============ LOGIN ============ -->
+    <section id="screen-login">
+      <div class="login-wrap">
+        <div class="login-hero">
+          <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M2 12h4l2-7 4 14 3-9 2 5h5" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <h1>DataPredictiva</h1>
+          <p>Captura de campo &middot; Confipetrol SAS</p>
+        </div>
+        <div class="login-card">
+          <div class="field">
+            <label for="login-correo">Correo</label>
+            <input id="login-correo" type="email" inputmode="email" autocomplete="username" placeholder="nombre@empresa.com">
+          </div>
+          <div class="field">
+            <label for="login-clave">Contrase&ntilde;a</label>
+            <input id="login-clave" type="password" autocomplete="current-password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;">
+            <div style="font-size:12px;color:#90A4AE;margin-top:4px;">La sesi&oacute;n queda guardada en este dispositivo, as&iacute; que no hay que ingresar de nuevo en cada visita.</div>
+          </div>
+          <div id="login-status" style="font-size:13px;margin:4px 0;"></div>
+          <button class="btn-primary" style="margin-top:6px;" onclick="iniciarSesion()">Ingresar
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SELECTOR DE SISTEMA ============ -->
+    <section id="screen-sistema" class="hidden">
+      <div class="screen-title">
+        <h1>Que sistema vas a medir?</h1>
+        <p>Selecciona el sistema de levantamiento antes de continuar.</p>
+      </div>
+      <div class="sistema-track">
+        <div class="sistema-card bes" onclick="ir('home')">
+          <div class="badge">
+            <svg viewBox="0 0 24 24" fill="none">
+              <rect x="9" y="2" width="6" height="5" rx="1.2" stroke="currentColor" stroke-width="1.6"/>
+              <rect x="8" y="8" width="8" height="6" rx="1.2" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M10 14v3M14 14v3" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M7 20c0-1.7 2.2-3 5-3s5 1.3 5 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="body">
+            <div class="name">BES</div>
+            <div class="full">Bombeo Electrosumergible</div>
+            <div class="desc">Motor, VFD, PST, SUT &middot; mediciones y setup completos</div>
+          </div>
+          <div class="go"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+
+        <div class="sistema-card hpum soon" onclick="proximamente('HPUM')">
+          <div class="badge">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 3v7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M8 8h8l-1.5 4h-5L8 8Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+              <path d="M6 15h12v4a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1v-4Z" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M9 12v3M15 12v3" stroke="currentColor" stroke-width="1.6"/>
+            </svg>
+          </div>
+          <div class="body">
+            <div class="name">HPUM</div>
+            <div class="full">Bombeo Hidraulico &middot; Inyeccion</div>
+            <div class="desc">Estructura de listas SharePoint pendiente de definir</div>
+          </div>
+          <div class="badge-lbl">Proximamente</div>
+        </div>
+
+        <div class="sistema-card ubh soon" onclick="proximamente('UBH')">
+          <div class="badge">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M5 6h5l3 6-3 6H5" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+              <path d="M13 12h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              <path d="M16 9l3 3-3 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="body">
+            <div class="name">UBH</div>
+            <div class="full">Bombeo Hidraulico Jet Pump</div>
+            <div class="desc">Estructura de listas SharePoint pendiente de definir</div>
+          </div>
+          <div class="badge-lbl">Proximamente</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="screen-home" class="hidden">
+      <button class="back-btn" onclick="ir('sistema')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Cambiar sistema</button>
+      <div class="screen-title">
+        <h1>Que vamos a registrar?</h1>
+
+        <p>Selecciona el tipo de captura para continuar.</p>
+      </div>
+
+      <div class="home-grid">
+      <div>
+        <div class="section-label"><span class="bar"></span>BES - Bombeo Electrosumergible</div>
+        <div class="action-card card-medicion" onclick="ir('medicion-pozo')">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="body"><div class="ttl">Medicion predictiva</div><div class="sub">Lectura completa PST, VFD, SUT, temperaturas</div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+        <div class="action-card card-bitacora" onclick="document.getElementById('evt-realizo').value=tecnicoActual; ir('bitacora-form')">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6l1 3H8l1-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 6h12v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6Z" stroke="currentColor" stroke-width="1.8"/><path d="M9 11h6M9 15h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          <div class="body"><div class="ttl">Evento / Bitacora</div><div class="sub">Novedades, mantenimiento, hallazgos</div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+        <div class="action-card card-setup" onclick="ir('setup-pozo')">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5c.1-.5.1-1 0-1.5l1.6-1.2-1.5-2.6-1.9.6a5.6 5.6 0 0 0-1.3-.8L16 6h-3l-.3 2c-.5.2-.9.5-1.3.8l-1.9-.6-1.5 2.6L9.6 12c-.1.5-.1 1 0 1.5L8 14.7l1.5 2.6 1.9-.6c.4.3.8.6 1.3.8l.3 2h3l.3-2c.5-.2.9-.5 1.3-.8l1.9.6 1.5-2.6-1.6-1.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+          <div class="body"><div class="ttl">Configuracion VFD (Setup)</div><div class="sub">Ver ajustes actuales, editar solo lo habitual</div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+        <div class="action-card card-aislamiento" onclick="document.getElementById('ais-realizo').value=tecnicoActual; ir('aislamiento-form')">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub">Megado, DAR, IP y balance de fases</div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="section-label"><span class="bar"></span>Pozos y otros sistemas</div>
+        <div class="action-card card-nuevo" onclick="ir('nuevo-paso1')">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+          <div class="body"><div class="ttl">Registrar / Actualizar pozo</div><div class="sub">Catalogo + equipos (Motor, VFD, PST, SUT) - nuevo o existente</div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+        <div class="action-card card-hpum disabled">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 15V9a2 2 0 0 1 2-2h4l3-3 3 3h1a2 2 0 0 1 2 2v6" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 15h16v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
+          <div class="body"><div class="ttl">HPUM</div><div class="sub">Bombeo Hidraulico, Inyeccion - estructura pendiente</div></div>
+        </div>
+        <div class="action-card card-ubh disabled">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2v7m0 0-3 3m3-3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 13c0 4 2.7 8 6 8s6-4 6-8" stroke="currentColor" stroke-width="1.8"/></svg></div>
+          <div class="body"><div class="ttl">UBH</div><div class="sub">Bombeo Hidraulico Jet Pump - estructura pendiente</div></div>
+        </div>
+      </div>
+      </div>
+    </section>
+
+    <section id="screen-medicion-pozo" class="hidden">
+      <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
+      <div class="sys-banner bes">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div><div class="t">Medicion predictiva</div><div class="s">Selecciona el pozo a medir</div></div>
+      </div>
+      <div class="field">
+        <label for="med-pozo-select">Pozo</label>
+        <select id="med-pozo-select"></select>
+      </div>
+      <div class="submit-bar" style="position:static;">
+        <button class="btn-primary" onclick="iniciarMedicion()">Iniciar captura
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-medicion-form" class="hidden">
+      <button class="back-btn" onclick="ir('medicion-pozo')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Cambiar pozo</button>
+      <div class="sys-banner bes">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div><div class="t">Medicion <span id="med-pozo-label" class="mono"></span></div><div class="s">Mediciones_Predictivas - 67 variables</div></div>
+      </div>
+      <form id="form-medicion"></form>
+      <div class="submit-bar">
+        <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Conexion a SharePoint pendiente (Parte E). El registro queda listo para sincronizar.</div>
+        <button class="btn-primary" onclick="guardarMedicion()">Guardar medicion
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-bitacora-form" class="hidden">
+      <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
+      <div class="sys-banner evt">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6l1 3H8l1-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 6h12v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
+        <div><div class="t">Evento / Bitacora</div><div class="s">Bitacora_Eventos</div></div>
+      </div>
+      <form id="form-bitacora">
+        <div class="group-card">
+          <div class="field"><label>Pozo</label><select id="evt-pozo"></select></div>
+          <div class="field"><label>Realizo</label><input id="evt-realizo" readonly style="background:#F5F6F8;color:#607D8B;cursor:not-allowed;"></div>
+          <div class="grid-fields">
+            <div class="field"><label>Fecha</label><input type="date" id="evt-fecha"></div>
+            <div class="field"><label>Hora</label><input type="time" id="evt-hora"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Categoria</label>
+              <select id="evt-categoria"><option>Mantenimiento</option><option>Operacion</option><option>Falla</option><option>Inspeccion</option></select>
+            </div>
+            <div class="field"><label>Severidad</label>
+              <select id="evt-severidad"><option>Informativo</option><option>Advertencia</option><option>Critico</option></select>
+            </div>
+          </div>
+          <div class="field"><label>Observaciones</label><textarea id="evt-obs" rows="3" placeholder="Que se observo..."></textarea></div>
+          <div class="field"><label>Recomendaciones</label><textarea id="evt-rec" rows="2" placeholder="Accion sugerida..."></textarea></div>
+          <div class="field"><label>Status</label>
+            <select id="evt-status"><option>Pendiente</option><option>En proceso</option><option>Resuelto</option><option>Cerrado</option><option>Requiere seguimiento</option><option>No aplica</option></select>
+          </div>
+        </div>
+      </form>
+      <div class="submit-bar">
+        <button class="btn-primary" onclick="guardarBitacora()">Guardar evento
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-aislamiento-form" class="hidden">
+      <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
+      <div class="sys-banner bes">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
+        <div><div class="t">Prueba de aislamiento</div><div class="s">Pruebas_Aislamiento</div></div>
+      </div>
+      <form id="form-aislamiento">
+        <div class="group-card">
+          <div class="field"><label>Pozo</label><select id="ais-pozo"></select></div>
+          <div class="grid-fields">
+            <div class="field"><label>Fecha de prueba</label><input type="date" id="ais-fecha"></div>
+            <div class="field"><label>Equipo de medicion</label><input id="ais-equipo" placeholder="Ej: Megger MIT525"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Aislamiento</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-aislamiento"><span class="unit">MΩ</span></div>
+            </div>
+            <div class="field"><label>DAR</label><input type="number" step="any" id="ais-dar"></div>
+            <div class="field"><label>IP</label><input type="number" step="any" id="ais-ip"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Balance A-C</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ac"><span class="unit">Ω</span></div>
+            </div>
+            <div class="field"><label>Balance A-B</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ab"><span class="unit">Ω</span></div>
+            </div>
+            <div class="field"><label>Balance B-C</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-bc"><span class="unit">Ω</span></div>
+            </div>
+          </div>
+          <div class="field"><label>Realizo</label><input id="ais-realizo" readonly style="background:#F5F6F8;color:#607D8B;cursor:not-allowed;"></div>
+          <div class="field"><label>Observaciones</label><textarea id="ais-obs" rows="3" placeholder="Condiciones de la prueba, hallazgos..."></textarea></div>
+        </div>
+      </form>
+      <div class="submit-bar">
+        <button class="btn-primary" onclick="guardarAislamiento()">Guardar prueba
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-setup-pozo" class="hidden">
+      <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
+      <div class="sys-banner setup">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
+        <div><div class="t">Configuracion VFD</div><div class="s">Selecciona el pozo</div></div>
+      </div>
+      <div class="field"><label>Pozo</label><select id="setup-pozo-select"></select></div>
+      <div class="readonly-note">
+        <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
+        Se carga la configuracion actual del pozo. Todos los campos son editables; cualquier cambio queda registrado con una nota historica en Bitacora_Eventos al guardar.
+      </div>
+      <div class="submit-bar" style="position:static;">
+        <button class="btn-primary" onclick="cargarSetup()">Cargar configuracion actual
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-setup-form" class="hidden">
+      <button class="back-btn" onclick="ir('setup-pozo')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Cambiar pozo</button>
+      <div class="sys-banner setup">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
+        <div><div class="t">Setup <span id="setup-pozo-label" class="mono"></span></div><div class="s">Configuracion actual - todo editable</div></div>
+      </div>
+      <form id="form-setup"></form>
+      <div class="submit-bar">
+        <button class="btn-primary" onclick="guardarSetup()">Guardar cambios + nota historica
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-nuevo-paso1" class="hidden">
+      <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
+      <div class="sys-banner nuevo">
+        <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+        <div><div class="t">Pozo nuevo o existente</div><div class="s">Paso 1 de 5 - Catalogo</div></div>
+      </div>
+      <div class="step-dots"><span class="d active"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span></div>
+      <form id="form-nuevo-catalogo">
+        <div class="group-card">
+          <div class="field"><label>Pozo (nombre)</label>
+            <input id="nc-pozo" list="lista-pozos-existentes" placeholder="ej. CYC-70" required
+                   oninput="this.value=this.value.toUpperCase()" onblur="normalizarYVerificarPozo()">
+            <datalist id="lista-pozos-existentes"></datalist>
+          </div>
+          <div id="nc-pozo-status" style="font-size:13px;margin:-6px 0 8px 2px;"></div>
+          <div class="field"><label>PAD</label><input id="nc-pad" placeholder="ej. PAD CYC-05"></div>
+          <div class="grid-fields">
+            <div class="field"><label>Campo</label><select id="nc-campo"><option>Put Norte</option><option>Put Sur</option></select></div>
+            <div class="field"><label>Operador</label><input id="nc-operador" value="GTE"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Estado</label><select id="nc-estado"><option>Activo</option><option>Inactivo</option><option>En completacion</option></select></div>
+            <div class="field"><label>Fecha instalacion</label><input type="date" id="nc-fecha"></div>
+          </div>
+          <div class="field"><label>Notas</label><textarea id="nc-notas" rows="2"></textarea></div>
+        </div>
+      </form>
+      <div class="submit-bar" style="position:static;">
+        <button class="btn-primary" onclick="ir('nuevo-paso2')">Siguiente: Motor
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-nuevo-paso2" class="hidden">
+      <button class="back-btn" onclick="ir('nuevo-paso1')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Atras</button>
+      <div class="sys-banner nuevo"><div class="ic"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="9" width="6" height="9" rx="1" stroke="currentColor" stroke-width="1.8"/><rect x="15" y="6" width="6" height="12" rx="1" stroke="currentColor" stroke-width="1.8"/></svg></div><div><div class="t">Equipos_Motor</div><div class="s">Paso 2 de 5</div></div></div>
+      <div class="step-dots"><span class="d done"></span><span class="d active"></span><span class="d"></span><span class="d"></span><span class="d"></span></div>
+      <form id="form-nuevo-motor">
+        <div class="group-card">
+          <div class="grid-fields">
+            <div class="field"><label>Marca</label><input id="nm-marca"></div>
+            <div class="field"><label>Modelo</label><input id="nm-modelo"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Serial</label><input id="nm-serial"></div>
+            <div class="field"><label>Run Number</label><input type="number" id="nm-run"></div>
+          </div>
+          <div class="grid-fields g3">
+            <div class="field"><label>HP</label><input class="mono-input" type="number" id="nm-hp"></div>
+            <div class="field"><label>Voltaje</label><input class="mono-input" type="number" step="0.1" id="nm-volt"></div>
+            <div class="field"><label>Amperaje</label><input class="mono-input" type="number" step="0.1" id="nm-amp"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Cant. motores (tandem)</label><input type="number" id="nm-cant" value="1"></div>
+            <div class="field"><label>Derrateado</label><select id="nm-derrat"><option>False</option><option>True</option></select></div>
+          </div>
+          <div class="field"><label>Fecha instalacion</label><input type="date" id="nm-fecha"></div>
+          <div id="nm-nota-anterior"></div>
+          <div class="field"><label>Observaciones</label><textarea id="nm-obs" rows="2"></textarea></div>
+        </div>
+      </form>
+      <div class="submit-bar" style="position:static;">
+        <button class="btn-primary" onclick="ir('nuevo-paso3')">Siguiente: VFD
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-nuevo-paso3" class="hidden">
+      <button class="back-btn" onclick="ir('nuevo-paso2')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Atras</button>
+      <div class="sys-banner nuevo"><div class="ic"><svg viewBox="0 0 24 24" fill="none"><rect x="4" y="5" width="16" height="14" rx="2" stroke="currentColor" stroke-width="1.8"/></svg></div><div><div class="t">Equipos_VFD</div><div class="s">Paso 3 de 5</div></div></div>
+      <div class="step-dots"><span class="d done"></span><span class="d done"></span><span class="d active"></span><span class="d"></span><span class="d"></span></div>
+      <form id="form-nuevo-vfd">
+        <div class="group-card">
+          <div class="grid-fields">
+            <div class="field"><label>Marca</label><input id="nv-marca"></div>
+            <div class="field"><label>Modelo</label><input id="nv-modelo"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Serial</label><input id="nv-serial"></div>
+            <div class="field"><label>kVA</label><input class="mono-input" type="number" id="nv-kva"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Amp Input</label><input class="mono-input" type="number" id="nv-ampin"></div>
+            <div class="field"><label>Amp Output</label><input class="mono-input" type="number" id="nv-ampout"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Tecnologia</label><input id="nv-tec" placeholder="ej. BH-ADV"></div>
+            <div class="field"><label>Tipo Inversor</label><input id="nv-tipo" value="ESP"></div>
+          </div>
+          <div class="field"><label>Fecha instalacion</label><input type="date" id="nv-fecha"></div>
+          <div id="nv-nota-anterior"></div>
+          <div class="field"><label>Observaciones</label><textarea id="nv-obs" rows="2"></textarea></div>
+        </div>
+      </form>
+      <div class="submit-bar" style="position:static;">
+        <button class="btn-primary" onclick="ir('nuevo-paso4')">Siguiente: PST
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-nuevo-paso4" class="hidden">
+      <button class="back-btn" onclick="ir('nuevo-paso3')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Atras</button>
+      <div class="sys-banner nuevo"><div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16v10H4z" stroke="currentColor" stroke-width="1.8"/></svg></div><div><div class="t">Equipos_PST</div><div class="s">Paso 4 de 5</div></div></div>
+      <div class="step-dots"><span class="d done"></span><span class="d done"></span><span class="d done"></span><span class="d active"></span><span class="d"></span></div>
+      <form id="form-nuevo-pst">
+        <div class="group-card">
+          <div class="grid-fields">
+            <div class="field"><label>Marca</label><input id="np-marca"></div>
+            <div class="field"><label>Serial</label><input id="np-serial"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Potencia (kVA)</label><input class="mono-input" type="number" id="np-kva"></div>
+            <div class="field"><label>Tipo</label><input id="np-tipo" placeholder="ej. Delta Poligonal"></div>
+          </div>
+          <div class="grid-fields g3">
+            <div class="field"><label>V. entrada (V)</label><input class="mono-input" type="number" id="np-vin"></div>
+            <div class="field"><label>V. salida Delta (V)</label><input class="mono-input" type="number" id="np-voutd"></div>
+            <div class="field"><label>V. salida Y (V)</label><input class="mono-input" type="number" id="np-vouty"></div>
+          </div>
+          <div class="grid-fields g3">
+            <div class="field"><label>I. entrada (A)</label><input class="mono-input" type="number" id="np-iin"></div>
+            <div class="field"><label>I. salida Delta (A)</label><input class="mono-input" type="number" id="np-ioutd"></div>
+            <div class="field"><label>I. salida Y (A)</label><input class="mono-input" type="number" id="np-iouty"></div>
+          </div>
+          <div class="field"><label>Fecha instalacion</label><input type="date" id="np-fecha"></div>
+          <div id="np-nota-anterior"></div>
+          <div class="field"><label>Observaciones</label><textarea id="np-obs" rows="2"></textarea></div>
+        </div>
+      </form>
+      <div class="submit-bar" style="position:static;">
+        <button class="btn-primary" onclick="ir('nuevo-paso5')">Siguiente: SUT
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <section id="screen-nuevo-paso5" class="hidden">
+      <button class="back-btn" onclick="ir('nuevo-paso4')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Atras</button>
+      <div class="sys-banner nuevo"><div class="ic"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="8" stroke="currentColor" stroke-width="1.8"/></svg></div><div><div class="t">Equipos_SUT</div><div class="s">Paso 5 de 5</div></div></div>
+      <div class="step-dots"><span class="d done"></span><span class="d done"></span><span class="d done"></span><span class="d done"></span><span class="d active"></span></div>
+      <form id="form-nuevo-sut">
+        <div class="group-card">
+          <div class="grid-fields">
+            <div class="field"><label>Marca</label><input id="ns-marca"></div>
+            <div class="field"><label>Serial</label><input id="ns-serial"></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>Potencia</label><input class="mono-input" type="number" id="ns-pot"></div>
+            <div class="field"><label>Conexion</label><select id="ns-conex"><option>Estrella</option><option>Delta</option></select></div>
+          </div>
+          <div class="grid-fields">
+            <div class="field"><label>TAP configurado</label><input id="ns-tap" placeholder="ej. G3-F5"></div>
+            <div class="field"><label>Tension entrada</label><input class="mono-input" type="number" id="ns-tin"></div>
+          </div>
+          <div class="field"><label>Tension salida</label><input class="mono-input" type="number" id="ns-tout"></div>
+          <div class="field"><label>Fecha instalacion</label><input type="date" id="ns-fecha"></div>
+          <div id="ns-nota-anterior"></div>
+          <div class="field"><label>Observaciones</label><textarea id="ns-obs" rows="2"></textarea></div>
+        </div>
+      </form>
+      <div class="submit-bar">
+        <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Si el pozo ya existia, el catalogo se actualiza y cada equipo editado queda como registro historico nuevo (no se borra el anterior). Si es un pozo nuevo, se crean los 5 registros.</div>
+        <button class="btn-primary" onclick="guardarPozoNuevo()">Guardar cambios
+          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </section>
+
+    <div class="foot">Captura de Campo &middot; ESP/VFD &middot; UBH &middot; HPUM</div>
+  </main>
+</div>
+
+<script>
+/* ============================================================
+   CONFIGURACION
+   Los mismos valores que usa Kronos-M.
+   ============================================================ */
+const DP = {
+  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.co',
+  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
+};
+
+var sb = window.supabase.createClient(DP.SUPABASE_URL, DP.SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true }
+});
+
+/* Identificador propio por registro. Es la clave de la
+   idempotencia: si la cola reintenta un envio que en realidad si
+   llego, la base lo reconoce por este id y no lo duplica. */
+function dpNuevoId(){
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
+    var r = Math.random()*16|0, v = (c === 'x') ? r : ((r&0x3)|0x8);
+    return v.toString(16);
+  });
+}
+
+const POZOS = ["CYC-01","CYC-04","CYC-08","CYC-09","CYC-16","CYC-32","CYC-43","CYC-44","CYC-52","CYC-63","CHB-04","CHB-05","CHB-07"];
+
+function ir(pantalla){
+  document.querySelectorAll('main > section').forEach(function(s){ s.classList.add('hidden'); });
+  document.getElementById('screen-' + pantalla).classList.remove('hidden');
+  window.scrollTo(0,0);
+}
+function mostrarGuardando(boton, activo){
+  if(activo){ boton.dataset.textoOriginal = boton.innerHTML; boton.innerHTML = 'Guardando...'; boton.disabled = true; }
+  else { boton.innerHTML = boton.dataset.textoOriginal; boton.disabled = false; }
+}
+
+/* ===================== COLA OFFLINE (localStorage) ===================== */
+var CLAVE_COLA = 'dp_pendientes';
+
+function leerCola(){
+  try { return JSON.parse(localStorage.getItem(CLAVE_COLA) || '[]'); }
+  catch(e){ return []; }
+}
+function guardarCola(cola){
+  localStorage.setItem(CLAVE_COLA, JSON.stringify(cola));
+  actualizarBadgePendientes();
+}
+function encolarPendiente(rpc, payload, etiqueta){
+  var cola = leerCola();
+  cola.push({rpc:rpc, payload:payload, etiqueta:etiqueta, ts:new Date().toISOString()});
+  guardarCola(cola);
+}
+function actualizarBadgePendientes(){
+  var cola = leerCola();
+  var badge = document.getElementById('pendientes-badge');
+  if(cola.length > 0){
+    badge.textContent = cola.length + (cola.length===1 ? ' registro pendiente (tocar para sincronizar)' : ' registros pendientes (tocar para sincronizar)');
+    badge.classList.remove('hidden');
+  } else {
+    badge.classList.add('hidden');
+  }
+}
+
+function intentarSincronizarTodo(){
+  var cola = leerCola();
+  if(cola.length === 0){ return; }
+
+  function procesar(i, fallidosDeVerdad){
+    if(i >= cola.length){
+      guardarCola(fallidosDeVerdad);
+      if(fallidosDeVerdad.length === 0){
+        // Solo avisa si el usuario disparo la sincronizacion manualmente (badge visible)
+      }
+      return;
+    }
+    var item = cola[i];
+    sb.rpc(item.rpc, { p: item.payload })
+      .then(function(r){
+        if (r.error) {
+          /* Falla de red o de autenticacion: se corta aqui y todo lo
+             que resta se queda en la cola para el siguiente intento. */
+          guardarCola(cola.slice(i));
+          return;
+        }
+        var body = r.data || {};
+        if (!body.ok) {
+          /* Rechazo por datos, no por red. Reintentarlo no lo va a
+             arreglar, asi que queda marcado para revision manual. */
+          item.error = body.error;
+          fallidosDeVerdad.push(item);
+        }
+        procesar(i+1, fallidosDeVerdad);
+      })
+      .catch(function(){
+        guardarCola(cola.slice(i));
+      });
+  }
+  procesar(0, []);
+}
+
+function actualizarIndicadorConexion(){
+  var chip = document.getElementById('chip-conexion');
+  var txt = document.getElementById('chip-conexion-txt');
+  if(navigator.onLine){
+    chip.classList.remove('offline');
+    txt.textContent = 'En linea';
+  } else {
+    chip.classList.add('offline');
+    txt.textContent = 'Sin conexion';
+  }
+}
+
+window.addEventListener('online', function(){ actualizarIndicadorConexion(); intentarSincronizarTodo(); });
+window.addEventListener('offline', actualizarIndicadorConexion);
+setInterval(intentarSincronizarTodo, 30000); // reintento periodico por si el evento 'online' no dispara
+
+/* Guarda un registro: intenta la red primero; si falla (sin conexion o
+   backend inalcanzable), lo encola localmente y avisa al tecnico que
+   quedo guardado en el dispositivo, sin perder el trabajo. */
+function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta){
+  mostrarGuardando(boton, true);
+  sb.rpc(rpc, { p: payload })
+    .then(function(r){
+      mostrarGuardando(boton, false);
+      if (r.error) {
+        /* Sin red, o la sesion caduco. En ambos casos el trabajo del
+           tecnico no se pierde: queda en el dispositivo. */
+        encolarPendiente(rpc, payload, etiqueta);
+        alert('No se pudo enviar ahora. El registro (' + etiqueta + ') quedo guardado en este '
+            + 'dispositivo y se sincronizara solo cuando vuelva la conexion.');
+        ir('home');
+        return;
+      }
+      var body = r.data || {};
+      if (!body.ok) { alert('Error al guardar: ' + (body.error || 'desconocido')); return; }
+      var extra = '';
+      if (body.duplicado) extra = '\n\nEste registro ya estaba guardado; no se duplico.';
+      else if (body.guardados != null) {
+        extra = '\n\n' + body.guardados + ' valores guardados.';
+        if (body.ignorados && body.ignorados.length)
+          extra += '\nNo reconocidos: ' + body.ignorados.join(', ');
+      }
+      alert(mensajeExito + extra);
+      ir('home');
+    })
+    .catch(function(){
+      encolarPendiente(rpc, payload, etiqueta);
+      mostrarGuardando(boton, false);
+      alert('Sin conexion. El registro (' + etiqueta + ') quedo guardado en este dispositivo.');
+      ir('home');
+    });
+}
+
+function postJSON(url, datos){
+  return fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(datos)
+  }).then(function(resp){ return resp.json().then(function(j){ return {status: resp.status, body: j}; }); });
+}
+
+function campoNumero(id, label, unidad){
+  return '<div class="field"><label for="' + id + '">' + label + '</label>' +
+    '<div class="unit-input"><input class="mono-input" type="number" step="any" id="' + id + '">' +
+    (unidad ? '<span class="unit">' + unidad + '</span>' : '') + '</div></div>';
+}
+
+var ICONO_TRANSFORMADOR = '<svg viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="4" stroke="currentColor" stroke-width="1.6"/><circle cx="16" cy="16" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l2 2" stroke="currentColor" stroke-width="1.6"/></svg>';
+var ICONO_RECTIFICADOR = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 12h4l2-5 4 10 2-5h4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var ICONO_ONDA = '<svg viewBox="0 0 24 24" fill="none"><path d="M3 12c2 0 2-6 4-6s2 12 4 12 2-6 4-6 2 6 4 6 2-6 4-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+var ICONO_BUS = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 8h16M4 16h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M8 8v8M12 8v8M16 8v8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+var ICONO_TERMOMETRO = '<svg viewBox="0 0 24 24" fill="none"><path d="M12 14.5V5a2 2 0 1 0-4 0v9.5a4 4 0 1 0 4 0Z" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="17" r="1.4" fill="currentColor"/></svg>';
+var ICONO_GAUGE = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 15a8 8 0 1 1 16 0" stroke="currentColor" stroke-width="1.6"/><path d="M12 15l3-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+
+var ICONOS_GRUPO = {
+  'Identificacion y control': {svg: ICONO_GAUGE, bg:'#EFF1F4', color:'var(--navy)'},
+  'PST Entrada': {svg: ICONO_TRANSFORMADOR, bg:'#E8F5EE', color:'var(--bes)'},
+  'Convertidor 1': {svg: ICONO_RECTIFICADOR, bg:'#E9F0F9', color:'var(--hpum)'},
+  'Convertidor 2': {svg: ICONO_RECTIFICADOR, bg:'#E9F0F9', color:'var(--hpum)'},
+  'VFD Salida': {svg: ICONO_ONDA, bg:'#FDEDEA', color:'var(--danger)'},
+  'Bus DC / AC': {svg: ICONO_BUS, bg:'#F5EDE4', color:'var(--ubh)'},
+  'SUT Salida': {svg: ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)'},
+  'Temperaturas': {svg: ICONO_TERMOMETRO, bg:'#FDEDEA', color:'var(--danger)'}
+};
+
+function renderGrupo(titulo, campos, cols){
+  cols = cols || 3;
+  var html = campos.map(function(c){ return campoNumero(c.id, c.label, c.unidad); }).join('');
+  var ic = ICONOS_GRUPO[titulo];
+  var icHtml = ic ? '<span class="sec-ic" style="background:' + ic.bg + ';color:' + ic.color + ';">' + ic.svg + '</span>' : '';
+  return '<fieldset><legend>' + icHtml + titulo + '<span class="count">' + campos.length + ' campos</span></legend>' +
+    '<div class="group-card"><div class="grid-fields ' + (cols===3?'g3':'') + '">' + html + '</div></div></fieldset>';
+}
+
+var MED_GRUPOS = [
+  { titulo:'Identificacion y control', cols:2, campos:[
+    {id:'med-frecop', label:'Frec Operativa', unidad:'Hz'},
+    {id:'med-frecset', label:'Frec Setpoint', unidad:'Hz'},
+    {id:'med-hsc', label:'HSC', unidad:''},
+    {id:'med-lsc', label:'LSC', unidad:''}
+  ]},
+  { titulo:'PST Entrada', cols:3, campos:[
+    {id:'med-pst-vab', label:'V AB', unidad:'V'}, {id:'med-pst-vac', label:'V AC', unidad:'V'}, {id:'med-pst-vbc', label:'V BC', unidad:'V'},
+    {id:'med-pst-ia', label:'I A', unidad:'A'}, {id:'med-pst-ib', label:'I B', unidad:'A'}, {id:'med-pst-ic', label:'I C', unidad:'A'},
+    {id:'med-pst-fp', label:'FP', unidad:''}, {id:'med-pst-kw', label:'kW', unidad:'kW'}, {id:'med-pst-kvar', label:'kVAR', unidad:'kVAR'},
+    {id:'med-pst-kva', label:'kVA', unidad:'kVA'}, {id:'med-pst-thdv', label:'THD-V', unidad:'%'}, {id:'med-pst-thdi', label:'THD-I', unidad:'%'},
+    {id:'med-pst-fk', label:'Factor K', unidad:''}, {id:'med-pst-ang', label:'Ang Fas V-I', unidad:'grados'}
+  ]},
+  { titulo:'Convertidor 1', cols:3, campos:[
+    {id:'med-c1-vab', label:'V AB', unidad:'V'}, {id:'med-c1-vac', label:'V AC', unidad:'V'}, {id:'med-c1-vbc', label:'V BC', unidad:'V'},
+    {id:'med-c1-ia', label:'I A', unidad:'A'}, {id:'med-c1-ib', label:'I B', unidad:'A'}, {id:'med-c1-ic', label:'I C', unidad:'A'}
+  ]},
+  { titulo:'Convertidor 2', cols:3, campos:[
+    {id:'med-c2-vab', label:'V AB', unidad:'V'}, {id:'med-c2-vac', label:'V AC', unidad:'V'}, {id:'med-c2-vbc', label:'V BC', unidad:'V'},
+    {id:'med-c2-ia', label:'I A', unidad:'A'}, {id:'med-c2-ib', label:'I B', unidad:'A'}, {id:'med-c2-ic', label:'I C', unidad:'A'}
+  ]},
+  { titulo:'VFD Salida', cols:3, campos:[
+    {id:'med-vfd-vab', label:'V AB', unidad:'V'}, {id:'med-vfd-vbc', label:'V BC', unidad:'V'}, {id:'med-vfd-vac', label:'V AC', unidad:'V'},
+    {id:'med-vfd-ia', label:'I A', unidad:'A'}, {id:'med-vfd-ib', label:'I B', unidad:'A'}, {id:'med-vfd-ic', label:'I C', unidad:'A'},
+    {id:'med-vfd-fp', label:'FP', unidad:''}, {id:'med-vfd-kw', label:'kW', unidad:'kW'}, {id:'med-vfd-kvar', label:'kVAR', unidad:'kVAR'},
+    {id:'med-vfd-kva', label:'kVA', unidad:'kVA'}, {id:'med-vfd-thdv', label:'THD-V', unidad:'%'}, {id:'med-vfd-thdi', label:'THD-I', unidad:'%'},
+    {id:'med-vfd-fk', label:'Factor K', unidad:''}, {id:'med-vfd-ang', label:'Ang Fas V-I', unidad:'grados'}
+  ]},
+  { titulo:'Bus DC / AC', cols:2, campos:[
+    {id:'med-busdc', label:'Bus DC', unidad:'V'}, {id:'med-busac', label:'Bus AC', unidad:'V'}
+  ]},
+  { titulo:'SUT Salida', cols:3, campos:[
+    {id:'med-sut-vab', label:'V AB', unidad:'V'}, {id:'med-sut-vac', label:'V AC', unidad:'V'}, {id:'med-sut-vbc', label:'V BC', unidad:'V'},
+    {id:'med-sut-vag', label:'V AG', unidad:'V'}, {id:'med-sut-vbg', label:'V BG', unidad:'V'}, {id:'med-sut-vcg', label:'V CG', unidad:'V'},
+    {id:'med-sut-ia', label:'I A', unidad:'A'}, {id:'med-sut-ib', label:'I B', unidad:'A'}, {id:'med-sut-ic', label:'I C', unidad:'A'}
+  ]},
+  { titulo:'Temperaturas', cols:3, campos:[
+    {id:'med-hs1', label:'HS1', unidad:'C'}, {id:'med-hs2', label:'HS2', unidad:'C'}, {id:'med-hs3', label:'HS3', unidad:'C'},
+    {id:'med-hs4', label:'HS4', unidad:'C'}, {id:'med-tind', label:'Inductor', unidad:'C'}, {id:'med-tctrl', label:'Controller', unidad:'C'},
+    {id:'med-tigbtu', label:'IGBT U', unidad:'C'}, {id:'med-tigbtv', label:'IGBT V', unidad:'C'}, {id:'med-tigbtw', label:'IGBT W', unidad:'C'},
+    {id:'med-tpst', label:'PST', unidad:'C'}, {id:'med-tsut', label:'SUT', unidad:'C'}
+  ]}
+];
+
+function poblarSelects(){
+  var idsSelect = ['med-pozo-select','evt-pozo','setup-pozo-select','ais-pozo'];
+  function llenar(listaPozos){
+    idsSelect.forEach(function(id){
+      var sel = document.getElementById(id);
+      sel.innerHTML = '<option value="">Selecciona...</option>' + listaPozos.map(function(p){ return '<option>' + p + '</option>'; }).join('');
+    });
+    var datalist = document.getElementById('lista-pozos-existentes');
+    if(datalist) datalist.innerHTML = listaPozos.map(function(p){ return '<option value="' + p + '">'; }).join('');
+  }
+  llenar(POZOS); // respaldo inmediato mientras llega el real
+  sb.rpc('dp_pozos_lista').then(function(r){
+    if (r.error || !r.data || !r.data.length) return;
+    var nombres = r.data.map(function(x){ return x.nombre; });
+    llenar(nombres);
+    try { localStorage.setItem('dp_pozos_cache', JSON.stringify(nombres)); } catch(e){}
+  }).catch(function(){});
+  /* En campo puede no haber senal al abrir. Se usa el ultimo listado
+     conocido en lugar de la lista fija de 13 pozos del codigo. */
+  try {
+    var cache = JSON.parse(localStorage.getItem('dp_pozos_cache') || 'null');
+    if (cache && cache.length) llenar(cache);
+  } catch(e){}
+}
+
+function iniciarMedicion(){
+  var pozo = document.getElementById('med-pozo-select').value;
+  if(!pozo){ alert('Selecciona un pozo primero.'); return; }
+  document.getElementById('med-pozo-label').textContent = pozo;
+
+  var ahora = new Date();
+  var cabecera = '<fieldset><legend><span class="sec-ic" style="background:#EFF1F4;color:var(--navy);">' + ICONO_GAUGE + '</span>Identificacion</legend><div class="group-card">' +
+    '<div class="grid-fields">' +
+    '<div class="field readonly"><label>Pozo</label><input value="' + pozo + '" disabled></div>' +
+    '<div class="field"><label>Realizado por</label><input id="med-realizo" value="' + tecnicoActual + '" readonly style="background:#F5F6F8;color:#607D8B;cursor:not-allowed;"></div>' +
+    '</div>' +
+    '<div class="grid-fields">' +
+    '<div class="field"><label>Fecha</label><input type="date" id="med-fecha" value="' + ahora.toISOString().slice(0,10) + '"></div>' +
+    '<div class="field"><label>Hora</label><input type="time" id="med-hora" value="' + ahora.toTimeString().slice(0,5) + '"></div>' +
+    '</div>' +
+    '<div class="field"><label>Control mode</label><select id="med-modo"><option>Freq Set</option><option>PID</option><option>Gas Control</option></select></div>' +
+    '</div></fieldset>';
+
+  var grupos = MED_GRUPOS.map(function(g){ return renderGrupo(g.titulo, g.campos, g.cols); }).join('');
+  document.getElementById('form-medicion').innerHTML = cabecera + grupos;
+  ir('medicion-form');
+}
+
+function datosSetupSimulados(pozo){
+  return {
+    marca:'Baker Hughes ADV', fecha_ajuste:'2026-06-14', realizo:'Anderson Lopez',
+    frec_min:30, frec_max:54, frec_operacion:52, rampa_acel:30, rampa_desacel:30,
+    modo_control:'Freq Set', modo_operacion:'Manual',
+    overload:900, ol_bypass:3, ol_shutdown:2, ol_active:'True',
+    underload:632, ul_bypass:180, ul_shutdown:3600, ul_active:'True',
+    cu_setting:25, cu_bypass:4, cu_shutdown:4, cu_active:'True',
+    ov_setting:530, ov_bypass:4, ov_shutdown:4, ov_active:'True',
+    uv_setting:300, uv_bypass:30, uv_shutdown:30, uv_active:'True',
+    vu_setting:7, vu_bypass:4, vu_shutdown:4, vu_active:'True',
+    lsc_setting:30, lsc_bypass:30, lsc_shutdown:30, lsc_active:'True',
+    at_setting:330, at_bypass:3, at_shutdown:3, at_active:'True',
+    cable_length:7200, cable_type:2, rated_mtr_volt:3940, recommended_tap:3741, tap_configured:'G3-F3'
+  };
+}
+
+var SETUP_CAMPOS = [
+  { titulo:'General', campos:[
+    ['marca','Marca',''], ['fecha_ajuste','Fecha de ajuste',''], ['realizo','Realizo','']
+  ]},
+  { titulo:'Frecuencia y rampas', campos:[
+    ['frec_min','Frecuencia Min','Hz'], ['frec_max','Frecuencia Max','Hz'], ['frec_operacion','Frecuencia Operacion','Hz'],
+    ['rampa_acel','Rampa aceleracion','s'], ['rampa_desacel','Rampa desaceleracion','s'],
+    ['modo_control','Modo de control',''], ['modo_operacion','Modo de operacion','']
+  ]},
+  { titulo:'Proteccion Overload / Underload', campos:[
+    ['overload','Overload','A'], ['ol_bypass','OL Bypass delay','s'], ['ol_shutdown','OL Shutdown delay','s'], ['ol_active','OL Active','bool'],
+    ['underload','Underload','A'], ['ul_bypass','UL Bypass delay','s'], ['ul_shutdown','UL Shutdown delay','s'], ['ul_active','UL Active','bool']
+  ]},
+  { titulo:'Proteccion electrica (CU / OV / UV / VU / LSC)', campos:[
+    ['cu_setting','CU Setting',''], ['cu_bypass','CU Bypass delay','s'], ['cu_shutdown','CU Shutdown delay','s'], ['cu_active','CU Active','bool'],
+    ['ov_setting','OV Setting','V'], ['ov_bypass','OV Bypass delay','s'], ['ov_shutdown','OV Shutdown delay','s'], ['ov_active','OV Active','bool'],
+    ['uv_setting','UV Setting','V'], ['uv_bypass','UV Bypass delay','s'], ['uv_shutdown','UV Shutdown','s'], ['uv_active','UV Active','bool'],
+    ['vu_setting','VU Setting','%'], ['vu_bypass','VU Bypass delay','s'], ['vu_shutdown','VU Shutdown delay','s'], ['vu_active','VU Active','bool'],
+    ['lsc_setting','LSC Setting',''], ['lsc_bypass','LSC Bypass delay','s'], ['lsc_shutdown','LSC Shutdown delay','s'], ['lsc_active','LSC Active','bool']
+  ]},
+  { titulo:'AT Motor y cable', campos:[
+    ['at_setting','AT Mtr Setting',''], ['at_bypass','AT Mtr Bypass delay','s'], ['at_shutdown','AT Mtr Shutdown delay','s'], ['at_active','AT Mtr Active','bool'],
+    ['cable_length','cable length','ft'], ['cable_type','cable type','']
+  ]},
+  { titulo:'TAP', campos:[
+    ['rated_mtr_volt','RATED MTR VOLT','V'], ['recommended_tap','RECOMMENDED TAP','V'], ['tap_configured','TAP CONFIGURED','']
+  ]}
+];
+
+var setupActual = {};
+var setupPozoActivo = '';
+
+function normalizarClave(s){ return String(s).toLowerCase().replace(/[^a-z0-9]/g,''); }
+
+function buscarValorReal(camposReales, label){
+  var norm = normalizarClave(label);
+  for(var k in camposReales){
+    if(normalizarClave(k) === norm) return {key:k, valor:camposReales[k]};
+  }
+  return null;
+}
+
+function _fechaSolo(valor){
+  if(valor === undefined || valor === null) return '';
+  var m = String(valor).match(/^(\d{4}-\d{2}-\d{2})/);
+  return m ? m[1] : '';
+}
+
+function normalizarNombrePozo(valor){
+  valor = (valor || '').toUpperCase().trim();
+  valor = valor.replace(/\s+/g, '-');          // espacios -> guion
+  valor = valor.replace(/-+/g, '-');           // colapsar guiones repetidos
+  if(!valor.includes('-')){
+    // Insertar guion en la transicion letras -> numeros (ej. 'CYC70' -> 'CYC-70')
+    valor = valor.replace(/^([A-ZÑ]+)(\d+)$/, '$1-$2');
+  }
+  return valor;
+}
+
+function normalizarYVerificarPozo(){
+  var input = document.getElementById('nc-pozo');
+  input.value = normalizarNombrePozo(input.value);
+  verificarPozoExistente();
+}
+
+var setupItemId = null;
+var setupCamposReales = {};
+var setupColumnasEsquema = {};   // {internal_name: internal_name}, usado solo en modo creacion
+var setupModoCreacion = false;
+var setupCambiosPendientes = {}; // {realKey: nuevoValor}
+
+function cargarSetup(){
+  alert('Este formulario todavia no esta conectado a Kronos-M.\n\nNo guardes datos aqui: se perderian. Por ahora usa Medicion, Aislamiento y Bitacora, que si estan conectados.');
+  return;
+
+  var pozo = document.getElementById('setup-pozo-select').value;
+  if(!pozo){ alert('Selecciona un pozo primero.'); return; }
+  setupPozoActivo = pozo;
+
+  fetch('/campo/api/setup/' + encodeURIComponent(pozo)).then(function(r){ return r.json(); }).then(function(j){
+    if(!j.ok){ alert('No se pudo cargar la configuracion: ' + j.error); return; }
+    setupItemId = j.item_id;
+    setupModoCreacion = !j.existe;
+    setupCamposReales = j.campos || {};
+    setupColumnasEsquema = {};
+    (j.columnas || []).forEach(function(c){ setupColumnasEsquema[c] = c; });
+    setupCambiosPendientes = {};
+    document.getElementById('setup-pozo-label').textContent = pozo;
+
+    var html;
+    if(setupModoCreacion){
+      html = '<div class="readonly-note" style="background:#FFF3E0;color:#E65100;">' +
+        '<svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>' +
+        'No hay configuracion registrada para ' + pozo + '. Completa los valores iniciales.</div>';
+    } else {
+      html = '<div class="readonly-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>' +
+        'Configuracion real cargada desde SharePoint. Los campos en naranja son editables.</div>';
+    }
+
+    SETUP_CAMPOS.forEach(function(grupo){
+      html += '<fieldset><legend>' + grupo.titulo + '</legend><div class="group-card"><div class="grid-fields">';
+      grupo.campos.forEach(function(arr){
+        var idInterno = arr[0], label = arr[1], unidad = arr[2];
+        // Primero se busca el VALOR real (registro actual). Si ese campo
+        // especifico viene vacio en el registro (aunque el registro exista),
+        // se cae de vuelta al ESQUEMA solo para obtener el data-realkey
+        // correcto y dejar el campo EDITABLE y vacio - antes quedaba
+        // deshabilitado con 'No disponible' incluso en modo edicion, lo cual
+        // impedia diligenciar un dato que nunca se habia registrado.
+        var encontrado = buscarValorReal(setupCamposReales, label);
+        var esDesdeEsquema = false;
+        if(!encontrado){
+          encontrado = buscarValorReal(setupColumnasEsquema, label);
+          esDesdeEsquema = true;
+        }
+
+        if(!encontrado){
+          html += '<div class="field readonly"><label>' + label + '</label><input value="No disponible" disabled></div>';
+          return;
+        }
+        var valor = (setupModoCreacion || esDesdeEsquema) ? '' : encontrado.valor;
+        var realKey = encontrado.key;
+        var inputHtml;
+
+        if(idInterno === 'realizo'){
+          // Siempre refleja quien inicio sesion con su PIN - no editable,
+          // para que el registro no pueda quedar a nombre de otra persona.
+          inputHtml = '<input data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + tecnicoActual + '" readonly style="background:#F5F6F8;color:#607D8B;cursor:not-allowed;">';
+        } else if(idInterno === 'fecha_ajuste'){
+          // Convertir ISO (ej '2026-07-06T00:00:00Z') a YYYY-MM-DD para el
+          // input de fecha nativo; si no matchea ese formato, se deja tal
+          // cual (por si ya viene en otro formato o vacio).
+          var fechaSolo = valor;
+          var m = String(valor).match(/^(\d{4}-\d{2}-\d{2})/);
+          if(m) fechaSolo = m[1];
+          inputHtml = '<input type="date" data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + fechaSolo + '" onchange="marcarCambioSetup(this)">';
+        } else if(idInterno === 'modo_control'){
+          inputHtml = '<select data-realkey="' + realKey + '" id="su-' + idInterno + '" onchange="marcarCambioSetup(this)">' +
+            '<option' + (valor==='Freq Set'?' selected':'') + '>Freq Set</option>' +
+            '<option' + (valor==='PID'?' selected':'') + '>PID</option>' +
+            '<option' + (valor==='Gas Control'?' selected':'') + '>Gas Control</option></select>';
+        } else if(idInterno === 'modo_operacion'){
+          inputHtml = '<select data-realkey="' + realKey + '" id="su-' + idInterno + '" onchange="marcarCambioSetup(this)">' +
+            '<option' + (valor==='Manual'?' selected':'') + '>Manual</option>' +
+            '<option' + (valor==='Auto'?' selected':'') + '>Auto</option></select>';
+        } else if(unidad === 'bool'){
+          var esTrue = String(valor).toLowerCase() === 'true';
+          inputHtml = '<select data-realkey="' + realKey + '" id="su-' + idInterno + '" onchange="marcarCambioSetup(this)">' +
+            '<option' + (esTrue?' selected':'') + '>True</option>' +
+            '<option' + (!esTrue?' selected':'') + '>False</option></select>';
+        } else if(unidad && unidad !== ''){
+          inputHtml = '<div class="unit-input"><input class="mono-input" data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + valor + '" onchange="marcarCambioSetup(this)">' +
+            '<span class="unit">' + unidad + '</span></div>';
+        } else {
+          inputHtml = '<input data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + valor + '" onchange="marcarCambioSetup(this)">';
+        }
+        html += '<div class="field editable"><label>' + label + '</label>' + inputHtml + '</div>';
+      });
+      html += '</div></fieldset>';
+    });
+
+    var notaAnterior = buscarValorReal(setupCamposReales, 'Observaciones');
+    var notaAnteriorHtml = '';
+    if(notaAnterior && notaAnterior.valor){
+      notaAnteriorHtml = '<div class="nota-anterior-box">' +
+        '<div class="lbl-anterior">Última nota registrada (' + (setupCamposReales['Fechadeajuste'] ? String(setupCamposReales['Fechadeajuste']).slice(0,10) : 'fecha desconocida') + ')</div>' +
+        '<div class="txt-anterior">' + notaAnterior.valor + '</div></div>';
+    }
+
+    html += notaAnteriorHtml +
+      '<div class="change-note-box"><div class="lbl">Nota de cambio (historico)</div>' +
+      '<textarea id="su-nota" rows="2" placeholder="Ej: se sube frecuencia de 52 a 54 Hz por optimizacion de produccion..."></textarea></div>';
+
+    document.getElementById('form-setup').innerHTML = html;
+    var campoRealizo = document.getElementById('su-realizo');
+    if(campoRealizo){ setupCambiosPendientes[campoRealizo.dataset.realkey] = campoRealizo.value; }
+    ir('setup-form');
+  }).catch(function(e){
+    alert('Error de conexion con el servidor local: ' + e + '\nVerifica que pwa_backend.py este corriendo.');
+  });
+}
+
+function marcarCambioSetup(input){
+  setupCambiosPendientes[input.dataset.realkey] = input.value;
+}
+
+function guardarSetup(){
+  alert('Este formulario todavia no esta conectado a Kronos-M.\n\nNo guardes datos aqui: se perderian. Por ahora usa Medicion, Aislamiento y Bitacora, que si estan conectados.');
+  return;
+
+  var claves = Object.keys(setupCambiosPendientes);
+  var nota = document.getElementById('su-nota').value.trim();
+
+  if(claves.length === 0){
+    alert(setupModoCreacion
+      ? 'Ingresa al menos un valor para registrar la configuracion inicial.'
+      : 'No hay cambios respecto a la configuracion actual. Nada que guardar.');
+    return;
+  }
+  if(!nota){
+    alert(setupModoCreacion
+      ? 'Agrega una nota (ej: quien realizo el ajuste inicial) antes de guardar.'
+      : 'Detecte cambios en la configuracion. Agrega una nota de cambio para el historico antes de guardar.');
+    return;
+  }
+
+  var boton = event.target.closest('button');
+  guardarOEncolar(
+    '/campo/api/setup/' + encodeURIComponent(setupPozoActivo),
+    { item_id: setupItemId, cambios: setupCambiosPendientes, nota: nota },
+    boton,
+    setupModoCreacion
+      ? 'Configuracion inicial registrada en SharePoint para ' + setupPozoActivo + '.'
+      : 'Configuracion actualizada en SharePoint para ' + setupPozoActivo + ', y quedo la nota en Bitacora_Eventos para el historico.',
+    'Setup ' + setupPozoActivo
+  );
+}
+
+/* ===================== GUARDADO REAL: MEDICION ===================== */
+function valNum(id){
+  var el = document.getElementById(id);
+  if(!el || el.value === '') return null;
+  var n = parseFloat(el.value);
+  return isNaN(n) ? null : n;
+}
+
+var medPozoActual = '';
+
+function guardarMedicion(){
+  medPozoActual = document.getElementById('med-pozo-label').textContent;
+  var fecha = document.getElementById('med-fecha').value;
+  var hora  = document.getElementById('med-hora').value || '00:00';
+
+  /* Las claves de "valores" son los codigos de puntos_medida tal
+     como estan en el catalogo. Cualquier codigo que no exista alla
+     se devuelve en "ignorados" y la medicion se guarda igual. */
+  var valores = {
+    pst_in_v_ab: valNum('med-pst-vab'), pst_in_v_ac: valNum('med-pst-vac'), pst_in_v_bc: valNum('med-pst-vbc'),
+    pst_in_i_a:  valNum('med-pst-ia'),  pst_in_i_b:  valNum('med-pst-ib'),  pst_in_i_c:  valNum('med-pst-ic'),
+    pst_in_fp:   valNum('med-pst-fp'),  pst_in_kw:   valNum('med-pst-kw'),  pst_in_kvar: valNum('med-pst-kvar'),
+    pst_in_kva:  valNum('med-pst-kva'), pst_in_thdv: valNum('med-pst-thdv'),
+    pst_in_thd:  valNum('med-pst-thdi'),
+    pst_in_factork: valNum('med-pst-fk'), pst_in_angfasvi: valNum('med-pst-ang'),
+
+    conv1_v_ab: valNum('med-c1-vab'), conv1_v_ac: valNum('med-c1-vac'), conv1_v_bc: valNum('med-c1-vbc'),
+    conv1_i_a:  valNum('med-c1-ia'),  conv1_i_b:  valNum('med-c1-ib'),  conv1_i_c:  valNum('med-c1-ic'),
+    conv2_v_ab: valNum('med-c2-vab'), conv2_v_ac: valNum('med-c2-vac'), conv2_v_bc: valNum('med-c2-vbc'),
+    conv2_i_a:  valNum('med-c2-ia'),  conv2_i_b:  valNum('med-c2-ib'),  conv2_i_c:  valNum('med-c2-ic'),
+
+    vfdout_v_ab: valNum('med-vfd-vab'), vfdout_v_bc: valNum('med-vfd-vbc'), vfdout_v_ac: valNum('med-vfd-vac'),
+    vfdout_i_a:  valNum('med-vfd-ia'),  vfdout_i_b:  valNum('med-vfd-ib'),  vfdout_i_c:  valNum('med-vfd-ic'),
+    vfdout_fp:   valNum('med-vfd-fp'),  vfdout_kw:   valNum('med-vfd-kw'),  vfdout_kvar: valNum('med-vfd-kvar'),
+    vfdout_kva:  valNum('med-vfd-kva'), vfdout_thdv: valNum('med-vfd-thdv'),
+    vfdout_thd:  valNum('med-vfd-thdi'),
+    vfdout_factork: valNum('med-vfd-fk'), vfdout_angfasvi: valNum('med-vfd-ang'),
+
+    busdc_v: valNum('med-busdc'), busac_v: valNum('med-busac'),
+
+    sutout_v_ab: valNum('med-sut-vab'), sutout_v_ac: valNum('med-sut-vac'), sutout_v_bc: valNum('med-sut-vbc'),
+    sutout_v_ag: valNum('med-sut-vag'), sutout_v_bg: valNum('med-sut-vbg'), sutout_v_cg: valNum('med-sut-vcg'),
+    sutout_i_a:  valNum('med-sut-ia'),  sutout_i_b:  valNum('med-sut-ib'),  sutout_i_c:  valNum('med-sut-ic'),
+
+    hs1_c: valNum('med-hs1'), hs2_c: valNum('med-hs2'), hs3_c: valNum('med-hs3'), hs4_c: valNum('med-hs4'),
+    temp_inductor_c:   valNum('med-tind'),
+    temp_controller_c: valNum('med-tctrl'),
+    temp_igbt_u_c: valNum('med-tigbtu'), temp_igbt_v_c: valNum('med-tigbtv'), temp_igbt_w_c: valNum('med-tigbtw'),
+    temp_pst_c: valNum('med-tpst'), temp_sut_c: valNum('med-tsut')
+  };
+
+  /* Los campos vacios no se envian: null y "no medido" son lo mismo
+     aqui, y mandarlos solo ensucia el registro. */
+  Object.keys(valores).forEach(function(k){
+    if (valores[k] === null || valores[k] === undefined) delete valores[k];
+  });
+
+  if (Object.keys(valores).length === 0){
+    alert('No hay ningun valor capturado. Revisa el formulario antes de guardar.');
+    return;
+  }
+
+  var payload = {
+    id: dpNuevoId(),
+    pozo: medPozoActual,
+    medido_en: fecha + 'T' + hora + ':00',
+    realizado_por: document.getElementById('med-realizo').value,
+    control_mode: document.getElementById('med-modo').value,
+    frecuencia_operacion_hz: valNum('med-frecop'),
+    frec_setpoint_hz: valNum('med-frecset'),
+    hsc: valNum('med-hsc'),
+    lsc: valNum('med-lsc'),
+    creado_por: tecnicoActual,
+    valores: valores
+  };
+
+  var boton = event.target.closest('button');
+  guardarOEncolar('dp_guardar_medicion', payload, boton,
+    'Medicion guardada.', 'Medicion ' + medPozoActual);
+}
+
+/* ===================== GUARDADO REAL: BITACORA ===================== */
+function guardarBitacora(){
+  var pozo = document.getElementById('evt-pozo').value;
+  if(!pozo){ alert('Selecciona un pozo.'); return; }
+  var fecha = document.getElementById('evt-fecha').value;
+  var hora = document.getElementById('evt-hora').value || '00:00';
+
+  var payload = {
+    id: dpNuevoId(),
+    pozo: pozo,
+    realizado_por: document.getElementById('evt-realizo').value,
+    ocurrido_en: fecha + 'T' + hora + ':00',
+    categoria: document.getElementById('evt-categoria').value,
+    severidad: document.getElementById('evt-severidad').value,
+    observaciones: document.getElementById('evt-obs').value,
+    recomendaciones: document.getElementById('evt-rec').value,
+    estado: document.getElementById('evt-status').value,
+    creado_por: tecnicoActual
+  };
+
+  var boton = event.target.closest('button');
+  guardarOEncolar('dp_guardar_bitacora', payload, boton,
+    'Evento guardado.', 'Evento ' + pozo);
+}
+
+/* ===================== GUARDADO REAL: PRUEBA DE AISLAMIENTO ===================== */
+function guardarAislamiento(){
+  var pozo = document.getElementById('ais-pozo').value;
+  if(!pozo){ alert('Selecciona un pozo.'); return; }
+  var aislamiento = document.getElementById('ais-aislamiento').value;
+  if(!aislamiento){ alert('El valor de Aislamiento es obligatorio.'); return; }
+
+  var payload = {
+    id: dpNuevoId(),
+    pozo: pozo,
+    fecha_prueba: document.getElementById('ais-fecha').value,
+    equipo_medicion: document.getElementById('ais-equipo').value,
+    aislamiento_mohm: valNum('ais-aislamiento'),
+    dar: valNum('ais-dar'),
+    ip: valNum('ais-ip'),
+    balance_ab_ohm: valNum('ais-balance-ab'),
+    balance_ac_ohm: valNum('ais-balance-ac'),
+    balance_bc_ohm: valNum('ais-balance-bc'),
+    realizado_por: document.getElementById('ais-realizo').value,
+    observaciones: document.getElementById('ais-obs').value,
+    creado_por: tecnicoActual
+  };
+
+  var boton = event.target.closest('button');
+  guardarOEncolar('dp_guardar_aislamiento', payload, boton,
+    'Prueba guardada.', 'Aislamiento ' + pozo);
+}
+
+/* ===================== GUARDADO REAL: POZO NUEVO ===================== */
+function _notaAnteriorHtml(obs, fecha){
+  if(!obs) return '';
+  return '<div class="nota-anterior-box"><div class="lbl-anterior">Ultima observacion registrada' +
+    (fecha ? ' (' + fecha + ')' : '') + '</div><div class="txt-anterior">' + obs + '</div></div>';
+}
+
+function verificarPozoExistente(){
+  return; /* Requiere las funciones de catalogo, aun sin migrar. */
+
+  var pozo = document.getElementById('nc-pozo').value.trim();
+  var estado = document.getElementById('nc-pozo-status');
+  if(!pozo){ estado.textContent = ''; return; }
+
+  estado.style.color = '#90A4AE';
+  estado.textContent = 'Verificando...';
+
+  fetch('/campo/api/pozo-existente/' + encodeURIComponent(pozo)).then(function(r){ return r.json(); }).then(function(j){
+    if(!j.ok){ estado.textContent = ''; return; }
+
+    var cat = j.catalogo || {};
+    var campos = cat.campos || {};
+
+    if(cat.existe){
+      estado.style.color = '#2E7D32';
+      estado.textContent = '✓ Pozo existente - datos cargados, edita lo que cambio';
+      document.getElementById('nc-pad').value = campos.PAD || '';
+      document.getElementById('nc-campo').value = campos.Campo || 'Put Norte';
+      document.getElementById('nc-operador').value = campos.Operador || 'GTE';
+      document.getElementById('nc-estado').value = campos.Estado || 'Activo';
+      document.getElementById('nc-fecha').value = _fechaSolo(campos.FechaInstalacion);
+      document.getElementById('nc-notas').value = campos.Notas || '';
+    } else {
+      estado.style.color = '#EF6C00';
+      estado.textContent = 'Pozo nuevo - se creara desde cero';
+      document.getElementById('nc-pad').value = '';
+      document.getElementById('nc-operador').value = 'GTE';
+      document.getElementById('nc-estado').value = 'Activo';
+      document.getElementById('nc-fecha').value = '';
+      document.getElementById('nc-notas').value = '';
+    }
+
+    // ---- Motor ----
+    var m = (j.motor || {}).campos || {};
+    document.getElementById('nm-marca').value = m.Marca || '';
+    document.getElementById('nm-modelo').value = m.Modelo || '';
+    document.getElementById('nm-serial').value = m.Serial || '';
+    document.getElementById('nm-run').value = m.RunNumber ?? '';
+    document.getElementById('nm-hp').value = m.HP ?? '';
+    document.getElementById('nm-volt').value = m.Voltaje ?? '';
+    document.getElementById('nm-amp').value = m.Amperaje ?? '';
+    document.getElementById('nm-cant').value = m.CantidadMotores ?? 1;
+    document.getElementById('nm-derrat').value = (String(m.Derrateado).toLowerCase() === 'true') ? 'True' : 'False';
+    document.getElementById('nm-fecha').value = _fechaSolo(m.FechaInstalacion);
+    document.getElementById('nm-obs').value = '';
+    document.getElementById('nm-nota-anterior').innerHTML = _notaAnteriorHtml(m.Observaciones, _fechaSolo(m.FechaInstalacion));
+
+    // ---- VFD ----
+    var v = (j.vfd || {}).campos || {};
+    document.getElementById('nv-marca').value = v.Marca || '';
+    document.getElementById('nv-modelo').value = v.Modelo || '';
+    document.getElementById('nv-serial').value = v.Serial || '';
+    document.getElementById('nv-kva').value = v.Potencia_x0028_KVA_x0029_ ?? '';
+    document.getElementById('nv-ampin').value = v.AmpInput ?? '';
+    document.getElementById('nv-ampout').value = v.AmpOutput ?? '';
+    document.getElementById('nv-tec').value = v.Tecnologia || '';
+    document.getElementById('nv-tipo').value = v.TipoInversor || 'ESP';
+    document.getElementById('nv-fecha').value = _fechaSolo(v.FechaInstalacion);
+    document.getElementById('nv-obs').value = '';
+    document.getElementById('nv-nota-anterior').innerHTML = _notaAnteriorHtml(v.Observaciones, _fechaSolo(v.FechaInstalacion));
+
+    // ---- PST ----
+    var p = (j.pst || {}).campos || {};
+    document.getElementById('np-marca').value = p.Marca || '';
+    document.getElementById('np-serial').value = p.Serial || '';
+    document.getElementById('np-kva').value = p.Potencia_x0028_kVA_x0029_ ?? '';
+    document.getElementById('np-tipo').value = p.TipoPST || '';
+    document.getElementById('np-vin').value = p.Voltajedeentrada_x0028_V_x0029_ ?? '';
+    document.getElementById('np-voutd').value = p.Voltajesalidadelta ?? '';
+    document.getElementById('np-vouty').value = p.Voltajesalidaestrella ?? '';
+    document.getElementById('np-fecha').value = _fechaSolo(p.Fechainstalacion);
+    document.getElementById('np-obs').value = '';
+    document.getElementById('np-nota-anterior').innerHTML = _notaAnteriorHtml(p.Observaciones, _fechaSolo(p.Fechainstalacion));
+
+    // ---- SUT ----
+    var s = (j.sut || {}).campos || {};
+    document.getElementById('ns-marca').value = s.Marca || '';
+    document.getElementById('ns-serial').value = s.Serial || '';
+    document.getElementById('ns-pot').value = s.Potencia_x0028_kVA_x0029_ ?? '';
+    document.getElementById('ns-conex').value = s.Conexion || 'Estrella';
+    document.getElementById('ns-tap').value = s.TAPconfigurado || '';
+    document.getElementById('ns-tin').value = s.Tensiondeentrada ?? '';
+    document.getElementById('ns-tout').value = s.Tensiondesalida ?? '';
+    document.getElementById('ns-fecha').value = _fechaSolo(s.FechadeInstalacion);
+    document.getElementById('ns-obs').value = '';
+    document.getElementById('ns-nota-anterior').innerHTML = _notaAnteriorHtml(s.Observaciones, _fechaSolo(s.FechadeInstalacion));
+
+  }).catch(function(e){
+    estado.style.color = '#C62828';
+    estado.textContent = 'No se pudo verificar (revisa conexion) - se tratara como pozo nuevo';
+  });
+}
+
+function guardarPozoNuevo(){
+  alert('Este formulario todavia no esta conectado a Kronos-M.\n\nNo guardes datos aqui: se perderian. Por ahora usa Medicion, Aislamiento y Bitacora, que si estan conectados.');
+  return;
+
+  var pozo = normalizarNombrePozo(document.getElementById('nc-pozo').value.trim());
+  document.getElementById('nc-pozo').value = pozo;
+  if(!pozo){ alert('Falta el nombre del pozo (paso 1).'); ir('nuevo-paso1'); return; }
+
+  var payload = {
+    catalogo: {
+      Pozo: pozo,
+      PAD: document.getElementById('nc-pad').value,
+      Campo: document.getElementById('nc-campo').value,
+      Operador: document.getElementById('nc-operador').value,
+      Estado: document.getElementById('nc-estado').value,
+      FechaInstalacion: document.getElementById('nc-fecha').value,
+      Notas: document.getElementById('nc-notas').value
+    },
+    motor: {
+      Marca: document.getElementById('nm-marca').value,
+      Modelo: document.getElementById('nm-modelo').value,
+      Serial: document.getElementById('nm-serial').value,
+      RunNumber: valNum('nm-run'),
+      HP: valNum('nm-hp'),
+      Voltaje: valNum('nm-volt'),
+      Amperaje: valNum('nm-amp'),
+      CantidadMotores: valNum('nm-cant'),
+      Derrateado: document.getElementById('nm-derrat').value,
+      FechaInstalacion: document.getElementById('nm-fecha').value,
+      Observaciones: document.getElementById('nm-obs').value
+    },
+    vfd: {
+      Marca: document.getElementById('nv-marca').value,
+      Modelo: document.getElementById('nv-modelo').value,
+      Serial: document.getElementById('nv-serial').value,
+      kVA: valNum('nv-kva'),
+      AmpInput: valNum('nv-ampin'),
+      AmpOutput: valNum('nv-ampout'),
+      Tecnologia: document.getElementById('nv-tec').value,
+      TipoInversor: document.getElementById('nv-tipo').value,
+      FechaInstalacion: document.getElementById('nv-fecha').value,
+      Observaciones: document.getElementById('nv-obs').value
+    },
+    pst: {
+      Marca: document.getElementById('np-marca').value,
+      Serial: document.getElementById('np-serial').value,
+      "Potencia_x0028_kVA_x0029_": valNum('np-kva'),
+      TipoPST: document.getElementById('np-tipo').value,
+      "Voltajedeentrada_x0028_V_x0029_": valNum('np-vin'),
+      Voltajesalidadelta: valNum('np-voutd'),
+      Voltajesalidaestrella: valNum('np-vouty'),
+      Fechainstalacion: document.getElementById('np-fecha').value,
+      Observaciones: document.getElementById('np-obs').value
+    },
+    sut: {
+      Marca: document.getElementById('ns-marca').value,
+      Serial: document.getElementById('ns-serial').value,
+      "Potencia_x0028_kVA_x0029_": valNum('ns-pot'),
+      Conexion: document.getElementById('ns-conex').value,
+      TAPconfigurado: document.getElementById('ns-tap').value,
+      Tensiondeentrada: valNum('ns-tin'),
+      Tensiondesalida: valNum('ns-tout'),
+      FechadeInstalacion: document.getElementById('ns-fecha').value,
+      Observaciones: document.getElementById('ns-obs').value
+    }
+  };
+
+  var boton = event.target.closest('button');
+  guardarOEncolar('/campo/api/pozo-nuevo', payload, boton, 'Pozo nuevo creado en SharePoint (Catalogo + Motor + VFD + PST + SUT).', 'Pozo nuevo ' + pozo);
+}
+
+var tecnicoActual = '';
+
+function iniciarSesion(){
+  var correo = (document.getElementById('login-correo').value || '').trim();
+  var clave  = document.getElementById('login-clave').value || '';
+  var estado = document.getElementById('login-status');
+  var boton  = event.target.closest('button');
+
+  if (!correo || !clave){
+    estado.innerHTML = '<span style="color:#C62828;">Escribe tu correo y tu contrase&ntilde;a.</span>';
+    return;
+  }
+
+  var textoOriginal = boton.innerHTML;
+  boton.disabled = true; boton.innerHTML = 'Verificando...';
+  estado.innerHTML = '';
+
+  sb.auth.signInWithPassword({ email: correo, password: clave }).then(function(r){
+    boton.disabled = false; boton.innerHTML = textoOriginal;
+    if (r.error){
+      estado.innerHTML = '<span style="color:#C62828;">' + r.error.message + '</span>';
+      document.getElementById('login-clave').value = '';
+      return;
+    }
+    dpEntrar(r.data.user);
+  }).catch(function(e){
+    boton.disabled = false; boton.innerHTML = textoOriginal;
+    /* Sin senal no se puede autenticar por primera vez, pero si ya
+       hubo sesion en este dispositivo, se reanuda al abrir. */
+    estado.innerHTML = '<span style="color:#C62828;">Sin conexion. Para entrar por primera vez '
+      + 'se necesita senal; despues la sesion queda guardada.</span>';
+  });
+}
+
+/* El nombre para "Realizado por" sale de los metadatos del usuario,
+   no de un campo escrito a mano: asi no hay dos formas de escribir
+   el mismo nombre en la base. */
+function dpEntrar(user){
+  var meta = (user && user.user_metadata) || {};
+  tecnicoActual = meta.nombre || meta.full_name || (user && user.email) || '';
+  document.getElementById('tech-name').textContent = tecnicoActual;
+  ir('sistema');
+  poblarSelects();
+  intentarSincronizarTodo();
+}
+
+function dpSalir(){
+  sb.auth.signOut().then(function(){ location.reload(); });
+}
+
+/* Sesion previa en este dispositivo: entra directo sin pedir clave. */
+sb.auth.getSession().then(function(r){
+  var ses = r && r.data && r.data.session;
+  if (ses && ses.user) dpEntrar(ses.user);
+});
+
+document.getElementById('login-clave').addEventListener('keydown', function(e){
+  if (e.key === 'Enter'){ e.preventDefault(); iniciarSesion(); }
+});
+
+function proximamente(nombreSistema){
+  alert(nombreSistema + ' esta en construccion: la estructura de listas SharePoint para este sistema todavia no esta definida. Por ahora, continua con BES.');
+}
+
+poblarSelects();
+actualizarIndicadorConexion();
+actualizarBadgePendientes();
+intentarSincronizarTodo();
+</script>
+</body>
+</html>
