@@ -709,7 +709,8 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; ESP/VFD &middot; UBH &middot; HPUM
-      &middot; <span id="dp-build">v8</span></div>
+      &middot; <span id="dp-build">v9</span>
+      <span id="dp-almacen"></span></div>
   </main>
 </div>
 
@@ -719,8 +720,43 @@
    Los mismos valores que usa Kronos-M.
    ============================================================ */
 const DP = {
-  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.coL',
+  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.co',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
+};
+
+/* Algunos navegadores bloquean el almacenamiento local por
+   proteccion de rastreo. La libreria de Supabase lo usa para
+   guardar la sesion, y si esa escritura lanza un error interno la
+   promesa de inicio de sesion nunca se resuelve: la app se cuelga
+   sin decir nada.
+
+   Aqui se le entrega un almacen que nunca lanza. Si el navegador lo
+   permite usa localStorage; si no, guarda en memoria. Con memoria
+   la app funciona igual, solo que hay que ingresar en cada visita
+   y la cola no sobrevive al cierre del navegador, asi que se avisa. */
+var dpMemoria = {};
+var DP_LOCAL_OK = (function(){
+  try {
+    var k = '__dp_prueba__';
+    localStorage.setItem(k, '1');
+    localStorage.removeItem(k);
+    return true;
+  } catch(e){ return false; }
+})();
+
+var dpAlmacen = {
+  getItem: function(k){
+    try { return localStorage.getItem(k); }
+    catch(e){ return (k in dpMemoria) ? dpMemoria[k] : null; }
+  },
+  setItem: function(k, v){
+    try { localStorage.setItem(k, v); }
+    catch(e){ dpMemoria[k] = v; }
+  },
+  removeItem: function(k){
+    try { localStorage.removeItem(k); }
+    catch(e){ delete dpMemoria[k]; }
+  }
 };
 
 var sb = null, dpErrorInicio = null;
@@ -748,7 +784,8 @@ try {
     auth: {
       persistSession: true,
       autoRefreshToken: true,
-      lock: sinCandado
+      lock: sinCandado,
+      storage: dpAlmacen
     }
   });
 } catch (e) {
@@ -848,11 +885,11 @@ function mostrarGuardando(boton, activo){
 var CLAVE_COLA = 'dp_pendientes';
 
 function leerCola(){
-  try { return JSON.parse(localStorage.getItem(CLAVE_COLA) || '[]'); }
+  try { return JSON.parse(dpAlmacen.getItem(CLAVE_COLA) || '[]'); }
   catch(e){ return []; }
 }
 function guardarCola(cola){
-  localStorage.setItem(CLAVE_COLA, JSON.stringify(cola));
+  dpAlmacen.setItem(CLAVE_COLA, JSON.stringify(cola));
   actualizarBadgePendientes();
 }
 function encolarPendiente(rpc, payload, etiqueta){
@@ -1852,6 +1889,7 @@ function dpEntrar(user){
    Ademas el cierre es de alcance local: no necesita red, asi que
    funciona igual sin senal. */
 function dpLimpiarCandados(){
+  if (!DP_LOCAL_OK) { dpMemoria = {}; return 0; }
   try {
     var borrar = [];
     for (var i = 0; i < localStorage.length; i++){
@@ -1893,6 +1931,25 @@ if (sb) {
 document.getElementById('login-clave').addEventListener('keydown', function(e){
   if (e.key === 'Enter'){ e.preventDefault(); iniciarSesion(); }
 });
+
+/* El estado del almacenamiento se muestra siempre: si esta
+   bloqueado, la cola offline no sobrevive al cierre del navegador y
+   el tecnico tiene que saberlo antes de salir a campo. */
+(function(){
+  var e = document.getElementById('dp-almacen');
+  if (!e) return;
+  if (DP_LOCAL_OK){
+    e.innerHTML = ' &middot; almacenamiento local';
+  } else {
+    e.innerHTML = ' &middot; <span style="color:var(--danger);font-weight:700;">'
+      + 'solo memoria</span>';
+    var est = document.getElementById('login-status');
+    if (est) est.innerHTML = '<span style="color:#C62828;">Este navegador tiene bloqueado el '
+      + 'almacenamiento local. La app funciona, pero hay que ingresar en cada visita y lo que '
+      + 'quede sin enviar se pierde al cerrar. Para trabajo en campo, usa Chrome o desactiva '
+      + 'la proteccion de rastreo para este sitio.</span>';
+  }
+})();
 
 function proximamente(nombreSistema){
   alert(nombreSistema + ' esta en construccion: la estructura de captura para este sistema todavia no esta definida. Por ahora, continua con BES.');
