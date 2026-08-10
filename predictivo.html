@@ -346,24 +346,60 @@ function kpEstadoDesbal(pct){
 /* Cada etapa declara sus tres corrientes, sus tres tensiones y de
    donde sale su nominal. Si no hay nominal, no se inventa carga. */
 const KP_ETAPAS = [
-  {nodo:'PST',   detalle:'Entrada',    i:['pst_in_i_a','pst_in_i_b','pst_in_i_c'],
-                 v:['pst_in_v_ab','pst_in_v_ac','pst_in_v_bc'],   nom:null},
-  {nodo:'Conv 1',detalle:'Salida PST', i:['conv1_i_a','conv1_i_b','conv1_i_c'],
-                 v:['conv1_v_ab','conv1_v_ac','conv1_v_bc'],      nom:null},
-  {nodo:'Conv 2',detalle:'Salida PST', i:['conv2_i_a','conv2_i_b','conv2_i_c'],
-                 v:['conv2_v_ab','conv2_v_ac','conv2_v_bc'],      nom:null},
-  {nodo:'VFD',   detalle:'Salida',     i:['vfdout_i_a','vfdout_i_b','vfdout_i_c'],
-                 v:['vfdout_v_ab','vfdout_v_ac','vfdout_v_bc'],   nom:'vfd_i_nominal_a'},
-  {nodo:'Motor', detalle:'Salida SUT', i:['sutout_i_a','sutout_i_b','sutout_i_c'],
-                 v:['sutout_v_ab','sutout_v_ac','sutout_v_bc'],   nom:'motor_i_nominal_a'}
+  {nodo:'PST entrada', detalle:'Primario',
+   i:['pst_in_i_a','pst_in_i_b','pst_in_i_c'],
+   v:['pst_in_v_ab','pst_in_v_ac','pst_in_v_bc'],
+   nom:'pst_i_entrada_a'},
+
+  {nodo:'PST \u0394', detalle:'Secundario delta',
+   i:['conv1_i_a','conv1_i_b','conv1_i_c'],
+   v:['conv1_v_ab','conv1_v_ac','conv1_v_bc'],
+   nom:'pst_i_secundario_a'},
+
+  {nodo:'PST Y', detalle:'Secundario estrella',
+   i:['conv2_i_a','conv2_i_b','conv2_i_c'],
+   v:['conv2_v_ab','conv2_v_ac','conv2_v_bc'],
+   nom:'pst_i_secundario_a'},
+
+  /* La entrada del VFD no se mide: es la suma de los dos
+     secundarios del PST, contrastada contra el Amp Input. */
+  {nodo:'VFD entrada', detalle:'Suma de secundarios',
+   i_suma:[['conv1_i_a','conv1_i_b','conv1_i_c'],
+           ['conv2_i_a','conv2_i_b','conv2_i_c']],
+   v:['conv1_v_ab','conv1_v_ac','conv1_v_bc'],
+   nom:'vfd_i_entrada_a'},
+
+  {nodo:'VFD salida', detalle:'Hacia el SUT',
+   i:['vfdout_i_a','vfdout_i_b','vfdout_i_c'],
+   v:['vfdout_v_ab','vfdout_v_ac','vfdout_v_bc'],
+   nom:'vfd_i_nominal_a'},
+
+  {nodo:'SUT salida', detalle:'Al cable de potencia',
+   i:['sutout_i_a','sutout_i_b','sutout_i_c'],
+   v:['sutout_v_ab','sutout_v_ac','sutout_v_bc'],
+   nom:'sut_i_nominal_a'},
+
+  /* Mismo valor medido que el SUT, contra el nominal del motor. */
+  {nodo:'Motor', detalle:'Motor de fondo',
+   i:['sutout_i_a','sutout_i_b','sutout_i_c'],
+   v:['sutout_v_ab','sutout_v_ac','sutout_v_bc'],
+   nom:'motor_i_nominal_a'}
 ];
 
 function kpCalcularCadena(val, placa){
   const out = [];
   KP_ETAPAS.forEach(e => {
-    const ii = e.i.map(c => val[c]);
+    let ii = null, ip = null;
+    if (e.i_suma){
+      const partes = e.i_suma.map(g => kpProm(g.map(c => val[c])));
+      if (partes.some(x => x == null)) return;
+      ip = partes.reduce((a,b) => a + b, 0);
+    } else {
+      ii = e.i.map(c => val[c]);
+      ip = kpProm(ii);
+    }
     const vv = e.v.map(c => val[c]);
-    const ip = kpProm(ii), vp = kpProm(vv);
+    const vp = kpProm(vv);
     if (ip == null) return;
     const nominal = e.nom && placa ? placa[e.nom] : null;
     const pct = nominal ? (ip / nominal * 100) : null;
@@ -374,7 +410,7 @@ function kpCalcularCadena(val, placa){
       unidad: 'A',
       v_prom: vp,
       kva: (vp != null) ? RT3 * vp * ip / 1000 : null,
-      desbal_i: kpDesbal(ii),
+      desbal_i: ii ? kpDesbal(ii) : null,
       desbal_v: kpDesbal(vv),
       carga_pct: pct,
       estado: nominal ? kpEstadoCarga(pct) : 'none'
@@ -391,7 +427,7 @@ function kpBalanceRectificadores(val){
   const dif = Math.abs(i1 - i2) / prom * 100;
   return {
     conv1: i1, conv2: i2, diferencia_pct: dif,
-    mayor: (i1 >= i2) ? 'Convertidor 1' : 'Convertidor 2',
+    mayor: (i1 >= i2) ? 'secundario delta' : 'secundario estrella',
     estado: dif > 10 ? 'crit' : (dif > 5 ? 'warn' : 'ok')
   };
 }
@@ -662,8 +698,9 @@ function kpRenderMedicion(m){
         +  (n.v_prom != null ? ' &middot; ' + kpNum(n.v_prom) + ' V' : '')
         +  (n.kva != null ? ' &middot; ' + kpNum(n.kva) + ' kVA' : '')
         +  '</div>'
-        +  '<div class="src">Desbalance de corriente ' + kpNum(n.desbal_i) + ' %'
-        +  (n.desbal_v != null ? ' &middot; de tensi&oacute;n ' + kpNum(n.desbal_v) + ' %' : '')
+        +  '<div class="src">'
+        +  (n.desbal_i != null ? 'Desbalance de corriente ' + kpNum(n.desbal_i) + ' %' : 'Valor calculado, sin desbalance propio')
+        +  (n.desbal_v != null ? ' &middot; tensi&oacute;n ' + kpNum(n.desbal_v) + ' %' : '')
         +  '</div></div>'
         +  '<span class="kp-pill ' + e.cls + '">'
         +  (n.carga_pct != null ? kpNum(n.carga_pct) + ' %' : 'Sin placa')
@@ -680,7 +717,7 @@ function kpRenderMedicion(m){
       +  'align-items:baseline;gap:12px;flex-wrap:wrap">'
       +  '<div><div style="font-size:24px;font-weight:600">' + kpNum(bal.diferencia_pct) + ' %</div>'
       +  '<div style="font-size:13px;color:var(--kp-ink2);margin-top:4px">'
-      +  'Conv 1 ' + kpNum(bal.conv1) + ' A &middot; Conv 2 ' + kpNum(bal.conv2) + ' A'
+      +  'Delta ' + kpNum(bal.conv1) + ' A &middot; Estrella ' + kpNum(bal.conv2) + ' A'
       +  ' &middot; mayor en ' + bal.mayor + '</div>'
       +  '<div style="font-size:12px;color:var(--kp-ink3);margin-top:6px;max-width:640px">'
       +  'Cierto desbalance es inherente a un VFD multipulso: los devanados secundarios '
@@ -758,7 +795,8 @@ function kpRenderMedicion(m){
 }
 
 function kpDibujarCadena(nodos){
-  const anchoTot = 680, alto = 150;
+  const alto = 150;
+  const anchoTot = Math.max(680, nodos.length * 132);
   const n = nodos.length;
   const gap = 22;
   const w = Math.floor((anchoTot - 40 - gap * (n - 1)) / n);
