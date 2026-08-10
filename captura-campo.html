@@ -351,7 +351,7 @@
       <div class="home-grid">
       <div>
         <div class="section-label"><span class="bar"></span>BES - Bombeo Electrosumergible</div>
-        <div class="action-card card-medicion" onclick="ir('medicion-pozo')">
+        <div class="action-card card-medicion" onclick="ir('medicion-pozo'); dpListarBorradores();">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Medicion predictiva</div><div class="sub">Lectura completa PST, VFD, SUT, temperaturas</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -402,6 +402,7 @@
         <label for="med-pozo-select">Pozo</label>
         <select id="med-pozo-select"></select>
       </div>
+      <div id="med-borradores"></div>
       <div class="submit-bar" style="position:static;">
         <button class="btn-primary" onclick="iniciarMedicion()">Iniciar captura
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -418,7 +419,9 @@
       <form id="form-medicion"></form>
       <div class="submit-bar">
         <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Se guarda en Kronos-M. Sin señal queda en este dispositivo y se sincroniza solo al recuperarla.</div>
-        <button class="btn-primary" onclick="guardarMedicion()">Guardar medicion
+        <button class="btn-secondary" style="width:100%;margin:0 0 8px;padding:13px 18px;"
+                onclick="guardarMedicion('BORRADOR')">Guardar borrador</button>
+        <button class="btn-primary" onclick="guardarMedicion('CONFIRMADA')">Confirmar medicion
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
@@ -706,7 +709,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; ESP/VFD &middot; UBH &middot; HPUM
-      &middot; <span id="dp-build">v4</span></div>
+      &middot; <span id="dp-build">v6</span></div>
   </main>
 </div>
 
@@ -745,6 +748,72 @@ function dpNuevoId(){
     return v.toString(16);
   });
 }
+
+/* codigo de puntos_medida -> id del campo en el formulario */
+const MED_MAPA = {
+  pst_in_v_ab: 'med-pst-vab',
+  pst_in_v_ac: 'med-pst-vac',
+  pst_in_v_bc: 'med-pst-vbc',
+  pst_in_i_a: 'med-pst-ia',
+  pst_in_i_b: 'med-pst-ib',
+  pst_in_i_c: 'med-pst-ic',
+  pst_in_fp: 'med-pst-fp',
+  pst_in_kw: 'med-pst-kw',
+  pst_in_kvar: 'med-pst-kvar',
+  pst_in_kva: 'med-pst-kva',
+  pst_in_thdv: 'med-pst-thdv',
+  pst_in_thd: 'med-pst-thdi',
+  pst_in_factork: 'med-pst-fk',
+  pst_in_angfasvi: 'med-pst-ang',
+  conv1_v_ab: 'med-c1-vab',
+  conv1_v_ac: 'med-c1-vac',
+  conv1_v_bc: 'med-c1-vbc',
+  conv1_i_a: 'med-c1-ia',
+  conv1_i_b: 'med-c1-ib',
+  conv1_i_c: 'med-c1-ic',
+  conv2_v_ab: 'med-c2-vab',
+  conv2_v_ac: 'med-c2-vac',
+  conv2_v_bc: 'med-c2-vbc',
+  conv2_i_a: 'med-c2-ia',
+  conv2_i_b: 'med-c2-ib',
+  conv2_i_c: 'med-c2-ic',
+  vfdout_v_ab: 'med-vfd-vab',
+  vfdout_v_bc: 'med-vfd-vbc',
+  vfdout_v_ac: 'med-vfd-vac',
+  vfdout_i_a: 'med-vfd-ia',
+  vfdout_i_b: 'med-vfd-ib',
+  vfdout_i_c: 'med-vfd-ic',
+  vfdout_fp: 'med-vfd-fp',
+  vfdout_kw: 'med-vfd-kw',
+  vfdout_kvar: 'med-vfd-kvar',
+  vfdout_kva: 'med-vfd-kva',
+  vfdout_thdv: 'med-vfd-thdv',
+  vfdout_thd: 'med-vfd-thdi',
+  vfdout_factork: 'med-vfd-fk',
+  vfdout_angfasvi: 'med-vfd-ang',
+  busdc_v: 'med-busdc',
+  busac_v: 'med-busac',
+  sutout_v_ab: 'med-sut-vab',
+  sutout_v_ac: 'med-sut-vac',
+  sutout_v_bc: 'med-sut-vbc',
+  sutout_v_ag: 'med-sut-vag',
+  sutout_v_bg: 'med-sut-vbg',
+  sutout_v_cg: 'med-sut-vcg',
+  sutout_i_a: 'med-sut-ia',
+  sutout_i_b: 'med-sut-ib',
+  sutout_i_c: 'med-sut-ic',
+  hs1_c: 'med-hs1',
+  hs2_c: 'med-hs2',
+  hs3_c: 'med-hs3',
+  hs4_c: 'med-hs4',
+  temp_inductor_c: 'med-tind',
+  temp_controller_c: 'med-tctrl',
+  temp_igbt_u_c: 'med-tigbtu',
+  temp_igbt_v_c: 'med-tigbtv',
+  temp_igbt_w_c: 'med-tigbtw',
+  temp_pst_c: 'med-tpst',
+  temp_sut_c: 'med-tsut',
+};
 
 const POZOS = ["CYC-01","CYC-04","CYC-08","CYC-09","CYC-16","CYC-32","CYC-43","CYC-44","CYC-52","CYC-63","CHB-04","CHB-05","CHB-07"];
 
@@ -856,7 +925,14 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta){
         return;
       }
       var body = r.data || {};
-      if (!body.ok) { alert('Error al guardar: ' + (body.error || 'desconocido')); return; }
+      if (!body.ok) {
+        /* El boton se restaura antes del alert: los navegadores
+           moviles no repintan mientras hay un dialogo abierto, y un
+           boton que parece trabado genera desconfianza. */
+        mostrarGuardando(boton, false);
+        alert('Error al guardar: ' + (body.error || 'desconocido'));
+        return;
+      }
       var extra = '';
       if (body.duplicado) extra = '\n\nEste registro ya estaba guardado; no se duplico.';
       else if (body.guardados != null) {
@@ -987,6 +1063,9 @@ function poblarSelects(){
 }
 
 function iniciarMedicion(){
+  /* Captura nueva: se suelta el borrador que estuviera abierto, o
+     terminaria sobreescribiendolo. */
+  medBorradorId = null;
   var pozo = document.getElementById('med-pozo-select').value;
   if(!pozo){ alert('Selecciona un pozo primero.'); return; }
   document.getElementById('med-pozo-label').textContent = pozo;
@@ -1002,6 +1081,15 @@ function iniciarMedicion(){
     '<div class="field"><label>Hora</label><input type="time" id="med-hora" value="' + ahora.toTimeString().slice(0,5) + '"></div>' +
     '</div>' +
     '<div class="field"><label>Control mode</label><select id="med-modo"><option>Freq Set</option><option>PID</option><option>Gas Control</option></select></div>' +
+    /* Condicion del pozo al momento de medir. Es obligatoria en la
+       base y cambia el sentido de los numeros: una medicion con el
+       pozo detenido no se compara contra una en operacion. */
+    '<div class="field"><label>Condicion del pozo</label><select id="med-condicion">' +
+      '<option value="OPERANDO">Operando</option>' +
+      '<option value="DETENIDO">Detenido</option>' +
+      '<option value="ARRANQUE">En arranque</option>' +
+      '<option value="PRUEBA">En prueba</option>' +
+    '</select></div>' +
     '</div></fieldset>';
 
   var grupos = MED_GRUPOS.map(function(g){ return renderGrupo(g.titulo, g.campos, g.cols); }).join('');
@@ -1254,46 +1342,23 @@ function valNum(id){
 
 var medPozoActual = '';
 
-function guardarMedicion(){
+/* Id del borrador abierto. Si hay uno, se reusa para que la base
+   actualice en lugar de crear una medicion nueva cada vez. */
+var medBorradorId = null;
+
+function guardarMedicion(estado){
+  estado = estado || 'CONFIRMADA';
   medPozoActual = document.getElementById('med-pozo-label').textContent;
   var fecha = document.getElementById('med-fecha').value;
   var hora  = document.getElementById('med-hora').value || '00:00';
 
-  /* Las claves de "valores" son los codigos de puntos_medida tal
-     como estan en el catalogo. Cualquier codigo que no exista alla
-     se devuelve en "ignorados" y la medicion se guarda igual. */
-  var valores = {
-    pst_in_v_ab: valNum('med-pst-vab'), pst_in_v_ac: valNum('med-pst-vac'), pst_in_v_bc: valNum('med-pst-vbc'),
-    pst_in_i_a:  valNum('med-pst-ia'),  pst_in_i_b:  valNum('med-pst-ib'),  pst_in_i_c:  valNum('med-pst-ic'),
-    pst_in_fp:   valNum('med-pst-fp'),  pst_in_kw:   valNum('med-pst-kw'),  pst_in_kvar: valNum('med-pst-kvar'),
-    pst_in_kva:  valNum('med-pst-kva'), pst_in_thdv: valNum('med-pst-thdv'),
-    pst_in_thd:  valNum('med-pst-thdi'),
-    pst_in_factork: valNum('med-pst-fk'), pst_in_angfasvi: valNum('med-pst-ang'),
-
-    conv1_v_ab: valNum('med-c1-vab'), conv1_v_ac: valNum('med-c1-vac'), conv1_v_bc: valNum('med-c1-vbc'),
-    conv1_i_a:  valNum('med-c1-ia'),  conv1_i_b:  valNum('med-c1-ib'),  conv1_i_c:  valNum('med-c1-ic'),
-    conv2_v_ab: valNum('med-c2-vab'), conv2_v_ac: valNum('med-c2-vac'), conv2_v_bc: valNum('med-c2-vbc'),
-    conv2_i_a:  valNum('med-c2-ia'),  conv2_i_b:  valNum('med-c2-ib'),  conv2_i_c:  valNum('med-c2-ic'),
-
-    vfdout_v_ab: valNum('med-vfd-vab'), vfdout_v_bc: valNum('med-vfd-vbc'), vfdout_v_ac: valNum('med-vfd-vac'),
-    vfdout_i_a:  valNum('med-vfd-ia'),  vfdout_i_b:  valNum('med-vfd-ib'),  vfdout_i_c:  valNum('med-vfd-ic'),
-    vfdout_fp:   valNum('med-vfd-fp'),  vfdout_kw:   valNum('med-vfd-kw'),  vfdout_kvar: valNum('med-vfd-kvar'),
-    vfdout_kva:  valNum('med-vfd-kva'), vfdout_thdv: valNum('med-vfd-thdv'),
-    vfdout_thd:  valNum('med-vfd-thdi'),
-    vfdout_factork: valNum('med-vfd-fk'), vfdout_angfasvi: valNum('med-vfd-ang'),
-
-    busdc_v: valNum('med-busdc'), busac_v: valNum('med-busac'),
-
-    sutout_v_ab: valNum('med-sut-vab'), sutout_v_ac: valNum('med-sut-vac'), sutout_v_bc: valNum('med-sut-vbc'),
-    sutout_v_ag: valNum('med-sut-vag'), sutout_v_bg: valNum('med-sut-vbg'), sutout_v_cg: valNum('med-sut-vcg'),
-    sutout_i_a:  valNum('med-sut-ia'),  sutout_i_b:  valNum('med-sut-ib'),  sutout_i_c:  valNum('med-sut-ic'),
-
-    hs1_c: valNum('med-hs1'), hs2_c: valNum('med-hs2'), hs3_c: valNum('med-hs3'), hs4_c: valNum('med-hs4'),
-    temp_inductor_c:   valNum('med-tind'),
-    temp_controller_c: valNum('med-tctrl'),
-    temp_igbt_u_c: valNum('med-tigbtu'), temp_igbt_v_c: valNum('med-tigbtv'), temp_igbt_w_c: valNum('med-tigbtw'),
-    temp_pst_c: valNum('med-tpst'), temp_sut_c: valNum('med-tsut')
-  };
+  /* Un solo mapa de codigo de puntos_medida a id de campo, usado
+     para guardar y para volver a cargar un borrador. Tenerlo
+     duplicado era garantia de que las dos listas se separaran. */
+  var valores = {};
+  Object.keys(MED_MAPA).forEach(function(cod){
+    valores[cod] = valNum(MED_MAPA[cod]);
+  });
 
   /* Los campos vacios no se envian: null y "no medido" son lo mismo
      aqui, y mandarlos solo ensucia el registro. */
@@ -1306,12 +1371,23 @@ function guardarMedicion(){
     return;
   }
 
+  /* Un borrador incompleto es normal; una medicion confirmada con
+     tres campos casi siempre es un descuido. Se pregunta. */
+  if (estado === 'CONFIRMADA' && Object.keys(valores).length < 10){
+    if (!confirm('Solo hay ' + Object.keys(valores).length + ' valores capturados.\n\n'
+        + 'Al confirmar, la medicion queda cerrada y no se podra editar.\n'
+        + 'Si piensas completarla despues, usa Guardar borrador.\n\nConfirmar de todas formas?'))
+      return;
+  }
+
   var payload = {
-    id: dpNuevoId(),
+    id: medBorradorId || dpNuevoId(),
+    estado: estado,
     pozo: medPozoActual,
     medido_en: fecha + 'T' + hora + ':00',
     realizado_por: document.getElementById('med-realizo').value,
     control_mode: document.getElementById('med-modo').value,
+    condicion: document.getElementById('med-condicion').value,
     frecuencia_operacion_hz: valNum('med-frecop'),
     frec_setpoint_hz: valNum('med-frecset'),
     hsc: valNum('med-hsc'),
@@ -1321,8 +1397,73 @@ function guardarMedicion(){
   };
 
   var boton = event.target.closest('button');
+  medBorradorId = (estado === 'BORRADOR') ? payload.id : null;
   guardarOEncolar('dp_guardar_medicion', payload, boton,
-    'Medicion guardada.', 'Medicion ' + medPozoActual);
+    (estado === 'BORRADOR')
+      ? 'Borrador guardado. Puedes continuarlo despues desde la pantalla de medicion.'
+      : 'Medicion confirmada.',
+    'Medicion ' + medPozoActual);
+}
+
+/* ============================================================
+   BORRADORES
+   ============================================================ */
+function dpListarBorradores(){
+  var caja = document.getElementById('med-borradores');
+  if (!caja || !sb) return;
+  caja.innerHTML = '';
+  sb.rpc('dp_borradores').then(function(r){
+    if (r.error || !r.data || !r.data.length) return;
+    var h = '<div class="card" style="margin-bottom:14px;">'
+          + '<div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;'
+          + 'color:var(--ink-soft);margin-bottom:10px;">Borradores sin confirmar</div>';
+    r.data.forEach(function(b){
+      var f = String(b.medido_en || '').slice(0,16).replace('T',' ');
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;'
+        +  'gap:10px;padding:10px 0;border-top:1px solid var(--line);">'
+        +  '<div><div style="font-weight:700;">' + b.pozo + '</div>'
+        +  '<div style="font-size:12px;color:var(--ink-soft);">' + f
+        +  ' &middot; ' + b.valores + ' valores</div></div>'
+        +  '<button class="btn-secondary" style="width:auto;margin:0;padding:8px 14px;'
+        +  'font-size:13px;" onclick="dpAbrirBorrador(\'' + b.id + '\')">Continuar</button>'
+        +  '</div>';
+    });
+    caja.innerHTML = h + '</div>';
+  }).catch(function(){});
+}
+
+function dpAbrirBorrador(id){
+  sb.rpc('dp_borrador', { p_id: id }).then(function(r){
+    if (r.error || !r.data || !r.data.medicion){
+      alert('No se pudo abrir el borrador. Puede que ya lo hayan confirmado.');
+      dpListarBorradores();
+      return;
+    }
+    var m = r.data.medicion, v = r.data.valores || {};
+    abrirMedicion(m.pozo);
+    medBorradorId = id;
+
+    var poner = function(idc, val){
+      var e = document.getElementById(idc);
+      if (e && val != null) e.value = val;
+    };
+    if (m.medido_en){
+      poner('med-fecha', String(m.medido_en).slice(0,10));
+      poner('med-hora',  String(m.medido_en).slice(11,16));
+    }
+    poner('med-realizo',   m.realizado_por);
+    poner('med-modo',      m.control_mode);
+    poner('med-condicion', m.condicion);
+    poner('med-frecop',    m.frecuencia_operacion_hz);
+    poner('med-frecset',   m.frec_setpoint_hz);
+    poner('med-hsc',       m.hsc);
+    poner('med-lsc',       m.lsc);
+    Object.keys(v).forEach(function(cod){
+      if (MED_MAPA[cod]) poner(MED_MAPA[cod], v[cod]);
+    });
+  }).catch(function(){
+    alert('Sin conexion. Los borradores se pueden continuar cuando vuelva la senal.');
+  });
 }
 
 /* ===================== GUARDADO REAL: BITACORA ===================== */
