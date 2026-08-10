@@ -3,20 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<meta name="theme-color" content="#0B1F3A">
-<title>Captura de Campo</title>
+<meta name="theme-color" content="#134B70">
+<title>Captura de datos de campo &middot; Kronos-M</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
   :root{
-    --navy:#0B1F3A; --navy-2:#132A4C; --orange:#E8542A; --orange-dim:#F2A088;
-    --bg:#F5F6F8; --card:#FFFFFF; --line:#E2E5EA; --ink:#14202E; --ink-soft:#5B6774;
-    --bes:#1E8E5A; --bes-bg:#E8F5EE;
-    --hpum:#2B6CB0; --hpum-bg:#E9F0F9;
-    --ubh:#8A5A2E; --ubh-bg:#F5EDE4;
-    --danger:#C4392B; --radius:14px;
-    --shadow:0 1px 2px rgba(11,31,58,.06), 0 8px 24px rgba(11,31,58,.08);
+    /* Paleta tomada del :root de index.html de Kronos-M para que las
+       dos aplicaciones se vean como una sola. --navy es el azul JAC
+       y --orange pasa a ser el teal de acento. */
+    --navy:#134B70; --navy-2:#1a5c85; --orange:#1B8E9E; --orange-dim:#bfe3e8;
+    --bg:#f7f9fa; --card:#ffffff; --line:#dde2e7; --ink:#134B70; --ink-soft:#4d7089;
+    --bes:#1a9d63; --bes-bg:#e2f7ec;
+    --hpum:#1B8E9E; --hpum-bg:#e2f3f5;
+    --ubh:#b8790c; --ubh-bg:#fbf0d9;
+    --danger:#d63b3b; --radius:14px;
+    --shadow:0 1px 2px rgba(19,75,112,.06), 0 8px 24px rgba(19,75,112,.08);
     --maxw:520px;
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
@@ -32,25 +35,26 @@
 
   header.top{background:linear-gradient(180deg,var(--navy) 0%,var(--navy-2) 100%);
     color:#fff; padding:16px 20px 20px; position:sticky; top:0; z-index:30;
-    box-shadow:0 4px 16px rgba(11,31,58,.25);}
+    box-shadow:0 4px 16px rgba(19,75,112,.22);}
   .brand-row{display:flex; align-items:center; gap:12px;}
   .brand-mark{width:40px;height:40px;border-radius:11px;flex-shrink:0;
-    background:radial-gradient(120% 120% at 30% 20%, #FF7A50 0%, var(--orange) 55%, #B33A18 100%);
+    background:radial-gradient(120% 120% at 30% 20%, #2fb3c4 0%, var(--orange) 55%, #12707d 100%);
     display:flex;align-items:center;justify-content:center;
-    box-shadow:0 3px 10px rgba(232,84,42,.45), inset 0 1px 0 rgba(255,255,255,.25);}
+    box-shadow:0 3px 10px rgba(27,142,158,.4), inset 0 1px 0 rgba(255,255,255,.25);}
   .brand-mark svg{width:22px;height:22px;}
   .brand-text{line-height:1.05;}
-  .brand-text .co{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;color:#B9C6DA;font-weight:600;}
-  .brand-text .app-name{font-size:20px;font-weight:800;color:#fff;}
+  .brand-text .co{font-size:10.5px;letter-spacing:.16em;text-transform:uppercase;
+    color:var(--orange-dim);font-weight:600;}
+  .brand-text .app-name{font-size:19px;font-weight:800;color:#fff;}
   .brand-text .app-name em{color:var(--orange-dim);font-style:normal;}
   .tech-strip{display:flex;align-items:center;justify-content:space-between;
     margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);}
   .tech-strip .who{font-size:12.5px;color:#CBD6E6;}
   .tech-strip .who b{color:#fff;font-weight:600;}
-  .chip-online{display:flex;align-items:center;gap:6px;font-size:11px;color:#8FE3B0;font-weight:600;}
-  .chip-online .dot{width:7px;height:7px;border-radius:50%;background:#3DDC84;box-shadow:0 0 0 3px rgba(61,220,132,.22);}
-  .chip-online.offline{color:#F2A088;}
-  .chip-online.offline .dot{background:#E8542A;box-shadow:0 0 0 3px rgba(232,84,42,.22);}
+  .chip-online{display:flex;align-items:center;gap:6px;font-size:11px;color:#a6ecc6;font-weight:600;}
+  .chip-online .dot{width:7px;height:7px;border-radius:50%;background:#1a9d63;box-shadow:0 0 0 3px rgba(61,220,132,.22);}
+  .chip-online.offline{color:var(--orange-dim);}
+  .chip-online.offline .dot{background:var(--danger);box-shadow:0 0 0 3px rgba(214,59,59,.22);}
 
   main{flex:1; padding:18px 16px 110px;}
   .hidden{display:none !important;}
@@ -137,13 +141,13 @@
     font-size:12px;padding:10px 12px;border-radius:10px;margin:6px 0 16px;line-height:1.4;}
   .readonly-note svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;}
   .change-note-box{background:#FFF7ED;border:1.5px dashed #F0B27A;border-radius:14px;padding:14px;margin-top:4px;}
-  .change-note-box .lbl{font-family:'Barlow Condensed';font-weight:700;font-size:14px;color:#8A5A2E;margin-bottom:8px;}
-  .nota-anterior-box{background:#F5F6F8;border:1px solid #DDE3E8;border-radius:14px;padding:12px 14px;margin-bottom:10px;}
+  .change-note-box .lbl{font-family:'Barlow Condensed';font-weight:700;font-size:14px;color:var(--ubh);margin-bottom:8px;}
+  .nota-anterior-box{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;}
   .nota-anterior-box .lbl-anterior{font-family:'Barlow Condensed';font-weight:700;font-size:13px;color:#6B7680;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.02em;}
   .nota-anterior-box .txt-anterior{font-size:14px;color:#37474F;white-space:pre-wrap;}
 
   .sync-note{display:flex;align-items:flex-start;gap:8px;background:#FFF7ED;border:1px solid #FBE0C4;
-    color:#8A5A2E;font-size:11.5px;padding:10px 12px;border-radius:10px;margin-bottom:12px;line-height:1.4;}
+    color:var(--ubh);font-size:11.5px;padding:10px 12px;border-radius:10px;margin-bottom:12px;line-height:1.4;}
   .sync-note svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;}
 
   .submit-bar{position:sticky;bottom:0;background:linear-gradient(180deg, rgba(245,246,248,0) 0%, var(--bg) 32%);
@@ -152,7 +156,7 @@
     background:linear-gradient(180deg,#F0602E 0%,var(--orange) 100%);color:#fff;
     font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.02em;
     display:flex;align-items:center;justify-content:center;gap:8px;
-    box-shadow:0 6px 18px rgba(232,84,42,.35);}
+    box-shadow:0 6px 18px rgba(27,142,158,.32);}
   .btn-primary svg{width:17px;height:17px;}
 
   .step-dots{display:flex;gap:6px;justify-content:center;margin:2px 0 16px;}
@@ -171,7 +175,7 @@
   }
   @media (min-width:1024px){
     :root{--maxw:1180px;}
-    .app{border-left:1px solid var(--line);border-right:1px solid var(--line);box-shadow:0 0 40px rgba(11,31,58,.06);}
+    .app{border-left:1px solid var(--line);border-right:1px solid var(--line);box-shadow:0 0 40px rgba(19,75,112,.06);}
     .grid-fields{grid-template-columns:repeat(4, 1fr);}
     .grid-fields.g3{grid-template-columns:repeat(6, 1fr);}
     .home-grid{display:grid; grid-template-columns:1fr 1fr; gap:0 16px;}
@@ -182,9 +186,9 @@
   .login-wrap{min-height:calc(100vh - 130px); display:flex; flex-direction:column; justify-content:center; padding:20px 4px;}
   .login-hero{text-align:center; margin-bottom:28px;}
   .login-hero .mark{width:72px;height:72px;border-radius:20px;margin:0 auto 16px;
-    background:radial-gradient(120% 120% at 30% 20%, #FF7A50 0%, var(--orange) 55%, #B33A18 100%);
+    background:radial-gradient(120% 120% at 30% 20%, #2fb3c4 0%, var(--orange) 55%, #12707d 100%);
     display:flex;align-items:center;justify-content:center;
-    box-shadow:0 8px 24px rgba(232,84,42,.35), inset 0 1px 0 rgba(255,255,255,.25);}
+    box-shadow:0 8px 24px rgba(27,142,158,.32), inset 0 1px 0 rgba(255,255,255,.25);}
   .login-hero .mark svg{width:38px;height:38px;}
   .login-hero h1{font-size:28px;color:var(--navy);margin:0 0 4px;}
   .login-hero p{margin:0;color:var(--ink-soft);font-size:14px;}
@@ -235,8 +239,8 @@
         <svg viewBox="0 0 24 24" fill="none"><path d="M2 12h4l2-7 4 14 3-9 2 5h5" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg>
       </div>
       <div class="brand-text">
-        <div class="co">Confipetrol SAS</div>
-        <div class="app-name">Data<em>Predictiva</em></div>
+        <div class="co">Kronos-M</div>
+        <div class="app-name">Captura de datos de campo</div>
       </div>
     </div>
     <div class="tech-strip">
@@ -255,8 +259,8 @@
       <div class="login-wrap">
         <div class="login-hero">
           <div class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M2 12h4l2-7 4 14 3-9 2 5h5" stroke="#fff" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <h1>DataPredictiva</h1>
-          <p>Captura de campo &middot; Confipetrol SAS</p>
+          <h1>Captura de datos de campo</h1>
+          <p>Kronos-M</p>
         </div>
         <div class="login-card">
           <div class="field">
@@ -312,7 +316,7 @@
           <div class="body">
             <div class="name">HPUM</div>
             <div class="full">Bombeo Hidraulico &middot; Inyeccion</div>
-            <div class="desc">Estructura de listas SharePoint pendiente de definir</div>
+            <div class="desc">Estructura de listas el sistema anterior pendiente de definir</div>
           </div>
           <div class="badge-lbl">Proximamente</div>
         </div>
@@ -328,7 +332,7 @@
           <div class="body">
             <div class="name">UBH</div>
             <div class="full">Bombeo Hidraulico Jet Pump</div>
-            <div class="desc">Estructura de listas SharePoint pendiente de definir</div>
+            <div class="desc">Estructura de listas el sistema anterior pendiente de definir</div>
           </div>
           <div class="badge-lbl">Proximamente</div>
         </div>
@@ -412,7 +416,7 @@
       </div>
       <form id="form-medicion"></form>
       <div class="submit-bar">
-        <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Conexion a SharePoint pendiente (Parte E). El registro queda listo para sincronizar.</div>
+        <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Conexion a el sistema anterior pendiente (Parte E). El registro queda listo para sincronizar.</div>
         <button class="btn-primary" onclick="guardarMedicion()">Guardar medicion
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
@@ -428,7 +432,7 @@
       <form id="form-bitacora">
         <div class="group-card">
           <div class="field"><label>Pozo</label><select id="evt-pozo"></select></div>
-          <div class="field"><label>Realizo</label><input id="evt-realizo" readonly style="background:#F5F6F8;color:#607D8B;cursor:not-allowed;"></div>
+          <div class="field"><label>Realizo</label><input id="evt-realizo" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>
           <div class="grid-fields">
             <div class="field"><label>Fecha</label><input type="date" id="evt-fecha"></div>
             <div class="field"><label>Hora</label><input type="time" id="evt-hora"></div>
@@ -486,7 +490,7 @@
               <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-bc"><span class="unit">Ω</span></div>
             </div>
           </div>
-          <div class="field"><label>Realizo</label><input id="ais-realizo" readonly style="background:#F5F6F8;color:#607D8B;cursor:not-allowed;"></div>
+          <div class="field"><label>Realizo</label><input id="ais-realizo" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>
           <div class="field"><label>Observaciones</label><textarea id="ais-obs" rows="3" placeholder="Condiciones de la prueba, hallazgos..."></textarea></div>
         </div>
       </form>
@@ -547,7 +551,7 @@
           <div class="field"><label>PAD</label><input id="nc-pad" placeholder="ej. PAD CYC-05"></div>
           <div class="grid-fields">
             <div class="field"><label>Campo</label><select id="nc-campo"><option>Put Norte</option><option>Put Sur</option></select></div>
-            <div class="field"><label>Operador</label><input id="nc-operador" value="GTE"></div>
+            <div class="field"><label>Operador</label><input id="nc-operador" placeholder="Operador"></div>
           </div>
           <div class="grid-fields">
             <div class="field"><label>Estado</label><select id="nc-estado"><option>Activo</option><option>Inactivo</option><option>En completacion</option></select></div>
@@ -700,7 +704,7 @@
       </div>
     </section>
 
-    <div class="foot">Captura de Campo &middot; ESP/VFD &middot; UBH &middot; HPUM</div>
+    <div class="foot">Captura de datos de campo &middot; ESP/VFD &middot; UBH &middot; HPUM</div>
   </main>
 </div>
 
@@ -978,7 +982,7 @@ function iniciarMedicion(){
   var cabecera = '<fieldset><legend><span class="sec-ic" style="background:#EFF1F4;color:var(--navy);">' + ICONO_GAUGE + '</span>Identificacion</legend><div class="group-card">' +
     '<div class="grid-fields">' +
     '<div class="field readonly"><label>Pozo</label><input value="' + pozo + '" disabled></div>' +
-    '<div class="field"><label>Realizado por</label><input id="med-realizo" value="' + tecnicoActual + '" readonly style="background:#F5F6F8;color:#607D8B;cursor:not-allowed;"></div>' +
+    '<div class="field"><label>Realizado por</label><input id="med-realizo" value="' + tecnicoActual + '" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>' +
     '</div>' +
     '<div class="grid-fields">' +
     '<div class="field"><label>Fecha</label><input type="date" id="med-fecha" value="' + ahora.toISOString().slice(0,10) + '"></div>' +
@@ -1105,7 +1109,7 @@ function cargarSetup(){
         'No hay configuracion registrada para ' + pozo + '. Completa los valores iniciales.</div>';
     } else {
       html = '<div class="readonly-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>' +
-        'Configuracion real cargada desde SharePoint. Los campos en naranja son editables.</div>';
+        'Configuracion real cargada desde el sistema anterior. Los campos en naranja son editables.</div>';
     }
 
     SETUP_CAMPOS.forEach(function(grupo){
@@ -1136,7 +1140,7 @@ function cargarSetup(){
         if(idInterno === 'realizo'){
           // Siempre refleja quien inicio sesion con su PIN - no editable,
           // para que el registro no pueda quedar a nombre de otra persona.
-          inputHtml = '<input data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + tecnicoActual + '" readonly style="background:#F5F6F8;color:#607D8B;cursor:not-allowed;">';
+          inputHtml = '<input data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + tecnicoActual + '" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;">';
         } else if(idInterno === 'fecha_ajuste'){
           // Convertir ISO (ej '2026-07-06T00:00:00Z') a YYYY-MM-DD para el
           // input de fecha nativo; si no matchea ese formato, se deja tal
@@ -1221,8 +1225,8 @@ function guardarSetup(){
     { item_id: setupItemId, cambios: setupCambiosPendientes, nota: nota },
     boton,
     setupModoCreacion
-      ? 'Configuracion inicial registrada en SharePoint para ' + setupPozoActivo + '.'
-      : 'Configuracion actualizada en SharePoint para ' + setupPozoActivo + ', y quedo la nota en Bitacora_Eventos para el historico.',
+      ? 'Configuracion inicial registrada en el sistema anterior para ' + setupPozoActivo + '.'
+      : 'Configuracion actualizada en el sistema anterior para ' + setupPozoActivo + ', y quedo la nota en Bitacora_Eventos para el historico.',
     'Setup ' + setupPozoActivo
   );
 }
@@ -1389,7 +1393,7 @@ function verificarPozoExistente(){
       estado.textContent = '✓ Pozo existente - datos cargados, edita lo que cambio';
       document.getElementById('nc-pad').value = campos.PAD || '';
       document.getElementById('nc-campo').value = campos.Campo || 'Put Norte';
-      document.getElementById('nc-operador').value = campos.Operador || 'GTE';
+      document.getElementById('nc-operador').value = campos.Operador || '';
       document.getElementById('nc-estado').value = campos.Estado || 'Activo';
       document.getElementById('nc-fecha').value = _fechaSolo(campos.FechaInstalacion);
       document.getElementById('nc-notas').value = campos.Notas || '';
@@ -1397,7 +1401,7 @@ function verificarPozoExistente(){
       estado.style.color = '#EF6C00';
       estado.textContent = 'Pozo nuevo - se creara desde cero';
       document.getElementById('nc-pad').value = '';
-      document.getElementById('nc-operador').value = 'GTE';
+      document.getElementById('nc-operador').value = '';
       document.getElementById('nc-estado').value = 'Activo';
       document.getElementById('nc-fecha').value = '';
       document.getElementById('nc-notas').value = '';
@@ -1532,7 +1536,7 @@ function guardarPozoNuevo(){
   };
 
   var boton = event.target.closest('button');
-  guardarOEncolar('/campo/api/pozo-nuevo', payload, boton, 'Pozo nuevo creado en SharePoint (Catalogo + Motor + VFD + PST + SUT).', 'Pozo nuevo ' + pozo);
+  guardarOEncolar('/campo/api/pozo-nuevo', payload, boton, 'Pozo nuevo creado en el sistema anterior (Catalogo + Motor + VFD + PST + SUT).', 'Pozo nuevo ' + pozo);
 }
 
 var tecnicoActual = '';
@@ -1596,7 +1600,7 @@ document.getElementById('login-clave').addEventListener('keydown', function(e){
 });
 
 function proximamente(nombreSistema){
-  alert(nombreSistema + ' esta en construccion: la estructura de listas SharePoint para este sistema todavia no esta definida. Por ahora, continua con BES.');
+  alert(nombreSistema + ' esta en construccion: la estructura de listas el sistema anterior para este sistema todavia no esta definida. Por ahora, continua con BES.');
 }
 
 poblarSelects();
