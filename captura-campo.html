@@ -273,7 +273,7 @@
             <div style="font-size:12px;color:#90A4AE;margin-top:4px;">La sesi&oacute;n queda guardada en este dispositivo, as&iacute; que no hay que ingresar de nuevo en cada visita.</div>
           </div>
           <div id="login-status" style="font-size:13px;margin:4px 0;"></div>
-          <button class="btn-primary" style="margin-top:6px;" onclick="iniciarSesion()">Ingresar
+          <button id="btn-ingresar" class="btn-primary" style="margin-top:6px;" onclick="iniciarSesion()">Ingresar
             <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
@@ -1546,19 +1546,37 @@ function iniciarSesion(){
   var correo = (document.getElementById('login-correo').value || '').trim();
   var clave  = document.getElementById('login-clave').value || '';
   var estado = document.getElementById('login-status');
-  var boton  = event.target.closest('button');
+  /* Se busca por id y no a partir del evento: cuando se entra con
+     Enter desde el campo de contrasena, el elemento que dispara es
+     el input y closest('button') devuelve null. */
+  var boton  = document.getElementById('btn-ingresar');
 
   if (!correo || !clave){
     estado.innerHTML = '<span style="color:#C62828;">Escribe tu correo y tu contrase&ntilde;a.</span>';
     return;
   }
 
-  var textoOriginal = boton.innerHTML;
-  boton.disabled = true; boton.innerHTML = 'Verificando...';
+  var textoOriginal = boton ? boton.innerHTML : '';
+  var ocupado = function(si){
+    if (!boton) return;
+    boton.disabled = si;
+    boton.innerHTML = si ? 'Verificando...' : textoOriginal;
+  };
+  ocupado(true);
   estado.innerHTML = '';
 
+  /* file:// no tiene origen valido, asi que Supabase no puede
+     guardar la sesion. Conviene decirlo en lugar de dejar el boton
+     girando sin explicacion. */
+  if (location.protocol === 'file:'){
+    ocupado(false);
+    estado.innerHTML = '<span style="color:#C62828;">Esta pagina se abrio como archivo local. '
+      + 'Hay que abrirla desde la direccion web de Kronos-M para poder iniciar sesion.</span>';
+    return;
+  }
+
   sb.auth.signInWithPassword({ email: correo, password: clave }).then(function(r){
-    boton.disabled = false; boton.innerHTML = textoOriginal;
+    ocupado(false);
     if (r.error){
       estado.innerHTML = '<span style="color:#C62828;">' + r.error.message + '</span>';
       document.getElementById('login-clave').value = '';
@@ -1566,11 +1584,12 @@ function iniciarSesion(){
     }
     dpEntrar(r.data.user);
   }).catch(function(e){
-    boton.disabled = false; boton.innerHTML = textoOriginal;
+    ocupado(false);
     /* Sin senal no se puede autenticar por primera vez, pero si ya
        hubo sesion en este dispositivo, se reanuda al abrir. */
     estado.innerHTML = '<span style="color:#C62828;">Sin conexion. Para entrar por primera vez '
-      + 'se necesita senal; despues la sesion queda guardada.</span>';
+      + 'se necesita senal; despues la sesion queda guardada. ('
+      + (e && e.message ? e.message : 'error de red') + ')</span>';
   });
 }
 
