@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>An&aacute;lisis Predictivo</title>
+<title>Monitoreo de Condici&oacute;n</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
@@ -98,8 +98,8 @@ body{background:var(--kp-page);color:var(--kp-ink);
 
 <div class="kp-top">
   <div>
-    <h1 id="kpTitulo">An&aacute;lisis Predictivo</h1>
-    <p class="sub" id="kpSub">Motor determinista &mdash; Kronos&#8209;M</p>
+    <h1 id="kpTitulo">Monitoreo de Condici&oacute;n</h1>
+    <p class="sub" id="kpSub">Monitoreo de condici&oacute;n y diagn&oacute;stico de m&aacute;quinas</p>
   </div>
   <button class="kp-back" id="kpBack" style="display:none" onclick="kpVerFlota()">&larr; Volver a flota</button>
 </div>
@@ -120,7 +120,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
    ============================================================ */
 const KP = {
   MODO_DEMO: false,
-  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.co',
+  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.c',
   SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
 };
 
@@ -195,7 +195,15 @@ function kpArmarPozo(d){
   const porRegla = {};
   hs.forEach(h => { porRegla[h.regla_codigo] = h; });
 
-  const nivel = n => (n === 'alta' ? 'crit' : 'warn');
+  /* hallazgos.nivel se guarda en mayusculas: ALTA, ATENCION_ALTA,
+     ATENCION. Comparar en minusculas nunca coincide y degrada todo
+     hallazgo critico a simple atencion, sin dar error. */
+  const nivel = function(n){
+    var v = String(n || '').toUpperCase();
+    if (v === 'ALTA') return 'crit';
+    if (v === 'ATENCION_ALTA' || v === 'ATENCION') return 'warn';
+    return 'warn';
+  };
 
   const reglas = (d.reglas || []).map(r => {
     const h = porRegla[r.codigo];
@@ -508,8 +516,9 @@ function kpPeor(lista){
 async function kpVerFlota(){
   document.getElementById("kpBack").style.display = "none";
   document.getElementById("kpFiltros").style.display = "flex";
-  document.getElementById("kpTitulo").textContent = "An\u00e1lisis Predictivo";
-  document.getElementById("kpSub").innerHTML = "Motor determinista &mdash; Kronos&#8209;M";
+  document.getElementById("kpTitulo").textContent = "Monitoreo de Condici\u00f3n";
+  document.getElementById("kpSub").innerHTML =
+    "Monitoreo de condici&oacute;n y diagn&oacute;stico de m&aacute;quinas";
   const v = document.getElementById("kpVista");
   v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
   try {
