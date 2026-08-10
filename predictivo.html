@@ -87,6 +87,9 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-leg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 
 .kp-msg{padding:26px 18px;text-align:center;color:var(--kp-ink2);font-size:14px}
+.kp-chip{border:1px solid var(--kp-line);background:#fff;border-radius:6px;padding:5px 12px;
+  font-size:12.5px;cursor:pointer;color:var(--kp-ink)}
+.kp-chip.on{background:#2f9fd4;border-color:#2f9fd4;color:#fff}
 .kp-demo{background:#fff6d9;border:1px solid #e8d08a;color:#6b5410;
   padding:8px 20px;font-size:12.5px}
 @media(max-width:640px){.kp-wrap{padding:14px}.kp-top{padding:12px 14px}.kp-bar{padding:9px 14px}}
@@ -118,10 +121,28 @@ body{background:var(--kp-page);color:var(--kp-ink);
 /* ============================================================
    CONFIGURACION
    ============================================================ */
+/* Las credenciales se heredan de Kronos-M. Este archivo corre en un
+   iframe del mismo origen, asi que puede leerlas del documento padre
+   y no necesita copia propia. Al abrirse en pestana aparte el padre
+   es window.opener. Si no hay ninguno, se dice claramente en lugar
+   de quedarse cargando. */
+function kpCredencial(nombre){
+  var fuentes = [];
+  try { if (window.parent && window.parent !== window) fuentes.push(window.parent); } catch(e){}
+  try { if (window.opener) fuentes.push(window.opener); } catch(e){}
+  for (var i = 0; i < fuentes.length; i++){
+    try {
+      var v = fuentes[i][nombre];
+      if (v && String(v).indexOf('PEGAR_AQUI') !== 0) return v;
+    } catch(e){}
+  }
+  return null;
+}
+
 const KP = {
   MODO_DEMO: false,
-  SUPABASE_URL: 'https://cxprmbnjnnldqyzaqsvf.supabase.c',
-  SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg'
+  SUPABASE_URL: kpCredencial('https://cxprmbnjnnldqyzaqsvf.supabase.co'),
+  SUPABASE_ANON_KEY: kpCredencial('eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg')
 };
 
 /* ============================================================
@@ -136,6 +157,10 @@ let kpSb = null;
 function kpCliente(){
   if (KP.MODO_DEMO) return null;
   if (kpSb) return kpSb;
+  if (!KP.SUPABASE_URL || !KP.SUPABASE_ANON_KEY)
+    throw new Error('No se pudieron leer las credenciales de Kronos-M. '
+      + 'Abre este modulo desde el selector de Kronos-M, no como archivo suelto. '
+      + 'Si persiste, verifica que index.html publique SUPABASE_URL en window.');
   kpSb = window.supabase.createClient(KP.SUPABASE_URL, KP.SUPABASE_ANON_KEY);
   return kpSb;
 }
@@ -252,6 +277,13 @@ function kpArmarPozo(d){
 async function kpCargarMedicion(pozoId){
   if (KP.MODO_DEMO || !pozoId) return null;
   const { data, error } = await kpCliente().rpc('dp_medicion', { p_pozo_id: pozoId });
+  if (error) throw new Error(error.message);
+  return data || null;
+}
+
+async function kpCargarContexto(pozoId){
+  if (KP.MODO_DEMO || !pozoId) return null;
+  const { data, error } = await kpCliente().rpc('dp_contexto', { p_pozo_id: pozoId });
   if (error) throw new Error(error.message);
   return data || null;
 }
@@ -576,19 +608,20 @@ async function kpVerPozo(codigo, pozoId){
   const v = document.getElementById("kpVista");
   v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
 
-  let p = null, med = null;
+  let p = null, med = null, ctx = null;
   try {
     const r = await Promise.all([
       kpCargarPozo(codigo, pozoId).catch(() => null),
-      kpCargarMedicion(pozoId).catch(() => null)
+      kpCargarMedicion(pozoId).catch(() => null),
+      kpCargarContexto(pozoId).catch(() => null)
     ]);
-    p = r[0]; med = r[1];
+    p = r[0]; med = r[1]; ctx = r[2];
   } catch (e) {
     v.innerHTML = '<div class="kp-msg">No se pudo cargar el pozo.<br>' + e.message + '</div>';
     return;
   }
 
-  if (!p && !med){
+  if (!p && !med && !(ctx && ((ctx.bitacora||[]).length || (ctx.aislamiento||[]).length))){
     document.getElementById("kpTitulo").textContent = codigo;
     document.getElementById("kpSub").innerHTML = "Sin datos";
     v.innerHTML = '<div class="kp-card"><div class="kp-msg">'
@@ -631,6 +664,8 @@ async function kpVerPozo(codigo, pozoId){
   h += '<div class="kp-list">' + kpDibujarReglas(p.reglas) + '</div>';
   }
 
+  if (ctx) h += kpRenderContexto(ctx);
+
   v.innerHTML = h;
 }
 
@@ -670,6 +705,107 @@ function kpDibujarReglas(reglas){
   return h;
 }
 
+
+/* ============================================================
+   RENDER DEL CONTEXTO: AISLAMIENTO Y BITACORA
+   ============================================================ */
+
+/* Referencias de IEEE 43 para el indice de polarizacion. Se
+   muestran como referencia y no como dictamen: la norma matiza
+   segun clase de aislamiento y temperatura, y el valor absoluto
+   minimo depende de la tension nominal. */
+function kpEstadoIP(ip){
+  if (ip == null) return {cls:'none', txt:'Sin dato'};
+  if (ip === 0)   return {cls:'crit', txt:'Falla'};
+  if (ip < 1)     return {cls:'crit', txt:'Deficiente'};
+  if (ip < 2)     return {cls:'warn', txt:'Cuestionable'};
+  if (ip < 4)     return {cls:'ok',   txt:'Aceptable'};
+  return {cls:'ok', txt:'Bueno'};
+}
+
+function kpRenderContexto(ctx){
+  const ais = ctx.aislamiento || [];
+  const bit = ctx.bitacora || [];
+  let h = '';
+
+  if (ais.length){
+    h += '<h2 style="margin-top:22px">Aislamiento</h2>';
+    h += '<p class="hint">' + ais.length
+      +  (ais.length === 1 ? ' prueba registrada' : ' pruebas registradas')
+      +  ' &middot; referencia IEEE 43 para el &iacute;ndice de polarizaci&oacute;n</p>';
+    h += '<div class="kp-list" style="margin-bottom:6px">';
+    ais.forEach(a => {
+      const e = kpEstadoIP(a.ip);
+      h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"><div>'
+        +  '<div><span class="nm">' + (a.fecha_prueba || '\u2014') + '</span>'
+        +  (a.realizado_por ? ' <span class="id">' + a.realizado_por + '</span>' : '')
+        +  '</div>'
+        +  '<div class="dt">Aislamiento ' + kpNum(a.aislamiento) + ' M&Omega;'
+        +  ' &middot; IP ' + kpNum(a.ip) + ' &middot; DAR ' + kpNum(a.dar) + '</div>'
+        +  '<div class="src">Balance ' + kpNum(a.balance_ab) + ' / ' + kpNum(a.balance_ac)
+        +  ' / ' + kpNum(a.balance_bc) + ' \u03a9'
+        +  (a.equipo ? ' &middot; ' + a.equipo : '') + '</div>'
+        +  (a.observaciones ? '<div class="src" style="margin-top:5px;color:var(--kp-ink2)">'
+              + a.observaciones + '</div>' : '')
+        +  '</div><span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
+    });
+    h += '</div>';
+  }
+
+  if (bit.length){
+    /* Configuracion son 21 de 37 registros en el historico y taparian
+       los eventos de operacion y falla, que son los que interesan al
+       diagnosticar. Por eso el filtro. */
+    h += '<h2 style="margin-top:22px">Bit&aacute;cora</h2>';
+    h += '<p class="hint">' + bit.length + ' registros &middot; toca una categor&iacute;a para filtrar</p>';
+
+    const cats = [];
+    bit.forEach(b => {
+      const c = b.categoria || 'Sin categor\u00eda';
+      if (cats.indexOf(c) < 0) cats.push(c);
+    });
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+    h += '<button class="kp-chip on" data-cat="__all__" onclick="kpFiltrarBitacora(this)">Todas</button>';
+    cats.forEach(c => {
+      h += '<button class="kp-chip" data-cat="' + c + '" onclick="kpFiltrarBitacora(this)">'
+        +  c + '</button>';
+    });
+    h += '</div>';
+
+    h += '<div class="kp-list" id="kp-bitacora">';
+    bit.forEach(b => {
+      const f = b.ocurrido_en
+        ? String(b.ocurrido_en).slice(0,16).replace('T',' ')
+        : 'sin fecha en el origen';
+      const sev = String(b.severidad || '').toLowerCase();
+      const cls = (sev.indexOf('crit') >= 0 || sev.indexOf('alta') >= 0) ? 'crit'
+                : (sev.indexOf('atenc') >= 0 ? 'warn' : '');
+      h += '<div class="kp-rule ' + cls + '" data-cat="'
+        +  (b.categoria || 'Sin categor\u00eda') + '"><div>'
+        +  '<div><span class="nm">' + (b.categoria || 'Evento') + '</span> '
+        +  '<span class="id">' + f + '</span></div>'
+        +  (b.observaciones ? '<div class="dt">' + b.observaciones + '</div>' : '')
+        +  (b.recomendaciones ? '<div class="src" style="margin-top:4px">Recomendaci&oacute;n: '
+              + b.recomendaciones + '</div>' : '')
+        +  (b.realizado_por ? '<div class="src">' + b.realizado_por + '</div>' : '')
+        +  '</div>'
+        +  '<span class="kp-pill ' + (cls || 'none') + '">'
+        +  (b.estado || b.severidad || '\u2014') + '</span></div>';
+    });
+    h += '</div>';
+  }
+
+  return h;
+}
+
+function kpFiltrarBitacora(boton){
+  const cat = boton.dataset.cat;
+  boton.parentElement.querySelectorAll('.kp-chip')
+    .forEach(b => b.classList.toggle('on', b === boton));
+  document.querySelectorAll('#kp-bitacora .kp-rule').forEach(f => {
+    f.style.display = (cat === '__all__' || f.dataset.cat === cat) ? '' : 'none';
+  });
+}
 
 /* ============================================================
    RENDER DE LA MEDICION ELECTRICA

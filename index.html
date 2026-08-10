@@ -2016,6 +2016,14 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 const SUPABASE_URL = "https://cxprmbnjnnldqyzaqsvf.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg";
 
+/* Se exponen en window para que los modulos en iframe las tomen de
+   aqui en lugar de tener su propia copia. Duplicar la clave en dos
+   archivos garantiza que el dia que se rote, uno quede desfasado.
+   No hay exposicion nueva: la anon key ya esta en este HTML, y su
+   seguridad depende del RLS. */
+window.SUPABASE_URL = SUPABASE_URL;
+window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
+
 const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* El manifest ahora vive en un archivo real: ./manifest.json
