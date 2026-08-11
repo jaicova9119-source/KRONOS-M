@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <meta name="theme-color" content="#134B70">
 <link rel="manifest" href="./manifest.json">
-<link rel="apple-touch-icon" href="../icons/captura-apple-180.png">
+<link rel="apple-touch-icon" href="./icons/captura-apple-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Captura">
@@ -715,7 +715,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; ESP/VFD &middot; UBH &middot; HPUM
-      &middot; <span id="dp-build">v12</span>
+      &middot; <span id="dp-build">v13</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -1957,7 +1957,9 @@ if ('serviceWorker' in navigator && location.protocol === 'https:'){
        workers en la misma raiz se disputan el alcance y uno desplaza
        al otro en silencio. Registrar el mismo desde aqui tambien
        cubre al tecnico que solo abre la captura y nunca Kronos-M. */
-    navigator.serviceWorker.register('/service-worker.js', { scope: '/' }).then(function(reg){
+    /* Este sitio tiene su propio origen, asi que lleva su propio
+       service worker y no comparte el de Kronos-M. */
+    navigator.serviceWorker.register('./service-worker.js').then(function(reg){
       dpSW = reg;
       dpMarcarOffline(true);
 
