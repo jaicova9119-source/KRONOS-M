@@ -35,8 +35,13 @@ const ARCHIVOS_PROPIOS = [
      Va en la lista de precarga y no solo por la rama de navegacion,
      para que quede disponible sin señal desde la instalacion y no
      haya que abrirla una vez con datos primero. En campo esa
-     diferencia importa. */
-  "./captura/",
+     diferencia importa.
+
+     Ojo: esta lista usa addAll, que es todo o nada. Solo deben ir
+     rutas de archivos que existan con certeza. Una ruta de carpeta
+     como "./captura/" depende de que el servidor resuelva el indice
+     del directorio; si no lo hace, da 404 y se lleva por delante
+     toda la precarga, incluida la de Kronos-M. */
   "./captura/index.html",
   "./captura/manifest.json",
   "./icons/captura-192.png",
