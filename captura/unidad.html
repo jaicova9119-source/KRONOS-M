@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kronos-M · Actualizar unidad</title>
+<style>
+  :root{
+    --azul:#14526b; --azul-osc:#0e3c50; --acento:#0f7d8c; --acento-osc:#0b616d;
+    --fondo:#f2f5f6; --panel:#ffffff; --linea:#dce5e8;
+    --texto:#1c2b30; --suave:#5f7278; --alerta:#a4531d; --alerta-bg:#fdf3e7;
+    --ok:#1d6b4f; --ok-bg:#eef7f2;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--fondo);color:var(--texto);font:16px/1.45 var(--sans)}
+  header{background:var(--azul);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:10}
+  header .marca{font-size:11px;letter-spacing:.14em;text-transform:uppercase;opacity:.72}
+  header h1{margin:2px 0 0;font-size:19px;font-weight:600}
+  header .estado{margin-top:6px;font-size:12px;opacity:.8}
+  main{padding:16px;max-width:720px;margin:0 auto}
+
+  .campo{width:100%;padding:11px 12px;border:1px solid var(--linea);border-radius:8px;
+    font:15px var(--sans);background:#fff;color:var(--texto)}
+  .campo:focus{outline:2px solid var(--acento);outline-offset:1px;border-color:var(--acento)}
+  .campo.mono{font-family:var(--mono);letter-spacing:.02em}
+  label{display:block;font-size:12px;font-weight:600;color:var(--suave);
+    text-transform:uppercase;letter-spacing:.06em;margin:14px 0 5px}
+
+  .lista{margin-top:12px;background:var(--panel);border:1px solid var(--linea);
+    border-radius:10px;overflow:hidden}
+  .item{display:block;width:100%;text-align:left;background:none;border:0;
+    border-bottom:1px solid var(--linea);padding:13px 14px;font:inherit;color:inherit;cursor:pointer}
+  .item:last-child{border-bottom:0}
+  .item:active{background:#eef3f5}
+  .item .n{font-weight:600}
+  .item .s{font-size:13px;color:var(--suave);margin-top:2px}
+
+  .unidad{background:var(--panel);border:1px solid var(--linea);border-radius:10px;padding:14px}
+  .unidad h2{margin:0;font-size:20px}
+  .unidad .meta{font-size:13px;color:var(--suave);margin-top:4px}
+  .chip{display:inline-block;background:var(--azul);color:#fff;font-size:11px;font-weight:700;
+    letter-spacing:.08em;padding:3px 8px;border-radius:4px;margin-top:8px}
+
+  h3.sec{font-size:12px;font-weight:700;color:var(--suave);text-transform:uppercase;
+    letter-spacing:.1em;margin:22px 0 0}
+
+  .eq{background:var(--panel);border:1px solid var(--linea);border-radius:10px;
+    padding:13px 14px;margin-top:10px}
+  .eq .fila{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .eq .rol{font-weight:600}
+  .eq .ord{font:11px var(--mono);color:var(--suave)}
+  .eq dl{margin:9px 0 0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:14px}
+  .eq dt{color:var(--suave);font-size:12px;text-transform:uppercase;letter-spacing:.05em}
+  .eq dd{margin:0;font-family:var(--mono);font-size:13px;word-break:break-all}
+  .eq .vacio{margin:8px 0 0;font-size:14px;color:var(--alerta);background:var(--alerta-bg);
+    padding:8px 10px;border-radius:6px}
+  .eq .acciones{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+
+  button.b{border:0;border-radius:8px;padding:10px 14px;font:600 14px var(--sans);cursor:pointer}
+  button.b.pri{background:var(--acento);color:#fff}
+  button.b.pri:active{background:var(--acento-osc)}
+  button.b.sec{background:#fff;color:var(--azul);border:1px solid var(--linea)}
+  button.b.sec:active{background:#eef3f5}
+  button.b:disabled{opacity:.5;cursor:default}
+  button.b.ancho{width:100%;padding:13px}
+
+  .aviso{background:#eaf2f5;border:1px solid #cfe0e6;border-radius:8px;padding:11px 12px;
+    font-size:13px;color:#28454f;margin-top:12px}
+  .aviso.ok{background:var(--ok-bg);border-color:#c8e3d5;color:var(--ok)}
+  .aviso.err{background:#fbeeee;border-color:#efd3d3;color:#8c2f2f}
+
+  dialog{border:0;border-radius:14px 14px 0 0;padding:0;width:100%;max-width:720px;
+    margin:auto auto 0;background:var(--panel);color:var(--texto)}
+  dialog::backdrop{background:rgba(14,40,52,.55)}
+  .hoja{padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+  .hoja h4{margin:0 0 3px;font-size:17px}
+  .hoja .sub{font-size:13px;color:var(--suave);margin:0 0 4px}
+  .opcion{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--linea);
+    border-radius:10px;padding:13px 14px;margin-top:10px;font:inherit;color:inherit;cursor:pointer}
+  .opcion:active{background:#eef3f5}
+  .opcion .t{font-weight:600;display:block}
+  .opcion .d{font-size:13px;color:var(--suave);display:block;margin-top:3px}
+  .cerrar{background:none;border:0;font:600 14px var(--sans);color:var(--suave);
+    padding:12px 0 0;width:100%;cursor:pointer}
+  .oculto{display:none !important}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="marca">Kronos-M</div>
+  <h1>Actualizar unidad</h1>
+  <div class="estado" id="estado">Buscando unidades…</div>
+</header>
+
+<main>
+
+  <!-- PASO 1 · buscar unidad -->
+  <section id="paso-buscar">
+    <label for="q">Buscar unidad por nombre, campo o pad</label>
+    <input id="q" class="campo" type="search" placeholder="CYC-01, Put Norte, PAD CHB…" autocomplete="off">
+    <div class="lista oculto" id="resultados"></div>
+  </section>
+
+  <!-- PASO 2 · equipos de la unidad -->
+  <section id="paso-unidad" class="oculto">
+    <div class="unidad">
+      <h2 id="u-nombre"></h2>
+      <div class="meta" id="u-meta"></div>
+      <span class="chip" id="u-sistema"></span>
+    </div>
+    <div id="msg"></div>
+    <h3 class="sec">Equipos de la unidad</h3>
+    <div id="equipos"></div>
+    <button class="b sec ancho" id="btn-otra" style="margin-top:18px">Buscar otra unidad</button>
+  </section>
+
+</main>
+
+<!-- Hoja: elegir qué pasó -->
+<dialog id="hoja-que">
+  <div class="hoja">
+    <h4 id="que-rol"></h4>
+    <p class="sub">¿Qué pasó con este equipo?</p>
+    <button class="opcion" id="op-corregir">
+      <span class="t">Corregir un dato de placa</span>
+      <span class="d">Es el mismo equipo. El serial, marca o modelo estaba mal escrito.
+        Se reporta a quien actualiza SAP.</span>
+    </button>
+    <button class="opcion" id="op-reemplazo">
+      <span class="t">Se cambió el equipo</span>
+      <span class="d">Se instaló una unidad distinta. Se retira la anterior y se registra la nueva.
+        No genera reporte de corrección.</span>
+    </button>
+    <button class="cerrar" data-cerrar>Cancelar</button>
+  </div>
+</dialog>
+
+<!-- Hoja: corregir placa -->
+<dialog id="hoja-corregir">
+  <div class="hoja">
+    <h4>Corregir dato de placa</h4>
+    <p class="sub" id="corr-rol"></p>
+    <div class="aviso">El equipo sigue siendo el mismo. Solo cambia lo que quedó mal
+      transcrito de la placa.</div>
+    <label for="c-serial">Número de serie</label>
+    <input id="c-serial" class="campo mono" autocapitalize="characters" autocomplete="off">
+    <label for="c-marca">Marca</label>
+    <input id="c-marca" class="campo" autocomplete="off">
+    <label for="c-modelo">Modelo</label>
+    <input id="c-modelo" class="campo mono" autocomplete="off">
+    <label for="c-nota">Nota (opcional)</label>
+    <input id="c-nota" class="campo" placeholder="Verificado en placa el…" autocomplete="off">
+    <div id="corr-msg"></div>
+    <button class="b pri ancho" id="corr-guardar" style="margin-top:16px">Guardar corrección</button>
+    <button class="cerrar" data-cerrar>Cancelar</button>
+  </div>
+</dialog>
+
+<!-- Hoja: reemplazo -->
+<dialog id="hoja-reemplazo">
+  <div class="hoja">
+    <h4 id="reem-titulo">Registrar equipo instalado</h4>
+    <p class="sub" id="reem-rol"></p>
+    <div class="aviso" id="reem-aviso"></div>
+    <label for="r-serial">Número de serie del equipo nuevo</label>
+    <input id="r-serial" class="campo mono" autocapitalize="characters" autocomplete="off">
+    <label for="r-marca">Marca</label>
+    <input id="r-marca" class="campo" autocomplete="off">
+    <label for="r-modelo">Modelo</label>
+    <input id="r-modelo" class="campo mono" autocomplete="off">
+    <label for="r-fecha">Fecha de instalación</label>
+    <input id="r-fecha" class="campo" type="date">
+    <div id="reem-motivo-wrap">
+      <label for="r-motivo">Motivo de retiro del equipo anterior</label>
+      <select id="r-motivo" class="campo">
+        <option value="">Seleccionar…</option>
+        <option>Falla del equipo</option>
+        <option>Mantenimiento programado</option>
+        <option>Cambio por capacidad</option>
+        <option>Reubicación a otra unidad</option>
+        <option>Fin de vida útil</option>
+        <option>Otro</option>
+      </select>
+    </div>
+    <label for="r-nota">Nota (opcional)</label>
+    <input id="r-nota" class="campo" autocomplete="off">
+    <div id="reem-msg"></div>
+    <button class="b pri ancho" id="reem-guardar" style="margin-top:16px">Registrar instalación</button>
+    <button class="cerrar" data-cerrar>Cancelar</button>
+  </div>
+</dialog>
+
+<script type="module">
+// ---------------------------------------------------------------------
+// Cliente Supabase.
+// Reutiliza el cliente que ya crea /captura/ si está expuesto como
+// window.sb; si no, crea uno con la configuración de abajo.
+// ---------------------------------------------------------------------
+const SUPABASE_URL      = 'https://cxprmbnjnnldqyzaqsvf.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg';
+
+let sb = window.sb || null;
+if (!sb) {
+  const { createClient } = await import(
+    'https://esm.sh/@supabase/supabase-js@2');
+  sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  window.sb = sb;
+}
+
+// ---------------------------------------------------------------------
+const $  = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+const estado = $('estado');
+let unidad = null;   // { id, nombre, campo, pad, sistema }
+let filaActual = null;
+
+function aviso(cont, texto, clase='') {
+  cont.innerHTML = texto
+    ? `<div class="aviso ${clase}">${esc(texto)}</div>` : '';
+}
+
+// ---------------------------------------------------------------------
+// Paso 1 · buscar unidad
+// ---------------------------------------------------------------------
+let temporizador;
+$('q').addEventListener('input', e => {
+  clearTimeout(temporizador);
+  temporizador = setTimeout(() => buscar(e.target.value), 280);
+});
+
+async function buscar(texto) {
+  const caja = $('resultados');
+  if (!texto || texto.trim().length < 2) { caja.classList.add('oculto'); return; }
+
+  estado.textContent = 'Buscando…';
+  const { data, error } = await sb.rpc('dp_buscar_unidad', { p_texto: texto });
+
+  if (error) { estado.textContent = 'Error: ' + error.message; return; }
+  estado.textContent = `${data.length} unidad(es) encontradas`;
+
+  if (!data.length) {
+    caja.innerHTML = '<div class="item"><span class="s">Ninguna unidad coincide.</span></div>';
+    caja.classList.remove('oculto');
+    return;
+  }
+
+  caja.innerHTML = data.map(u => `
+    <button class="item" data-id="${esc(u.id)}">
+      <span class="n">${esc(u.nombre)}</span>
+      <span class="s">${esc(u.sistema || 'sin sistema')} ·
+        ${esc(u.campo || '—')} · ${esc(u.pad || '—')}${u.activo ? '' : ' · inactiva'}</span>
+    </button>`).join('');
+  caja.classList.remove('oculto');
+
+  caja.querySelectorAll('.item[data-id]').forEach(b => {
+    b.onclick = () => {
+      const u = data.find(x => x.id === b.dataset.id);
+      abrirUnidad(u);
+    };
+  });
+}
+
+// ---------------------------------------------------------------------
+// Paso 2 · equipos de la unidad
+// ---------------------------------------------------------------------
+async function abrirUnidad(u) {
+  unidad = u;
+  $('paso-buscar').classList.add('oculto');
+  $('paso-unidad').classList.remove('oculto');
+  $('u-nombre').textContent  = u.nombre;
+  $('u-meta').textContent    = `${u.campo || '—'} · ${u.pad || '—'}`;
+  $('u-sistema').textContent = u.sistema || 'SIN SISTEMA';
+  await cargarEquipos();
+}
+
+$('btn-otra').onclick = () => {
+  unidad = null;
+  $('paso-unidad').classList.add('oculto');
+  $('paso-buscar').classList.remove('oculto');
+  $('q').value = '';
+  $('resultados').classList.add('oculto');
+  estado.textContent = 'Buscando unidades…';
+};
+
+async function cargarEquipos() {
+  const caja = $('equipos');
+  caja.innerHTML = '<div class="eq"><span class="ord">Cargando…</span></div>';
+
+  const { data, error } = await sb.rpc('dp_equipos_unidad', { p_pozo_id: unidad.id });
+  if (error) { aviso($('msg'), 'Error: ' + error.message, 'err'); caja.innerHTML = ''; return; }
+
+  if (!data.length) {
+    aviso($('msg'),
+      'Esta unidad no tiene sistema de levantamiento definido, o su sistema no tiene roles en el catálogo.',
+      'err');
+    caja.innerHTML = '';
+    return;
+  }
+
+  caja.innerHTML = data.map(e => {
+    const instalado = !!e.instalacion_id;
+    const cuerpo = instalado ? `
+      <dl>
+        <dt>Serie</dt><dd>${esc(e.serial || '—')}</dd>
+        <dt>Marca</dt><dd>${esc(e.marca || '—')}</dd>
+        <dt>Modelo</dt><dd>${esc(e.modelo || '—')}</dd>
+        <dt>Desde</dt><dd>${esc(e.instalado_el || 'sin fecha')}</dd>
+        <dt>SAP</dt><dd>${esc(e.codigo_sap || e.estado_catalogacion || '—')}</dd>
+      </dl>` : `
+      <p class="vacio">Sin equipo registrado${e.obligatorio ? ' · obligatorio en este sistema' : ' · opcional'}</p>`;
+
+    return `
+    <div class="eq" data-rol="${esc(e.rol)}">
+      <div class="fila">
+        <span class="rol">${esc(e.nombre_rol)}</span>
+        <span class="ord">${esc(e.rol)}</span>
+      </div>
+      ${cuerpo}
+      <div class="acciones">
+        ${instalado
+          ? `<button class="b pri" data-accion="que">Actualizar</button>`
+          : `<button class="b pri" data-accion="nuevo">Registrar equipo</button>`}
+      </div>
+    </div>`;
+  }).join('');
+
+  caja.querySelectorAll('[data-accion]').forEach(b => {
+    b.onclick = () => {
+      const rol = b.closest('.eq').dataset.rol;
+      filaActual = data.find(x => x.rol === rol);
+      if (b.dataset.accion === 'que') abrirHojaQue();
+      else abrirHojaReemplazo(false);
+    };
+  });
+}
+
+// ---------------------------------------------------------------------
+// Hojas
+// ---------------------------------------------------------------------
+document.querySelectorAll('[data-cerrar]').forEach(b => {
+  b.onclick = () => b.closest('dialog').close();
+});
+
+function abrirHojaQue() {
+  $('que-rol').textContent = `${filaActual.nombre_rol} · ${unidad.nombre}`;
+  $('hoja-que').showModal();
+}
+
+$('op-corregir').onclick = () => { $('hoja-que').close(); abrirHojaCorregir(); };
+$('op-reemplazo').onclick = () => { $('hoja-que').close(); abrirHojaReemplazo(true); };
+
+function abrirHojaCorregir() {
+  $('corr-rol').textContent = `${filaActual.nombre_rol} · ${unidad.nombre}`;
+  $('c-serial').value = filaActual.serial || '';
+  $('c-marca').value  = filaActual.marca  || '';
+  $('c-modelo').value = filaActual.modelo || '';
+  $('c-nota').value   = '';
+  aviso($('corr-msg'), '');
+  $('hoja-corregir').showModal();
+}
+
+function abrirHojaReemplazo(hayAnterior) {
+  $('reem-titulo').textContent = hayAnterior ? 'Registrar equipo nuevo' : 'Registrar equipo instalado';
+  $('reem-rol').textContent = `${filaActual.nombre_rol} · ${unidad.nombre}`;
+  aviso($('reem-aviso'), hayAnterior
+    ? `Se retirará el equipo actual (serie ${filaActual.serial || 'sin serie'}) con fecha de instalación del nuevo.`
+    : 'No hay equipo previo registrado en este rol. Se creará el primer registro.');
+  $('reem-motivo-wrap').classList.toggle('oculto', !hayAnterior);
+  $('r-serial').value = ''; $('r-marca').value = ''; $('r-modelo').value = '';
+  $('r-nota').value = ''; $('r-motivo').value = '';
+  $('r-fecha').value = new Date().toISOString().slice(0, 10);
+  $('r-fecha').max   = new Date().toISOString().slice(0, 10);
+  aviso($('reem-msg'), '');
+  $('hoja-reemplazo').dataset.anterior = hayAnterior ? '1' : '';
+  $('hoja-reemplazo').showModal();
+}
+
+// ---------------------------------------------------------------------
+// Guardar · corrección de placa
+// ---------------------------------------------------------------------
+$('corr-guardar').onclick = async (ev) => {
+  const btn = ev.currentTarget;
+  btn.disabled = true; btn.textContent = 'Guardando…';
+
+  const { error } = await sb.rpc('dp_corregir_placa', {
+    p_instalacion_id: filaActual.instalacion_id,
+    p_serial: $('c-serial').value.trim() || null,
+    p_marca:  $('c-marca').value.trim()  || null,
+    p_modelo: $('c-modelo').value.trim() || null,
+    p_nota:   $('c-nota').value.trim()   || null
+  });
+
+  btn.disabled = false; btn.textContent = 'Guardar corrección';
+
+  if (error) { aviso($('corr-msg'), error.message, 'err'); return; }
+  $('hoja-corregir').close();
+  aviso($('msg'), 'Corrección guardada. Si el dato difiere del maestro de activos, queda reportada para actualización en SAP.', 'ok');
+  await cargarEquipos();
+};
+
+// ---------------------------------------------------------------------
+// Guardar · reemplazo o primer registro
+// ---------------------------------------------------------------------
+$('reem-guardar').onclick = async (ev) => {
+  const btn = ev.currentTarget;
+  const hayAnterior = !!$('hoja-reemplazo').dataset.anterior;
+
+  const serial = $('r-serial').value.trim();
+  const fecha  = $('r-fecha').value;
+  const motivo = $('r-motivo').value;
+
+  if (!serial) { aviso($('reem-msg'), 'Falta el número de serie.', 'err'); return; }
+  if (!fecha)  { aviso($('reem-msg'), 'Falta la fecha de instalación.', 'err'); return; }
+  if (hayAnterior && !motivo) {
+    aviso($('reem-msg'), 'Selecciona el motivo de retiro del equipo anterior.', 'err'); return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Registrando…';
+
+  const { error } = await sb.rpc('dp_reemplazar_equipo', {
+    p_pozo_id:       unidad.id,
+    p_rol:           filaActual.rol,
+    p_serial:        serial,
+    p_marca:         $('r-marca').value.trim()  || null,
+    p_modelo:        $('r-modelo').value.trim() || null,
+    p_instalado_el:  fecha,
+    p_motivo_retiro: motivo || null,
+    p_nota:          $('r-nota').value.trim()   || null
+  });
+
+  btn.disabled = false; btn.textContent = 'Registrar instalación';
+
+  if (error) { aviso($('reem-msg'), error.message, 'err'); return; }
+  $('hoja-reemplazo').close();
+  aviso($('msg'), hayAnterior
+    ? 'Instalación registrada. El equipo anterior quedó retirado con esa fecha.'
+    : 'Equipo registrado.', 'ok');
+  await cargarEquipos();
+};
+
+// ---------------------------------------------------------------------
+estado.textContent = 'Escribe para buscar una unidad';
+</script>
+</body>
+</html>
