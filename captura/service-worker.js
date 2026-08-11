@@ -17,7 +17,7 @@
 
 /* Al subir este numero, el navegador descarta el cache anterior y
    vuelve a bajar todo. Es la palanca para forzar actualizacion. */
-const CACHE_NAME = "captura-v1";
+const CACHE_NAME = "captura-v2";
 
 /* Sin estos archivos la app no abre sin señal. Van con addAll, que
    es todo o nada: solo deben ir rutas que existan con certeza. Una
@@ -25,6 +25,7 @@ const CACHE_NAME = "captura-v1";
    directorio, y si no lo hace se lleva por delante toda la precarga. */
 const ARCHIVOS_PROPIOS = [
   "./index.html",
+  "./unidad.html",
   "./manifest.json",
   "./icons/captura-192.png",
   "./icons/captura-512.png",
