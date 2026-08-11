@@ -2054,6 +2054,50 @@ const TIPOS_EQUIPO = ["Electrico", "Instrumentacion", "Mecanico", "Otro"];
 const TIPOS_EQUIPO_LABEL = { Electrico: "Eléctrico", Instrumentacion: "Instrumentación", Mecanico: "Mecánico", Otro: "Otro" };
 const CACHE_KEY = "equipos_gte_cache_v1";
 
+/* ============================================================
+   ESPEJO LOCAL DE ACTIVOS — IndexedDB
+
+   localStorage topa cerca de 5 MB. Diez mil equipos con todas sus
+   columnas pasan de 6 MB, asi que setItem lanzaba QuotaExceededError,
+   el catch lo mandaba a la consola y el cache quedaba vacio sin que
+   nadie se enterara: sin señal no habia nada que mostrar aunque la
+   app estuviera preparada para ello. IndexedDB no tiene ese tope.
+   ============================================================ */
+const IDB_NOMBRE = "kronos_m";
+const IDB_ALMACEN = "espejo";
+
+function idbAbrir() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open(IDB_NOMBRE, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_ALMACEN)) db.createObjectStore(IDB_ALMACEN);
+    };
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+
+async function idbGuardar(clave, valor) {
+  const db = await idbAbrir();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_ALMACEN, "readwrite");
+    tx.objectStore(IDB_ALMACEN).put(valor, clave);
+    tx.oncomplete = () => { db.close(); res(true); };
+    tx.onerror = () => { db.close(); rej(tx.error); };
+  });
+}
+
+async function idbLeer(clave) {
+  const db = await idbAbrir();
+  return new Promise((res, rej) => {
+    const tx = db.transaction(IDB_ALMACEN, "readonly");
+    const pet = tx.objectStore(IDB_ALMACEN).get(clave);
+    pet.onsuccess = () => { db.close(); res(pet.result || null); };
+    pet.onerror = () => { db.close(); rej(pet.error); };
+  });
+}
+
 /* ---------- Materiales / Min-Max ---------- */
 let materialesData = [];
 let filtroEstadoMat = "";
@@ -2271,19 +2315,37 @@ async function cargarEquipos() {
     equipos = todos;
     _buscables.clear();
     try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
+      await idbGuardar(CACHE_KEY, { ts: Date.now(), equipos: equipos });
+      /* Limpia el intento anterior en localStorage, que ademas de
+         quedar viejo ocupa cupo que hace falta para la cola. */
+      try { localStorage.removeItem(CACHE_KEY); } catch (e2) {}
     } catch (e) {
-      console.warn("No se pudo guardar cache local (posiblemente muy grande):", e);
+      console.warn("No se pudo guardar el espejo local:", e);
+      toast("Aviso: no se pudo guardar la copia para trabajar sin señal");
     }
     actualizarEstadoConexion();
   } catch (e) {
-    const cache = localStorage.getItem(CACHE_KEY);
-    if (cache) {
-      equipos = JSON.parse(cache);
+    let guardado = null;
+    try { guardado = await idbLeer(CACHE_KEY); } catch (e2) {}
+
+    /* Compatibilidad con el cache viejo en localStorage, por si algun
+       dispositivo alcanzo a guardarlo antes de este cambio. */
+    if (!guardado) {
+      const viejo = localStorage.getItem(CACHE_KEY);
+      if (viejo) { try { guardado = { ts: null, equipos: JSON.parse(viejo) }; } catch (e3) {} }
+    }
+
+    if (guardado && guardado.equipos && guardado.equipos.length) {
+      equipos = guardado.equipos;
       _buscables.clear();
-      toast("Sin conexión: mostrando datos guardados localmente");
+      const cuando = guardado.ts
+        ? new Date(guardado.ts).toLocaleString("es-CO",
+            { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+        : "fecha desconocida";
+      toast("Sin conexión: " + equipos.length + " activos guardados el " + cuando);
     } else {
-      lista.innerHTML = '<div class="empty">No se pudo cargar. Verifica tu conexión.</div>';
+      lista.innerHTML = '<div class="empty">No se pudo cargar y no hay copia guardada en este '
+        + 'dispositivo. Abre la app una vez con señal para poder consultarla en campo.</div>';
       return;
     }
   }
@@ -7115,28 +7177,48 @@ const PERFIL_CACHE_KEY = "equipos_gte_perfil_cache";
 async function manejarSesionActiva(session) {
   sesionSupabase = session;
   let perfil = null;
-  try {
-    const resp = await sb.from("usuarios").select("*").eq("auth_user_id", session.user.id).maybeSingle();
-    perfil = resp.data;
-    if (!perfil) {
-      // Cuenta de auth existe pero sin fila en usuarios (caso raro) -> crearla, inactiva
-      const { data: creado } = await sb.from("usuarios").insert({
-        nombre: session.user.email, email: session.user.email, rol: "tecnico", activo: false,
-        auth_user_id: session.user.id,
-      }).select().single();
-      perfil = creado;
-    }
-  } catch (e) {
-    // Sin conexion: usar el perfil que quedo guardado la ultima vez que entramos con señal
-    const cache = localStorage.getItem(PERFIL_CACHE_KEY);
-    if (cache) {
-      perfil = JSON.parse(cache);
-      toast("Sin conexión: entrando con tu última sesión guardada");
+
+  /* supabase-js NO lanza excepcion cuando falla la red: devuelve
+     { data:null, error }. Antes eso caia en el mismo camino que "la
+     cuenta no tiene fila en usuarios", el catch nunca se ejecutaba y
+     el perfil guardado no se llegaba a usar: sin señal la app se
+     quedaba en "No se pudo verificar tu cuenta". Hay que separar
+     "no pude preguntar" de "pregunte y no hay". */
+  if (navigator.onLine) {
+    try {
+      const resp = await sb.from("usuarios").select("*")
+        .eq("auth_user_id", session.user.id).maybeSingle();
+
+      if (!resp.error) {
+        perfil = resp.data;
+        if (!perfil) {
+          // Respondio y de verdad no hay fila -> crearla, inactiva
+          const creacion = await sb.from("usuarios").insert({
+            nombre: session.user.email, email: session.user.email, rol: "tecnico", activo: false,
+            auth_user_id: session.user.id,
+          }).select().single();
+          if (!creacion.error) perfil = creacion.data;
+        }
+      }
+    } catch (e) {
+      /* Fallo duro de red: se resuelve abajo con el perfil guardado. */
     }
   }
 
   if (!perfil) {
-    mostrarErrorAuth("auth-error", "No se pudo verificar tu cuenta. Intenta cuando tengas señal.");
+    const cache = localStorage.getItem(PERFIL_CACHE_KEY);
+    if (cache) {
+      try {
+        perfil = JSON.parse(cache);
+        toast("Sin conexión: entrando con tu última sesión guardada");
+      } catch (e) { perfil = null; }
+    }
+  }
+
+  if (!perfil) {
+    mostrarErrorAuth("auth-error", navigator.onLine
+      ? "No se pudo verificar tu cuenta. Intenta de nuevo."
+      : "Sin señal y sin sesión guardada en este dispositivo. Entra una vez con conexión.");
     mostrarAuthGate();
     return;
   }
@@ -7145,7 +7227,7 @@ async function manejarSesionActiva(session) {
     id: perfil.id, auth_user_id: perfil.auth_user_id, nombre: perfil.nombre,
     email: perfil.email, rol: perfil.rol, activo: perfil.activo,
   };
-  localStorage.setItem(PERFIL_CACHE_KEY, JSON.stringify(perfil));
+  try { localStorage.setItem(PERFIL_CACHE_KEY, JSON.stringify(perfil)); } catch (e) {}
 
   if (!usuarioActual.activo) {
     document.getElementById("auth-gate").style.display = "none";
