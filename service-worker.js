@@ -36,8 +36,9 @@ const ARCHIVOS_PROPIOS = [
      para que quede disponible sin señal desde la instalacion y no
      haya que abrirla una vez con datos primero. En campo esa
      diferencia importa. */
-  "./captura-campo.html",
-  "./manifest-captura.json",
+  "./captura/",
+  "./captura/index.html",
+  "./captura/manifest.json",
   "./icons/captura-192.png",
   "./icons/captura-512.png",
   "./icons/captura-maskable-512.png",
