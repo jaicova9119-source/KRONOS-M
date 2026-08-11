@@ -87,8 +87,10 @@
   .action-card .sub{font-size:12.5px;color:var(--ink-soft);margin-top:1px;}
   .action-card .chev{color:#B7C0CC;flex-shrink:0;}
   .action-card .chev svg{width:18px;height:18px;}
-  .action-card.disabled{opacity:.55;}
-  .action-card.disabled .ttl::after{content:" - Proximamente"; font-size:10.5px; color:var(--ink-soft); font-family:'IBM Plex Sans'; font-weight:600; text-transform:none;}
+  .action-card.disabled{opacity:.5; pointer-events:none;}
+  .action-card.disabled .ttl[data-nota]::after{content:" - " attr(data-nota); font-size:10.5px; color:var(--ink-soft); font-family:'IBM Plex Sans'; font-weight:600; text-transform:none;}
+  .home-aviso{background:#FFF6E9;border:1px solid #F2DDBE;border-radius:12px;padding:11px 13px;
+    font-size:12.5px;color:#7A5320;line-height:1.4;margin:0 0 14px;}
 
   .card-medicion .ic{background:var(--bes-bg);color:var(--bes);}
   .card-bitacora .ic{background:#FDEDEA;color:var(--danger);}
@@ -294,7 +296,7 @@
         <p>Selecciona el sistema de levantamiento antes de continuar.</p>
       </div>
       <div class="sistema-track">
-        <div class="sistema-card bes" onclick="ir('home')">
+        <div class="sistema-card bes" onclick="seleccionarSistema('BES')">
           <div class="badge">
             <svg viewBox="0 0 24 24" fill="none">
               <rect x="9" y="2" width="6" height="5" rx="1.2" stroke="currentColor" stroke-width="1.6"/>
@@ -306,12 +308,12 @@
           <div class="body">
             <div class="name">BES</div>
             <div class="full">Bombeo Electrosumergible</div>
-            <div class="desc">Motor, VFD, PST, SUT &middot; mediciones y setup completos</div>
+            <div class="desc">PST, VFD, SUT y motor sumergible &middot; mediciones, setup y pruebas</div>
           </div>
           <div class="go"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
-        <div class="sistema-card hpum soon" onclick="proximamente('HPUM')">
+        <div class="sistema-card hpum" onclick="seleccionarSistema('HPUM')">
           <div class="badge">
             <svg viewBox="0 0 24 24" fill="none">
               <path d="M12 3v7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -322,13 +324,13 @@
           </div>
           <div class="body">
             <div class="name">HPUM</div>
-            <div class="full">Bombeo Hidraulico &middot; Inyeccion</div>
-            <div class="desc">Pendiente de definir</div>
+            <div class="full">Bomba horizontal de inyeccion</div>
+            <div class="desc">Filtro, VFD, SUT, motor de superficie y bomba multietapas</div>
           </div>
-          <div class="badge-lbl">Proximamente</div>
+          <div class="go"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
-        <div class="sistema-card ubh soon" onclick="proximamente('UBH')">
+        <div class="sistema-card ubh" onclick="seleccionarSistema('UBH')">
           <div class="badge">
             <svg viewBox="0 0 24 24" fill="none">
               <path d="M5 6h5l3 6-3 6H5" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
@@ -338,10 +340,10 @@
           </div>
           <div class="body">
             <div class="name">UBH</div>
-            <div class="full">Bombeo Hidraulico Jet Pump</div>
-            <div class="desc">Pendiente de definir</div>
+            <div class="full">Bombeo hidraulico jet pump</div>
+            <div class="desc">Filtro, VFD, motor de superficie y bomba reciprocante</div>
           </div>
-          <div class="badge-lbl">Proximamente</div>
+          <div class="go"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
       </div>
     </section>
@@ -350,29 +352,39 @@
       <button class="back-btn" onclick="ir('sistema')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Cambiar sistema</button>
       <div class="screen-title">
         <h1>Que vamos a registrar?</h1>
+        <p>Sistema activo: <strong id="home-sis-cod">BES</strong> &middot; <span id="home-sis-full">Bombeo Electrosumergible</span></p>
+      </div>
 
-        <p>Selecciona el tipo de captura para continuar.</p>
+      <div class="home-aviso" id="home-aviso" style="display:none;">
+        Para <strong id="home-aviso-sis">este sistema</strong> esta disponible el catalogo de equipos.
+        Las mediciones y el setup todavia usan el formulario de BES, por eso quedan bloqueados.
       </div>
 
       <div class="home-grid">
       <div>
-        <div class="section-label"><span class="bar"></span>BES - Bombeo Electrosumergible</div>
-        <div class="action-card card-medicion" onclick="ir('medicion-pozo'); dpListarBorradores();">
+        <div class="section-label"><span class="bar"></span>Unidad y equipos</div>
+
+        <div class="action-card card-nuevo" data-sistemas="BES,HPUM,UBH" onclick="abrirActualizarUnidad()">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="18" cy="17" r="3.2" stroke="currentColor" stroke-width="1.8"/></svg></div>
+          <div class="body"><div class="ttl">Actualizar equipos de la unidad</div><div class="sub">Corregir placa o registrar cambio de equipo &middot; todos los sistemas</div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+
+        <div class="action-card card-nuevo" data-sistemas="BES" onclick="ir('nuevo-paso1')">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
+          <div class="body"><div class="ttl">Registrar unidad nueva</div><div class="sub">Catalogo completo con datos de placa &middot; 5 pasos</div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+
+        <div class="section-label"><span class="bar"></span>Mediciones y pruebas</div>
+
+        <div class="action-card card-medicion" data-sistemas="BES" onclick="ir('medicion-pozo'); dpListarBorradores();">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Medicion predictiva</div><div class="sub">Lectura completa PST, VFD, SUT, temperaturas</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
-        <div class="action-card card-bitacora" onclick="document.getElementById('evt-realizo').value=tecnicoActual; ir('bitacora-form')">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6l1 3H8l1-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 6h12v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6Z" stroke="currentColor" stroke-width="1.8"/><path d="M9 11h6M9 15h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
-          <div class="body"><div class="ttl">Evento / Bitacora</div><div class="sub">Novedades, mantenimiento, hallazgos</div></div>
-          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        </div>
-        <div class="action-card card-setup" onclick="ir('setup-pozo')">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5c.1-.5.1-1 0-1.5l1.6-1.2-1.5-2.6-1.9.6a5.6 5.6 0 0 0-1.3-.8L16 6h-3l-.3 2c-.5.2-.9.5-1.3.8l-1.9-.6-1.5 2.6L9.6 12c-.1.5-.1 1 0 1.5L8 14.7l1.5 2.6 1.9-.6c.4.3.8.6 1.3.8l.3 2h3l.3-2c.5-.2.9-.5 1.3-.8l1.9.6 1.5-2.6-1.6-1.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
-          <div class="body"><div class="ttl">Configuracion VFD (Setup)</div><div class="sub">Ver ajustes actuales, editar solo lo habitual</div></div>
-          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        </div>
-        <div class="action-card card-aislamiento" onclick="document.getElementById('ais-realizo').value=tecnicoActual; ir('aislamiento-form')">
+
+        <div class="action-card card-aislamiento" data-sistemas="BES" onclick="document.getElementById('ais-realizo').value=tecnicoActual; ir('aislamiento-form')">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub">Megado, DAR, IP y balance de fases</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -380,19 +392,18 @@
       </div>
 
       <div>
-        <div class="section-label"><span class="bar"></span>Pozos y otros sistemas</div>
-        <div class="action-card card-nuevo" onclick="ir('nuevo-paso1')">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
-          <div class="body"><div class="ttl">Registrar / Actualizar pozo</div><div class="sub">Catalogo + equipos (Motor, VFD, PST, SUT) - nuevo o existente</div></div>
+        <div class="section-label"><span class="bar"></span>Operacion y novedades</div>
+
+        <div class="action-card card-setup" data-sistemas="BES" onclick="ir('setup-pozo')">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5c.1-.5.1-1 0-1.5l1.6-1.2-1.5-2.6-1.9.6a5.6 5.6 0 0 0-1.3-.8L16 6h-3l-.3 2c-.5.2-.9.5-1.3.8l-1.9-.6-1.5 2.6L9.6 12c-.1.5-.1 1 0 1.5L8 14.7l1.5 2.6 1.9-.6c.4.3.8.6 1.3.8l.3 2h3l.3-2c.5-.2.9-.5 1.3-.8l1.9.6 1.5-2.6-1.6-1.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
+          <div class="body"><div class="ttl">Configuracion VFD (Setup)</div><div class="sub">Ver ajustes actuales, editar solo lo habitual</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
-        <div class="action-card card-hpum disabled">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 15V9a2 2 0 0 1 2-2h4l3-3 3 3h1a2 2 0 0 1 2 2v6" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M4 15h16v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
-          <div class="body"><div class="ttl">HPUM</div><div class="sub">Bombeo Hidraulico, Inyeccion - estructura pendiente</div></div>
-        </div>
-        <div class="action-card card-ubh disabled">
-          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 2v7m0 0-3 3m3-3 3 3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 13c0 4 2.7 8 6 8s6-4 6-8" stroke="currentColor" stroke-width="1.8"/></svg></div>
-          <div class="body"><div class="ttl">UBH</div><div class="sub">Bombeo Hidraulico Jet Pump - estructura pendiente</div></div>
+
+        <div class="action-card card-bitacora" data-sistemas="BES,HPUM,UBH" onclick="document.getElementById('evt-realizo').value=tecnicoActual; ir('bitacora-form')">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6l1 3H8l1-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 6h12v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6Z" stroke="currentColor" stroke-width="1.8"/><path d="M9 11h6M9 15h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          <div class="body"><div class="ttl">Evento / Bitacora</div><div class="sub">Novedades, mantenimiento, hallazgos</div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
       </div>
       </div>
@@ -714,7 +725,7 @@
       </div>
     </section>
 
-    <div class="foot">Captura de datos de campo &middot; ESP/VFD &middot; UBH &middot; HPUM
+    <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM y UBH
       &middot; <span id="dp-build">v13</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
@@ -2008,11 +2019,60 @@ function dpRecargarApp(){ location.reload(); }
   }
 })();
 
-function proximamente(nombreSistema){
-  alert(nombreSistema + ' esta en construccion: la estructura de captura para este sistema todavia no esta definida. Por ahora, continua con BES.');
+/* ===================== SISTEMA ACTIVO ===================== */
+var SISTEMAS = {
+  BES:  { cod:'BES',  full:'Bombeo Electrosumergible' },
+  HPUM: { cod:'HPUM', full:'Bomba horizontal de inyeccion' },
+  UBH:  { cod:'UBH',  full:'Bombeo hidraulico jet pump' }
+};
+var sistemaActual = 'BES';
+
+function seleccionarSistema(cod){
+  sistemaActual = SISTEMAS[cod] ? cod : 'BES';
+  try { localStorage.setItem('dp_sistema', sistemaActual); } catch(e){}
+  adaptarHome();
+  ir('home');
 }
 
+function adaptarHome(){
+  var s = SISTEMAS[sistemaActual] || SISTEMAS.BES;
+  var cod = document.getElementById('home-sis-cod');
+  var full = document.getElementById('home-sis-full');
+  if(cod)  cod.textContent  = s.cod;
+  if(full) full.textContent = s.full;
+
+  var bloqueadas = 0;
+  document.querySelectorAll('#screen-home .action-card[data-sistemas]').forEach(function(c){
+    var ok = c.getAttribute('data-sistemas').split(',').indexOf(sistemaActual) >= 0;
+    c.classList.toggle('disabled', !ok);
+    var ttl = c.querySelector('.ttl');
+    if(ttl){
+      if(ok) ttl.removeAttribute('data-nota');
+      else   ttl.setAttribute('data-nota', 'solo BES');
+    }
+    if(!ok) bloqueadas++;
+  });
+
+  var aviso = document.getElementById('home-aviso');
+  var avisoSis = document.getElementById('home-aviso-sis');
+  if(avisoSis) avisoSis.textContent = s.cod;
+  if(aviso) aviso.style.display = bloqueadas ? '' : 'none';
+}
+
+function abrirActualizarUnidad(){
+  location.href = 'unidad.html';
+}
+
+/* restaurar el sistema elegido en la visita anterior */
+(function(){
+  try {
+    var g = localStorage.getItem('dp_sistema');
+    if(g && SISTEMAS[g]) sistemaActual = g;
+  } catch(e){}
+})();
+
 poblarSelects();
+adaptarHome();
 actualizarIndicadorConexion();
 actualizarBadgePendientes();
 intentarSincronizarTodo();
