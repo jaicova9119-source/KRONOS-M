@@ -12,7 +12,7 @@
  * cargue sin señal.
  */
 
-const CACHE_NAME = "kronos-m-v30";
+const CACHE_NAME = "kronos-m-v32";
 
 /* Archivos propios. Estos tienen que quedar guardados si o si: sin ellos
    la app no abre sin señal. */
@@ -26,28 +26,6 @@ const ARCHIVOS_PROPIOS = [
   "./icons/apple-touch-icon.png",
   "./icons/favicon-32.png",
   "./icons/favicon-16.png",
-
-  /* App de captura de campo. Se instala aparte y tiene su propio
-     manifiesto, pero comparte este service worker: dos workers en la
-     misma raiz se disputan el alcance y uno termina desplazando al
-     otro sin avisar.
-
-     Va en la lista de precarga y no solo por la rama de navegacion,
-     para que quede disponible sin señal desde la instalacion y no
-     haya que abrirla una vez con datos primero. En campo esa
-     diferencia importa.
-
-     Ojo: esta lista usa addAll, que es todo o nada. Solo deben ir
-     rutas de archivos que existan con certeza. Una ruta de carpeta
-     como "./captura/" depende de que el servidor resuelva el indice
-     del directorio; si no lo hace, da 404 y se lleva por delante
-     toda la precarga, incluida la de Kronos-M. */
-  "./captura/index.html",
-  "./captura/manifest.json",
-  "./icons/captura-192.png",
-  "./icons/captura-512.png",
-  "./icons/captura-maskable-512.png",
-  "./icons/captura-apple-180.png",
 ];
 
 /* Librerias externas. Se guardan aparte de las propias porque dependen de
@@ -128,6 +106,28 @@ self.addEventListener("fetch", (event) => {
           return respuesta;
         })
         .catch(() => caches.match(req).then((g) => g || caches.match("./index.html")))
+    );
+    return;
+  }
+
+  /* Los manifiestos van a la red primero, como las paginas. Con la
+     estrategia de "cache primero" el navegador podia leer un
+     manifiesto viejo despues de un cambio, y como el manifiesto
+     define el alcance y la identidad de la app instalada, eso hacia
+     que una app nueva se confundiera con otra ya instalada. Es un
+     archivo pequeno y se consulta poco: no vale la pena cachearlo
+     de forma agresiva. */
+  if (url.endsWith("manifest.json") || url.includes("manifest")) {
+    event.respondWith(
+      fetch(req)
+        .then((respuesta) => {
+          if (respuesta && respuesta.ok) {
+            const copia = respuesta.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copia));
+          }
+          return respuesta;
+        })
+        .catch(() => caches.match(req))
     );
     return;
   }
