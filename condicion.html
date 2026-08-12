@@ -715,6 +715,7 @@ async function kpVerPozo(codigo, pozoId){
   if (ctx) h += kpRenderContexto(ctx);
 
   v.innerHTML = h;
+  if (KP_EV.length) kpEvPintar();
 }
 
 /* ── Eventos y paros del variador ─────────────────────────────────────
@@ -722,86 +723,157 @@ async function kpVerPozo(codigo, pozoId){
    un problema de suministro, no 60 incidentes sueltos. Esa lectura se
    pierde si solo se muestra la cronologia. */
 function kpRenderEventos(eventos){
-  eventos = eventos || [];
-  if (!eventos.length){
+  KP_EV = eventos || [];
+  if (!KP_EV.length){
     return '<h2 style="margin-top:22px">Eventos y paros</h2>'
       + '<p class="hint">Sin eventos cargados para este per&iacute;odo. '
       + 'Se cargan junto con la DATA desde el Analizador.</p>';
   }
 
-  /* Severidades reales que emite el analizador. Verificado contra los
-     datos: no son dos sino cinco, y agrupar todo lo que no sea 'accion'
-     como alarma metia Startup y Return to normal en el conteo de fallas. */
-  const SEV = {
-    crit:   { cls:'crit', txt:'Disparo',       equipo:true  },
-    att:    { cls:'warn', txt:'Atenci\u00f3n',     equipo:true  },
-    obs:    { cls:'warn', txt:'Observaci\u00f3n',  equipo:true  },
-    ok:     { cls:'ok',   txt:'Normalizaci\u00f3n',equipo:false },
-    accion: { cls:'ok',   txt:'Operador',      equipo:false }
-  };
-  const meta = sv => SEV[sv] || { cls:'warn', txt:(sv||'sin clasificar'), equipo:true };
-
-  const n = sv => eventos.filter(e => e.severidad === sv).length;
-
-  let h = '<h2 style="margin-top:22px">Eventos y paros</h2>';
+  /* Severidades reales del analizador. Son cinco, no dos: agrupar todo lo
+     que no sea 'accion' como alarma metia Startup y Return to normal en el
+     conteo de fallas. */
+  const n = sv => KP_EV.filter(e => e.severidad === sv).length;
   const partes = [];
-  if (n('crit'))   partes.push(n('crit') + ' disparo(s)');
+  if (n('crit'))   partes.push('<b>' + n('crit') + '</b> disparo(s)');
   if (n('att'))    partes.push(n('att') + ' de atenci\u00f3n');
   if (n('obs'))    partes.push(n('obs') + ' observaci\u00f3n(es)');
-  if (n('accion')) partes.push(n('accion') + ' acci\u00f3n(es) de operador');
+  if (n('accion')) partes.push(n('accion') + ' de operador');
   if (n('ok'))     partes.push(n('ok') + ' normalizaci\u00f3n(es)');
-  h += '<p class="hint">' + eventos.length + ' evento(s) &middot; '
+
+  let h = '<h2 style="margin-top:22px">Eventos y paros</h2>';
+  h += '<p class="hint">' + KP_EV.length + ' evento(s) &middot; '
     +  partes.join(' &middot; ') + '</p>';
 
-  /* Resumen por causa, solo de eventos del equipo. El color lo da la
-     GRAVEDAD, no la recurrencia: un solo disparo por sobrecorriente pesa
-     mas que 170 cambios de setpoint. El conteo solo ordena. */
-  const eq = eventos.filter(e => meta(e.severidad).equipo);
-  const porCausa = {};
-  eq.forEach(e => {
-    const k = (e.etiqueta || 'Sin causa registrada') + '\u0000' + (e.severidad || '');
-    if (!porCausa[k]) porCausa[k] = { n:0, ultimo:e.ocurrio, sev:e.severidad,
-                                      causa:e.etiqueta || 'Sin causa registrada' };
-    porCausa[k].n++;
-    if (e.ocurrio > porCausa[k].ultimo) porCausa[k].ultimo = e.ocurrio;
+  /* Filtro por severidad. Solo se ofrecen las que existen en los datos:
+     un filtro que devuelve vacio siempre no aporta nada. */
+  h += '<div id="kpEvFiltros" style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">';
+  h += kpEvBoton('equipo', 'Solo del equipo', KP_EV.filter(e => kpEvMeta(e.severidad).equipo).length);
+  ['crit','att','obs','accion','ok'].forEach(sv => {
+    if (n(sv)) h += kpEvBoton(sv, kpEvMeta(sv).txt, n(sv));
   });
-  const rank = { crit:0, att:1, obs:2 };
-  const orden = Object.keys(porCausa).sort((a,b) => {
-    const A = porCausa[a], B = porCausa[b];
-    const ra = rank[A.sev] != null ? rank[A.sev] : 9;
-    const rb = rank[B.sev] != null ? rank[B.sev] : 9;
-    return ra !== rb ? ra - rb : B.n - A.n;
-  });
+  h += kpEvBoton('todo', 'Todo', KP_EV.length);
+  h += '</div>';
 
-  if (orden.length){
-    h += '<p class="hint" style="margin-top:12px">Por causa</p><div class="kp-list">';
-    orden.forEach(k => {
-      const d = porCausa[k], m = meta(d.sev);
-      h += '<div class="kp-row ' + m.cls + '">'
-        +  '<div class="kp-row-t">' + kpEsc(d.causa)
-        +  ' <span class="kp-pill ' + m.cls + '">' + m.txt + '</span></div>'
-        +  '<div class="kp-row-d">' + d.n + ' vez(ces) &middot; &uacute;ltima '
-        +  kpFechaCorta(d.ultimo) + '</div></div>';
+  h += '<div id="kpEvCuerpo"></div>';
+  return h;
+}
+
+var KP_EV = [], KP_EV_FILTRO = 'equipo', KP_EV_ABIERTAS = {};
+
+const KP_SEV = {
+  crit:   { cls:'crit', txt:'Disparo',        equipo:true,  rank:0 },
+  att:    { cls:'warn', txt:'Atenci\u00f3n',      equipo:true,  rank:1 },
+  obs:    { cls:'warn', txt:'Observaci\u00f3n',   equipo:true,  rank:2 },
+  ok:     { cls:'ok',   txt:'Normalizaci\u00f3n', equipo:false, rank:3 },
+  accion: { cls:'ok',   txt:'Operador',       equipo:false, rank:4 }
+};
+function kpEvMeta(sv){
+  return KP_SEV[sv] || { cls:'warn', txt:(sv || 'sin clasificar'), equipo:true, rank:9 };
+}
+
+function kpEvBoton(id, txt, n){
+  const act = KP_EV_FILTRO === id;
+  return '<button class="kp-chip' + (act ? ' on' : '') + '"'
+    + ' onclick="kpEvFiltrar(\'' + id + '\')"'
+    + ' style="border:1px solid ' + (act ? 'transparent' : 'var(--line,#dde5e8)')
+    + ';background:' + (act ? 'var(--accent,#0f7d8c)' : 'transparent')
+    + ';color:' + (act ? '#fff' : 'inherit')
+    + ';border-radius:16px;padding:5px 12px;font:600 12.5px inherit;cursor:pointer">'
+    + txt + ' <span style="opacity:.7">' + n + '</span></button>';
+}
+
+function kpEvFiltrar(id){
+  KP_EV_FILTRO = id;
+  KP_EV_ABIERTAS = {};
+  const cont = document.getElementById('kpEvFiltros');
+  if (cont){
+    const n = sv => KP_EV.filter(e => e.severidad === sv).length;
+    let h = kpEvBoton('equipo', 'Solo del equipo',
+              KP_EV.filter(e => kpEvMeta(e.severidad).equipo).length);
+    ['crit','att','obs','accion','ok'].forEach(sv => {
+      if (n(sv)) h += kpEvBoton(sv, kpEvMeta(sv).txt, n(sv));
     });
-    h += '</div>';
+    h += kpEvBoton('todo', 'Todo', KP_EV.length);
+    cont.innerHTML = h;
   }
+  kpEvPintar();
+}
 
-  /* Cronologia completa, lo mas reciente primero */
-  const ult = eventos.slice().sort((a,b) => (a.ocurrio < b.ocurrio ? 1 : -1)).slice(0, 80);
-  h += '<p class="hint" style="margin-top:14px">'
-    +  (eventos.length > 80 ? '\u00daltimos 80 de ' + eventos.length : 'Cronolog\u00eda')
-    +  '</p><div class="kp-list">';
-  ult.forEach(e => {
-    const m = meta(e.severidad);
-    h += '<div class="kp-row ' + m.cls + '">'
-      +  '<div class="kp-row-t">' + kpEsc(e.etiqueta || '\u2014') + '</div>'
-      +  '<div class="kp-row-d">' + kpFechaCorta(e.ocurrio)
-      +  ' &middot; ' + m.txt
-      +  (e.detalle ? ' &middot; ' + kpEsc(e.detalle) : '')
-      +  '</div></div>';
+/* Agrupado y colapsado: cada causa es una fila que se abre para ver sus
+   ocurrencias. Con 225 eventos la lista plana no se puede leer, y lo que
+   importa primero es CUALES causas y cuantas veces, no la cronologia. */
+function kpEvPintar(){
+  const caja = document.getElementById('kpEvCuerpo');
+  if (!caja) return;
+
+  const f = KP_EV_FILTRO;
+  const evs = KP_EV.filter(e =>
+    f === 'todo'   ? true :
+    f === 'equipo' ? kpEvMeta(e.severidad).equipo :
+                     e.severidad === f);
+
+  if (!evs.length){ caja.innerHTML = '<p class="hint">Sin eventos en este filtro.</p>'; return; }
+
+  const g = {};
+  evs.forEach(e => {
+    const k = (e.severidad || '') + '\u0000' + (e.etiqueta || 'Sin causa registrada');
+    if (!g[k]) g[k] = { causa:e.etiqueta || 'Sin causa registrada',
+                        sev:e.severidad, items:[] };
+    g[k].items.push(e);
+  });
+
+  /* Primero por gravedad, luego por recurrencia. El color viene de la
+     severidad y no del conteo: un solo disparo por sobrecorriente pesa
+     mas que 170 cambios de setpoint. */
+  const claves = Object.keys(g).sort((a,b) => {
+    const A = kpEvMeta(g[a].sev).rank, B = kpEvMeta(g[b].sev).rank;
+    return A !== B ? A - B : g[b].items.length - g[a].items.length;
+  });
+
+  let h = '<div class="kp-list">';
+  claves.forEach(k => {
+    const d = g[k], m = kpEvMeta(d.sev);
+    d.items.sort((x,y) => (x.ocurrio < y.ocurrio ? 1 : -1));
+    const abierta = !!KP_EV_ABIERTAS[k];
+    const kEsc = k.replace(/\u0000/g, '::').replace(/'/g, "\\'");
+
+    h += '<div class="kp-row ' + m.cls + '" style="cursor:pointer"'
+      +  ' onclick="kpEvAbrir(\'' + kEsc + '\')">'
+      +  '<div class="kp-row-t">'
+      +  '<span style="display:inline-block;width:12px;opacity:.55">'
+      +  (abierta ? '\u2212' : '+') + '</span> '
+      +  kpEsc(d.causa)
+      +  ' <span class="kp-pill ' + m.cls + '">' + m.txt + '</span></div>'
+      +  '<div class="kp-row-d" style="padding-left:12px">'
+      +  d.items.length + ' vez(ces) &middot; &uacute;ltima '
+      +  kpFechaCorta(d.items[0].ocurrio)
+      +  (d.items.length > 1 ? ' &middot; primera ' + kpFechaCorta(d.items[d.items.length-1].ocurrio) : '')
+      +  '</div>';
+
+    if (abierta){
+      h += '<div style="margin:8px 0 2px 12px;border-left:2px solid var(--line,#dde5e8);'
+        +  'padding-left:10px">';
+      d.items.slice(0, 100).forEach(e => {
+        h += '<div style="font-size:12.5px;padding:3px 0;opacity:.85">'
+          +  kpFechaCorta(e.ocurrio)
+          +  (e.detalle ? ' &middot; ' + kpEsc(e.detalle) : '')
+          +  '</div>';
+      });
+      if (d.items.length > 100)
+        h += '<div class="hint">y ' + (d.items.length - 100) + ' m\u00e1s</div>';
+      h += '</div>';
+    }
+    h += '</div>';
   });
   h += '</div>';
-  return h;
+  caja.innerHTML = h;
+}
+
+function kpEvAbrir(kEsc){
+  const k = kEsc.replace(/::/, '\u0000');
+  KP_EV_ABIERTAS[k] = !KP_EV_ABIERTAS[k];
+  kpEvPintar();
 }
 
 function kpEsc(t){
