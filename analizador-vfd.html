@@ -3192,7 +3192,17 @@ async function dpEnviarAKronos(){
     periodo_desde:new Date(U.t0).toISOString(),
     periodo_hasta:new Date(U.t1).toISOString(),
     resolucion_seg:resolucion,
-    filas
+    filas,
+    /* Los eventos explican los quiebres de la tendencia: sin el paro y sin
+       el cambio de frecuencia, la curva se ve pero no se puede interpretar.
+       Se manda la ventana completa del periodo cargado, ya leida por el
+       propio analizador. */
+    eventos:(U.events||[]).map(e=>({
+      t:new Date(e.t).toISOString(),
+      sev:e.sev||null,
+      label:e.label||null,
+      detalle:e.detail||null
+    }))
   };
 
   if(window.parent===window){
@@ -3201,7 +3211,7 @@ async function dpEnviarAKronos(){
     return;
   }
   window.parent.postMessage(msg,"*");
-  $("#err").textContent=`enviado a Kronos-M: ${filas.length} día(s)`;
+  $("#err").textContent=`enviado a Kronos-M: ${filas.length} día(s) · ${(U.events||[]).length} evento(s)`;
 }
 
 /* El padre confirma o reporta el error, para que el aviso salga aquí. */
@@ -3218,8 +3228,8 @@ window.addEventListener("message",e=>{
   if(window.parent===window) return;
   const ref=document.getElementById("bAdd"); if(!ref) return;
   const b=document.createElement("button");
-  b.className="btn"; b.id="bDP"; b.textContent="Enviar a DataPredictiva";
-  b.title="calcula los indicadores diarios y los envía a Kronos-M";
+  b.className="btn"; b.id="bDP"; b.textContent="Enviar a Monitoreo de Condición";
+  b.title="calcula los indicadores diarios, junta los eventos y los envía a Kronos-M";
   b.onclick=dpEnviarAKronos;
   ref.parentNode.insertBefore(b,ref);
 })();

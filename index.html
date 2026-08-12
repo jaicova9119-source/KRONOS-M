@@ -9599,23 +9599,43 @@ async function dpAbrirDialogo(msg) {
     .from("pozos").select("id,nombre,campo,marca_variador")
     .eq("activo", true).order("nombre");
 
+  /* El analizador ya sabe de qué unidad son los archivos ("CYC 08").
+     Se resuelve contra el maestro de pozos para preseleccionarlo y que
+     nadie tenga que buscarlo en una lista de 53. El desplegable queda
+     igual: la detección propone, la persona confirma. */
+  let sugerido = null, comoSalio = null;
+  if (msg.unidad) {
+    const { data: det } = await sb.rpc("dp_pozo_por_texto", { p_texto: msg.unidad });
+    if (det && det.length === 1) { sugerido = det[0].id; comoSalio = det[0].coincidencia; }
+  }
+
   const ops = (pozos || [])
-    .map(p => `<option value="${p.id}">${p.nombre}${p.campo ? " · " + p.campo : ""}</option>`)
+    .map(p => `<option value="${p.id}"${p.id === sugerido ? " selected" : ""}>` +
+              `${p.nombre}${p.campo ? " · " + p.campo : ""}</option>`)
     .join("");
 
   dlg.innerHTML = `
     <div style="background:var(--card,#fff);color:var(--fg,#111);border-radius:12px;
                 max-width:460px;width:100%;padding:20px;font-size:14px">
-      <h3 style="margin:0 0 4px">Enviar a DataPredictiva</h3>
+      <h3 style="margin:0 0 4px">Enviar a Monitoreo de Condición</h3>
       <p style="margin:0 0 14px;opacity:.7">
-        ${msg.filas.length} día(s) · ${msg.formato} ·
+        ${msg.filas.length} día(s) · ${(msg.eventos || []).length} evento(s) ·
+        ${msg.formato} ·
         ${msg.periodo_desde.slice(0,10)} a ${msg.periodo_hasta.slice(0,10)}
       </p>
 
       <label style="display:block;margin-bottom:4px">Pozo</label>
-      <select id="dp-pozo" style="width:100%;padding:8px;margin-bottom:12px">
+      <select id="dp-pozo" style="width:100%;padding:8px;margin-bottom:${sugerido ? "4px" : "12px"}">
         <option value="">— elegir —</option>${ops}
       </select>
+      ${sugerido
+        ? `<p style="margin:0 0 12px;opacity:.6;font-size:12px">
+             Detectado de «${msg.unidad}»${comoSalio === "NUMERO" ? " por el número" : ""}.
+             Verifica que sea el pozo correcto antes de guardar.</p>`
+        : (msg.unidad
+            ? `<p style="margin:0 0 12px;color:#b06a1a;font-size:12px">
+                 No se pudo identificar el pozo de «${msg.unidad}»: elígelo a mano.</p>`
+            : "")}
 
       <label style="display:block;margin-bottom:4px">
         Desfase del reloj del equipo (segundos)
@@ -9705,6 +9725,21 @@ async function dpGuardar() {
     });
     if (eIng) throw eIng;
 
+    /* Eventos del período. Van después de las features y su fallo no
+       invalida la carga: sin eventos la tendencia sigue siendo válida,
+       solo queda sin anotar. */
+    let nEv = 0;
+    const evs = msg.eventos || [];
+    if (evs.length) {
+      const { data: rEv, error: eEv } = await sbDP.rpc("dp_ingestar_eventos_vfd", {
+        p_carga_id: carga.id,
+        p_pozo_id:  pozo.id,
+        p_eventos:  evs
+      });
+      if (eEv) console.warn("eventos no guardados:", eEv.message);
+      else nEv = (rEv && rEv.insertados) || 0;
+    }
+
     /* Evaluar el motor determinista día por día. */
     let atencion = 0;
     for (const f of filas) {
@@ -9716,9 +9751,10 @@ async function dpGuardar() {
     }
 
     dpCerrarDialogo();
-    toast(`DataPredictiva: ${filas.length} día(s) guardados en ${pozo.nombre}` +
+    toast(`Monitoreo de Condición: ${filas.length} día(s) en ${pozo.nombre}` +
+          (nEv ? ` · ${nEv} evento(s)` : "") +
           (atencion ? ` · ${atencion} requieren atención` : ""));
-    dpResponder(true, { dias: filas.length, atencion });
+    dpResponder(true, { dias: filas.length, atencion, eventos: nEv });
 
   } catch (err) {
     aviso.textContent = "no se guardó: " + (err.message || err);
