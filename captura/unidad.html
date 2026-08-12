@@ -510,10 +510,23 @@ function abrirPlaca(){
       +  (c.unidad ? ' (' + esc(c.unidad) + ')' : '')
       +  (c.calculo ? ' <span style="color:var(--acento);font-weight:700">calculada</span>' : '')
       +  '</label>';
-    h += '<input id="pl-' + esc(c.columna) + '" class="campo' + (num ? ' mono' : '') + '"'
-      +  (num ? ' inputmode="decimal"' : '')
-      +  ' data-col="' + esc(c.columna) + '"'
-      +  ' value="' + esc(val == null ? '' : val) + '" autocomplete="off">';
+    if(c.opciones && c.opciones.length){
+      /* Vocabulario cerrado: evita que 'termoestable', 'Termo estable' y
+         'TERMOESTABLE' terminen como tres valores distintos. */
+      h += '<select id="pl-' + esc(c.columna) + '" class="campo"'
+        +  ' data-col="' + esc(c.columna) + '">'
+        +  '<option value="">Sin definir</option>'
+        +  c.opciones.map(function(o){
+             return '<option value="' + esc(o) + '"'
+               + (String(val) === String(o) ? ' selected' : '') + '>'
+               + esc(o) + '</option>'; }).join('')
+        +  '</select>';
+    } else {
+      h += '<input id="pl-' + esc(c.columna) + '" class="campo' + (num ? ' mono' : '') + '"'
+        +  (num ? ' inputmode="decimal"' : '')
+        +  ' data-col="' + esc(c.columna) + '"'
+        +  ' value="' + esc(val == null ? '' : val) + '" autocomplete="off">';
+    }
 
     /* Linea de calculo: muestra el teorico y la desviacion contra lo
        escrito. No lo sobreescribe: la placa manda si difiere por diseno
@@ -560,8 +573,12 @@ function abrirPlaca(){
   $('pl-guardar').disabled = false;
 
   /* Recalcular al escribir cualquier campo */
-  Array.prototype.forEach.call($('pl-campos').querySelectorAll('input[data-col]'),
-    function(el){ el.oninput = function(){ plRecalcular(rol); }; });
+  Array.prototype.forEach.call(
+    $('pl-campos').querySelectorAll('input[data-col],select[data-col]'),
+    function(el){
+      el.oninput  = function(){ plRecalcular(rol); };
+      el.onchange = function(){ plRecalcular(rol); };
+    });
 
   $('hoja-placa').setAttribute('data-rol', rol);
   aviso($('pl-msg'), '');
