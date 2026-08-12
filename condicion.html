@@ -92,7 +92,57 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-chip.on{background:#2f9fd4;border-color:#2f9fd4;color:#fff}
 .kp-demo{background:#fff6d9;border:1px solid #e8d08a;color:#6b5410;
   padding:8px 20px;font-size:12.5px}
-@media(max-width:640px){.kp-wrap{padding:14px}.kp-top{padding:12px 14px}.kp-bar{padding:9px 14px}}
+/* ── Estructura de secciones ─────────────────────────────────────
+   Cada bloque es una tarjeta con su encabezado. En movil el ancho
+   manda: las rejillas bajan a una o dos columnas y los indicadores
+   se compactan en lugar de encogerse hasta ser ilegibles. */
+.kp-sec{background:var(--kp-card);border:1px solid var(--kp-line);border-radius:10px;
+  padding:16px;margin-bottom:14px}
+.kp-sec > h2{margin:0 0 2px;font-size:15px;font-weight:600}
+.kp-sec > .hint{margin:0 0 12px}
+.kp-sec.plegable > h2{cursor:pointer;display:flex;align-items:center;gap:8px}
+.kp-sec.plegable > h2 .tw{font-size:12px;opacity:.5;width:12px;flex:none}
+.kp-sec .cuerpo{display:block}
+.kp-sec.cerrada .cuerpo{display:none}
+.kp-sec .cuerpo > *:first-child{margin-top:0}
+
+/* Veredicto: lo primero que se lee */
+.kp-vd{display:flex;gap:14px;align-items:center;flex-wrap:wrap;
+  border-left:4px solid var(--kp-ok);padding-left:14px}
+.kp-vd.warn{border-left-color:var(--kp-warn)}
+.kp-vd.crit{border-left-color:var(--kp-crit)}
+.kp-vd .est{font-size:22px;font-weight:600;line-height:1.15}
+.kp-vd .det{font-size:13px;color:var(--kp-ink2)}
+
+/* Indice de secciones, pegado arriba para no perder el rumbo al bajar */
+.kp-nav{display:flex;gap:6px;overflow-x:auto;padding:8px 0 10px;
+  -webkit-overflow-scrolling:touch;scrollbar-width:none}
+.kp-nav::-webkit-scrollbar{display:none}
+.kp-nav a{flex:none;font:600 12px inherit;color:var(--kp-ink2);text-decoration:none;
+  border:1px solid var(--kp-line);border-radius:16px;padding:5px 11px;background:var(--kp-card)}
+.kp-nav a:active{background:#eef3f5}
+
+.kp-chip{white-space:nowrap}
+
+@media(max-width:640px){
+  .kp-wrap{padding:12px}
+  .kp-top{padding:12px 14px}
+  .kp-bar{padding:9px 14px}
+  .kp-sec{padding:13px;border-radius:9px}
+  /* Dos columnas en movil: un indicador por fila desperdicia pantalla
+     y obliga a un scroll larguisimo. */
+  .kp-kpis{grid-template-columns:repeat(2,1fr);gap:8px}
+  .kp-kpi{padding:10px}
+  .kp-kpi .v{font-size:19px}
+  .kp-kpi .k{font-size:9.5px;letter-spacing:.6px}
+  .kp-kpi .r{font-size:11px}
+  .kp-stats{grid-template-columns:repeat(2,1fr)}
+  .kp-row{padding:11px 12px}
+  .kp-vd .est{font-size:19px}
+}
+@media(max-width:380px){
+  .kp-kpis{grid-template-columns:1fr}
+}
 </style>
 </head>
 <body>
@@ -685,37 +735,123 @@ async function kpVerPozo(codigo, pozoId){
     "Sistema " + p.sistema + " &middot; " + p.campo
     + (p.fecha_vector ? (" &middot; vector " + p.fecha_vector) : "");
 
-  let h = '';
+  /* Orden de lectura, no orden de tablas:
+       1 veredicto        -> hay algo que atender?
+       2 hallazgos        -> por que
+       3 cadena electrica -> donde esta el margen
+       4 condicion        -> los numeros del dia
+       5 eventos y paros  -> que paso en el periodo
+       6 contexto y dato  -> informacion sobre el dato, al final
+     Las secciones largas arrancan plegadas en pantalla angosta. */
+  const angosta = window.matchMedia('(max-width:640px)').matches;
+  const sec = [];
 
-  if (med) h += kpRenderMedicion(med);
-
-  if (p.indicadores.length){
-  h += '<h2 style="margin-top:22px">Condici&oacute;n de la unidad</h2>';
-  h += '<p class="hint">DATA del variador &middot; vector diario del '
-    + p.fecha_vector + '</p><div class="kp-kpis">';
-  p.indicadores.forEach(i => {
-    const c = KP_EST[i.estado].cls;
-    h += '<div class="kp-kpi ' + c + '"><div class="k">' + i.etiqueta + '</div>'
-      +  '<div class="v">' + i.valor + '<small>' + i.unidad + '</small></div>'
-      +  '<div class="r">' + i.referencia + '</div>'
-      +  '<span class="kp-pill ' + c + '">' + KP_EST[i.estado].txt + '</span></div>';
-  });
-  h += '</div>';
-  }
+  sec.push(kpSeccion('veredicto', 'Veredicto', null,
+    kpRenderVeredicto(p), { plegable:false }));
 
   if (p.reglas.length){
-  h += '<h2 style="margin-top:22px">Hallazgos y reglas evaluadas</h2>';
-  const ev = p.reglas.filter(r => ["crit","warn","ok"].includes(r.estado)).length;
-  h += '<p class="hint">' + p.reglas.length + ' reglas &middot; ' + ev + ' evaluadas</p>';
-  h += '<div class="kp-list">' + kpDibujarReglas(p.reglas) + '</div>';
+    const ev = p.reglas.filter(r => ["crit","warn","ok"].includes(r.estado)).length;
+    const cri = p.reglas.filter(r => r.estado === 'crit').length;
+    sec.push(kpSeccion('hallazgos', 'Hallazgos y reglas evaluadas',
+      p.reglas.length + ' reglas &middot; ' + ev + ' evaluadas'
+        + (cri ? ' &middot; ' + cri + ' en criterio cr\u00edtico' : ''),
+      '<div class="kp-list">' + kpDibujarReglas(p.reglas) + '</div>',
+      { cerrada: angosta && !cri }));
   }
 
-  h += kpRenderEventos(p.eventos);
+  if (med){
+    sec.push(kpSeccion('cadena', 'Cadena energ&eacute;tica', null,
+      kpRenderMedicion(med), { cerrada:false }));
+  }
 
-  if (ctx) h += kpRenderContexto(ctx);
+  if (p.indicadores.length){
+    let k = '<div class="kp-kpis">';
+    p.indicadores.forEach(i => {
+      const c = KP_EST[i.estado].cls;
+      k += '<div class="kp-kpi ' + c + '"><div class="k">' + i.etiqueta + '</div>'
+        +  '<div class="v">' + i.valor + '<small>' + i.unidad + '</small></div>'
+        +  '<div class="r">' + i.referencia + '</div>'
+        +  '<span class="kp-pill ' + c + '">' + KP_EST[i.estado].txt + '</span></div>';
+    });
+    k += '</div>';
+    sec.push(kpSeccion('condicion', 'Condici&oacute;n de la unidad',
+      'DATA del variador &middot; vector diario del ' + p.fecha_vector, k, {}));
+  }
+
+  const ev = kpRenderEventos(p.eventos);
+  if (ev) sec.push(ev);
+
+  if (ctx){
+    sec.push(kpSeccion('contexto', 'Contexto y calidad del dato', null,
+      kpRenderContexto(ctx), { cerrada:true }));
+  }
+
+  /* Indice solo si vale la pena: con dos secciones estorba mas que ayuda */
+  let h = '';
+  if (sec.length > 3){
+    h += '<div class="kp-nav">'
+      +  sec.map(x => '<a href="#sec-' + x.id + '">' + x.titulo + '</a>').join('')
+      +  '</div>';
+  }
+  h += sec.map(x => x.html).join('');
 
   v.innerHTML = h;
   if (KP_EV.length) kpEvPintar();
+}
+
+/* Envuelve un bloque como seccion plegable. Devuelve id, titulo y html
+   para que el indice se arme del mismo arreglo y no se desincronice. */
+function kpSeccion(id, titulo, subtitulo, cuerpo, op){
+  op = op || {};
+  const plegable = op.plegable !== false;
+  const cerrada = !!op.cerrada;
+  let h = '<section class="kp-sec' + (plegable ? ' plegable' : '')
+        + (cerrada ? ' cerrada' : '') + '" id="sec-' + id + '">';
+  h += plegable
+    ? '<h2 onclick="kpPlegar(\'' + id + '\')"><span class="tw">'
+      + (cerrada ? '\u25b8' : '\u25be') + '</span>' + titulo + '</h2>'
+    : '<h2>' + titulo + '</h2>';
+  if (subtitulo) h += '<p class="hint">' + subtitulo + '</p>';
+  h += '<div class="cuerpo">' + cuerpo + '</div></section>';
+  return { id: id, titulo: titulo, html: h };
+}
+
+function kpPlegar(id){
+  const s = document.getElementById('sec-' + id);
+  if (!s) return;
+  s.classList.toggle('cerrada');
+  const tw = s.querySelector('h2 .tw');
+  if (tw) tw.textContent = s.classList.contains('cerrada') ? '\u25b8' : '\u25be';
+}
+
+/* Veredicto: el estado y por que, sin numeros que haya que interpretar */
+function kpRenderVeredicto(p){
+  const est = p.estado || 'ok';
+  const txt = { ok:'Sin novedad', warn:'Requiere atenci\u00f3n', crit:'Cr\u00edtico' }[est]
+            || 'Sin clasificar';
+  const cri = (p.reglas || []).filter(r => r.estado === 'crit');
+  const adv = (p.reglas || []).filter(r => r.estado === 'warn');
+
+  let det;
+  if (cri.length)      det = cri.length + ' regla(s) en criterio cr\u00edtico: '
+                             + kpEsc(cri.slice(0,3).map(r => r.nombre || r.regla || '').join(', '));
+  else if (adv.length) det = adv.length + ' regla(s) por encima del umbral de atenci\u00f3n';
+  else                 det = 'Ninguna regla activada por encima de umbral';
+
+  let h = '<div class="kp-vd ' + est + '">';
+  h += '<div><div class="est">' + txt + '</div><div class="det">' + det + '</div></div>';
+  h += '</div>';
+  h += '<div class="kp-stats" style="margin:14px 0 0">'
+    +  kpVdDato('Sistema', p.sistema || '\u2014')
+    +  kpVdDato('Campo', p.campo || '\u2014')
+    +  kpVdDato('Vector', p.fecha_vector || 'sin calcular')
+    +  kpVdDato('Eventos del per\u00edodo', (p.eventos || []).length || '\u2014')
+    +  '</div>';
+  return h;
+}
+function kpVdDato(k, v){
+  return '<div class="kp-kpi none"><div class="k">' + k + '</div>'
+    + '<div class="v" style="font-size:16px">' + v + '</div></div>';
 }
 
 /* ── Eventos y paros del variador ─────────────────────────────────────
@@ -725,9 +861,9 @@ async function kpVerPozo(codigo, pozoId){
 function kpRenderEventos(eventos){
   KP_EV = eventos || [];
   if (!KP_EV.length){
-    return '<h2 style="margin-top:22px">Eventos y paros</h2>'
-      + '<p class="hint">Sin eventos cargados para este per&iacute;odo. '
-      + 'Se cargan junto con la DATA desde el Analizador.</p>';
+    return kpSeccion('eventos', 'Eventos y paros', null,
+      '<p class="hint" style="margin:0">Sin eventos cargados para este per\u00edodo. '
+      + 'Se cargan junto con la DATA desde el Analizador.</p>', { cerrada:true });
   }
 
   /* Severidades reales del analizador. Son cinco, no dos: agrupar todo lo
@@ -741,14 +877,13 @@ function kpRenderEventos(eventos){
   if (n('accion')) partes.push(n('accion') + ' de operador');
   if (n('ok'))     partes.push(n('ok') + ' normalizaci\u00f3n(es)');
 
-  let h = '<h2 style="margin-top:22px">Eventos y paros</h2>';
-  h += '<p class="hint">' + KP_EV.length + ' evento(s) &middot; '
-    +  partes.join(' &middot; ') + '</p>';
+  let h = '';
 
   /* Filtro por severidad. Solo se ofrecen las que existen en los datos:
-     un filtro que devuelve vacio siempre no aporta nada. */
-  h += '<div id="kpEvFiltros" style="display:flex;gap:6px;flex-wrap:wrap;margin:10px 0">';
-  h += kpEvBoton('equipo', 'Solo del equipo', KP_EV.filter(e => kpEvMeta(e.severidad).equipo).length);
+     un filtro que devuelve vacio siempre no aporta nada. En movil la fila
+     se desliza en lugar de envolverse en tres lineas. */
+  h += '<div id="kpEvFiltros" class="kp-nav" style="padding:0 0 10px">';
+  h += kpEvBoton('equipo', 'Del equipo', KP_EV.filter(e => kpEvMeta(e.severidad).equipo).length);
   ['crit','att','obs','accion','ok'].forEach(sv => {
     if (n(sv)) h += kpEvBoton(sv, kpEvMeta(sv).txt, n(sv));
   });
@@ -756,7 +891,8 @@ function kpRenderEventos(eventos){
   h += '</div>';
 
   h += '<div id="kpEvCuerpo"></div>';
-  return h;
+  return kpSeccion('eventos', 'Eventos y paros',
+    KP_EV.length + ' evento(s) &middot; ' + partes.join(' &middot; '), h, {});
 }
 
 var KP_EV = [], KP_EV_FILTRO = 'equipo', KP_EV_ABIERTAS = {};
@@ -789,7 +925,7 @@ function kpEvFiltrar(id){
   const cont = document.getElementById('kpEvFiltros');
   if (cont){
     const n = sv => KP_EV.filter(e => e.severidad === sv).length;
-    let h = kpEvBoton('equipo', 'Solo del equipo',
+    let h = kpEvBoton('equipo', 'Del equipo',
               KP_EV.filter(e => kpEvMeta(e.severidad).equipo).length);
     ['crit','att','obs','accion','ok'].forEach(sv => {
       if (n(sv)) h += kpEvBoton(sv, kpEvMeta(sv).txt, n(sv));
