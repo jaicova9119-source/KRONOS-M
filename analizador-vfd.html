@@ -1200,10 +1200,21 @@ function addFileFromText(text,fname,forceUnit){
     U.cov.push({t0,t1,genre:"serie",fid:f.id});
   } else {
     const {events,notes}=parseEvento(text,prof);
-    f.notes.push(...notes);
-    events.forEach(e=>{e.fid=f.id;});
-    U.events.push(...events);
-    f.t0=Math.min(...events.map(e=>e.t)); f.t1=Math.max(...events.map(e=>e.t)); f.n=events.length;
+    for(let i=0;i<notes.length;i++) f.notes.push(notes[i]);
+    /* Un .JRN con muchos eventos también revienta el stack por spread.
+       De paso el t0/t1 sale en una sola pasada, sin arreglo intermedio. */
+    let et0=Infinity, et1=-Infinity;
+    for(let i=0;i<events.length;i++){
+      const e=events[i];
+      e.fid=f.id;
+      U.events.push(e);
+      if(e.t<et0) et0=e.t;
+      if(e.t>et1) et1=e.t;
+    }
+    /* Si no hubo eventos se dejan Infinity/-Infinity a propósito: es lo que
+       devolvía Math.min()/Math.max() sin argumentos, y finalizeUnit los
+       ignora al reducir. Con null se coercería a 0 y arruinaría el rango. */
+    f.t0=et0; f.t1=et1; f.n=events.length;
     U.cov.push({t0:f.t0,t1:f.t1,genre:prof.genre,fid:f.id});
   }
   DB.files.push(f);
@@ -2913,11 +2924,23 @@ function dpDiaLocal(ms){
 }
 
 const dpProm = a => a.length ? a.reduce((s,x)=>s+x,0)/a.length : null;
-const dpMax  = a => a.length ? Math.max(...a) : null;
-const dpMin  = a => a.length ? Math.min(...a) : null;
+
+/* Math.max(...a) pasa cada muestra como argumento y revienta el stack
+   alrededor de las 100 000 muestras. Con 40 archivos a 15 s son millones,
+   así que va por bucle. Devuelve null en serie vacía, igual que antes. */
+function dpMax(a){
+  let m=-Infinity;
+  for(let i=0;i<a.length;i++){ const v=a[i]; if(v>m) m=v; }
+  return m===-Infinity ? null : m;
+}
+function dpMin(a){
+  let m=Infinity;
+  for(let i=0;i<a.length;i++){ const v=a[i]; if(v<m) m=v; }
+  return m===Infinity ? null : m;
+}
 function dpPct(a,p){
   if(!a.length) return null;
-  const s=[...a].sort((x,y)=>x-y);
+  const s=a.slice().sort((x,y)=>x-y);
   return s[Math.min(s.length-1, Math.max(0, Math.round(p/100*(s.length-1))))];
 }
 function dpPendiente(ts,ys){
@@ -2952,7 +2975,11 @@ function dpPorDiaVarios(U,roles){
     const pd=dpPorDia(U.ch[r]);
     for(const d in pd){
       (out[d]||(out[d]={t:[],y:[]}));
-      out[d].t.push(...pd[d].t); out[d].y.push(...pd[d].y);
+      /* push(...arr) tiene el mismo límite de stack que Math.max(...arr).
+         Aquí es un día de una fase, pero con archivos de alta resolución
+         llega a decenas de miles y no vale dejarlo al azar. */
+      const st=pd[d].t, sy=pd[d].y, dt=out[d].t, dy=out[d].y;
+      for(let i=0;i<st.length;i++){ dt.push(st[i]); dy.push(sy[i]); }
     }
   }
   return out;
@@ -3230,7 +3257,12 @@ window.addEventListener("message",e=>{
   const b=document.createElement("button");
   b.className="btn"; b.id="bDP"; b.textContent="Enviar a Monitoreo de Condición";
   b.title="calcula los indicadores diarios, junta los eventos y los envía a Kronos-M";
-  b.onclick=dpEnviarAKronos;
+  /* Sin este catch un fallo queda como "Uncaught (in promise)" en consola:
+     el botón parece no hacer nada y el usuario no se entera. */
+  b.onclick=()=>dpEnviarAKronos().catch(err=>{
+    console.error("dpEnviarAKronos:",err);
+    $("#err").textContent=`no se pudo enviar: ${err && err.message ? err.message : err}`;
+  });
   ref.parentNode.insertBefore(b,ref);
 })();
 </script>
