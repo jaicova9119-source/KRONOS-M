@@ -710,7 +710,7 @@ async function kpVerPozo(codigo, pozoId){
   h += '<div class="kp-list">' + kpDibujarReglas(p.reglas) + '</div>';
   }
 
-  h += kpRenderEventos(p.eventos, p.paros_causas);
+  h += kpRenderEventos(p.eventos);
 
   if (ctx) h += kpRenderContexto(ctx);
 
@@ -721,7 +721,7 @@ async function kpVerPozo(codigo, pozoId){
    Se agrupa por causa ANTES de listar: 60 paros con la misma causa son
    un problema de suministro, no 60 incidentes sueltos. Esa lectura se
    pierde si solo se muestra la cronologia. */
-function kpRenderEventos(eventos, causas){
+function kpRenderEventos(eventos){
   eventos = eventos || [];
   if (!eventos.length){
     return '<h2 style="margin-top:22px">Eventos y paros</h2>'
@@ -729,51 +729,75 @@ function kpRenderEventos(eventos, causas){
       + 'Se cargan junto con la DATA desde el Analizador.</p>';
   }
 
-  const paros    = eventos.filter(e => e.severidad === 'att');
-  const acciones = eventos.filter(e => e.severidad === 'accion');
+  /* Severidades reales que emite el analizador. Verificado contra los
+     datos: no son dos sino cinco, y agrupar todo lo que no sea 'accion'
+     como alarma metia Startup y Return to normal en el conteo de fallas. */
+  const SEV = {
+    crit:   { cls:'crit', txt:'Disparo',       equipo:true  },
+    att:    { cls:'warn', txt:'Atenci\u00f3n',     equipo:true  },
+    obs:    { cls:'warn', txt:'Observaci\u00f3n',  equipo:true  },
+    ok:     { cls:'ok',   txt:'Normalizaci\u00f3n',equipo:false },
+    accion: { cls:'ok',   txt:'Operador',      equipo:false }
+  };
+  const meta = sv => SEV[sv] || { cls:'warn', txt:(sv||'sin clasificar'), equipo:true };
+
+  const n = sv => eventos.filter(e => e.severidad === sv).length;
 
   let h = '<h2 style="margin-top:22px">Eventos y paros</h2>';
+  const partes = [];
+  if (n('crit'))   partes.push(n('crit') + ' disparo(s)');
+  if (n('att'))    partes.push(n('att') + ' de atenci\u00f3n');
+  if (n('obs'))    partes.push(n('obs') + ' observaci\u00f3n(es)');
+  if (n('accion')) partes.push(n('accion') + ' acci\u00f3n(es) de operador');
+  if (n('ok'))     partes.push(n('ok') + ' normalizaci\u00f3n(es)');
   h += '<p class="hint">' + eventos.length + ' evento(s) &middot; '
-    +  paros.length + ' paro(s) o alarma(s) &middot; '
-    +  acciones.length + ' acci&oacute;n(es) de operador</p>';
+    +  partes.join(' &middot; ') + '</p>';
 
-  /* Resumen por causa, de mayor recurrencia a menor */
+  /* Resumen por causa, solo de eventos del equipo. El color lo da la
+     GRAVEDAD, no la recurrencia: un solo disparo por sobrecorriente pesa
+     mas que 170 cambios de setpoint. El conteo solo ordena. */
+  const eq = eventos.filter(e => meta(e.severidad).equipo);
   const porCausa = {};
-  paros.forEach(e => {
-    const k = e.etiqueta || 'Sin causa registrada';
-    if (!porCausa[k]) porCausa[k] = { n: 0, ultimo: e.ocurrio };
+  eq.forEach(e => {
+    const k = (e.etiqueta || 'Sin causa registrada') + '\u0000' + (e.severidad || '');
+    if (!porCausa[k]) porCausa[k] = { n:0, ultimo:e.ocurrio, sev:e.severidad,
+                                      causa:e.etiqueta || 'Sin causa registrada' };
     porCausa[k].n++;
     if (e.ocurrio > porCausa[k].ultimo) porCausa[k].ultimo = e.ocurrio;
   });
-  const orden = Object.keys(porCausa).sort((a,b) => porCausa[b].n - porCausa[a].n);
+  const rank = { crit:0, att:1, obs:2 };
+  const orden = Object.keys(porCausa).sort((a,b) => {
+    const A = porCausa[a], B = porCausa[b];
+    const ra = rank[A.sev] != null ? rank[A.sev] : 9;
+    const rb = rank[B.sev] != null ? rank[B.sev] : 9;
+    return ra !== rb ? ra - rb : B.n - A.n;
+  });
 
   if (orden.length){
-    h += '<div class="kp-list">';
-    orden.forEach(c => {
-      const d = porCausa[c];
-      /* Recurrencia alta de una misma causa: se destaca. El umbral es
-         deliberadamente conservador; queda por calibrar con historia. */
-      const cls = d.n >= 10 ? 'crit' : (d.n >= 3 ? 'warn' : 'ok');
-      h += '<div class="kp-row ' + cls + '">'
-        +  '<div class="kp-row-t">' + kpEsc(c) + '</div>'
+    h += '<p class="hint" style="margin-top:12px">Por causa</p><div class="kp-list">';
+    orden.forEach(k => {
+      const d = porCausa[k], m = meta(d.sev);
+      h += '<div class="kp-row ' + m.cls + '">'
+        +  '<div class="kp-row-t">' + kpEsc(d.causa)
+        +  ' <span class="kp-pill ' + m.cls + '">' + m.txt + '</span></div>'
         +  '<div class="kp-row-d">' + d.n + ' vez(ces) &middot; &uacute;ltima '
         +  kpFechaCorta(d.ultimo) + '</div></div>';
     });
     h += '</div>';
   }
 
-  /* Cronologia, la mas reciente primero */
-  const ult = eventos.slice().sort((a,b) => (a.ocurrio < b.ocurrio ? 1 : -1)).slice(0, 60);
+  /* Cronologia completa, lo mas reciente primero */
+  const ult = eventos.slice().sort((a,b) => (a.ocurrio < b.ocurrio ? 1 : -1)).slice(0, 80);
   h += '<p class="hint" style="margin-top:14px">'
-    +  (eventos.length > 60 ? 'Ultimos 60 de ' + eventos.length : 'Cronolog&iacute;a')
+    +  (eventos.length > 80 ? '\u00daltimos 80 de ' + eventos.length : 'Cronolog\u00eda')
     +  '</p><div class="kp-list">';
   ult.forEach(e => {
-    const cls = e.severidad === 'att' ? 'warn' : 'ok';
-    h += '<div class="kp-row ' + cls + '">'
+    const m = meta(e.severidad);
+    h += '<div class="kp-row ' + m.cls + '">'
       +  '<div class="kp-row-t">' + kpEsc(e.etiqueta || '\u2014') + '</div>'
       +  '<div class="kp-row-d">' + kpFechaCorta(e.ocurrio)
+      +  ' &middot; ' + m.txt
       +  (e.detalle ? ' &middot; ' + kpEsc(e.detalle) : '')
-      +  ' &middot; ' + (e.severidad === 'att' ? 'equipo' : 'operador')
       +  '</div></div>';
   });
   h += '</div>';
