@@ -1650,7 +1650,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <div class="panel" id="panel-predictivo">
   <div class="panel-header">
     <button class="btn-secondary" onclick="predPantallaCompleta()">Pantalla completa</button>
-    <button class="btn-secondary" onclick="window.open('predictivo.html','_blank')">Pestaña aparte</button>
+    <button class="btn-secondary" onclick="window.open('condicion.html','_blank')">Pestaña aparte</button>
   </div>
   <div class="panel-body">
     <iframe id="pred-marco" title="Monitoreo de Condición"></iframe>
@@ -2214,7 +2214,7 @@ function vfdPantallaCompleta() {
    se abre el modulo y de ahi en adelante conserva su estado. */
 function abrirPredictivo() {
   const marco = document.getElementById("pred-marco");
-  if (marco && !marco.src) marco.src = "predictivo.html";
+  if (marco && !marco.src) marco.src = "condicion.html";
 }
 
 function predPantallaCompleta() {

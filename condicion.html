@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Monitoreo de Condici&oacute;n</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{
+  --kp-teal:#12a5b8; --kp-green:#35a853;
+  --kp-ink:#1c1c1e; --kp-ink2:#6b6b70; --kp-ink3:#94949a;
+  --kp-line:#e3e3e6; --kp-page:#f5f6f7; --kp-card:#fff;
+  --kp-ok:#2ea44f; --kp-warn:#c77700; --kp-crit:#c0392b; --kp-null:#9a9aa0;
+  --kp-ok-bg:#e8f6ec; --kp-warn-bg:#fdf2e0; --kp-crit-bg:#fbeae8; --kp-null-bg:#f0f0f2;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--kp-page);color:var(--kp-ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px}
+
+.kp-top{background:linear-gradient(100deg,var(--kp-teal),var(--kp-green));color:#fff;
+  padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
+.kp-top h1{margin:0;font-size:20px;font-weight:600}
+.kp-top .sub{margin:3px 0 0;font-size:13px;opacity:.9}
+.kp-back{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;
+  border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer}
+
+.kp-bar{background:#fff;border-bottom:1px solid var(--kp-line);padding:10px 20px;
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.kp-bar .lb{font-size:13px;color:var(--kp-ink2);margin-right:2px}
+.kp-chip{border:1px solid var(--kp-line);background:#fff;border-radius:6px;padding:5px 13px;
+  font-size:13px;cursor:pointer;color:var(--kp-ink)}
+.kp-chip.on{background:#2f9fd4;border-color:#2f9fd4;color:#fff}
+
+.kp-wrap{padding:18px 20px;max-width:1180px}
+.kp-wrap h2{font-size:17px;font-weight:600;margin:0 0 4px}
+.kp-wrap .hint{margin:0 0 14px;font-size:13px;color:var(--kp-ink2)}
+
+.kp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px;margin-bottom:16px}
+.kp-stat{background:#fff;border:1px solid var(--kp-line);border-radius:8px;padding:10px 14px}
+.kp-stat .k{font-size:11px;color:var(--kp-ink3);text-transform:uppercase;letter-spacing:.7px}
+.kp-stat .v{font-size:22px;font-weight:600;margin-top:3px}
+
+.kp-list{background:#fff;border:1px solid var(--kp-line);border-radius:8px;overflow:hidden}
+.kp-row{display:flex;gap:12px;align-items:center;padding:12px 15px;
+  border-bottom:1px solid var(--kp-line);cursor:pointer}
+.kp-row:last-child{border-bottom:none}
+.kp-row:hover{background:#fafafb}
+.kp-row .nm{font-size:15px;font-weight:600}
+.kp-row .sys{font-size:11px;color:var(--kp-ink3);border:1px solid var(--kp-line);
+  padding:1px 7px;border-radius:4px}
+.kp-row .ds{font-size:13px;color:var(--kp-ink2);margin-top:3px}
+.kp-row .ts{font-size:11px;color:var(--kp-ink3);margin-top:2px}
+
+.kp-pill{font-size:11px;padding:3px 10px;border-radius:4px;white-space:nowrap;font-weight:500}
+.kp-pill.ok{background:var(--kp-ok-bg);color:#1d6b32}
+.kp-pill.warn{background:var(--kp-warn-bg);color:#8a5300}
+.kp-pill.crit{background:var(--kp-crit-bg);color:#8f2a1f}
+.kp-pill.none{background:var(--kp-null-bg);color:#5f5f66;border:1px solid var(--kp-line)}
+
+.kp-card{background:#fff;border:1px solid var(--kp-line);border-radius:8px;padding:16px;margin-bottom:18px}
+.kp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.kp-kpi{background:#fff;border:1px solid var(--kp-line);border-left:4px solid var(--kp-ok);
+  border-radius:8px;padding:12px 14px}
+.kp-kpi.warn{border-left-color:var(--kp-warn)}
+.kp-kpi.crit{border-left-color:var(--kp-crit)}
+.kp-kpi.none{border-left-color:var(--kp-null)}
+.kp-kpi .k{font-size:10px;letter-spacing:.9px;text-transform:uppercase;color:var(--kp-ink3)}
+.kp-kpi .v{font-size:24px;font-weight:600;margin:4px 0 2px}
+.kp-kpi .v small{font-size:12px;font-weight:400;color:var(--kp-ink2);margin-left:3px}
+.kp-kpi .r{font-size:12px;color:var(--kp-ink2);margin-bottom:8px}
+
+.kp-grp{padding:8px 15px;background:#fafafb;border-bottom:1px solid var(--kp-line);
+  font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--kp-ink3)}
+.kp-rule{padding:12px 15px;border-bottom:1px solid var(--kp-line);display:flex;
+  justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.kp-rule:last-child{border-bottom:none}
+.kp-rule.crit{border-left:3px solid var(--kp-crit)}
+.kp-rule.warn{border-left:3px solid var(--kp-warn)}
+.kp-rule .id{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--kp-ink3)}
+.kp-rule .nm{font-size:14px;font-weight:500}
+.kp-rule .dt{font-size:12.5px;color:var(--kp-ink2);margin-top:3px}
+.kp-rule .src{font-size:11px;color:var(--kp-ink3);margin-top:2px}
+
+.kp-chain{width:100%;height:auto;display:block}
+.kp-leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--kp-ink2)}
+.kp-leg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
+
+.kp-msg{padding:26px 18px;text-align:center;color:var(--kp-ink2);font-size:14px}
+.kp-chip{border:1px solid var(--kp-line);background:#fff;border-radius:6px;padding:5px 12px;
+  font-size:12.5px;cursor:pointer;color:var(--kp-ink)}
+.kp-chip.on{background:#2f9fd4;border-color:#2f9fd4;color:#fff}
+.kp-demo{background:#fff6d9;border:1px solid #e8d08a;color:#6b5410;
+  padding:8px 20px;font-size:12.5px}
+@media(max-width:640px){.kp-wrap{padding:14px}.kp-top{padding:12px 14px}.kp-bar{padding:9px 14px}}
+</style>
+</head>
+<body>
+
+<div id="kpDemo" class="kp-demo">Modo demostraci&oacute;n &mdash; datos de ejemplo. No consulta la base de datos.</div>
+
+<div class="kp-top">
+  <div>
+    <h1 id="kpTitulo">Monitoreo de Condici&oacute;n</h1>
+    <p class="sub" id="kpSub">Monitoreo de condici&oacute;n y diagn&oacute;stico de m&aacute;quinas</p>
+  </div>
+  <button class="kp-back" id="kpBack" style="display:none" onclick="kpVerFlota()">&larr; Volver a flota</button>
+</div>
+
+<div class="kp-bar" id="kpFiltros">
+  <span class="lb">Sistema</span>
+  <button class="kp-chip on" data-s="all">Todos</button>
+  <button class="kp-chip" data-s="BES">BES</button>
+  <button class="kp-chip" data-s="HPUM">HPUM</button>
+  <button class="kp-chip" data-s="UBH">UBH</button>
+</div>
+
+<div class="kp-wrap" id="kpVista"><div class="kp-msg">Cargando&hellip;</div></div>
+
+<script>
+/* ============================================================
+   CONFIGURACION
+   ============================================================ */
+/* Las credenciales se heredan de Kronos-M. Este archivo corre en un
+   iframe del mismo origen, asi que puede leerlas del documento padre
+   y no necesita copia propia. Al abrirse en pestana aparte el padre
+   es window.opener. Si no hay ninguno, se dice claramente en lugar
+   de quedarse cargando. */
+function kpCredencial(nombre){
+  var fuentes = [];
+  try { if (window.parent && window.parent !== window) fuentes.push(window.parent); } catch(e){}
+  try { if (window.opener) fuentes.push(window.opener); } catch(e){}
+  for (var i = 0; i < fuentes.length; i++){
+    try {
+      var v = fuentes[i][nombre];
+      if (v && String(v).indexOf('PEGAR_AQUI') !== 0) return v;
+    } catch(e){}
+  }
+  return null;
+}
+
+/* Se dejan sin resolver a proposito: se leen al usarlas, no al
+   cargar este archivo, para que no dependa de cual de los dos
+   documentos termine de cargar primero. */
+const KP = {
+  MODO_DEMO: false,
+  SUPABASE_URL: null,
+  SUPABASE_ANON_KEY: null
+};
+
+/* ============================================================
+   CAPA DE DATOS
+   Unico punto que toca la base. Al pasar MODO_DEMO a false,
+   completar las dos funciones marcadas PENDIENTE.
+   ============================================================ */
+/* Las RPC viven en public, asi que el cliente va con el esquema por
+   defecto. La sesion se toma sola de localStorage porque el iframe
+   corre en el mismo origen que Kronos-M. */
+let kpSb = null;
+
+/* Primero se intenta reusar el cliente de Kronos-M. Crear uno nuevo
+   sobre la misma llave de almacenamiento produce el aviso "Multiple
+   GoTrueClient instances" y puede dejar la sesion en un estado raro.
+   Solo si no se encuentra se crea uno propio. */
+function kpClienteHeredado(){
+  var fuentes = [];
+  try { if (window.parent && window.parent !== window) fuentes.push(window.parent); } catch(e){}
+  try { if (window.opener) fuentes.push(window.opener); } catch(e){}
+  for (var i = 0; i < fuentes.length; i++){
+    try {
+      var c = fuentes[i].sb;
+      if (c && c.rpc) return c;
+    } catch(e){}
+  }
+  return null;
+}
+
+function kpCliente(){
+  if (KP.MODO_DEMO) return null;
+  if (kpSb) return kpSb;
+
+  kpSb = kpClienteHeredado();
+  if (kpSb) return kpSb;
+
+  if (!KP.SUPABASE_URL)      KP.SUPABASE_URL      = kpCredencial('SUPABASE_URL');
+  if (!KP.SUPABASE_ANON_KEY) KP.SUPABASE_ANON_KEY = kpCredencial('SUPABASE_ANON_KEY');
+
+  if (!KP.SUPABASE_URL || !KP.SUPABASE_ANON_KEY)
+    throw new Error('No se pudo tomar la conexion de Kronos-M. '
+      + 'Lo mas probable es que el index.html desplegado sea una version anterior: '
+      + 'recarga con Ctrl+Shift+R. Para comprobarlo, escribe window.sb en la consola '
+      + 'con Kronos-M abierto; si dice undefined, hay que subir el index.html nuevo.');
+
+  kpSb = window.supabase.createClient(KP.SUPABASE_URL, KP.SUPABASE_ANON_KEY);
+  return kpSb;
+}
+
+async function kpCargarFlota(){
+  if (KP.MODO_DEMO) return kpDemoFlota;
+  const { data, error } = await kpCliente().rpc('dp_flota');
+  if (error) throw new Error(error.message);
+  return (data || []).map(r => ({
+    pozo_id:      r.pozo_id,
+    pozo:         r.pozo,
+    campo:        r.campo || '\u2014',
+    sistema:      r.sistema || '\u2014',
+    estado:       kpAfinar(r),
+    resumen:      kpResumen(r),
+    fecha_vector: r.fecha_vector || '\u2014'
+  }));
+}
+
+/* Un pozo no evaluable puede serlo por dos razones muy distintas:
+   nunca se le cargo un archivo, o el archivo llego incompleto. La
+   primera se resuelve cargando datos; la segunda, averiguando por que
+   faltan muestras. Mostrarlas juntas esconde esa diferencia. */
+function kpAfinar(r){
+  if (r.estado !== 'none') return r.estado;
+  if (!r.fecha_vector) return 'sindatos';
+  if (r.cobertura_pct != null) return 'cobertura';
+  const m = (r.motivo_no_evaluable || '').toLowerCase();
+  if (m.indexOf('cobertura') >= 0) return 'cobertura';
+  return 'sindatos';
+}
+
+/* El resumen dice por que el pozo esta como esta. Un pozo sin vector
+   no es un pozo sano: hay que decir que no se pudo evaluar. */
+function kpResumen(r){
+  if (!r.fecha_vector) return 'Sin vector calculado';
+  if (r.evaluable !== true)
+    return r.motivo_no_evaluable || 'No evaluable';
+  const n = (r.n_alta || 0) + (r.n_atencion_alta || 0) + (r.n_atencion || 0);
+  if (n === 0) return 'Sin hallazgos';
+  return n + (n === 1 ? ' hallazgo' : ' hallazgos');
+}
+
+async function kpCargarPozo(codigo, pozoId){
+  if (KP.MODO_DEMO) return kpDemoPozo[codigo] || null;
+  const { data, error } = await kpCliente().rpc('dp_dictamen', { p_pozo_id: pozoId });
+  if (error) throw new Error(error.message);
+  if (!data || !data.dictamen) return null;
+  return kpArmarPozo(data);
+}
+
+/* Traduce lo que devuelve la RPC a lo que la vista ya sabe pintar. */
+function kpArmarPozo(d){
+  const f  = d.features || {};
+  const dc = d.dictamen || {};
+  const hs = d.hallazgos || [];
+  const porRegla = {};
+  hs.forEach(h => { porRegla[h.regla_codigo] = h; });
+
+  /* hallazgos.nivel se guarda en mayusculas: ALTA, ATENCION_ALTA,
+     ATENCION. Comparar en minusculas nunca coincide y degrada todo
+     hallazgo critico a simple atencion, sin dar error. */
+  const nivel = function(n){
+    var v = String(n || '').toUpperCase();
+    if (v === 'ALTA') return 'crit';
+    if (v === 'ATENCION_ALTA' || v === 'ATENCION') return 'warn';
+    return 'warn';
+  };
+
+  const reglas = (d.reglas || []).map(r => {
+    const h = porRegla[r.codigo];
+    if (h) return {
+      codigo: r.codigo, nombre: r.nombre, estado: nivel(h.nivel),
+      detalle: h.mensaje || (kpNum(h.valor_observado) + ' \u2014 umbral ' + kpNum(h.umbral_aplicado)),
+      fuente: r.fuente_tipo || '\u2014'
+    };
+    const sinUmbral = (r.umbral_inf == null && r.umbral_sup == null);
+    return {
+      codigo: r.codigo, nombre: r.nombre,
+      estado:  (!r.activa || sinUmbral) ? 'sinumbral' : 'ok',
+      detalle: (!r.activa || sinUmbral) ? 'Regla inactiva o umbral sin parametrizar'
+                                        : 'Dentro de umbral',
+      fuente: r.fuente_tipo || '\u2014'
+    };
+  });
+
+  const ind = [];
+  const add = (etq, val, uni, ref) => {
+    if (val == null) return;
+    ind.push({ etiqueta: etq, valor: kpNum(val), unidad: uni, referencia: ref, estado: 'ok' });
+  };
+  /* La carga del motor NO va como tarjeta. El calculo era
+     i_prom_a / motor_i_nominal_a, que divide la corriente de SALIDA del
+     variador (lado 480 V, en superficie) entre la nominal del motor de
+     fondo (lado 3305 V): son dos lados distintos del SUT y daba 574 %.
+     La cadena energetica ya la resuelve bien reflejando por la relacion
+     del transformador. */
+  add('Frecuencia',     f.frec_prom_hz,    'Hz',  'Rango ' + kpNum(f.frec_min_hz) + ' \u2014 ' + kpNum(f.frec_max_hz));
+  add('Presi\u00f3n intake', f.pip_prom_psi, 'psi', 'M\u00ednima ' + kpNum(f.pip_min_psi));
+  add('Temp. motor',    f.t_motor_prom_c,  '\u00b0C', 'M\u00e1xima ' + kpNum(f.t_motor_max_c) + ' \u00b0C');
+  add('Vibraci\u00f3n',     f.vib_max,     'G',   'Vx ' + kpNum(f.vib_x_prom));
+  add('Desbalance I',   f.i_desbal_pct_prom, '%', 'M\u00e1ximo ' + kpNum(f.i_desbal_pct_max) + ' %');
+  add('Disponibilidad', f.disponibilidad_pct, '%', kpNum(f.n_arranques) + ' arranques');
+  add('Cobertura',      dc.cobertura_pct,  '%',   kpNum(f.muestras_recibidas) + ' muestras');
+
+  return {
+    pozo:    d.pozo ? d.pozo.nombre : '\u2014',
+    campo:   d.pozo ? (d.pozo.campo || '\u2014') : '\u2014',
+    sistema: d.pozo ? (d.pozo.sistema || '\u2014') : '\u2014',
+    estado:  dc.n_alta > 0 ? 'crit'
+             : ((dc.n_atencion_alta > 0 || dc.n_atencion > 0) ? 'warn' : 'ok'),
+    fecha_vector: dc.fecha || '\u2014',
+    indicadores:  ind,
+    cadena:       [],
+    reglas:       reglas
+  };
+}
+
+async function kpCargarMedicion(pozoId){
+  if (KP.MODO_DEMO || !pozoId) return null;
+  const { data, error } = await kpCliente().rpc('dp_medicion', { p_pozo_id: pozoId });
+  if (error) throw new Error(error.message);
+  return data || null;
+}
+
+async function kpCargarEventos(pozoId){
+  if (KP.MODO_DEMO || !pozoId) return [];
+  const { data, error } = await kpCliente().rpc('dp_eventos_pozo',
+    { p_pozo_id: pozoId, p_dias: 90 });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+async function kpCargarContexto(pozoId){
+  if (KP.MODO_DEMO || !pozoId) return null;
+  const { data, error } = await kpCliente().rpc('dp_contexto', { p_pozo_id: pozoId });
+  if (error) throw new Error(error.message);
+  return data || null;
+}
+
+function kpNum(v){
+  if (v == null) return '\u2014';
+  const n = Number(v);
+  if (!isFinite(n)) return '\u2014';
+  return (Math.abs(n) >= 100) ? n.toFixed(0) : n.toFixed(2);
+}
+
+/* ============================================================
+   DATOS DE DEMOSTRACION
+   ============================================================ */
+const kpDemoFlota = [
+ {pozo:"CYC-09",  campo:"Put Norte", sistema:"BES",  estado:"crit", resumen:"2 hallazgos &middot; arranques repetidos",      fecha_vector:"hoy 06:10"},
+ {pozo:"MQT-28",  campo:"Moqueta",   sistema:"BES",  estado:"crit", resumen:"3 hallazgos &middot; temperatura de motor",     fecha_vector:"hoy 06:10"},
+ {pozo:"CSTK-18", campo:"Costayaco", sistema:"BES",  estado:"warn", resumen:"1 hallazgo &middot; desbalance de corriente",   fecha_vector:"hoy 06:10"},
+ {pozo:"TRY-04",  campo:"Toroyaco",  sistema:"HPUM", estado:"warn", resumen:"1 hallazgo &middot; factor de potencia",        fecha_vector:"hoy 06:08"},
+ {pozo:"STN-11",  campo:"Santana",   sistema:"UBH",  estado:"warn", resumen:"1 hallazgo &middot; disponibilidad",            fecha_vector:"ayer 06:09"},
+ {pozo:"CSTK-07", campo:"Costayaco", sistema:"BES",  estado:"ok",   resumen:"Sin hallazgos",                                 fecha_vector:"hoy 06:10"},
+ {pozo:"MRY-02",  campo:"Mary",      sistema:"HPUM", estado:"ok",   resumen:"Sin hallazgos",                                 fecha_vector:"hoy 06:09"},
+ {pozo:"CSTK-22", campo:"Costayaco", sistema:"BES",  estado:"ok",   resumen:"Sin hallazgos",                                 fecha_vector:"hoy 06:10"},
+ {pozo:"MQT-31",  campo:"Moqueta",   sistema:"BES",  estado:"none", resumen:"Sin archivo cargado",                           fecha_vector:"&mdash;"},
+ {pozo:"TRY-09",  campo:"Toroyaco",  sistema:"UBH",  estado:"none", resumen:"Sin archivo cargado",                           fecha_vector:"&mdash;"}
+];
+
+const kpDemoPozo = {
+ "CYC-09":{
+  pozo:"CYC-09", campo:"Put Norte", sistema:"BES", estado:"crit", fecha_vector:"2026-08-09 06:10",
+  indicadores:[
+   {etiqueta:"Carga motor",     valor:"76.3", unidad:"%",   referencia:"Media 95.4 A", estado:"ok"},
+   {etiqueta:"Frecuencia",      valor:"53.15",unidad:"Hz",  referencia:"Rango 0 &mdash; 54.1", estado:"ok"},
+   {etiqueta:"Presi&oacute;n intake", valor:"488", unidad:"psi", referencia:"Rango 0 &mdash; 3360", estado:"ok"},
+   {etiqueta:"Temp. motor",     valor:"236",  unidad:"&deg;F", referencia:"Pico 491 &deg;F", estado:"crit"},
+   {etiqueta:"Vibraci&oacute;n Vx",   valor:"2.01", unidad:"G",   referencia:"Pico 4.17 G", estado:"crit"},
+   {etiqueta:"Volt. motor",     valor:"3534", unidad:"V",   referencia:"Nominal 3940 V", estado:"ok"}
+  ],
+  cadena:[
+   {nodo:"PST",  detalle:"Secundario 1", medido:448, nominal:435, unidad:"A", estado:"crit"},
+   {nodo:"VFD",  detalle:"Entrada",      medido:888, nominal:946, unidad:"A", estado:"warn"},
+   {nodo:"SUT",  detalle:"Tap 3",        medido:91,  nominal:107, unidad:"A", estado:"ok"},
+   {nodo:"Motor",detalle:"800 hp",       medido:97,  nominal:125, unidad:"A", estado:"ok"}
+  ],
+  reglas:[
+   {codigo:"R12", nombre:"Arranques repetidos",        estado:"crit",     detalle:"7 arranques en 24 h &mdash; umbral 3", fuente:"Fabricante"},
+   {codigo:"R01", nombre:"Desbalance de corriente",    estado:"warn",     detalle:"4.8 % &mdash; umbral 3.5 %",           fuente:"Fabricante"},
+   {codigo:"R02", nombre:"Desbalance de voltaje",      estado:"ok",       detalle:"1.1 % &mdash; umbral 2.0 %",           fuente:"Norma"},
+   {codigo:"R07", nombre:"Temperatura de motor",       estado:"ok",       detalle:"236 &deg;F &mdash; umbral 260 &deg;F", fuente:"Norma"},
+   {codigo:"R13", nombre:"Disponibilidad",             estado:"ok",       detalle:"98.4 % &mdash; umbral 95 %",           fuente:"Operativo"},
+   {codigo:"R08", nombre:"Delta T motor - intake",     estado:"baseline", detalle:"12 de 30 d&iacute;as de l&iacute;nea base", fuente:"Baseline"},
+   {codigo:"R10", nombre:"Deriva de PIP",              estado:"baseline", detalle:"12 de 30 d&iacute;as de l&iacute;nea base", fuente:"Baseline"},
+   {codigo:"R14", nombre:"Deriva de corriente por Hz", estado:"baseline", detalle:"12 de 30 d&iacute;as de l&iacute;nea base", fuente:"Baseline"},
+   {codigo:"R03", nombre:"Distorsi&oacute;n arm&oacute;nica de corriente", estado:"sindato", detalle:"THD no disponible en el formato de origen", fuente:"Norma"},
+   {codigo:"R04", nombre:"Distorsi&oacute;n arm&oacute;nica de voltaje",   estado:"sindato", detalle:"THD no disponible en el formato de origen", fuente:"Norma"},
+   {codigo:"R05", nombre:"Factor de potencia bajo",    estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Fabricante"},
+   {codigo:"R06", nombre:"Carga del motor",            estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Fabricante"},
+   {codigo:"R09", nombre:"PIP bajo",                   estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Operativo"},
+   {codigo:"R11", nombre:"Vibraci&oacute;n",           estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Fabricante"}
+  ]
+ }
+};
+
+
+/* ============================================================
+   CALCULO ELECTRICO SOBRE LA MEDICION DE CAMPO
+   Formulas verificadas contra resultados conocidos:
+     desbalance = max(|x - promedio|) / promedio * 100   (NEMA)
+     carga      = I_promedio / I_nominal * 100
+     kVA        = raiz(3) * V_promedio * I_promedio / 1000
+     balance de rectificadores = |I1 - I2| / promedio(I1,I2) * 100
+   ============================================================ */
+const RT3 = Math.sqrt(3);
+
+function kpProm(vs){
+  const l = vs.filter(v => v != null && isFinite(v));
+  if (!l.length) return null;
+  return l.reduce((a,b) => a + b, 0) / l.length;
+}
+function kpDesbal(vs){
+  const l = vs.filter(v => v != null && isFinite(v));
+  if (l.length < 2) return null;
+  const p = kpProm(l);
+  if (!p) return null;
+  return Math.max.apply(null, l.map(v => Math.abs(v - p))) / p * 100;
+}
+function kpEstadoCarga(pct){
+  if (pct == null) return 'none';
+  if (pct > 100) return 'crit';
+  if (pct >= 95) return 'warn';
+  return 'ok';
+}
+function kpEstadoDesbal(pct){
+  if (pct == null) return 'none';
+  if (pct > 2)   return 'crit';
+  if (pct > 1)   return 'warn';
+  return 'ok';
+}
+
+/* Cada etapa declara sus tres corrientes, sus tres tensiones y de
+   donde sale su nominal. Si no hay nominal, no se inventa carga. */
+const KP_ETAPAS = [
+  {nodo:'PST entrada', detalle:'Primario',
+   i:['pst_in_i_a','pst_in_i_b','pst_in_i_c'],
+   v:['pst_in_v_ab','pst_in_v_ac','pst_in_v_bc'],
+   nom:'pst_i_entrada_a'},
+
+  {nodo:'PST \u0394', detalle:'Sec. delta',
+   i:['conv1_i_a','conv1_i_b','conv1_i_c'],
+   v:['conv1_v_ab','conv1_v_ac','conv1_v_bc'],
+   nom:'pst_i_secundario_a'},
+
+  {nodo:'PST Y', detalle:'Sec. estrella',
+   i:['conv2_i_a','conv2_i_b','conv2_i_c'],
+   v:['conv2_v_ab','conv2_v_ac','conv2_v_bc'],
+   nom:'pst_i_secundario_a'},
+
+  /* La entrada del VFD no se mide: es la suma de los dos
+     secundarios del PST, contrastada contra el Amp Input. */
+  {nodo:'VFD entrada', detalle:'Suma \u0394 + Y',
+   i_suma:[['conv1_i_a','conv1_i_b','conv1_i_c'],
+           ['conv2_i_a','conv2_i_b','conv2_i_c']],
+   v:['conv1_v_ab','conv1_v_ac','conv1_v_bc'],
+   nom:'vfd_i_entrada_a'},
+
+  {nodo:'VFD salida', detalle:'Salida',
+   i:['vfdout_i_a','vfdout_i_b','vfdout_i_c'],
+   v:['vfdout_v_ab','vfdout_v_ac','vfdout_v_bc'],
+   nom:'vfd_i_nominal_a'},
+
+  {nodo:'SUT salida', detalle:'Al cable',
+   i:['sutout_i_a','sutout_i_b','sutout_i_c'],
+   v:['sutout_v_ab','sutout_v_ac','sutout_v_bc'],
+   nom:'sut_i_nominal_a'},
+
+  /* Mismo valor medido que el SUT, contra el nominal del motor. */
+  {nodo:'Motor', detalle:'De fondo',
+   i:['sutout_i_a','sutout_i_b','sutout_i_c'],
+   v:['sutout_v_ab','sutout_v_ac','sutout_v_bc'],
+   nom:'motor_i_nominal_a'}
+];
+
+function kpCalcularCadena(val, placa){
+  const out = [];
+  KP_ETAPAS.forEach(e => {
+    let ii = null, ip = null;
+    if (e.i_suma){
+      const partes = e.i_suma.map(g => kpProm(g.map(c => val[c])));
+      if (partes.some(x => x == null)) return;
+      ip = partes.reduce((a,b) => a + b, 0);
+    } else {
+      ii = e.i.map(c => val[c]);
+      ip = kpProm(ii);
+    }
+    const vv = e.v.map(c => val[c]);
+    const vp = kpProm(vv);
+    if (ip == null) return;
+    const nominal = e.nom && placa ? placa[e.nom] : null;
+    const pct = nominal ? (ip / nominal * 100) : null;
+    out.push({
+      nodo: e.nodo, detalle: e.detalle,
+      medido: Math.round(ip * 10) / 10,
+      nominal: nominal || null,
+      unidad: 'A',
+      v_prom: vp,
+      kva: (vp != null) ? RT3 * vp * ip / 1000 : null,
+      desbal_i: ii ? kpDesbal(ii) : null,
+      desbal_v: kpDesbal(vv),
+      carga_pct: pct,
+      estado: nominal ? kpEstadoCarga(pct) : 'none'
+    });
+  });
+  return out;
+}
+
+function kpBalanceRectificadores(val){
+  const i1 = kpProm([val.conv1_i_a, val.conv1_i_b, val.conv1_i_c]);
+  const i2 = kpProm([val.conv2_i_a, val.conv2_i_b, val.conv2_i_c]);
+  if (i1 == null || i2 == null) return null;
+  const prom = (i1 + i2) / 2;
+  const dif = Math.abs(i1 - i2) / prom * 100;
+  return {
+    conv1: i1, conv2: i2, diferencia_pct: dif,
+    mayor: (i1 >= i2) ? 'secundario delta' : 'secundario estrella',
+    estado: dif > 10 ? 'crit' : (dif > 5 ? 'warn' : 'ok')
+  };
+}
+
+/* Umbrales de FP y THD: los de FP son criterio operativo comun en
+   O&G; los de THD de tension en salida de VFD no aplican como falla
+   porque la onda PWM distorsiona por diseno. Se marcan como
+   informativos y no como hallazgo. */
+function kpCalidadEnergia(val){
+  const p = [];
+  const punto = (pref, nombre, esSalidaVfd) => {
+    const fp = val[pref+'_fp'], thdv = val[pref+'_thdv'], thdi = val[pref+'_thd'];
+    if (fp == null && thdv == null && thdi == null) return;
+    const al = [];
+    if (fp != null){
+      if (fp <= 0.80)      al.push({t:'crit', m:'Factor de potencia ' + fp.toFixed(2) + ' (critico si es 0.80 o menos)'});
+      else if (fp <= 0.85) al.push({t:'warn', m:'Factor de potencia ' + fp.toFixed(2) + ' (atencion si es 0.85 o menos)'});
+    }
+    if (thdv != null && esSalidaVfd)
+      al.push({t:'info', m:'THD de tension ' + thdv.toFixed(1) + ' %. Valor esperable en salida de VFD sin filtro senoidal: la onda PWM distorsiona por diseno. No es falla.'});
+    else if (thdv != null && thdv > 8)
+      al.push({t:'warn', m:'THD de tension ' + thdv.toFixed(1) + ' % en red (IEEE 519 sugiere 8 % para sistemas de este nivel)'});
+    p.push({
+      nombre: nombre, fp: fp, thdv: thdv, thdi: thdi,
+      factork: val[pref+'_factork'],
+      kw: val[pref+'_kw'], kvar: val[pref+'_kvar'], kva: val[pref+'_kva'],
+      alertas: al
+    });
+  };
+  punto('pst_in',  'Entrada PST (red)', false);
+  punto('vfdout',  'Salida VFD (al motor)', true);
+  return p;
+}
+
+function kpTemperaturas(val){
+  const defs = [
+    ['hs1_c','Disipador 1'], ['hs2_c','Disipador 2'],
+    ['hs3_c','Disipador 3'], ['hs4_c','Disipador 4'],
+    ['temp_inductor_c','Inductor'], ['temp_controller_c','Controlador'],
+    ['temp_igbt_u_c','IGBT U'], ['temp_igbt_v_c','IGBT V'], ['temp_igbt_w_c','IGBT W'],
+    ['temp_pst_c','PST'], ['temp_sut_c','SUT']
+  ];
+  return defs.filter(d => val[d[0]] != null)
+             .map(d => ({ nombre: d[1], valor: val[d[0]] }));
+}
+
+/* ============================================================
+   ESTADO Y UTILIDADES
+   ============================================================ */
+const KP_EST = {
+  crit:     {txt:"Cr&iacute;tico", cls:"crit", ord:0},
+  warn:     {txt:"Atenci&oacute;n",cls:"warn", ord:1},
+  ok:       {txt:"Normal",         cls:"ok",   ord:2},
+  cobertura:{txt:"Cobertura baja", cls:"none", ord:3},
+  sindatos: {txt:"Sin datos",      cls:"none", ord:4},
+  none:     {txt:"Sin vector",     cls:"none", ord:5},
+  baseline: {txt:"Baseline",       cls:"none", ord:4},
+  sindato:  {txt:"Sin dato",       cls:"none", ord:5},
+  sinumbral:{txt:"Sin umbral",     cls:"none", ord:6}
+};
+const KP_HEX = {crit:"#c0392b", warn:"#c77700", ok:"#2ea44f", none:"#9a9aa0"};
+
+let kpFiltro = "all";
+let kpFlota = [];
+
+function kpPeor(lista){
+  let r = "ok";
+  for (const x of lista){
+    if (x.estado === "crit") return "crit";
+    if (x.estado === "warn") r = "warn";
+  }
+  return r;
+}
+
+/* ============================================================
+   VISTA: FLOTA
+   ============================================================ */
+async function kpVerFlota(){
+  document.getElementById("kpBack").style.display = "none";
+  document.getElementById("kpFiltros").style.display = "flex";
+  document.getElementById("kpTitulo").textContent = "Monitoreo de Condici\u00f3n";
+  document.getElementById("kpSub").innerHTML =
+    "Monitoreo de condici&oacute;n y diagn&oacute;stico de m&aacute;quinas";
+  const v = document.getElementById("kpVista");
+  v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
+  try {
+    kpFlota = await kpCargarFlota();
+  } catch (e) {
+    v.innerHTML = '<div class="kp-msg">No se pudo cargar la flota.<br>' + e.message + '</div>';
+    return;
+  }
+  kpPintarFlota();
+}
+
+function kpPintarFlota(){
+  const d = kpFlota
+    .filter(x => kpFiltro === "all" || x.sistema === kpFiltro)
+    .sort((a,b) => KP_EST[a.estado].ord - KP_EST[b.estado].ord);
+  const n = e => (e === 'none')
+    ? d.filter(x => ['none','sindatos','cobertura'].includes(x.estado)).length
+    : d.filter(x => x.estado === e).length;
+
+  let h = '<h2>Flota</h2><p class="hint">' + d.length +
+    ' pozos &middot; ordenados por severidad</p><div class="kp-stats">';
+  [["Cr&iacute;tico","crit"],["Atenci&oacute;n","warn"],["Normal","ok"],["No evaluable","none"]]
+    .forEach(([t,e]) => {
+      h += '<div class="kp-stat"><div class="k">' + t + '</div><div class="v">' + n(e) + '</div></div>';
+    });
+  h += '</div>';
+
+  if (!d.length){
+    h += '<div class="kp-list"><div class="kp-msg">Sin pozos para este filtro.</div></div>';
+  } else {
+    h += '<div class="kp-list">';
+    d.forEach(x => {
+      const e = KP_EST[x.estado];
+      h += '<div class="kp-row" onclick="kpVerPozo(\'' + x.pozo + '\',\'' + (x.pozo_id||'') + '\')">'
+        +  '<div style="flex:1;min-width:0">'
+        +  '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+        +  '<span class="nm">' + x.pozo + '</span>'
+        +  '<span class="sys">' + x.sistema + '</span>'
+        +  '<span style="font-size:12px;color:var(--kp-ink3)">' + x.campo + '</span></div>'
+        +  '<div class="ds">' + x.resumen + '</div>'
+        +  '<div class="ts">Vector: ' + x.fecha_vector + '</div></div>'
+        +  '<span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
+    });
+    h += '</div>';
+  }
+  document.getElementById("kpVista").innerHTML = h;
+}
+
+/* ============================================================
+   VISTA: POZO
+   ============================================================ */
+async function kpVerPozo(codigo, pozoId){
+  document.getElementById("kpBack").style.display = "block";
+  document.getElementById("kpFiltros").style.display = "none";
+  const v = document.getElementById("kpVista");
+  v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
+
+  let p = null, med = null, ctx = null, evs = [];
+  try {
+    const r = await Promise.all([
+      kpCargarPozo(codigo, pozoId).catch(() => null),
+      kpCargarMedicion(pozoId).catch(() => null),
+      kpCargarContexto(pozoId).catch(() => null),
+      kpCargarEventos(pozoId).catch(() => [])
+    ]);
+    p = r[0]; med = r[1]; ctx = r[2]; evs = r[3] || [];
+  } catch (e) {
+    v.innerHTML = '<div class="kp-msg">No se pudo cargar el pozo.<br>' + e.message + '</div>';
+    return;
+  }
+
+  if (!p && !med && !(ctx && ((ctx.bitacora||[]).length || (ctx.aislamiento||[]).length))){
+    document.getElementById("kpTitulo").textContent = codigo;
+    document.getElementById("kpSub").innerHTML = "Sin datos";
+    v.innerHTML = '<div class="kp-card"><div class="kp-msg">'
+      + 'Este pozo no tiene medici&oacute;n el&eacute;ctrica registrada '
+      + 'ni vector diario calculado.</div></div>';
+    return;
+  }
+
+  if (!p){
+    p = { pozo: codigo, campo: '\u2014', sistema: '\u2014', estado: 'ok',
+          fecha_vector: null, indicadores: [], cadena: [], reglas: [] };
+  }
+  p.eventos = evs;
+
+  document.getElementById("kpTitulo").textContent = p.pozo;
+  document.getElementById("kpSub").innerHTML =
+    "Sistema " + p.sistema + " &middot; " + p.campo
+    + (p.fecha_vector ? (" &middot; vector " + p.fecha_vector) : "");
+
+  let h = '';
+
+  if (med) h += kpRenderMedicion(med);
+
+  if (p.indicadores.length){
+  h += '<h2 style="margin-top:22px">Condici&oacute;n de la unidad</h2>';
+  h += '<p class="hint">DATA del variador &middot; vector diario del '
+    + p.fecha_vector + '</p><div class="kp-kpis">';
+  p.indicadores.forEach(i => {
+    const c = KP_EST[i.estado].cls;
+    h += '<div class="kp-kpi ' + c + '"><div class="k">' + i.etiqueta + '</div>'
+      +  '<div class="v">' + i.valor + '<small>' + i.unidad + '</small></div>'
+      +  '<div class="r">' + i.referencia + '</div>'
+      +  '<span class="kp-pill ' + c + '">' + KP_EST[i.estado].txt + '</span></div>';
+  });
+  h += '</div>';
+  }
+
+  if (p.reglas.length){
+  h += '<h2 style="margin-top:22px">Hallazgos y reglas evaluadas</h2>';
+  const ev = p.reglas.filter(r => ["crit","warn","ok"].includes(r.estado)).length;
+  h += '<p class="hint">' + p.reglas.length + ' reglas &middot; ' + ev + ' evaluadas</p>';
+  h += '<div class="kp-list">' + kpDibujarReglas(p.reglas) + '</div>';
+  }
+
+  h += kpRenderEventos(p.eventos, p.paros_causas);
+
+  if (ctx) h += kpRenderContexto(ctx);
+
+  v.innerHTML = h;
+}
+
+/* ── Eventos y paros del variador ─────────────────────────────────────
+   Se agrupa por causa ANTES de listar: 60 paros con la misma causa son
+   un problema de suministro, no 60 incidentes sueltos. Esa lectura se
+   pierde si solo se muestra la cronologia. */
+function kpRenderEventos(eventos, causas){
+  eventos = eventos || [];
+  if (!eventos.length){
+    return '<h2 style="margin-top:22px">Eventos y paros</h2>'
+      + '<p class="hint">Sin eventos cargados para este per&iacute;odo. '
+      + 'Se cargan junto con la DATA desde el Analizador.</p>';
+  }
+
+  const paros    = eventos.filter(e => e.severidad === 'att');
+  const acciones = eventos.filter(e => e.severidad === 'accion');
+
+  let h = '<h2 style="margin-top:22px">Eventos y paros</h2>';
+  h += '<p class="hint">' + eventos.length + ' evento(s) &middot; '
+    +  paros.length + ' paro(s) o alarma(s) &middot; '
+    +  acciones.length + ' acci&oacute;n(es) de operador</p>';
+
+  /* Resumen por causa, de mayor recurrencia a menor */
+  const porCausa = {};
+  paros.forEach(e => {
+    const k = e.etiqueta || 'Sin causa registrada';
+    if (!porCausa[k]) porCausa[k] = { n: 0, ultimo: e.ocurrio };
+    porCausa[k].n++;
+    if (e.ocurrio > porCausa[k].ultimo) porCausa[k].ultimo = e.ocurrio;
+  });
+  const orden = Object.keys(porCausa).sort((a,b) => porCausa[b].n - porCausa[a].n);
+
+  if (orden.length){
+    h += '<div class="kp-list">';
+    orden.forEach(c => {
+      const d = porCausa[c];
+      /* Recurrencia alta de una misma causa: se destaca. El umbral es
+         deliberadamente conservador; queda por calibrar con historia. */
+      const cls = d.n >= 10 ? 'crit' : (d.n >= 3 ? 'warn' : 'ok');
+      h += '<div class="kp-row ' + cls + '">'
+        +  '<div class="kp-row-t">' + kpEsc(c) + '</div>'
+        +  '<div class="kp-row-d">' + d.n + ' vez(ces) &middot; &uacute;ltima '
+        +  kpFechaCorta(d.ultimo) + '</div></div>';
+    });
+    h += '</div>';
+  }
+
+  /* Cronologia, la mas reciente primero */
+  const ult = eventos.slice().sort((a,b) => (a.ocurrio < b.ocurrio ? 1 : -1)).slice(0, 60);
+  h += '<p class="hint" style="margin-top:14px">'
+    +  (eventos.length > 60 ? 'Ultimos 60 de ' + eventos.length : 'Cronolog&iacute;a')
+    +  '</p><div class="kp-list">';
+  ult.forEach(e => {
+    const cls = e.severidad === 'att' ? 'warn' : 'ok';
+    h += '<div class="kp-row ' + cls + '">'
+      +  '<div class="kp-row-t">' + kpEsc(e.etiqueta || '\u2014') + '</div>'
+      +  '<div class="kp-row-d">' + kpFechaCorta(e.ocurrio)
+      +  (e.detalle ? ' &middot; ' + kpEsc(e.detalle) : '')
+      +  ' &middot; ' + (e.severidad === 'att' ? 'equipo' : 'operador')
+      +  '</div></div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+function kpEsc(t){
+  return String(t == null ? '' : t).replace(/[&<>"]/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+function kpFechaCorta(iso){
+  if (!iso) return '\u2014';
+  const d = new Date(iso);
+  if (isNaN(d)) return String(iso).slice(0,16).replace('T',' ');
+  const p = n => (n<10?'0':'') + n;
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate())
+       + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function kpDibujarReglas(reglas){
+  const bloques = [
+    ["Hallazgos",     r => r.estado === "crit" || r.estado === "warn", true],
+    ["Sin hallazgo",  r => r.estado === "ok",        false],
+    ["No evaluadas",  r => ["baseline","sindato","sinumbral"].includes(r.estado), false]
+  ];
+  let h = '';
+  bloques.forEach(([titulo, filtro, individual]) => {
+    const g = reglas.filter(filtro);
+    if (!g.length) return;
+    h += '<div class="kp-grp">' + titulo + '</div>';
+    if (individual){
+      g.sort((a,b) => KP_EST[a.estado].ord - KP_EST[b.estado].ord).forEach(r => {
+        const e = KP_EST[r.estado];
+        h += '<div class="kp-rule ' + e.cls + '"><div>'
+          +  '<div><span class="id">' + r.codigo + '</span> <span class="nm">' + r.nombre + '</span></div>'
+          +  '<div class="dt">' + r.detalle + '</div>'
+          +  '<div class="src">Fuente: ' + r.fuente + '</div></div>'
+          +  '<span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
+      });
+    } else {
+      const sub = {};
+      g.forEach(r => { (sub[r.estado] = sub[r.estado] || []).push(r); });
+      Object.keys(sub).forEach(k => {
+        const l = sub[k];
+        h += '<div class="kp-rule"><div>'
+          +  '<div><span class="id">' + l.map(r => r.codigo).join(" &middot; ") + '</span></div>'
+          +  '<div class="dt">' + l.map(r => r.nombre).join(", ") + '</div>'
+          +  '<div class="src">' + l[0].detalle + '</div></div>'
+          +  '<span class="kp-pill ' + KP_EST[k].cls + '">' + KP_EST[k].txt + '</span></div>';
+      });
+    }
+  });
+  return h;
+}
+
+
+/* ============================================================
+   RENDER DEL CONTEXTO: AISLAMIENTO Y BITACORA
+   ============================================================ */
+
+/* Referencias de IEEE 43 para el indice de polarizacion. Se
+   muestran como referencia y no como dictamen: la norma matiza
+   segun clase de aislamiento y temperatura, y el valor absoluto
+   minimo depende de la tension nominal. */
+function kpEstadoIP(ip){
+  if (ip == null) return {cls:'none', txt:'Sin dato'};
+  if (ip === 0)   return {cls:'crit', txt:'Falla'};
+  if (ip < 1)     return {cls:'crit', txt:'Deficiente'};
+  if (ip < 2)     return {cls:'warn', txt:'Cuestionable'};
+  if (ip < 4)     return {cls:'ok',   txt:'Aceptable'};
+  return {cls:'ok', txt:'Bueno'};
+}
+
+function kpRenderContexto(ctx){
+  const ais = ctx.aislamiento || [];
+  const bit = ctx.bitacora || [];
+  let h = '';
+
+  if (ais.length){
+    h += '<h2 style="margin-top:22px">Aislamiento</h2>';
+    h += '<p class="hint">' + ais.length
+      +  (ais.length === 1 ? ' prueba registrada' : ' pruebas registradas')
+      +  ' &middot; referencia IEEE 43 para el &iacute;ndice de polarizaci&oacute;n</p>';
+    h += '<div class="kp-list" style="margin-bottom:6px">';
+    ais.forEach(a => {
+      const e = kpEstadoIP(a.ip);
+      h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"><div>'
+        +  '<div><span class="nm">' + (a.fecha_prueba || '\u2014') + '</span>'
+        +  (a.realizado_por ? ' <span class="id">' + a.realizado_por + '</span>' : '')
+        +  '</div>'
+        +  '<div class="dt">Aislamiento ' + kpNum(a.aislamiento) + ' M&Omega;'
+        +  ' &middot; IP ' + kpNum(a.ip) + ' &middot; DAR ' + kpNum(a.dar) + '</div>'
+        +  '<div class="src">Balance ' + kpNum(a.balance_ab) + ' / ' + kpNum(a.balance_ac)
+        +  ' / ' + kpNum(a.balance_bc) + ' \u03a9'
+        +  (a.equipo ? ' &middot; ' + a.equipo : '') + '</div>'
+        +  (a.observaciones ? '<div class="src" style="margin-top:5px;color:var(--kp-ink2)">'
+              + a.observaciones + '</div>' : '')
+        +  '</div><span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
+    });
+    h += '</div>';
+  }
+
+  if (bit.length){
+    /* Configuracion son 21 de 37 registros en el historico y taparian
+       los eventos de operacion y falla, que son los que interesan al
+       diagnosticar. Por eso el filtro. */
+    h += '<h2 style="margin-top:22px">Bit&aacute;cora</h2>';
+    h += '<p class="hint">' + bit.length + ' registros &middot; toca una categor&iacute;a para filtrar</p>';
+
+    const cats = [];
+    bit.forEach(b => {
+      const c = b.categoria || 'Sin categor\u00eda';
+      if (cats.indexOf(c) < 0) cats.push(c);
+    });
+    h += '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+    h += '<button class="kp-chip on" data-cat="__all__" onclick="kpFiltrarBitacora(this)">Todas</button>';
+    cats.forEach(c => {
+      h += '<button class="kp-chip" data-cat="' + c + '" onclick="kpFiltrarBitacora(this)">'
+        +  c + '</button>';
+    });
+    h += '</div>';
+
+    h += '<div class="kp-list" id="kp-bitacora">';
+    bit.forEach(b => {
+      const f = b.ocurrido_en
+        ? String(b.ocurrido_en).slice(0,16).replace('T',' ')
+        : 'sin fecha en el origen';
+      const sev = String(b.severidad || '').toLowerCase();
+      const cls = (sev.indexOf('crit') >= 0 || sev.indexOf('alta') >= 0) ? 'crit'
+                : (sev.indexOf('atenc') >= 0 ? 'warn' : '');
+      h += '<div class="kp-rule ' + cls + '" data-cat="'
+        +  (b.categoria || 'Sin categor\u00eda') + '"><div>'
+        +  '<div><span class="nm">' + (b.categoria || 'Evento') + '</span> '
+        +  '<span class="id">' + f + '</span></div>'
+        +  (b.observaciones ? '<div class="dt">' + b.observaciones + '</div>' : '')
+        +  (b.recomendaciones ? '<div class="src" style="margin-top:4px">Recomendaci&oacute;n: '
+              + b.recomendaciones + '</div>' : '')
+        +  (b.realizado_por ? '<div class="src">' + b.realizado_por + '</div>' : '')
+        +  '</div>'
+        +  '<span class="kp-pill ' + (cls || 'none') + '">'
+        +  (b.estado || b.severidad || '\u2014') + '</span></div>';
+    });
+    h += '</div>';
+  }
+
+  return h;
+}
+
+function kpFiltrarBitacora(boton){
+  const cat = boton.dataset.cat;
+  boton.parentElement.querySelectorAll('.kp-chip')
+    .forEach(b => b.classList.toggle('on', b === boton));
+  document.querySelectorAll('#kp-bitacora .kp-rule').forEach(f => {
+    f.style.display = (cat === '__all__' || f.dataset.cat === cat) ? '' : 'none';
+  });
+}
+
+/* ============================================================
+   RENDER DE LA MEDICION ELECTRICA
+   ============================================================ */
+function kpRenderMedicion(m){
+  const val   = m.valores || {};
+  const placa = m.placa || {};
+  const mc    = m.medicion || {};
+  const cad   = kpCalcularCadena(val, placa);
+  const bal   = kpBalanceRectificadores(val);
+  const cal   = kpCalidadEnergia(val);
+  const tmp   = kpTemperaturas(val);
+  let h = '';
+
+  const f = mc.medido_en ? String(mc.medido_en).slice(0,16).replace('T',' ') : '\u2014';
+  h += '<h2>Medici&oacute;n el&eacute;ctrica de campo</h2>';
+  h += '<p class="hint">' + f
+     + (mc.realizado_por ? ' &middot; ' + mc.realizado_por : '')
+     + (mc.frecuencia_hz != null ? ' &middot; ' + kpNum(mc.frecuencia_hz) + ' Hz' : '')
+     + (mc.control_mode ? ' &middot; ' + mc.control_mode : '')
+     + '</p>';
+
+  if (cad.length){
+    h += '<div class="kp-card">' + kpDibujarCadena(cad) + kpLeyenda() + '</div>';
+
+    h += '<div class="kp-list" style="margin-bottom:18px">';
+    h += '<div class="kp-grp">Detalle por etapa</div>';
+    cad.forEach(n => {
+      const e = KP_EST[n.estado] || KP_EST.none;
+      h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"><div>'
+        +  '<div><span class="nm">' + n.nodo + '</span> '
+        +  '<span class="id">' + n.detalle + '</span></div>'
+        +  '<div class="dt">' + kpNum(n.medido) + ' A'
+        +  (n.nominal ? ' de ' + kpNum(n.nominal) + ' A nominal' : ' &middot; sin placa')
+        +  (n.v_prom != null ? ' &middot; ' + kpNum(n.v_prom) + ' V' : '')
+        +  (n.kva != null ? ' &middot; ' + kpNum(n.kva) + ' kVA' : '')
+        +  '</div>'
+        +  '<div class="src">'
+        +  (n.desbal_i != null ? 'Desbalance de corriente ' + kpNum(n.desbal_i) + ' %' : 'Valor calculado, sin desbalance propio')
+        +  (n.desbal_v != null ? ' &middot; tensi&oacute;n ' + kpNum(n.desbal_v) + ' %' : '')
+        +  '</div></div>'
+        +  '<span class="kp-pill ' + e.cls + '">'
+        +  (n.carga_pct != null ? kpNum(n.carga_pct) + ' %' : 'Sin placa')
+        +  '</span></div>';
+    });
+    h += '</div>';
+  }
+
+  if (bal){
+    const e = KP_EST[bal.estado];
+    h += '<h2>Balance de rectificadores</h2>';
+    h += '<p class="hint">Reparto de corriente entre los dos secundarios del PST</p>';
+    h += '<div class="kp-card"><div style="display:flex;justify-content:space-between;'
+      +  'align-items:baseline;gap:12px;flex-wrap:wrap">'
+      +  '<div><div style="font-size:24px;font-weight:600">' + kpNum(bal.diferencia_pct) + ' %</div>'
+      +  '<div style="font-size:13px;color:var(--kp-ink2);margin-top:4px">'
+      +  'Delta ' + kpNum(bal.conv1) + ' A &middot; Estrella ' + kpNum(bal.conv2) + ' A'
+      +  ' &middot; mayor en ' + bal.mayor + '</div>'
+      +  '<div style="font-size:12px;color:var(--kp-ink3);margin-top:6px;max-width:640px">'
+      +  'Cierto desbalance es inherente a un VFD multipulso: los devanados secundarios '
+      +  'reparten corriente sin aislaci&oacute;n galv&aacute;nica plena. Por s&iacute; solo no constituye falla.'
+      +  '</div></div>'
+      +  '<span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div></div>';
+  }
+
+  if (cal.length){
+    h += '<h2>Calidad de energ&iacute;a</h2>';
+    h += '<p class="hint">Medida con instrumento en campo</p>';
+    h += '<div class="kp-kpis" style="margin-bottom:8px">';
+    cal.forEach(pt => {
+      const peor = pt.alertas.some(a => a.t === 'crit') ? 'crit'
+                 : (pt.alertas.some(a => a.t === 'warn') ? 'warn' : 'ok');
+      h += '<div class="kp-kpi ' + peor + '" style="grid-column:span 2">'
+        +  '<div class="k">' + pt.nombre + '</div>'
+        +  '<div class="v">' + (pt.fp != null ? pt.fp.toFixed(2) : '\u2014')
+        +  '<small>factor de potencia</small></div>'
+        +  '<div class="r">'
+        +  (pt.kw   != null ? kpNum(pt.kw)   + ' kW &middot; ' : '')
+        +  (pt.kvar != null ? kpNum(pt.kvar) + ' kVAR &middot; ' : '')
+        +  (pt.kva  != null ? kpNum(pt.kva)  + ' kVA' : '')
+        +  '</div>'
+        +  '<div class="r">THD tensi&oacute;n ' + kpNum(pt.thdv) + ' %'
+        +  ' &middot; THD corriente ' + kpNum(pt.thdi) + ' %'
+        +  (pt.factork != null ? ' &middot; Factor K ' + kpNum(pt.factork) : '') + '</div>';
+      pt.alertas.forEach(a => {
+        const cls = (a.t === 'info') ? 'none' : a.t;
+        h += '<div style="margin-top:6px"><span class="kp-pill ' + cls + '">'
+          +  (a.t === 'info' ? 'Informativo' : (a.t === 'crit' ? 'Cr&iacute;tico' : 'Atenci&oacute;n'))
+          +  '</span></div>'
+          +  '<div class="r" style="margin-top:5px">' + a.m + '</div>';
+      });
+      h += '</div>';
+    });
+    h += '</div>';
+  }
+
+  if (tmp.length){
+    h += '<h2>Temperaturas</h2>';
+    h += '<p class="hint">Puntos medidos en el gabinete y transformadores</p>';
+    h += '<div class="kp-kpis" style="margin-bottom:8px">';
+    tmp.forEach(t => {
+      h += '<div class="kp-kpi"><div class="k">' + t.nombre + '</div>'
+        +  '<div class="v">' + kpNum(t.valor) + '<small>\u00b0C</small></div></div>';
+    });
+    h += '</div>';
+  }
+
+  if (placa.motor_i_nominal_a || placa.motor_potencia_hp){
+    h += '<h2>Placa</h2>';
+    h += '<p class="hint">Origen: ' + (placa.fuente || 'no indicado')
+      +  (placa.actualizado_en ? ' &middot; actualizada ' + String(placa.actualizado_en).slice(0,10) : '')
+      +  '</p>';
+    h += '<div class="kp-kpis" style="margin-bottom:8px">';
+    const pl = [
+      ['Motor', placa.motor_potencia_hp, 'hp'],
+      ['Tensi&oacute;n motor', placa.motor_v_nominal_v, 'V'],
+      ['Corriente motor', placa.motor_i_nominal_a, 'A'],
+      ['Corriente VFD', placa.vfd_i_nominal_a, 'A'],
+      ['Motores', placa.n_motores, ''],
+      ['Aislamiento', placa.motor_clase_aisl, '']
+    ];
+    pl.forEach(x => {
+      if (x[1] == null) return;
+      const vv = (typeof x[1] === 'number') ? kpNum(x[1]) : x[1];
+      h += '<div class="kp-kpi"><div class="k">' + x[0] + '</div>'
+        +  '<div class="v">' + vv + (x[2] ? '<small>' + x[2] + '</small>' : '') + '</div></div>';
+    });
+    h += '</div>';
+  }
+
+  return h;
+}
+
+function kpDibujarCadena(nodos){
+  const n = nodos.length;
+  const w = 132, gap = 20, mx = 20, alto = 178;
+  const anchoTot = mx * 2 + n * w + (n - 1) * gap;
+
+  /* Tope duro de ancho: si el texto estimado excede la caja, se
+     comprime con textLength en lugar de desbordarse. */
+  const cab = (txt, cx, y, px, peso, color, max) => {
+    const est = String(txt).length * px * 0.53;
+    const tl = (est > max) ? ' textLength="' + max + '" lengthAdjust="spacingAndGlyphs"' : '';
+    return '<text x="' + cx + '" y="' + y + '" text-anchor="middle" font-size="' + px
+         + '" font-weight="' + peso + '" fill="' + color + '" font-family="inherit"'
+         + tl + '>' + txt + '</text>';
+  };
+
+  let s = '<svg class="kp-chain" viewBox="0 0 ' + anchoTot + ' ' + alto
+        + '" role="img" xmlns="http://www.w3.org/2000/svg">'
+        + '<title>Cadena energ&eacute;tica</title>'
+        + '<defs><marker id="kpAr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" '
+        + 'markerHeight="6" orient="auto"><path d="M2 1L8 5L2 9" fill="none" stroke="#94949a" '
+        + 'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker></defs>';
+
+  nodos.forEach((nd, i) => {
+    const x = mx + i * (w + gap);
+    const cx = x + w / 2;
+    const col = KP_HEX[nd.estado] || KP_HEX.none;
+    const pct = (nd.nominal && nd.medido != null) ? (nd.medido / nd.nominal * 100) : null;
+    const max = w - 12;
+
+    s += '<rect x="' + x + '" y="18" width="' + w + '" height="132" rx="8" fill="#fff" '
+      +  'stroke="' + col + '" stroke-width="1.5"/>';
+    s += '<rect x="' + x + '" y="18" width="' + w + '" height="5" rx="2" fill="' + col + '"/>';
+    s += kpSimbolo(nd.nodo, cx, 50, col);
+
+    s += cab(nd.nodo, cx, 90, 13, 600, '#1c1c1e', max);
+    s += cab(pct == null ? 'Sin placa' : (Math.round(pct * 10) / 10) + ' %',
+             cx, 110, pct == null ? 12 : 16, 600, pct == null ? '#94949a' : col, max);
+    s += cab(nd.detalle || '', cx, 126, 10.5, 400, '#6b6b70', max);
+    s += cab(nd.nominal ? (kpNum(nd.medido) + ' / ' + kpNum(nd.nominal) + ' ' + nd.unidad)
+                        : (kpNum(nd.medido) + ' ' + nd.unidad),
+             cx, 141, 10.5, 400, '#94949a', max);
+
+    if (i < n - 1){
+      s += '<line x1="' + (x + w + 3) + '" y1="84" x2="' + (x + w + gap - 3) + '" y2="84" '
+        +  'stroke="#94949a" stroke-width="1.5" marker-end="url(#kpAr)"/>';
+    }
+  });
+  return s + '</svg>';
+}
+
+function kpSimbolo(nombre, cx, cy, col){
+  const t = (nombre || "").toUpperCase();
+  if (t.indexOf("VFD") >= 0){
+    return '<rect x="' + (cx - 17) + '" y="' + (cy - 13) + '" width="34" height="26" rx="3" '
+      + 'fill="none" stroke="' + col + '" stroke-width="1.6"/>'
+      + '<path d="M' + (cx - 12) + ' ' + cy + ' q4 -10 7 0 q4 10 7 0" fill="none" stroke="' + col
+      + '" stroke-width="1.4"/>';
+  }
+  if (t.indexOf("MOTOR") >= 0){
+    return '<circle cx="' + cx + '" cy="' + cy + '" r="15" fill="none" stroke="' + col
+      + '" stroke-width="1.6"/>'
+      + '<text x="' + cx + '" y="' + (cy + 4) + '" text-anchor="middle" font-size="12" '
+      + 'fill="' + col + '" font-family="inherit">M</text>';
+  }
+  return '<circle cx="' + (cx - 7) + '" cy="' + cy + '" r="11" fill="none" stroke="' + col
+    + '" stroke-width="1.6"/>'
+    + '<circle cx="' + (cx + 7) + '" cy="' + cy + '" r="11" fill="none" stroke="' + col
+    + '" stroke-width="1.6"/>';
+}
+
+function kpLeyenda(){
+  return '<div class="kp-leg">'
+    + '<span><i style="background:' + KP_HEX.ok   + '"></i>hasta 95 %</span>'
+    + '<span><i style="background:' + KP_HEX.warn + '"></i>95 a 100 %</span>'
+    + '<span><i style="background:' + KP_HEX.crit + '"></i>sobre 100 %</span>'
+    + '<span><i style="background:' + KP_HEX.none + '"></i>sin dato de placa</span></div>';
+}
+
+/* ============================================================
+   ARRANQUE
+   ============================================================ */
+document.getElementById("kpFiltros").addEventListener("click", ev => {
+  const b = ev.target.closest(".kp-chip");
+  if (!b) return;
+  kpFiltro = b.dataset.s;
+  document.querySelectorAll(".kp-chip").forEach(x => x.classList.toggle("on", x === b));
+  kpPintarFlota();
+});
+
+if (!KP.MODO_DEMO) document.getElementById("kpDemo").style.display = "none";
+kpVerFlota();
+</script>
+</body>
+</html>
