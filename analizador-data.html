@@ -66,20 +66,23 @@
 </header>
 
 <main>
-  <label for="pozo">Unidad</label>
-  <select id="pozo" class="campo"><option value="">Cargando unidades…</option></select>
-
   <label>Archivos de la descarga</label>
   <div class="zona" id="zona">
     <strong>Arrastra la carpeta o los archivos .csv</strong>
-    <p>Reconoce <code>log</code>, <code>Event Rec</code> y <code>SD Hist</code>.
-       El <code>Ampchart</code> se ignora: es la misma corriente del log y su
-       columna Average viene incompleta.</p>
+    <p>La unidad se detecta del nombre del archivo (<code>CYC-18</code>,
+       <code>CYC 08</code>, <code>CYC 8</code>). Reconoce <code>log</code>,
+       <code>Event Rec</code> y <code>SD Hist</code>; el <code>Ampchart</code>
+       se ignora porque es la misma corriente del log.</p>
   </div>
   <input type="file" id="archivos" multiple accept=".csv" class="oculto">
 
   <div id="lista"></div>
   <div id="msg"></div>
+
+  <div class="oculto" id="bloque-manual">
+    <label for="pozo">Unidad para los archivos sin detectar</label>
+    <select id="pozo" class="campo"><option value="">Seleccionar…</option></select>
+  </div>
 
   <div class="barra oculto" id="barra"><i id="barra-i"></i></div>
   <div class="prog oculto" id="prog"></div>
@@ -172,32 +175,73 @@ $('zona').addEventListener('drop', function(e){
 });
 $('archivos').onchange = function(e){ recibir(Array.prototype.slice.call(e.target.files)); };
 
-function recibir(fs){
+async function recibir(fs){
   archivos = [];
   fs.forEach(function(f){
     var t = tipoArchivo(f.name);
-    if (t) archivos.push({ f:f, tipo:t });
+    /* webkitRelativePath trae la carpeta, que muchas veces nombra la unidad
+       mejor que el archivo ("CYC 18/20-02-2026/...log.csv"). */
+    if (t) archivos.push({ f:f, tipo:t, ruta:(f.webkitRelativePath || f.name) });
   });
   archivos.sort(function(a,b){ return a.f.name.localeCompare(b.f.name); });
 
   var ign = fs.length - archivos.length;
   var mb = archivos.reduce(function(s,x){ return s + x.f.size; }, 0) / 1048576;
 
-  $('lista').innerHTML = archivos.length
-    ? '<table><tr><th>Archivo</th><th>Tipo</th><th style="text-align:right">Tamaño</th></tr>'
-      + archivos.map(function(x){
-          return '<tr><td>'+x.f.name+'</td><td>'+x.tipo
-               + '</td><td class="n">'+(x.f.size/1048576).toFixed(1)+' MB</td></tr>'; }).join('')
-      + '</table>'
-    : '';
+  if (!archivos.length){ $('lista').innerHTML = ''; aviso('Ningun archivo reconocible.', 'warn');
+    $('procesar').disabled = true; return; }
 
-  var t = archivos.length + ' archivo(s), ' + mb.toFixed(1) + ' MB.'
-        + (ign ? ' Se ignoraron ' + ign + ' (Ampchart u otros).' : '');
-  if (mb > 40) {
-    aviso(t + ' Con este volumen conviene hacerlo desde computador, no desde el celular.', 'warn');
-  } else { aviso(t); }
+  aviso('Detectando la unidad de cada archivo…');
 
-  $('procesar').disabled = !(archivos.length && $('pozo').value);
+  /* Una consulta por texto distinto, no por archivo: la carpeta o el
+     nombre se repiten y no hace falta preguntar 40 veces. */
+  var cache = {};
+  for (var i = 0; i < archivos.length; i++) {
+    var txt = archivos[i].ruta;
+    if (!(txt in cache)) {
+      var r = await sb.rpc('dp_pozo_por_texto', { p_texto: txt });
+      cache[txt] = (!r.error && r.data && r.data.length) ? r.data : [];
+    }
+    var c = cache[txt];
+    archivos[i].pozo   = c.length === 1 ? c[0] : null;
+    archivos[i].ambiguo = c.length > 1 ? c : null;
+  }
+
+  var sinDetectar = archivos.filter(function(x){ return !x.pozo; }).length;
+
+  $('lista').innerHTML = '<table><tr><th>Archivo</th><th>Tipo</th><th>Unidad detectada</th>'
+    + '<th style="text-align:right">Tamaño</th></tr>'
+    + archivos.map(function(x){
+        var u = x.pozo
+          ? x.pozo.nombre + ' <span style="color:var(--suave)">('
+            + (x.pozo.coincidencia === 'EXACTA' ? 'exacta' : 'por numero') + ')</span>'
+          : (x.ambiguo
+              ? '<span style="color:var(--err)">ambigua: '
+                + x.ambiguo.map(function(z){ return z.nombre; }).join(', ') + '</span>'
+              : '<span style="color:var(--warn)">no detectada</span>');
+        return '<tr'+(x.pozo?'':' class="no"')+'><td>'+x.f.name+'</td><td>'+x.tipo+'</td>'
+             + '<td>'+u+'</td><td class="n">'+(x.f.size/1048576).toFixed(1)+' MB</td></tr>'; }).join('')
+    + '</table>';
+
+  $('bloque-manual').classList.toggle('oculto', sinDetectar === 0);
+
+  var unidades = {};
+  archivos.forEach(function(x){ if (x.pozo) unidades[x.pozo.nombre] = 1; });
+  var nu = Object.keys(unidades);
+
+  var t = archivos.length + ' archivo(s), ' + mb.toFixed(1) + ' MB. '
+        + nu.length + ' unidad(es): ' + (nu.join(', ') || 'ninguna')
+        + (ign ? '. Se ignoraron ' + ign + '.' : '.');
+
+  if (sinDetectar) {
+    aviso(t + ' ' + sinDetectar + ' archivo(s) sin unidad: elige la unidad abajo o corrige el nombre.', 'warn');
+  } else if (mb > 40) {
+    aviso(t + ' Con este volumen conviene hacerlo desde computador.', 'warn');
+  } else {
+    aviso(t + ' Revisa que las unidades detectadas sean correctas antes de enviar.', 'ok');
+  }
+
+  $('procesar').disabled = false;
 }
 
 /* ===================================================================
@@ -331,18 +375,25 @@ function leer(f){
 function esperar(ms){ return new Promise(function(r){ setTimeout(r, ms); }); }
 
 $('procesar').onclick = async function(){
-  var pozoId = $('pozo').value;
-  if (!pozoId) { aviso('Selecciona la unidad.', 'err'); return; }
+  var manual = $('pozo') ? $('pozo').value : '';
+  var faltan = archivos.filter(function(x){ return !x.pozo && !manual; });
+  if (faltan.length) {
+    aviso('Hay ' + faltan.length + ' archivo(s) sin unidad. Selecciona una o quitalos.', 'err');
+    return;
+  }
 
   $('procesar').disabled = true;
   $('barra').classList.remove('oculto');
   $('prog').classList.remove('oculto');
   aviso('');
 
-  var res = [], eventos = [], paros = [];
+  var res = [], porPozo = {};   /* eventos y paros se agrupan por unidad */
 
   for (var i = 0; i < archivos.length; i++) {
     var a = archivos[i];
+    var pozoId = a.pozo ? a.pozo.id : manual;
+    var pozoNom = a.pozo ? a.pozo.nombre : 'manual';
+    if (!porPozo[pozoId]) porPozo[pozoId] = { nombre:pozoNom, eventos:[], paros:[] };
     $('prog').textContent = 'Leyendo ' + a.f.name + '  (' + (i+1) + '/' + archivos.length + ')';
     $('barra-i').style.width = Math.round(100*i/archivos.length) + '%';
     await esperar(20);   /* deja respirar la interfaz */
@@ -360,23 +411,29 @@ $('procesar').onclick = async function(){
         muestras: r.muestras, intervalo_s: r.intervalo_s, horas: r.horas } });
 
       var b = (env && env.data) || {};
-      res.push({ n:a.f.name, muestras:r.muestras, horas:r.horas.length,
+      res.push({ n:a.f.name, pozo:pozoNom, muestras:r.muestras, horas:r.horas.length,
                  int:r.intervalo_s,
                  err: env.error ? env.error.message : (b.ok ? null : b.error) });
     } else if (a.tipo === 'EVENTOS') {
-      eventos = eventos.concat(procesarEventos(texto));
-      res.push({ n:a.f.name, eventos:procesarEventos(texto).length });
+      var ev = procesarEventos(texto);
+      porPozo[pozoId].eventos = porPozo[pozoId].eventos.concat(ev);
+      res.push({ n:a.f.name, pozo:pozoNom, eventos:ev.length });
     } else if (a.tipo === 'PAROS') {
-      paros = paros.concat(procesarParos(texto));
-      res.push({ n:a.f.name, paros:procesarParos(texto).length });
+      var pa = procesarParos(texto);
+      porPozo[pozoId].paros = porPozo[pozoId].paros.concat(pa);
+      res.push({ n:a.f.name, pozo:pozoNom, paros:pa.length });
     }
   }
 
-  if (eventos.length || paros.length) {
-    $('prog').textContent = 'Enviando eventos y paros…';
+  var totEv = 0, totPa = 0;
+  for (var pid in porPozo) {
+    var g = porPozo[pid];
+    if (!g.eventos.length && !g.paros.length) continue;
+    $('prog').textContent = 'Enviando eventos y paros de ' + g.nombre + '…';
     var e2 = await sb.rpc('dp_ingresar_eventos', {
-      p: { pozo_id: pozoId, eventos: eventos, paros: paros } });
-    if (e2.error) res.push({ n:'eventos y paros', err:e2.error.message });
+      p: { pozo_id: pid, eventos: g.eventos, paros: g.paros } });
+    if (e2.error) res.push({ n:'eventos y paros ' + g.nombre, err:e2.error.message });
+    else { totEv += g.eventos.length; totPa += g.paros.length; }
   }
 
   $('barra-i').style.width = '100%';
@@ -386,11 +443,13 @@ $('procesar').onclick = async function(){
   var hs   = res.reduce(function(s,x){ return s + (x.horas||0); }, 0);
   var fall = res.filter(function(x){ return x.err; });
 
-  $('lista').innerHTML = '<table><tr><th>Archivo</th><th style="text-align:right">Muestras</th>'
+  $('lista').innerHTML = '<table><tr><th>Archivo</th><th>Unidad</th>'
+    + '<th style="text-align:right">Muestras</th>'
     + '<th style="text-align:right">Horas</th><th style="text-align:right">Intervalo</th>'
     + '<th>Resultado</th></tr>'
     + res.map(function(x){
         return '<tr'+(x.err?' class="no"':'')+'><td>'+x.n+'</td>'
+          + '<td>'+(x.pozo||'—')+'</td>'
           + '<td class="n">'+(x.muestras||x.eventos||x.paros||'—')+'</td>'
           + '<td class="n">'+(x.horas||'—')+'</td>'
           + '<td class="n">'+(x.int?x.int+' s':'—')+'</td>'
@@ -398,7 +457,7 @@ $('procesar').onclick = async function(){
     + '</table>';
 
   aviso(mues.toLocaleString('es-CO') + ' muestras resumidas en ' + hs.toLocaleString('es-CO')
-    + ' filas horarias. ' + eventos.length + ' eventos y ' + paros.length + ' paros.'
+    + ' filas horarias. ' + totEv + ' eventos y ' + totPa + ' paros.'
     + (fall.length ? ' ' + fall.length + ' archivo(s) con problema.' : ''),
     fall.length ? 'warn' : 'ok');
 
@@ -412,12 +471,10 @@ $('procesar').onclick = async function(){
   if (!sb) { aviso('Falta configurar la conexión a Supabase en este archivo.', 'err'); return; }
   var r = await sb.rpc('dp_buscar_unidad', { p_texto: '' });
   if (r.error) { aviso('No se pudieron cargar las unidades: ' + r.error.message, 'err'); return; }
-  $('pozo').innerHTML = '<option value="">Seleccionar unidad…</option>'
+  $('pozo').innerHTML = '<option value="">Seleccionar…</option>'
     + (r.data||[]).map(function(u){
         return '<option value="'+u.id+'">'+u.nombre+' · '+(u.sistema||'—')+'</option>'; }).join('');
-  $('pozo').onchange = function(){
-    $('procesar').disabled = !(archivos.length && $('pozo').value);
-  };
+  aviso('Arrastra los archivos: la unidad se detecta del nombre.');
 })();
 </script>
 </body>
