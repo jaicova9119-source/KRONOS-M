@@ -3010,12 +3010,23 @@ function dpOperacionPorDia(U){
   const out={};
   const dia=d=>out[d]||(out[d]={ms_run:0,ms_dato:0,arranques:0,paradas:0});
   for(const s of (U.segs||[])){
-    let a=s.a;
-    while(a<s.b){                                  // partir en límites de día
+    /* Los segmentos "nd" (sin datos) no aportan ms_run ni ms_dato, pero al
+       partirse por día creaban una clave por cada día del hueco. Un solo
+       timestamp corrupto genera un hueco de décadas y con él decenas de
+       miles de filas vacías. Un día sin datos no es una fila: es ausencia. */
+    if(s.state==="nd") continue;
+    if(!isFinite(s.a)||!isFinite(s.b)||s.b<=s.a) continue;
+    let a=s.a, vueltas=0;
+    while(a<s.b){
+      if(++vueltas>400){                           // ~13 meses de un solo tramo
+        console.warn("dpOperacionPorDia: segmento anómalo, se corta",
+                     new Date(s.a).toISOString(), "→", new Date(s.b).toISOString());
+        break;
+      }
       const d=dpDiaLocal(a);
       const fin=Date.parse(d+"T00:00:00Z")-DP_TZ_OFFSET_MIN*60000+86400000;
       const b=Math.min(s.b,fin), o=dia(d);
-      if(s.state!=="nd") o.ms_dato+=(b-a);
+      o.ms_dato+=(b-a);
       if(s.state==="run") o.ms_run+=(b-a);
       a=b;
     }
@@ -3098,8 +3109,31 @@ function dpCalcularFeatures(U,placa){
   const dias=new Set();
   [iOut,iAlt,vIn,...Object.values(c),oper,cal].forEach(m=>Object.keys(m).forEach(d=>dias.add(d)));
 
+  /* Un timestamp corrupto en un solo archivo mete días imposibles (se han
+     visto 2019 y 2105 en una ventana de tres semanas). No se descartan en
+     silencio: se devuelven en `descartados` para poder rastrear el archivo.
+     El ancla es el día mediano, que es robusto frente a valores extremos
+     en ambos sentidos; el umbral tolera cargas de hasta ~2 años. */
+  const DP_DIAS_TOLERANCIA = 400;
+  const ordenados=[...dias].sort();
+  const descartados=[];
+  let diasValidos=ordenados;
+
+  if(ordenados.length>2){
+    const ancla=Date.parse(ordenados[ordenados.length>>1]+"T00:00:00Z");
+    diasValidos=[]; 
+    for(const d of ordenados){
+      const dist=Math.abs(Date.parse(d+"T00:00:00Z")-ancla)/86400000;
+      if(dist>DP_DIAS_TOLERANCIA) descartados.push(d); else diasValidos.push(d);
+    }
+    if(descartados.length){
+      console.warn(`dpCalcularFeatures: ${descartados.length} día(s) fuera de rango descartado(s):`,
+                   descartados.slice(0,10), descartados.length>10?"…":"");
+    }
+  }
+
   const filas=[];
-  for(const dia of [...dias].sort()){
+  for(const dia of diasValidos){
     const f={fecha:dia};
     const g=(m,k)=>(m[dia]?m[dia][k]:[]);
 
@@ -3172,7 +3206,7 @@ function dpCalcularFeatures(U,placa){
     f.version_motor=DP_VERSION_MOTOR;
     filas.push(f);
   }
-  return {filas,resolucion};
+  return {filas,resolucion,descartados};
 }
 
 /* ── Formato y hash del origen ───────────────────────────────────── */
@@ -3200,8 +3234,15 @@ async function dpEnviarAKronos(){
   const U=DB.units[DB.active];
   if(!U){ $("#err").textContent="carga primero un archivo"; return; }
 
-  const {filas,resolucion}=dpCalcularFeatures(U,{});
+  const {filas,resolucion,descartados}=dpCalcularFeatures(U,{});
   if(!filas.length){ $("#err").textContent="el archivo no produjo ningún día con datos"; return; }
+  if(descartados && descartados.length){
+    /* Se avisa pero no se bloquea: el resto de la ventana sigue siendo
+       válido. Los días listados indican qué archivo revisar. */
+    $("#err").textContent=`aviso: ${descartados.length} día(s) con fecha `+
+      `implausible descartado(s) (${descartados[0]} … ${descartados[descartados.length-1]}). `+
+      `Revisa los timestamps del origen.`;
+  }
 
   /* Huella del conjunto cargado en ESTA unidad, no de un archivo suelto:
      identifica la combinación exacta para que no se cuente dos veces. */

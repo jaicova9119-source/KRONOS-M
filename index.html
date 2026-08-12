@@ -9719,11 +9719,24 @@ async function dpGuardar() {
       throw eCarga;
     }
 
+    /* El insert de cargas_datos y la ingesta de features no comparten
+       transacción. Si la segunda falla, la primera queda confirmada y su
+       clave única bloquea todo reintento con un 409 ("ya fue cargado")
+       aunque en realidad no haya features. Se compensa borrando la carga. */
     const { error: eIng } = await sbDP.rpc("dp_ingestar_features", {
       p_carga_id: carga.id,
       p_filas: filas
     });
-    if (eIng) throw eIng;
+    if (eIng) {
+      const { error: eDel } = await sbDP
+        .from("cargas_datos").delete().eq("id", carga.id);
+      if (eDel) {
+        throw new Error(
+          `falló la ingesta (${eIng.message}) y no se pudo revertir la carga ` +
+          `${carga.id}: bórrala a mano antes de reintentar`);
+      }
+      throw eIng;
+    }
 
     /* Eventos del período. Van después de las features y su fallo no
        invalida la carga: sin eventos la tendencia sigue siendo válida,
