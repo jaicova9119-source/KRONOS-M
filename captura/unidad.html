@@ -480,73 +480,252 @@ function abrirPlaca(){
 
   if(!PLACA){
     aviso($('pl-aviso'),
-      'No se pudo leer la placa guardada. Con senal se cargan los valores actuales; '
-      + 'sin senal solo se puede escribir sobre lo que se envie.', 'warn');
-  } else {
-    var f = PLACA.fuente ? ('Origen actual: ' + PLACA.fuente) : '';
-    aviso($('pl-aviso'), 'Valores de la placa fisica del equipo. '
-      + 'Alimentan el calculo de la cadena energetica.'
-      + (f ? ' ' + f : ''));
+      'No se pudo leer la placa guardada. Con senal se cargan los valores actuales.', 'warn');
+    $('pl-campos').innerHTML = '';
+    $('pl-guardar').disabled = true;
+    $('hoja-placa').showModal();
+    return;
   }
 
-  var campos = (PLACA && PLACA.campos || []).filter(function(c){ return c.rol === rol; });
+  aviso($('pl-aviso'), 'Valores en servicio del equipo. Alimentan el calculo de la '
+    + 'cadena energetica.' + (PLACA.fuente ? ' Origen actual: ' + esc(PLACA.fuente) : ''));
+
+  var campos = (PLACA.campos || []).filter(function(c){ return c.rol === rol; });
   if(!campos.length){
     $('pl-campos').innerHTML = '<p class="sub" style="margin-top:14px">'
       + 'Este rol todavia no tiene campos de placa definidos.</p>';
     $('pl-guardar').disabled = true;
-  } else {
-    var v = (PLACA && PLACA.valores) || {};
-    $('pl-campos').innerHTML = campos.map(function(c){
-      var val = v[c.columna];
-      return '<label for="pl-'+esc(c.columna)+'">' + esc(c.etiqueta)
-        + (c.unidad ? ' (' + esc(c.unidad) + ')' : '') + '</label>'
-        + '<input id="pl-'+esc(c.columna)+'" class="campo'
-        + (c.tipo === 'num' ? ' mono" inputmode="decimal' : '')
-        + '" value="'+esc(val == null ? '' : val)+'" autocomplete="off">'
-        + (c.ayuda ? '<div class="sub" style="margin-top:3px;font-size:12px">'
-                     + esc(c.ayuda) + '</div>' : '');
-    }).join('');
-    $('pl-guardar').disabled = false;
+    $('hoja-placa').showModal();
+    return;
   }
+
+  var v = PLACA.valores || {}, aj = PLACA.ajustes || {};
+  var h = '';
+  campos.forEach(function(c){
+    var val = v[c.columna];
+    var der = aj[c.columna];
+    var num = (c.tipo === 'num');
+
+    h += '<label for="pl-' + esc(c.columna) + '">' + esc(c.etiqueta)
+      +  (c.unidad ? ' (' + esc(c.unidad) + ')' : '')
+      +  (c.calculo ? ' <span style="color:var(--acento);font-weight:700">calculada</span>' : '')
+      +  '</label>';
+    h += '<input id="pl-' + esc(c.columna) + '" class="campo' + (num ? ' mono' : '') + '"'
+      +  (num ? ' inputmode="decimal"' : '')
+      +  ' data-col="' + esc(c.columna) + '"'
+      +  ' value="' + esc(val == null ? '' : val) + '" autocomplete="off">';
+
+    /* Linea de calculo: muestra el teorico y la desviacion contra lo
+       escrito. No lo sobreescribe: la placa manda si difiere por diseno
+       del devanado, pero una diferencia grande casi siempre es un error
+       de transcripcion y conviene que se vea. */
+    if(c.calculo){
+      h += '<div class="sub" id="pl-calc-' + esc(c.columna) + '"'
+        +  ' style="margin-top:3px;font-size:12px"></div>';
+    }
+    if(c.ayuda){
+      h += '<div class="sub" style="margin-top:3px;font-size:12px">'
+        +  esc(c.ayuda) + '</div>';
+    }
+
+    /* Derrateo: solo en los campos que lo admiten */
+    if(c.permite_derrateo){
+      var act = !!der;
+      h += '<div style="margin-top:6px">'
+        +  '<label style="display:flex;align-items:center;gap:7px;margin:0;'
+        +  'text-transform:none;letter-spacing:0;font-size:13px;font-weight:500">'
+        +  '<input type="checkbox" id="pl-der-' + esc(c.columna) + '"'
+        +  (act ? ' checked' : '') + ' onchange="plToggleDer(\'' + esc(c.columna) + '\')">'
+        +  'Valor con derrateo (distinto al de placa)</label>'
+        +  '<div id="pl-derbox-' + esc(c.columna) + '"'
+        +  ' style="' + (act ? '' : 'display:none;') + 'margin-top:6px;padding-left:10px;'
+        +  'border-left:2px solid var(--linea)">'
+        +  '<label for="pl-derval-' + esc(c.columna) + '">Valor original de placa'
+        +  (c.unidad ? ' (' + esc(c.unidad) + ')' : '') + '</label>'
+        +  '<input id="pl-derval-' + esc(c.columna) + '" class="campo mono"'
+        +  ' inputmode="decimal" value="'
+        +  esc(der && der.valor_placa != null ? der.valor_placa : '') + '">'
+        +  '<label for="pl-dermot-' + esc(c.columna) + '">Motivo</label>'
+        +  '<input id="pl-dermot-' + esc(c.columna) + '" class="campo"'
+        +  ' placeholder="Temperatura de fondo, altitud\u2026" value="'
+        +  esc(der && der.motivo ? der.motivo : '') + '">'
+        +  '<label for="pl-derref-' + esc(c.columna) + '">Referencia</label>'
+        +  '<input id="pl-derref-' + esc(c.columna) + '" class="campo"'
+        +  ' placeholder="Documento o comunicacion del fabricante" value="'
+        +  esc(der && der.referencia ? der.referencia : '') + '">'
+        +  '</div></div>';
+    }
+  });
+  $('pl-campos').innerHTML = h;
+  $('pl-guardar').disabled = false;
+
+  /* Recalcular al escribir cualquier campo */
+  Array.prototype.forEach.call($('pl-campos').querySelectorAll('input[data-col]'),
+    function(el){ el.oninput = function(){ plRecalcular(rol); }; });
 
   $('hoja-placa').setAttribute('data-rol', rol);
   aviso($('pl-msg'), '');
+  plRecalcular(rol);
   $('hoja-placa').showModal();
+}
+
+function plToggleDer(col){
+  var box = $('pl-derbox-' + col), chk = $('pl-der-' + col);
+  if(box) box.style.display = (chk && chk.checked) ? '' : 'none';
+}
+
+function plNum(col){
+  var el = $('pl-' + col);
+  if(!el) return null;
+  var t = el.value.trim().replace(',', '.');
+  if(!t || !/^-?[0-9]+(\.[0-9]+)?$/.test(t)) return null;
+  return parseFloat(t);
+}
+
+var RAIZ3 = Math.sqrt(3);
+
+/* Calcula el valor teorico de cada campo derivado y lo compara con lo
+   escrito. Formulas del catalogo, no cableadas por rol. */
+function plRecalcular(rol){
+  var campos = (PLACA && PLACA.campos || []).filter(function(c){ return c.rol === rol; });
+
+  campos.forEach(function(c){
+    if(!c.calculo) return;
+    var caja = $('pl-calc-' + c.columna);
+    if(!caja) return;
+
+    var de = c.calculo_de || [];
+    var a = plNum(de[0]), b = plNum(de[1]);
+    var teo = null;
+
+    if(c.calculo === 'I_TRAFO_3F' && a && b)      teo = (a * 1000) / (RAIZ3 * b);
+    else if(c.calculo === 'I_SEC_12P' && a && b)  teo = (a * 1000 / 2) / (RAIZ3 * b);
+    else if(c.calculo === 'TOTAL_SERIE' && a)     teo = a * (b || 1);
+
+    if(teo == null){
+      caja.innerHTML = '<span style="opacity:.6">Falta '
+        + de.map(function(x){
+            var cc = campos.filter(function(y){ return y.columna === x; })[0];
+            return cc ? cc.etiqueta : x; }).join(' y ')
+        + ' para calcularla</span>';
+      return;
+    }
+
+    var esc2 = Math.round(teo * 10) / 10;
+    var act = plNum(c.columna);
+    var txt = 'Te\u00f3rica: <b>' + esc2 + '</b>' + (c.unidad ? ' ' + c.unidad : '');
+
+    if(act != null && teo > 0){
+      var dif = 100 * Math.abs(act - teo) / teo;
+      if(dif < 2){
+        txt += ' \u00b7 <span style="color:var(--ok)">coincide</span>';
+      } else if(dif < 10){
+        txt += ' \u00b7 <span style="color:var(--alerta)">difiere '
+             + dif.toFixed(1) + ' %</span>';
+      } else {
+        txt += ' \u00b7 <span style="color:var(--err)">difiere '
+             + dif.toFixed(1) + ' % \u2014 revisar</span>';
+      }
+    } else {
+      txt += ' \u00b7 <a href="#" onclick="plUsar(\'' + c.columna + '\','
+           + esc2 + ');return false">usar este valor</a>';
+    }
+    caja.innerHTML = txt;
+  });
+
+  plRelacion(rol);
+}
+
+function plUsar(col, val){
+  var el = $('pl-' + col);
+  if(el){ el.value = val; plRecalcular($('hoja-placa').getAttribute('data-rol')); }
+}
+
+/* Relacion de transformacion, solo para PST y SUT */
+function plRelacion(rol){
+  var box = $('pl-relacion');
+  var pares = { PST:['pst_v_entrada_v','pst_v_secundario_v'],
+                SUT:['sut_v_entrada_v','sut_v_salida_v'] };
+  if(!pares[rol]){ if(box) box.remove(); return; }
+
+  var vp = plNum(pares[rol][0]), vs = plNum(pares[rol][1]);
+  if(!box){
+    box = document.createElement('div');
+    box.id = 'pl-relacion';
+    box.className = 'aviso';
+    $('pl-campos').appendChild(box);
+  }
+  if(vp && vs){
+    var r = vs / vp;
+    box.innerHTML = '<b>Relaci\u00f3n de transformaci\u00f3n</b><br>'
+      + vp + ' V \u2192 ' + vs + ' V \u00b7 relaci\u00f3n 1 : ' + (Math.round(r*1000)/1000)
+      + (rol === 'SUT'
+          ? '<br><span style="opacity:.75">La tensi\u00f3n de salida depende del tap en '
+            + 'servicio: si cambia el tap, cambia la relaci\u00f3n.</span>'
+          : '');
+    box.style.display = '';
+  } else {
+    box.innerHTML = '<span style="opacity:.75">Escribe las dos tensiones para ver la '
+      + 'relaci\u00f3n de transformaci\u00f3n.</span>';
+    box.style.display = '';
+  }
 }
 
 $('pl-guardar').onclick = function(ev){
   var rol = $('hoja-placa').getAttribute('data-rol');
   var campos = (PLACA && PLACA.campos || []).filter(function(c){ return c.rol === rol; });
-  var valores = {}, n = 0;
+  var valores = {}, ajustes = {}, n = 0, err = null;
 
   campos.forEach(function(c){
     var el = $('pl-' + c.columna);
     if(!el) return;
     var val = el.value.trim();
     if(c.tipo === 'num' && val && !/^-?[0-9]+([.,][0-9]+)?$/.test(val)){
-      valores.__err = c.etiqueta;
-      return;
+      err = c.etiqueta; return;
     }
     valores[c.columna] = val;
     n++;
+
+    if(c.permite_derrateo){
+      var chk = $('pl-der-' + c.columna);
+      if(chk && chk.checked){
+        var vo = ($('pl-derval-' + c.columna) || {}).value;
+        vo = (vo || '').trim();
+        if(!vo){ err = 'valor original de ' + c.etiqueta; return; }
+        if(!/^-?[0-9]+([.,][0-9]+)?$/.test(vo)){ err = 'valor original de ' + c.etiqueta; return; }
+        ajustes[c.columna] = {
+          valor_placa: vo,
+          motivo:     (($('pl-dermot-' + c.columna) || {}).value || '').trim(),
+          referencia: (($('pl-derref-' + c.columna) || {}).value || '').trim()
+        };
+      } else {
+        /* Sin marca se retira el ajuste: el valor pasa a ser de placa */
+        ajustes[c.columna] = { valor_placa: '' };
+      }
+    }
   });
 
-  if(valores.__err){
-    aviso($('pl-msg'), 'Valor no numerico en ' + valores.__err, 'err');
-    return;
-  }
+  if(err){ aviso($('pl-msg'), 'Revisa el campo: ' + err, 'err'); return; }
   if(!n){ aviso($('pl-msg'), 'Nada por guardar.', 'err'); return; }
 
   enviarOEncolar(
     'dp_captura_placa',
-    { pozo_id: unidad.id, valores: valores, fuente: 'Lectura de placa en campo' },
+    { pozo_id: unidad.id, valores: valores, ajustes: ajustes,
+      fuente: 'Lectura de placa en campo' },
     'Placa ' + rol + ' ' + unidad.nombre,
     function(pendiente, resp){
-      /* Refleja en el espejo local para que el boton deje de decir
-         "incompleta" sin esperar el refresco. */
       if(PLACA && PLACA.valores){
         Object.keys(valores).forEach(function(k){
-          if(k !== '__err') PLACA.valores[k] = valores[k] === '' ? null : valores[k];
+          PLACA.valores[k] = valores[k] === '' ? null : valores[k];
+        });
+      }
+      if(PLACA){
+        PLACA.ajustes = PLACA.ajustes || {};
+        Object.keys(ajustes).forEach(function(k){
+          if(!ajustes[k].valor_placa) delete PLACA.ajustes[k];
+          else PLACA.ajustes[k] = { valor_placa: ajustes[k].valor_placa,
+                                    motivo: ajustes[k].motivo,
+                                    referencia: ajustes[k].referencia };
         });
       }
     },
