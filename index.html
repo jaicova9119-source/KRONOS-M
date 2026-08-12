@@ -9722,18 +9722,32 @@ async function dpGuardar() {
     /* El insert de cargas_datos y la ingesta de features no comparten
        transacción. Si la segunda falla, la primera queda confirmada y su
        clave única bloquea todo reintento con un 409 ("ya fue cargado")
-       aunque en realidad no haya features. Se compensa borrando la carga. */
+       aunque no haya features. Se compensa borrando la carga.
+
+       Los FK de carga_id son ON DELETE SET NULL, no CASCADE: borrar solo
+       la carga dejaría filas hijas con carga_id nulo, sin trazabilidad y
+       sin forma de encontrarlas. Por eso se borran primero y de forma
+       explícita. serie_horaria y paros_vfd ni siquiera tienen FK, así que
+       tampoco se limpiarían solas. */
     const { error: eIng } = await sbDP.rpc("dp_ingestar_features", {
       p_carga_id: carga.id,
       p_filas: filas
     });
     if (eIng) {
+      const hijas = ["pozo_features_diarias", "serie_horaria", "eventos_vfd", "paros_vfd"];
+      const noLimpiadas = [];
+      for (const t of hijas) {
+        const { error } = await sbDP.from(t).delete().eq("carga_id", carga.id);
+        if (error) noLimpiadas.push(`${t} (${error.message})`);
+      }
       const { error: eDel } = await sbDP
         .from("cargas_datos").delete().eq("id", carga.id);
-      if (eDel) {
+
+      if (eDel || noLimpiadas.length) {
         throw new Error(
-          `falló la ingesta (${eIng.message}) y no se pudo revertir la carga ` +
-          `${carga.id}: bórrala a mano antes de reintentar`);
+          `falló la ingesta (${eIng.message}) y la reversión quedó incompleta. ` +
+          `Limpia a mano la carga ${carga.id}` +
+          (noLimpiadas.length ? ` — pendiente: ${noLimpiadas.join("; ")}` : ""));
       }
       throw eIng;
     }
