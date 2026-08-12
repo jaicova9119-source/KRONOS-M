@@ -192,6 +192,16 @@
   <button class="cerrar" data-cerrar>Cancelar</button>
 </div></dialog>
 
+<dialog id="hoja-placa"><div class="hoja">
+  <h4>Datos de placa</h4>
+  <p class="sub" id="pl-rol"></p>
+  <div class="aviso" id="pl-aviso"></div>
+  <div id="pl-campos"></div>
+  <div id="pl-msg"></div>
+  <button class="b pri ancho" id="pl-guardar" style="margin-top:16px">Guardar placa</button>
+  <button class="cerrar" data-cerrar>Cancelar</button>
+</div></dialog>
+
 <!-- Mismo CDN que precachea el service worker. No cambiar por otro:
      si la URL no coincide con la de LIBRERIAS, sin señal no carga. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -346,6 +356,7 @@ function abrirUnidad(u){
   $('u-sistema').textContent = u.sistema || 'SIN SISTEMA';
   aviso($('msg'), '');
   pintarEquipos();
+  cargarPlaca().then(pintarEquipos);   /* repinta con el estado de placa */
 }
 
 $('btn-otra').onclick = function(){
@@ -377,8 +388,12 @@ function pintarEquipos(){
       + '<div class="fila"><span class="rol">'+esc(e.nombre_rol)+'</span>'
       + '<span class="ord">'+esc(e.rol)+'</span></div>'
       + cuerpo + pend
-      + '<div class="acciones"><button class="b pri" data-accion="'+(puesto?'que':'nuevo')+'">'
-      + (puesto?'Actualizar':'Registrar equipo')+'</button></div></div>';
+      + '<div class="acciones" style="display:flex;gap:8px;flex-wrap:wrap">'
+      + '<button class="b pri" data-accion="'+(puesto?'que':'nuevo')+'">'
+      + (puesto?'Actualizar':'Registrar equipo')+'</button>'
+      + '<button class="b sec" data-accion="placa">Datos de placa'
+      + (kpFaltaPlaca(e.rol) ? ' \u00b7 incompleta' : '') + '</button>'
+      + '</div></div>';
   }).join('');
 
   Array.prototype.forEach.call(caja.querySelectorAll('[data-accion]'), function(b){
@@ -386,7 +401,10 @@ function pintarEquipos(){
       var rol = b.parentNode.parentNode.getAttribute('data-rol');
       filaActual = eqs.filter(function(x){ return x.rol === rol; })[0];
       if(!filaActual) return;
-      if(b.getAttribute('data-accion') === 'que') abrirQue(); else abrirReemplazo(false);
+      var ac = b.getAttribute('data-accion');
+      if(ac === 'placa')      abrirPlaca();
+      else if(ac === 'que')   abrirQue();
+      else                    abrirReemplazo(false);
     };
   });
 }
@@ -432,12 +450,115 @@ function abrirReemplazo(hayAnterior){
   $('hoja-reemplazo').showModal();
 }
 
+/* ===================== DATOS DE PLACA ================================
+   Los campos dependen del rol y vienen del catalogo campos_placa: la
+   app no los tiene cableados, asi que agregar un campo es un insert en
+   la base y no un despliegue.
+   ===================================================================== */
+var PLACA = null;   /* { valores, campos, fuente, ... } de la unidad activa */
+
+function kpFaltaPlaca(rol){
+  if(!PLACA || !PLACA.campos) return false;
+  var cs = PLACA.campos.filter(function(c){ return c.rol === rol; });
+  if(!cs.length) return false;
+  var v = PLACA.valores || {};
+  return cs.some(function(c){ return v[c.columna] == null || v[c.columna] === ''; });
+}
+
+async function cargarPlaca(){
+  PLACA = null;
+  if(!navigator.onLine || !sb) return;
+  try {
+    var r = await sb.rpc('dp_placa_unidad', { p_pozo_id: unidad.id });
+    if(!r.error && r.data) PLACA = r.data;
+  } catch(e){}
+}
+
+function abrirPlaca(){
+  var rol = filaActual.rol;
+  $('pl-rol').textContent = filaActual.nombre_rol + ' \u00b7 ' + unidad.nombre;
+
+  if(!PLACA){
+    aviso($('pl-aviso'),
+      'No se pudo leer la placa guardada. Con senal se cargan los valores actuales; '
+      + 'sin senal solo se puede escribir sobre lo que se envie.', 'warn');
+  } else {
+    var f = PLACA.fuente ? ('Origen actual: ' + PLACA.fuente) : '';
+    aviso($('pl-aviso'), 'Valores de la placa fisica del equipo. '
+      + 'Alimentan el calculo de la cadena energetica.'
+      + (f ? ' ' + f : ''));
+  }
+
+  var campos = (PLACA && PLACA.campos || []).filter(function(c){ return c.rol === rol; });
+  if(!campos.length){
+    $('pl-campos').innerHTML = '<p class="sub" style="margin-top:14px">'
+      + 'Este rol todavia no tiene campos de placa definidos.</p>';
+    $('pl-guardar').disabled = true;
+  } else {
+    var v = (PLACA && PLACA.valores) || {};
+    $('pl-campos').innerHTML = campos.map(function(c){
+      var val = v[c.columna];
+      return '<label for="pl-'+esc(c.columna)+'">' + esc(c.etiqueta)
+        + (c.unidad ? ' (' + esc(c.unidad) + ')' : '') + '</label>'
+        + '<input id="pl-'+esc(c.columna)+'" class="campo'
+        + (c.tipo === 'num' ? ' mono" inputmode="decimal' : '')
+        + '" value="'+esc(val == null ? '' : val)+'" autocomplete="off">'
+        + (c.ayuda ? '<div class="sub" style="margin-top:3px;font-size:12px">'
+                     + esc(c.ayuda) + '</div>' : '');
+    }).join('');
+    $('pl-guardar').disabled = false;
+  }
+
+  $('hoja-placa').setAttribute('data-rol', rol);
+  aviso($('pl-msg'), '');
+  $('hoja-placa').showModal();
+}
+
+$('pl-guardar').onclick = function(ev){
+  var rol = $('hoja-placa').getAttribute('data-rol');
+  var campos = (PLACA && PLACA.campos || []).filter(function(c){ return c.rol === rol; });
+  var valores = {}, n = 0;
+
+  campos.forEach(function(c){
+    var el = $('pl-' + c.columna);
+    if(!el) return;
+    var val = el.value.trim();
+    if(c.tipo === 'num' && val && !/^-?[0-9]+([.,][0-9]+)?$/.test(val)){
+      valores.__err = c.etiqueta;
+      return;
+    }
+    valores[c.columna] = val;
+    n++;
+  });
+
+  if(valores.__err){
+    aviso($('pl-msg'), 'Valor no numerico en ' + valores.__err, 'err');
+    return;
+  }
+  if(!n){ aviso($('pl-msg'), 'Nada por guardar.', 'err'); return; }
+
+  enviarOEncolar(
+    'dp_captura_placa',
+    { pozo_id: unidad.id, valores: valores, fuente: 'Lectura de placa en campo' },
+    'Placa ' + rol + ' ' + unidad.nombre,
+    function(pendiente, resp){
+      /* Refleja en el espejo local para que el boton deje de decir
+         "incompleta" sin esperar el refresco. */
+      if(PLACA && PLACA.valores){
+        Object.keys(valores).forEach(function(k){
+          if(k !== '__err') PLACA.valores[k] = valores[k] === '' ? null : valores[k];
+        });
+      }
+    },
+    $('hoja-placa'), $('pl-msg'), ev.currentTarget, 'Guardar placa');
+};
+
 /* ===================== ENVIAR O ENCOLAR ============================== */
 function enviarOEncolar(rpc, payload, etiqueta, aplicarLocal, hoja, cajaMsg, boton, textoBoton){
   boton.disabled = true; boton.textContent = 'Guardando…';
 
-  function cerrarConMensaje(pendiente, texto, clase){
-    aplicarLocal(pendiente);
+  function cerrarConMensaje(pendiente, texto, clase, resp){
+    aplicarLocal(pendiente, resp || null);
     reflejarEnEspejo();
     boton.disabled = false; boton.textContent = textoBoton;
     hoja.close(); pintarEquipos();
@@ -446,14 +567,14 @@ function enviarOEncolar(rpc, payload, etiqueta, aplicarLocal, hoja, cajaMsg, bot
 
   if(!navigator.onLine || !sb){
     encolar(rpc, payload, etiqueta);
-    cerrarConMensaje(true, 'Sin conexion. El cambio quedo guardado en este dispositivo y se enviara solo cuando vuelva la señal.', 'warn');
+    cerrarConMensaje(true, 'Sin conexion. El cambio quedo guardado en este dispositivo y se enviara solo cuando vuelva la señal.', 'warn', null);
     return;
   }
 
   sb.rpc(rpc, { p: payload }).then(function(r){
     if(r.error){
       encolar(rpc, payload, etiqueta);
-      cerrarConMensaje(true, 'No se pudo enviar ahora. El cambio quedo guardado en este dispositivo.', 'warn');
+      cerrarConMensaje(true, 'No se pudo enviar ahora. El cambio quedo guardado en este dispositivo.', 'warn', null);
       return;
     }
     var b = r.data || {};
@@ -462,13 +583,16 @@ function enviarOEncolar(rpc, payload, etiqueta, aplicarLocal, hoja, cajaMsg, bot
       aviso(cajaMsg, b.error || 'Error desconocido', 'err');
       return;
     }
-    cerrarConMensaje(false, b.duplicado
+    var extra = '';
+    if (b.codigo_sap) extra = ' Quedo atado al activo ' + b.codigo_sap + '.';
+    else if (b.estado === 'PENDIENTE_SAP') extra = ' El serial no se pudo atar a un activo del maestro: queda pendiente de catalogacion.';
+    cerrarConMensaje(false, (b.duplicado
       ? 'Este cambio ya estaba registrado; no se duplico.'
-      : 'Cambio registrado.', 'ok');
+      : 'Cambio registrado.') + extra, b.codigo_sap ? 'ok' : 'warn', b);
     descargarEspejo();
   }).catch(function(){
     encolar(rpc, payload, etiqueta);
-    cerrarConMensaje(true, 'Sin conexion. El cambio quedo guardado en este dispositivo.', 'warn');
+    cerrarConMensaje(true, 'Sin conexion. El cambio quedo guardado en este dispositivo.', 'warn', null);
   });
 }
 
@@ -489,7 +613,7 @@ $('corr-guardar').onclick = function(ev){
     'dp_captura_corregir_placa',
     { instalacion_id: filaActual.instalacion_id, serial:s, marca:m, modelo:mo, nota:nt },
     'Correccion ' + filaActual.rol + ' ' + unidad.nombre,
-    function(pendiente){
+    function(pendiente, resp){
       if(s)  filaActual.serial = s;
       if(m)  filaActual.marca  = m;
       if(mo) filaActual.modelo = mo;
@@ -511,12 +635,19 @@ $('reem-guardar').onclick = function(ev){
     { pozo_id:unidad.id, rol:filaActual.rol, serial:s, marca:m, modelo:mo,
       instalado_el:f, motivo_retiro:mot, nota:nt },
     'Reemplazo ' + filaActual.rol + ' ' + unidad.nombre,
-    function(pendiente){
+    function(pendiente, resp){
       filaActual.serial = s; filaActual.marca = m; filaActual.modelo = mo;
       filaActual.instalado_el = f;
-      filaActual.instalacion_id = filaActual.instalacion_id || 'local';
-      filaActual.codigo_sap = null;
-      filaActual.estado_catalogacion = 'PENDIENTE_SAP';
+      filaActual.instalacion_id = (resp && resp.instalacion_id) || filaActual.instalacion_id || 'local';
+      /* El estado lo decide la base al cruzar el serial contra el maestro.
+         Sin señal todavia no se sabe, asi que no se afirma nada. */
+      if (pendiente) {
+        filaActual.codigo_sap = null;
+        filaActual.estado_catalogacion = 'POR VERIFICAR';
+      } else {
+        filaActual.codigo_sap = (resp && resp.codigo_sap) || null;
+        filaActual.estado_catalogacion = (resp && resp.estado) || 'PENDIENTE_SAP';
+      }
       filaActual._pendiente = pendiente;
     },
     $('hoja-reemplazo'), $('reem-msg'), ev.currentTarget, 'Registrar instalacion');
