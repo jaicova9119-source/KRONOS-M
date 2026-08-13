@@ -378,9 +378,9 @@
 
         <div class="section-label"><span class="bar"></span>Mediciones y pruebas</div>
 
-        <div class="action-card card-medicion" data-sistemas="BES" onclick="ir('medicion-pozo'); dpListarBorradores();">
+        <div class="action-card card-medicion" data-sistemas="BES,HPUM" onclick="ir('medicion-pozo'); dpListarBorradores();">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="body"><div class="ttl">Medicion predictiva</div><div class="sub">Lectura completa PST, VFD, SUT, temperaturas</div></div>
+          <div class="body"><div class="ttl">Medicion predictiva</div><div class="sub">Lectura electrica completa segun el sistema del activo</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
@@ -828,71 +828,6 @@ function dpNuevoId(){
   });
 }
 
-/* codigo de puntos_medida -> id del campo en el formulario */
-const MED_MAPA = {
-  pst_in_v_ab: 'med-pst-vab',
-  pst_in_v_ac: 'med-pst-vac',
-  pst_in_v_bc: 'med-pst-vbc',
-  pst_in_i_a: 'med-pst-ia',
-  pst_in_i_b: 'med-pst-ib',
-  pst_in_i_c: 'med-pst-ic',
-  pst_in_fp: 'med-pst-fp',
-  pst_in_kw: 'med-pst-kw',
-  pst_in_kvar: 'med-pst-kvar',
-  pst_in_kva: 'med-pst-kva',
-  pst_in_thdv: 'med-pst-thdv',
-  pst_in_thd: 'med-pst-thdi',
-  pst_in_factork: 'med-pst-fk',
-  pst_in_angfasvi: 'med-pst-ang',
-  conv1_v_ab: 'med-c1-vab',
-  conv1_v_ac: 'med-c1-vac',
-  conv1_v_bc: 'med-c1-vbc',
-  conv1_i_a: 'med-c1-ia',
-  conv1_i_b: 'med-c1-ib',
-  conv1_i_c: 'med-c1-ic',
-  conv2_v_ab: 'med-c2-vab',
-  conv2_v_ac: 'med-c2-vac',
-  conv2_v_bc: 'med-c2-vbc',
-  conv2_i_a: 'med-c2-ia',
-  conv2_i_b: 'med-c2-ib',
-  conv2_i_c: 'med-c2-ic',
-  vfdout_v_ab: 'med-vfd-vab',
-  vfdout_v_bc: 'med-vfd-vbc',
-  vfdout_v_ac: 'med-vfd-vac',
-  vfdout_i_a: 'med-vfd-ia',
-  vfdout_i_b: 'med-vfd-ib',
-  vfdout_i_c: 'med-vfd-ic',
-  vfdout_fp: 'med-vfd-fp',
-  vfdout_kw: 'med-vfd-kw',
-  vfdout_kvar: 'med-vfd-kvar',
-  vfdout_kva: 'med-vfd-kva',
-  vfdout_thdv: 'med-vfd-thdv',
-  vfdout_thd: 'med-vfd-thdi',
-  vfdout_factork: 'med-vfd-fk',
-  vfdout_angfasvi: 'med-vfd-ang',
-  busdc_v: 'med-busdc',
-  busac_v: 'med-busac',
-  sutout_v_ab: 'med-sut-vab',
-  sutout_v_ac: 'med-sut-vac',
-  sutout_v_bc: 'med-sut-vbc',
-  sutout_v_ag: 'med-sut-vag',
-  sutout_v_bg: 'med-sut-vbg',
-  sutout_v_cg: 'med-sut-vcg',
-  sutout_i_a: 'med-sut-ia',
-  sutout_i_b: 'med-sut-ib',
-  sutout_i_c: 'med-sut-ic',
-  hs1_c: 'med-hs1',
-  hs2_c: 'med-hs2',
-  hs3_c: 'med-hs3',
-  hs4_c: 'med-hs4',
-  temp_inductor_c: 'med-tind',
-  temp_controller_c: 'med-tctrl',
-  temp_igbt_u_c: 'med-tigbtu',
-  temp_igbt_v_c: 'med-tigbtv',
-  temp_igbt_w_c: 'med-tigbtw',
-  temp_pst_c: 'med-tpst',
-  temp_sut_c: 'med-tsut',
-};
 
 const POZOS = ["CYC-01","CYC-04","CYC-08","CYC-09","CYC-16","CYC-32","CYC-43","CYC-44","CYC-52","CYC-63","CHB-04","CHB-05","CHB-07"];
 
@@ -1038,9 +973,23 @@ function postJSON(url, datos){
   }).then(function(resp){ return resp.json().then(function(j){ return {status: resp.status, body: j}; }); });
 }
 
-function campoNumero(id, label, unidad){
-  return '<div class="field"><label for="' + id + '">' + label + '</label>' +
-    '<div class="unit-input"><input class="mono-input" type="number" step="any" id="' + id + '">' +
+function campoNumero(id, label, unidad, opciones){
+  opciones = opciones || {};
+  /* Los angulos se piden con un decimal. Con grado entero el piso de ruido de
+     la secuencia cero calculada queda cerca de 0.5 %, y cualquier umbral por
+     debajo de 1.5 % seria ruido en lugar de hallazgo. */
+  var paso = (opciones.decimales === 1) ? '0.1' : 'any';
+  var attrs = ' step="' + paso + '"';
+  if (opciones.rango_min !== null && opciones.rango_min !== undefined) attrs += ' min="' + opciones.rango_min + '"';
+  if (opciones.rango_max !== null && opciones.rango_max !== undefined) attrs += ' max="' + opciones.rango_max + '"';
+  if (opciones.nombre) attrs += ' title="' + String(opciones.nombre).replace(/"/g,'&quot;') + '"';
+  /* El obligatorio se marca pero no se usa el required del navegador: el
+     formulario tiene que poder guardarse como borrador incompleto. */
+  var marca = opciones.obligatorio
+    ? '<span style="color:var(--danger);font-weight:700;" title="Obligatorio para completar la ronda"> *</span>' : '';
+  return '<div class="field' + (opciones.obligatorio ? ' obligatorio' : '') + '">' +
+    '<label for="' + id + '">' + label + marca + '</label>' +
+    '<div class="unit-input"><input class="mono-input" type="number"' + attrs + ' id="' + id + '">' +
     (unidad ? '<span class="unit">' + unidad + '</span>' : '') + '</div></div>';
 }
 
@@ -1051,70 +1000,140 @@ var ICONO_BUS = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 8h16M4 16h16" 
 var ICONO_TERMOMETRO = '<svg viewBox="0 0 24 24" fill="none"><path d="M12 14.5V5a2 2 0 1 0-4 0v9.5a4 4 0 1 0 4 0Z" stroke="currentColor" stroke-width="1.6"/><circle cx="10" cy="17" r="1.4" fill="currentColor"/></svg>';
 var ICONO_GAUGE = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 15a8 8 0 1 1 16 0" stroke="currentColor" stroke-width="1.6"/><path d="M12 15l3-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 
-var ICONOS_GRUPO = {
-  'Identificacion y control': {svg: ICONO_GAUGE, bg:'#EFF1F4', color:'var(--navy)'},
-  'PST Entrada': {svg: ICONO_TRANSFORMADOR, bg:'#E8F5EE', color:'var(--bes)'},
-  'Convertidor 1': {svg: ICONO_RECTIFICADOR, bg:'#E9F0F9', color:'var(--hpum)'},
-  'Convertidor 2': {svg: ICONO_RECTIFICADOR, bg:'#E9F0F9', color:'var(--hpum)'},
-  'VFD Salida': {svg: ICONO_ONDA, bg:'#FDEDEA', color:'var(--danger)'},
-  'Bus DC / AC': {svg: ICONO_BUS, bg:'#F5EDE4', color:'var(--ubh)'},
-  'SUT Salida': {svg: ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)'},
-  'Temperaturas': {svg: ICONO_TERMOMETRO, bg:'#FDEDEA', color:'var(--danger)'}
+var ICONO_PRESION = '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="13" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M12 13l3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 3v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+var ICONO_VIBRACION = '<svg viewBox="0 0 24 24" fill="none"><path d="M3 12h2l2-5 2 10 2-13 2 16 2-10 2 5h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/* Titulo, icono y ancho de columna por CODIGO de etapa. Antes esto estaba
+   indexado por el titulo del grupo, que era un texto escrito a mano en el
+   arreglo del formulario. Ahora la etapa la manda el catalogo, asi que la
+   llave es el codigo. Una etapa que no este aqui se dibuja igual, con el
+   codigo como titulo: preferible a que desaparezcan campos. */
+var ETAPA_INFO = {
+  PST_ENTRADA:   {titulo:'PST Entrada',   svg:ICONO_TRANSFORMADOR, bg:'#E8F5EE', color:'var(--bes)',    cols:3},
+  CONVERTIDOR_1: {titulo:'Convertidor 1', svg:ICONO_RECTIFICADOR,  bg:'#E9F0F9', color:'var(--hpum)',   cols:3},
+  CONVERTIDOR_2: {titulo:'Convertidor 2', svg:ICONO_RECTIFICADOR,  bg:'#E9F0F9', color:'var(--hpum)',   cols:3},
+  VFD_SALIDA:    {titulo:'VFD Salida',    svg:ICONO_ONDA,          bg:'#FDEDEA', color:'var(--danger)', cols:3},
+  FILTRO_PWM:    {titulo:'Filtro PWM',    svg:ICONO_ONDA,          bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
+  BUS_DC:        {titulo:'Bus DC',        svg:ICONO_BUS,           bg:'#F5EDE4', color:'var(--ubh)',    cols:2},
+  BUS_AC:        {titulo:'Bus AC',        svg:ICONO_BUS,           bg:'#F5EDE4', color:'var(--ubh)',    cols:2},
+  SUT_SALIDA:    {titulo:'SUT Salida',    svg:ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)', cols:3},
+  PRESIONES:     {titulo:'Presiones',     svg:ICONO_PRESION,       bg:'#E9F0F9', color:'var(--navy)',   cols:3},
+  VIBRACIONES:   {titulo:'Vibraciones',   svg:ICONO_VIBRACION,     bg:'#F5EDE4', color:'var(--ubh)',    cols:3},
+  TEMPERATURAS:  {titulo:'Temperaturas',  svg:ICONO_TERMOMETRO,    bg:'#FDEDEA', color:'var(--danger)', cols:3},
+  AISLAMIENTO:   {titulo:'Aislamiento',   svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)',   cols:3},
+  OTRO:          {titulo:'Otros',         svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)',   cols:3}
 };
 
-function renderGrupo(titulo, campos, cols){
+
+function renderGrupo(titulo, campos, cols, info){
   cols = cols || 3;
-  var html = campos.map(function(c){ return campoNumero(c.id, c.label, c.unidad); }).join('');
-  var ic = ICONOS_GRUPO[titulo];
+  var html = campos.map(function(c){
+    return campoNumero(c.id, c.label, c.unidad, c);
+  }).join('');
+  var ic = info || ETAPA_INFO[titulo];
   var icHtml = ic ? '<span class="sec-ic" style="background:' + ic.bg + ';color:' + ic.color + ';">' + ic.svg + '</span>' : '';
-  return '<fieldset><legend>' + icHtml + titulo + '<span class="count">' + campos.length + ' campos</span></legend>' +
+  var nObl = campos.filter(function(c){ return c.obligatorio; }).length;
+  var cuenta = campos.length + ' campos' + (nObl ? ' &middot; ' + nObl + ' obligatorios' : '');
+  return '<fieldset><legend>' + icHtml + titulo + '<span class="count">' + cuenta + '</span></legend>' +
     '<div class="group-card"><div class="grid-fields ' + (cols===3?'g3':'') + '">' + html + '</div></div></fieldset>';
 }
 
-var MED_GRUPOS = [
-  { titulo:'Identificacion y control', cols:2, campos:[
-    {id:'med-frecop', label:'Frec Operativa', unidad:'Hz'},
-    {id:'med-frecset', label:'Frec Setpoint', unidad:'Hz'},
-    {id:'med-hsc', label:'HSC', unidad:''},
-    {id:'med-lsc', label:'LSC', unidad:''}
-  ]},
-  { titulo:'PST Entrada', cols:3, campos:[
-    {id:'med-pst-vab', label:'V AB', unidad:'V'}, {id:'med-pst-vac', label:'V AC', unidad:'V'}, {id:'med-pst-vbc', label:'V BC', unidad:'V'},
-    {id:'med-pst-ia', label:'I A', unidad:'A'}, {id:'med-pst-ib', label:'I B', unidad:'A'}, {id:'med-pst-ic', label:'I C', unidad:'A'},
-    {id:'med-pst-fp', label:'FP', unidad:''}, {id:'med-pst-kw', label:'kW', unidad:'kW'}, {id:'med-pst-kvar', label:'kVAR', unidad:'kVAR'},
-    {id:'med-pst-kva', label:'kVA', unidad:'kVA'}, {id:'med-pst-thdv', label:'THD-V', unidad:'%'}, {id:'med-pst-thdi', label:'THD-I', unidad:'%'},
-    {id:'med-pst-fk', label:'Factor K', unidad:''}, {id:'med-pst-ang', label:'Ang Fas V-I', unidad:'grados'}
-  ]},
-  { titulo:'Convertidor 1', cols:3, campos:[
-    {id:'med-c1-vab', label:'V AB', unidad:'V'}, {id:'med-c1-vac', label:'V AC', unidad:'V'}, {id:'med-c1-vbc', label:'V BC', unidad:'V'},
-    {id:'med-c1-ia', label:'I A', unidad:'A'}, {id:'med-c1-ib', label:'I B', unidad:'A'}, {id:'med-c1-ic', label:'I C', unidad:'A'}
-  ]},
-  { titulo:'Convertidor 2', cols:3, campos:[
-    {id:'med-c2-vab', label:'V AB', unidad:'V'}, {id:'med-c2-vac', label:'V AC', unidad:'V'}, {id:'med-c2-vbc', label:'V BC', unidad:'V'},
-    {id:'med-c2-ia', label:'I A', unidad:'A'}, {id:'med-c2-ib', label:'I B', unidad:'A'}, {id:'med-c2-ic', label:'I C', unidad:'A'}
-  ]},
-  { titulo:'VFD Salida', cols:3, campos:[
-    {id:'med-vfd-vab', label:'V AB', unidad:'V'}, {id:'med-vfd-vbc', label:'V BC', unidad:'V'}, {id:'med-vfd-vac', label:'V AC', unidad:'V'},
-    {id:'med-vfd-ia', label:'I A', unidad:'A'}, {id:'med-vfd-ib', label:'I B', unidad:'A'}, {id:'med-vfd-ic', label:'I C', unidad:'A'},
-    {id:'med-vfd-fp', label:'FP', unidad:''}, {id:'med-vfd-kw', label:'kW', unidad:'kW'}, {id:'med-vfd-kvar', label:'kVAR', unidad:'kVAR'},
-    {id:'med-vfd-kva', label:'kVA', unidad:'kVA'}, {id:'med-vfd-thdv', label:'THD-V', unidad:'%'}, {id:'med-vfd-thdi', label:'THD-I', unidad:'%'},
-    {id:'med-vfd-fk', label:'Factor K', unidad:''}, {id:'med-vfd-ang', label:'Ang Fas V-I', unidad:'grados'}
-  ]},
-  { titulo:'Bus DC / AC', cols:2, campos:[
-    {id:'med-busdc', label:'Bus DC', unidad:'V'}, {id:'med-busac', label:'Bus AC', unidad:'V'}
-  ]},
-  { titulo:'SUT Salida', cols:3, campos:[
-    {id:'med-sut-vab', label:'V AB', unidad:'V'}, {id:'med-sut-vac', label:'V AC', unidad:'V'}, {id:'med-sut-vbc', label:'V BC', unidad:'V'},
-    {id:'med-sut-vag', label:'V AG', unidad:'V'}, {id:'med-sut-vbg', label:'V BG', unidad:'V'}, {id:'med-sut-vcg', label:'V CG', unidad:'V'},
-    {id:'med-sut-ia', label:'I A', unidad:'A'}, {id:'med-sut-ib', label:'I B', unidad:'A'}, {id:'med-sut-ic', label:'I C', unidad:'A'}
-  ]},
-  { titulo:'Temperaturas', cols:3, campos:[
-    {id:'med-hs1', label:'HS1', unidad:'C'}, {id:'med-hs2', label:'HS2', unidad:'C'}, {id:'med-hs3', label:'HS3', unidad:'C'},
-    {id:'med-hs4', label:'HS4', unidad:'C'}, {id:'med-tind', label:'Inductor', unidad:'C'}, {id:'med-tctrl', label:'Controller', unidad:'C'},
-    {id:'med-tigbtu', label:'IGBT U', unidad:'C'}, {id:'med-tigbtv', label:'IGBT V', unidad:'C'}, {id:'med-tigbtw', label:'IGBT W', unidad:'C'},
-    {id:'med-tpst', label:'PST', unidad:'C'}, {id:'med-tsut', label:'SUT', unidad:'C'}
-  ]}
-];
+/* ============================================================
+   CATALOGO DE PUNTOS
+   ------------------------------------------------------------
+   Antes aqui vivian dos listas escritas a mano: MED_GRUPOS con los
+   grupos y campos del formulario, y MED_MAPA con la traduccion de
+   codigo de punto a id de campo. Cualquier punto nuevo en la base
+   habia que agregarlo en los dos sitios, y con cuatro sistemas
+   distintos eso no escala.
+
+   Ahora el formulario se arma desde dp_catalogo_puntos, que devuelve
+   los puntos que aplican al sistema del activo. El id del campo se
+   deriva del codigo del punto, asi que no hay traduccion que
+   mantener: se elimino MED_MAPA por completo.
+
+   Efecto secundario que importa: el angfasvi retirado dejo de
+   enviarse solo. dp_guardar_medicion valida contra puntos_medida con
+   pm.activo, asi que ese valor venia cayendo en el arreglo de
+   ignorados y se perdia en silencio.
+   ============================================================ */
+
+/* Catalogo del sistema que se esta capturando. Se llena antes de
+   dibujar el formulario. */
+var MED_CATALOGO = [];
+
+/* Sistema de cada activo, tomado de dp_pozos_lista. Sin esto no se
+   sabe que puntos pedir. */
+var MED_SISTEMA_POR_ACTIVO = {};
+
+/* El id del campo se deriva del codigo del punto. Los guiones bajos
+   pasan a guiones para no romper la convencion de ids del resto del
+   documento. No hace falta poder revertirlo: al guardar se recorre
+   MED_CATALOGO, que trae el codigo original. */
+function medIdCampo(codigo){
+  return 'med-' + String(codigo).replace(/_/g, '-');
+}
+
+function medClaveCache(sistema){ return 'dp_catalogo_' + sistema; }
+
+/* Devuelve una promesa con el catalogo del sistema. Usa la copia
+   guardada cuando no hay senal, que es la situacion normal en campo. */
+function cargarCatalogoPuntos(sistema){
+  var clave = medClaveCache(sistema);
+
+  function desdeCache(){
+    try {
+      var c = JSON.parse(localStorage.getItem(clave) || 'null');
+      return (c && c.length) ? c : null;
+    } catch(e){ return null; }
+  }
+
+  if (!sb || !navigator.onLine){
+    var c = desdeCache();
+    return c ? Promise.resolve(c)
+             : Promise.reject(new Error('Sin senal y sin catalogo guardado para ' + sistema
+                 + '. Abre la aplicacion una vez con conexion para descargarlo.'));
+  }
+
+  return sb.rpc('dp_catalogo_puntos', { p_sistema: sistema }).then(function(r){
+    if (r.error) throw new Error(r.error.message || 'No se pudo leer el catalogo');
+    var datos = r.data || [];
+    if (!datos.length) throw new Error('El catalogo de ' + sistema + ' vino vacio.');
+    try { localStorage.setItem(clave, JSON.stringify(datos)); } catch(e){}
+    return datos;
+  }).catch(function(e){
+    var c = desdeCache();
+    if (c) return c;
+    throw e;
+  });
+}
+
+/* Agrupa el catalogo por etapa conservando el orden en que llego, que
+   ya viene resuelto desde la base. */
+function medGruposDesdeCatalogo(catalogo){
+  var orden = [];
+  var porEtapa = {};
+  catalogo.forEach(function(p){
+    var et = p.etapa || 'OTRO';
+    if (!porEtapa[et]){ porEtapa[et] = []; orden.push(et); }
+    porEtapa[et].push({
+      id:          medIdCampo(p.codigo),
+      codigo:      p.codigo,
+      label:       p.etiqueta || p.nombre || p.codigo,
+      nombre:      p.nombre,
+      unidad:      p.unidad || '',
+      obligatorio: !!p.obligatorio,
+      decimales:   p.decimales,
+      rango_min:   p.rango_min,
+      rango_max:   p.rango_max
+    });
+  });
+  return orden.map(function(et){
+    var info = ETAPA_INFO[et] || {titulo:et, svg:ICONO_GAUGE, bg:'#EFF1F4', color:'var(--navy)', cols:3};
+    return { etapa:et, titulo:info.titulo, cols:info.cols, info:info, campos:porEtapa[et] };
+  });
+}
+
 
 function poblarSelects(){
   var idsSelect = ['med-pozo-select','evt-pozo','setup-pozo-select','ais-pozo'];
@@ -1126,13 +1145,28 @@ function poblarSelects(){
     var datalist = document.getElementById('lista-pozos-existentes');
     if(datalist) datalist.innerHTML = listaPozos.map(function(p){ return '<option value="' + p + '">'; }).join('');
   }
+  /* Sistema por activo. El formulario de medicion lo necesita para
+     saber que puntos pedir: BES y HPUM no miden lo mismo. */
+  function guardarSistemas(filas){
+    filas.forEach(function(x){
+      if (x && x.nombre && x.sistema) MED_SISTEMA_POR_ACTIVO[x.nombre] = x.sistema;
+    });
+    try { localStorage.setItem('dp_sistemas_cache', JSON.stringify(MED_SISTEMA_POR_ACTIVO)); } catch(e){}
+  }
+
   llenar(POZOS); // respaldo inmediato mientras llega el real
   sb.rpc('dp_pozos_lista').then(function(r){
     if (r.error || !r.data || !r.data.length) return;
     var nombres = r.data.map(function(x){ return x.nombre; });
     llenar(nombres);
+    guardarSistemas(r.data);
     try { localStorage.setItem('dp_pozos_cache', JSON.stringify(nombres)); } catch(e){}
   }).catch(function(){});
+
+  try {
+    var sc = JSON.parse(localStorage.getItem('dp_sistemas_cache') || 'null');
+    if (sc) MED_SISTEMA_POR_ACTIVO = sc;
+  } catch(e){}
   /* En campo puede no haber senal al abrir. Se usa el ultimo listado
      conocido en lugar de la lista fija de 13 pozos del codigo. */
   try {
@@ -1171,9 +1205,54 @@ function iniciarMedicion(){
     '</select></div>' +
     '</div></fieldset>';
 
-  var grupos = MED_GRUPOS.map(function(g){ return renderGrupo(g.titulo, g.campos, g.cols); }).join('');
-  document.getElementById('form-medicion').innerHTML = cabecera + grupos;
+  /* Los campos numericos ya no salen de una lista fija: dependen del
+     sistema del activo. Se resuelve el sistema, se trae el catalogo y
+     recien entonces se dibuja. */
+  /* Primero el sistema real del activo. El sistema elegido en la pantalla
+     de inicio solo sirve de respaldo: si el tecnico entro por HPUM pero
+     selecciono un pozo BES, manda lo que dice la base. */
+  var sistema = MED_SISTEMA_POR_ACTIVO[pozo] || sistemaActual || '';
+  var caja = document.getElementById('form-medicion');
+
+  if (!sistema){
+    caja.innerHTML = cabecera +
+      '<fieldset><legend>Sin catalogo</legend><div class="group-card">' +
+      '<p style="margin:0;font-size:14px;">No se pudo determinar el sistema de <b>' + pozo + '</b>, ' +
+      'asi que no se sabe que puntos pedir. Abre la aplicacion una vez con conexion para ' +
+      'actualizar el listado de activos.</p></div></fieldset>';
+    ir('medicion-form');
+    return;
+  }
+
+  caja.innerHTML = cabecera +
+    '<fieldset><legend>Cargando</legend><div class="group-card">' +
+    '<p style="margin:0;font-size:14px;">Preparando los puntos de ' + sistema + '...</p>' +
+    '</div></fieldset>';
   ir('medicion-form');
+
+  cargarCatalogoPuntos(sistema).then(function(catalogo){
+    MED_CATALOGO = catalogo;
+    var grupos = medGruposDesdeCatalogo(catalogo);
+    var html = grupos.map(function(g){
+      return renderGrupo(g.titulo, g.campos, g.cols, g.info);
+    }).join('');
+    var nObl = catalogo.filter(function(p){ return p.obligatorio; }).length;
+    var resumen = '<div class="group-card" style="margin-bottom:14px;font-size:13px;color:var(--ink-soft);">' +
+      'Sistema <b style="color:var(--ink);">' + sistema + '</b> &middot; ' +
+      catalogo.length + ' puntos, ' + nObl + ' obligatorios. ' +
+      'Los marcados con <span style="color:var(--danger);font-weight:700;">*</span> se piden para dar la ronda por completa.' +
+      '</div>';
+    caja.innerHTML = cabecera + resumen + html;
+    var etq = document.querySelector('#screen-medicion-form .s');
+    if (etq) etq.textContent = catalogo.length + ' puntos de medida';
+  }).catch(function(e){
+    MED_CATALOGO = [];
+    caja.innerHTML = cabecera +
+      '<fieldset><legend>Catalogo no disponible</legend><div class="group-card">' +
+      '<p style="margin:0 0 8px;font-size:14px;">' + (e && e.message ? e.message : 'No se pudo cargar el catalogo.') + '</p>' +
+      '<button class="btn-primary" onclick="iniciarMedicion()">Reintentar</button>' +
+      '</div></fieldset>';
+  });
 }
 
 function datosSetupSimulados(pozo){
@@ -1435,8 +1514,8 @@ function guardarMedicion(estado){
      para guardar y para volver a cargar un borrador. Tenerlo
      duplicado era garantia de que las dos listas se separaran. */
   var valores = {};
-  Object.keys(MED_MAPA).forEach(function(cod){
-    valores[cod] = valNum(MED_MAPA[cod]);
+  MED_CATALOGO.forEach(function(pt){
+    valores[pt.codigo] = valNum(medIdCampo(pt.codigo));
   });
 
   /* Los campos vacios no se envian: null y "no medido" son lo mismo
@@ -1448,6 +1527,25 @@ function guardarMedicion(estado){
   if (Object.keys(valores).length === 0){
     alert('No hay ningun valor capturado. Revisa el formulario antes de guardar.');
     return;
+  }
+
+  /* Los obligatorios los define el catalogo por sistema, no el codigo.
+     Se avisa cual falta, no solo cuantos: un tecnico frente al equipo
+     necesita saber que ir a medir, no un numero. */
+  if (estado === 'CONFIRMADA'){
+    var faltan = MED_CATALOGO.filter(function(pt){
+      return pt.obligatorio && (valores[pt.codigo] === null || valores[pt.codigo] === undefined);
+    });
+    if (faltan.length){
+      var lista = faltan.slice(0, 12).map(function(pt){
+        return '\u2022 ' + (pt.etiqueta || pt.codigo) + '  (' + (pt.etapa || '') + ')';
+      }).join('\n');
+      if (faltan.length > 12) lista += '\n\u2022 ... y ' + (faltan.length - 12) + ' mas';
+      if (!confirm('Faltan ' + faltan.length + ' puntos obligatorios:\n\n' + lista
+          + '\n\nAl confirmar, la medicion queda cerrada y no se podra editar.\n'
+          + 'Si vas a completarla, usa Guardar borrador.\n\nConfirmar de todas formas?'))
+        return;
+    }
   }
 
   /* Un borrador incompleto es normal; una medicion confirmada con
@@ -1559,10 +1657,18 @@ function dpAbrirBorrador(id){
     poner('med-hsc',       m.hsc);
     poner('med-lsc',       m.lsc);
 
-    var n = 0;
+    /* El borrador se rellena por codigo de punto. Si un punto quedo
+       retirado del catalogo, su valor no tiene donde ir: se cuenta
+       aparte en lugar de perderse sin aviso. */
+    var n = 0, huerfanos = [];
     Object.keys(v).forEach(function(cod){
-      if (MED_MAPA[cod]){ poner(MED_MAPA[cod], v[cod]); n++; }
+      var el = document.getElementById(medIdCampo(cod));
+      if (el){ poner(medIdCampo(cod), v[cod]); n++; }
+      else huerfanos.push(cod);
     });
+    if (huerfanos.length){
+      console.warn('Valores del borrador sin campo en el formulario:', huerfanos);
+    }
     if (n === 0) alert('El borrador se abrio, pero no tenia valores guardados.');
   }).catch(function(e){
     /* Se reporta el error real. Atribuirlo a falta de senal manda a
