@@ -9925,14 +9925,31 @@ function otOpCampo(i, campo, valor) {
   otRenderOperaciones();
 }
 
-/* Minutos entre dos horas del mismo día. Devuelve nulo si falta alguna
-   o si la final es anterior: un cruce de medianoche en una operación de
-   mantenimiento casi siempre es un error de digitación. */
+/* La hora de almuerzo no es tiempo de intervención: si la operación la
+   atraviesa, se descuenta del cálculo automático. */
+const OT_ALMUERZO_INI = 12 * 60;
+const OT_ALMUERZO_FIN = 13 * 60;
+
+function otHoraMin(h) {
+  if (!h) return null;
+  const x = String(h).split(":");
+  return Number(x[0]) * 60 + Number(x[1]);
+}
+
+/* Minutos entre dos horas del mismo día, ya descontado el almuerzo.
+   Devuelve nulo si falta alguna o si la final es anterior: un cruce de
+   medianoche en una operación de mantenimiento casi siempre es un error
+   de digitación. */
+function otDetalleMinutos(hi, hf) {
+  const a = otHoraMin(hi), b = otHoraMin(hf);
+  if (a === null || b === null || b < a) return null;
+  const almuerzo = Math.max(0, Math.min(b, OT_ALMUERZO_FIN) - Math.max(a, OT_ALMUERZO_INI));
+  return { bruto: b - a, almuerzo: almuerzo, neto: (b - a) - almuerzo };
+}
+
 function otMinutos(hi, hf) {
-  if (!hi || !hf) return null;
-  const a = hi.split(":"), b = hf.split(":");
-  const m = (b[0] * 60 + Number(b[1])) - (a[0] * 60 + Number(a[1]));
-  return m >= 0 ? m : null;
+  const d = otDetalleMinutos(hi, hf);
+  return d ? d.neto : null;
 }
 
 /* HH = duración × número de técnicos. Es como se contabiliza la mano de
@@ -9940,10 +9957,13 @@ function otMinutos(hi, hf) {
 function otHHOperacion(op) {
   const min = Number(op.duracion_min) || 0;
   const n = Number(op.cantidad) || 0;
-  if (!min) return "Sin duración";
-  if (!n) return progHH(min / 60) + " h · falta el número de técnicos";
+  const det = otDetalleMinutos(op.hora_inicio, op.hora_final);
+  const nota = det && det.almuerzo
+    ? " · se descontó " + det.almuerzo + " min de almuerzo" : "";
+  if (!min) return "Sin duración" + nota;
+  if (!n) return progHH(min / 60) + " h · falta el número de técnicos" + nota;
   return min + " min × " + n + (n === 1 ? " técnico" : " técnicos") +
-         " = " + progHH(min * n / 60) + " HH";
+         " = " + progHH(min * n / 60) + " HH" + nota;
 }
 
 function otResumenHH() {
