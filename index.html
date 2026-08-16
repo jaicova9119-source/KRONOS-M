@@ -152,6 +152,18 @@ html,body{height:100%;margin:0;}
    Vive oculto en el DOM y solo aparece dentro de #print-root al imprimir,
    igual que el informe de ensayos. Todo en tablas y sin flex: es lo unico
    que los motores de impresion respetan de forma consistente. */
+/* Lista de sugerencias del reporte. Se usa en vez de <datalist> porque
+   ese control no dibuja nada al tocar el campo y en varios navegadores
+   moviles no aparece del todo. */
+.ot-sugerencias{margin-top:4px}
+.ot-sugerencias:empty{display:none}
+.ot-sugerencias .ot-op{
+  padding:9px 10px;border:1px solid var(--line);border-radius:8px;
+  margin-bottom:4px;background:var(--bg-2);cursor:pointer;font-size:14px;
+}
+.ot-sugerencias .ot-op:active{background:var(--bg-3)}
+.ot-sugerencias .ot-nota{font-size:12px;color:var(--text-2);padding:4px 2px}
+
 #ot-doc{display:none}
 #ot-doc table{border-collapse:collapse;width:100%}
 #ot-doc td,#ot-doc th{border:1px solid #000;padding:2pt 3pt;vertical-align:top}
@@ -1903,8 +1915,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       </select>
     </div>
     <div class="field"><label>Puesto responsable</label>
-      <input id="ot-puesto" list="ot-lista-puestos" placeholder="Escribe MQT, CYC, EVSD..." autocomplete="off" onchange="otValidarPuesto()"/>
-      <datalist id="ot-lista-puestos"></datalist>
+      <input id="ot-puesto" placeholder="Escribe MQT, CYC, EVSD..." autocomplete="off"
+             oninput="otBuscarPuesto(this.value)" onfocus="otBuscarPuesto(this.value)"
+             onchange="otValidarPuesto()"/>
+      <div id="ot-res-puesto" class="ot-sugerencias"></div>
       <div class="mat-stock" id="ot-puesto-aviso" style="margin-top:4px"></div>
     </div>
     <div class="field"><label>N&#186; Aviso</label><input id="ot-aviso"/></div>
@@ -1916,14 +1930,17 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="section-label" style="margin-top:18px">FALLA</div>
     <div class="hint-box">&#8505;&#65039; Escribe para filtrar el cat&#225;logo. Si lo que buscas no est&#225;, escr&#237;belo libre: queda registrado para catalogarlo despu&#233;s.</div>
     <div class="field"><label>S&#237;ntoma de aver&#237;a</label>
-      <input id="ot-sintoma" list="ot-lista-sintoma" placeholder="N/A" autocomplete="off"/>
-      <datalist id="ot-lista-sintoma"></datalist></div>
+      <input id="ot-sintoma" placeholder="N/A" autocomplete="off"
+             oninput="otBuscarFalla('SINTOMA', this.value)" onfocus="otBuscarFalla('SINTOMA', this.value)"/>
+      <div id="ot-res-SINTOMA" class="ot-sugerencias"></div></div>
     <div class="field"><label>Causa</label>
-      <input id="ot-causa" list="ot-lista-causa" placeholder="N/A" autocomplete="off"/>
-      <datalist id="ot-lista-causa"></datalist></div>
+      <input id="ot-causa" placeholder="N/A" autocomplete="off"
+             oninput="otBuscarFalla('CAUSA', this.value)" onfocus="otBuscarFalla('CAUSA', this.value)"/>
+      <div id="ot-res-CAUSA" class="ot-sugerencias"></div></div>
     <div class="field"><label>Parte objeto / componente en falla</label>
-      <input id="ot-componente" list="ot-lista-parte" placeholder="N/A" autocomplete="off"/>
-      <datalist id="ot-lista-parte"></datalist></div>
+      <input id="ot-componente" placeholder="N/A" autocomplete="off"
+             oninput="otBuscarFalla('PARTE', this.value)" onfocus="otBuscarFalla('PARTE', this.value)"/>
+      <div id="ot-res-PARTE" class="ot-sugerencias"></div></div>
 
     <div class="section-label" style="margin-top:18px">ESTADO DEL EQUIPO</div>
     <div class="field"><label>&#191;C&#243;mo encontr&#243; el equipo?</label>
@@ -9650,6 +9667,10 @@ async function otAbrir(fecha) {
   if (!otCatalogo.SINTOMA.length) {
     const r = await sb.from("catalogo_falla")
       .select("tipo, codigo, texto").eq("activo", true).order("tipo").order("orden");
+    if (r.error) {
+      // Sin catálogo el reporte igual funciona: los campos aceptan texto libre
+      toast("Catálogo de fallas no disponible: " + r.error.message);
+    }
     (r.data || []).forEach(x => {
       if (!otCatalogo[x.tipo]) otCatalogo[x.tipo] = [];
       otCatalogo[x.tipo].push(x.codigo ? "(" + x.codigo + ") " + x.texto : x.texto);
@@ -9691,9 +9712,8 @@ function otRender() {
     .filter(([, v]) => v !== null && v !== undefined && v !== "")
     .map(([k, v]) => "<tr><td>" + k + "</td><td>" + otEsc(v) + "</td></tr>").join("");
 
-  document.getElementById("ot-lista-puestos").innerHTML =
-    otPuestos.map(x => '<option value="' + x + '"></option>').join("");
   document.getElementById("ot-puesto").value = o.puesto_responsable || "";
+  document.getElementById("ot-res-puesto").innerHTML = "";
   // La disciplina se deduce de las cuatro últimas letras del puesto guardado
   const disc = (o.puesto_responsable || "").slice(-4).toUpperCase();
   if (["ELEC","EVSD","INST","MECA","SOLD"].indexOf(disc) >= 0) {
@@ -9702,9 +9722,8 @@ function otRender() {
   otValidarPuesto();
 
   ["SINTOMA","CAUSA","PARTE"].forEach(t => {
-    const id = { SINTOMA: "ot-lista-sintoma", CAUSA: "ot-lista-causa", PARTE: "ot-lista-parte" }[t];
-    document.getElementById(id).innerHTML =
-      (otCatalogo[t] || []).map(x => '<option value="' + otEsc(x) + '"></option>').join("");
+    const r = document.getElementById("ot-res-" + t);
+    if (r) r.innerHTML = "";
   });
 
   document.getElementById("ot-aviso").value = o.numero_aviso || "";
@@ -9752,6 +9771,69 @@ function otRender() {
 /* El puesto tiene llave foránea contra el catálogo: si se escribe algo
    que no existe, el guardado falla con un error críptico de Postgres.
    Mejor avisarlo aquí, mientras se escribe. */
+/* Coincidencia sin tildes ni mayusculas: "aislamiento" encuentra
+   "Bajo aislamiento" y "Falla de aislamiento". */
+function otNorm(t) {
+  return String(t || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+const OT_CAMPO_FALLA = { SINTOMA: "ot-sintoma", CAUSA: "ot-causa", PARTE: "ot-componente" };
+
+function otBuscarFalla(tipo, texto) {
+  const cont = document.getElementById("ot-res-" + tipo);
+  if (!cont) return;
+  const lista = otCatalogo[tipo] || [];
+  if (!lista.length) {
+    cont.innerHTML = '<div class="ot-nota">Catálogo no disponible. Escribe el texto libre.</div>';
+    return;
+  }
+  const q = otNorm(texto).trim();
+  const terminos = q ? q.split(/\s+/) : [];
+  const hits = lista.filter(x => {
+    const n = otNorm(x);
+    return terminos.every(t => n.indexOf(t) >= 0);
+  }).slice(0, 12);
+
+  if (!hits.length) {
+    cont.innerHTML = '<div class="ot-nota">Sin coincidencias en el catálogo. Lo que escribas se guarda igual y queda listado para catalogarlo después.</div>';
+    return;
+  }
+  cont.innerHTML = hits.map(x =>
+    '<div class="ot-op" onclick="otElegirFalla(\'' + tipo + '\', this.textContent)">' +
+    otEsc(x) + "</div>").join("") +
+    (hits.length === 12 ? '<div class="ot-nota">Se muestran 12. Escribe más para afinar.</div>' : "");
+}
+
+function otElegirFalla(tipo, valor) {
+  document.getElementById(OT_CAMPO_FALLA[tipo]).value = valor;
+  document.getElementById("ot-res-" + tipo).innerHTML = "";
+}
+
+function otBuscarPuesto(texto) {
+  const cont = document.getElementById("ot-res-puesto");
+  if (!cont) return;
+  const q = otNorm(texto).trim();
+  const hits = otPuestos.filter(x => otNorm(x).indexOf(q) >= 0).slice(0, 12);
+  if (!hits.length) {
+    cont.innerHTML = '<div class="ot-nota">Sin coincidencias. El puesto debe existir en el catálogo.</div>';
+    return;
+  }
+  cont.innerHTML = hits.map(x =>
+    '<div class="ot-op" onclick="otElegirPuesto(\'' + x + '\')">' + x + "</div>").join("");
+}
+
+function otElegirPuesto(codigo) {
+  document.getElementById("ot-puesto").value = codigo;
+  document.getElementById("ot-res-puesto").innerHTML = "";
+  const disc = codigo.slice(-4);
+  if (["ELEC","EVSD","INST","MECA","SOLD"].indexOf(disc) >= 0) {
+    document.getElementById("ot-disciplina").value = disc;
+  }
+  otOperaciones.forEach(op => { op.puesto = codigo; });
+  otValidarPuesto();
+}
+
 function otValidarPuesto() {
   const v = document.getElementById("ot-puesto").value.trim().toUpperCase();
   const av = document.getElementById("ot-puesto-aviso");
