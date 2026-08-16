@@ -168,8 +168,11 @@ html,body{height:100%;margin:0;}
 #ot-doc table{border-collapse:collapse;width:100%}
 #ot-doc td,#ot-doc th{border:1px solid #000;padding:2pt 3pt;vertical-align:top}
 #ot-doc .ot-cab td{border:1px solid #000;text-align:center;font-weight:bold}
-#ot-doc .ot-lbl{font-weight:bold;width:16%;white-space:nowrap}
-#ot-doc .ot-val{width:34%}
+/* Al no haber líneas entre columnas, la separación la da el relleno:
+   sin esto la etiqueta y el valor se tocan. Y las etiquetas largas
+   deben poder partirse en dos líneas en vez de invadir el valor. */
+#ot-doc .ot-lbl{font-weight:bold;padding-right:8pt;white-space:normal}
+#ot-doc .ot-val{padding-left:2pt}
 #ot-doc .ot-seccion{background:#cfe7e5;font-weight:bold;text-align:center}
 #ot-doc .ot-th{background:#f0f0f0;font-weight:bold;text-align:center;font-size:7pt}
 #ot-doc .ot-libre{height:34pt}
@@ -184,7 +187,10 @@ html,body{height:100%;margin:0;}
   body.imprimiendo > #print-root #ot-doc{display:block!important}
   #print-root #ot-doc{font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;line-height:1.15}
   #print-root #ot-doc td,#print-root #ot-doc th{padding:1.2pt 2.5pt}
-  #print-root #ot-doc .ot-th{font-size:6.5pt}
+  #print-root #ot-doc .ot-th{font-size:6.5pt;line-height:1.05}
+  /* Alto mínimo de las filas del cuerpo: sin esto las vacías quedan como
+     una raya y no se puede escribir nada en ellas. */
+  #print-root #ot-doc tr[height] td{height:16pt}
   /* Alturas minimas, no fijas: el bloque crece con el texto en vez de
      reservar espacio muerto que empuja el resto a otra hoja. */
   #print-root #ot-doc .ot-caja{height:auto!important}
@@ -198,7 +204,7 @@ html,body{height:100%;margin:0;}
   }
   /* En impresion el alto lo fija el atributo del <img>; esta regla solo
      evita que un logo muy grande desborde el encabezado. */
-  #print-root #ot-doc img{max-height:34pt;width:auto}
+  #print-root #ot-doc img{max-height:52pt;width:auto}
 }
 
 @media print{
@@ -2023,7 +2029,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()">Guardar</button>
     <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir o guardar como PDF</button>
     <button class="btn-secondary" style="margin-top:8px" onclick="otDescargarWord()">Descargar en Word</button>
-    <div class="hint-box" style="margin-top:8px">&#9888;&#65039; En el di&#225;logo de impresi&#243;n abre <b>M&#225;s configuraciones</b> y desmarca <b>Encabezados y pies de p&#225;gina</b>. Eso quita la URL, la fecha y el n&#250;mero de p&#225;gina que agrega el navegador: no se pueden suprimir desde la aplicaci&#243;n.</div>
+    <div class="hint-box" style="margin-top:8px">&#8505;&#65039; La impresi&#243;n fuerza margen cero, que es lo que hace que el navegador deje de poner su propia URL y fecha. Si aun as&#237; aparecen, en el di&#225;logo pon <b>M&#225;rgenes: Ninguno</b> o desmarca <b>Encabezados y pies de p&#225;gina</b> dentro de Opciones.</div>
   </div>
 </div>
 
@@ -10266,7 +10272,7 @@ function otLogoImg(altoPx) {
 function otEncabezado(pagina, total, ot) {
   const c = 'text-align:center;font-weight:bold;vertical-align:middle';
   return otTabla([26, 44, 30]) +
-    '<tr><td rowspan="5" style="border:none;vertical-align:middle">' + otLogoImg(34) + "</td>" +
+    '<tr><td rowspan="5" style="border:none;vertical-align:middle;text-align:center">' + otLogoImg(52) + "</td>" +
       '<td rowspan="2" style="' + c + '">ORDEN DE TRABAJO</td>' +
       "<td>GTEC-MT-FO-016</td></tr>" +
     "<tr><td>VERSIÓN: 01</td></tr>" +
@@ -10298,7 +10304,7 @@ function otConstruirDocumento() {
 
   let h = '<div class="ot-pagina">' + otEncabezado(1, 2, ot);
 
-  h += otTabla([16, 34, 16, 34], "margin-top:4pt", "ot-datos") +
+  h += otTabla([21, 29, 21, 29], "margin-top:4pt", "ot-datos") +
     otFila("DESCRIPCIÓN", a.descripcion, "TAG EQUIPO", o.tag_equipo) +
     otFila("CLASE DE ORDEN", c.orden, "GRUPO PLANIFICADOR", "") +
     otFila("CLASE DE ACTIVIDAD", c.actividad, "PUESTO RESPONSABLE", o.puesto_responsable) +
@@ -10327,7 +10333,7 @@ function otConstruirDocumento() {
   });
   h += "</table>";
 
-  h += otTabla([13, 33, 12, 8, 12, 12, 10], "margin-top:6pt") +
+  h += otTabla([14, 30, 13, 7, 12, 12, 12], "margin-top:6pt") +
     '<tr><td class="ot-seccion" colspan="7">REPUESTOS Y MATERIALES</td></tr>' +
     '<tr><td class="ot-th">CÓDIGO</td><td class="ot-th">DESCRIPCIÓN</td>' +
     '<td class="ot-th">CANT. RESERVADA</td><td class="ot-th">UND</td>' +
@@ -10336,14 +10342,15 @@ function otConstruirDocumento() {
   const mats = d.materiales || [];
   for (let i = 0; i < Math.max(4, mats.length); i++) {
     const m = mats[i] || {};
-    h += "<tr><td>" + otEsc(m.codigo) + "</td><td>" + otEsc(m.descripcion) + "</td>" +
+    // Las filas vacías llevan alto: son para escribir a mano en campo
+    h += '<tr height="16"><td>' + otEsc(m.codigo) + "</td><td>" + otEsc(m.descripcion) + "</td>" +
       "<td>" + otEsc(m.cant_reservada) + "</td><td>" + otEsc(m.unidad) + "</td>" +
       "<td>" + otEsc(m.cant_tomada) + "</td><td>" + otEsc(m.cant_disponer) + "</td>" +
       "<td>" + otEsc(m.almacen) + "</td></tr>";
   }
   h += "</table>";
 
-  h += otTabla([15, 35, 10, 8, 14, 18], "margin-top:6pt") +
+  h += otTabla([16, 32, 11, 7, 14, 20], "margin-top:6pt") +
     '<tr><td class="ot-seccion" colspan="6">SERVICIOS</td></tr>' +
     '<tr><td class="ot-th">SERVICIO</td><td class="ot-th">DESCRIPCIÓN</td>' +
     '<td class="ot-th">CANTIDAD</td><td class="ot-th">UND</td>' +
@@ -10351,7 +10358,7 @@ function otConstruirDocumento() {
   const srv = d.servicios || [];
   for (let i = 0; i < Math.max(2, srv.length); i++) {
     const x = srv[i] || {};
-    h += "<tr><td>" + otEsc(x.servicio) + "</td><td>" + otEsc(x.descripcion) + "</td>" +
+    h += '<tr height="16"><td>' + otEsc(x.servicio) + "</td><td>" + otEsc(x.descripcion) + "</td>" +
       "<td>" + otEsc(x.cantidad) + "</td><td>" + otEsc(x.unidad) + "</td>" +
       "<td>" + otEsc(x.solped) + "</td><td>" + otEsc(x.proveedor) + "</td></tr>";
   }
@@ -10425,7 +10432,8 @@ async function otDescargarWord() {
           word-wrap:break-word;overflow-wrap:break-word}
     img{border:none}
     .ot-cab td{text-align:center;font-weight:bold}
-    .ot-lbl{font-weight:bold}
+    .ot-lbl{font-weight:bold;padding-right:8pt}
+    .ot-val{padding-left:2pt}
     .ot-seccion{background:#cfe7e5;font-weight:bold;text-align:center}
     .ot-th{background:#f0f0f0;font-weight:bold;text-align:center;font-size:7pt}
     .ot-datos{border:1px solid #000}
@@ -10455,6 +10463,24 @@ async function otDescargarWord() {
   toast("Documento descargado");
 }
 
+/* El encabezado y el pie que agrega el navegador (URL, fecha, número de
+   página) no se pueden desactivar por CSS, pero Chrome y Firefox dejan de
+   imprimirlos cuando el margen de página es cero. Se compensa con relleno
+   dentro de cada hoja para que el contenido no quede al borde.
+   La regla se inyecta solo durante esta impresión: si se dejara fija,
+   afectaría también a los informes de ensayos. */
+function otReglaPagina(activar) {
+  const id = "ot-regla-pagina";
+  const previo = document.getElementById(id);
+  if (previo) previo.remove();
+  if (!activar) return;
+  const st = document.createElement("style");
+  st.id = id;
+  st.textContent = "@media print{@page{size:letter portrait;margin:0}" +
+    "#print-root #ot-doc .ot-pagina{padding:10mm 9mm}}";
+  document.head.appendChild(st);
+}
+
 async function otImprimir() {
   if (!otDatos) return;
   // Guardar primero: el documento se arma con lo que hay en la base, no
@@ -10472,6 +10498,7 @@ async function otImprimir() {
   root.appendChild(doc);
   document.body.appendChild(root);
   document.body.classList.add("imprimiendo");
+  otReglaPagina(true);
 
   let restaurado = false;
   const restaurar = () => {
@@ -10481,6 +10508,7 @@ async function otImprimir() {
     ancla.remove();
     root.remove();
     document.body.classList.remove("imprimiendo");
+    otReglaPagina(false);
     window.removeEventListener("afterprint", restaurar);
   };
   window.addEventListener("afterprint", restaurar);
