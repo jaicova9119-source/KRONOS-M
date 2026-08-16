@@ -1724,7 +1724,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="section-label">PROGRAMADO POR PLANEACIÓN</div>
     <table class="tabla-ficha" id="prog-act-tabla"></table>
 
-    <div class="section-label" style="margin-top:18px">REGISTRO DE EJECUCIÓN</div>
+    <div class="section-label" style="margin-top:18px">JORNADAS REGISTRADAS</div>
+    <div id="prog-jornadas"></div>
+
+    <div class="section-label" style="margin-top:18px">REGISTRO DE LA JORNADA</div>
+    <div class="field"><label>Fecha de la jornada</label><input id="prog-e-fecha" type="date" onchange="progCambiarJornada(this.value)"/></div>
     <div class="field">
       <label>Estado</label>
       <select id="prog-e-estado" onchange="progToggleMotivo()">
@@ -1735,8 +1739,8 @@ input,select,textarea{font-family:inherit;font-size:15px;}
         <option value="reprogramada">Reprogramada</option>
       </select>
     </div>
-    <div class="field"><label>Avance (%)</label><input id="prog-e-avance" type="number" min="0" max="100" step="5"/></div>
-    <div class="field"><label>HH ejecutadas (eléctrica)</label><input id="prog-e-hh" type="number" step="0.5"/></div>
+    <div class="field"><label>Avance acumulado al cierre de la jornada (%)</label><input id="prog-e-avance" type="number" min="0" max="100" step="5"/></div>
+    <div class="field"><label>HH eléctricas <b>de esta jornada</b></label><input id="prog-e-hh" type="number" step="0.5" placeholder="Solo las horas del día, no el acumulado"/></div>
     <div class="field"><label>Personal que ejecutó</label><input id="prog-e-personal" placeholder="Ej. Yonatan Perea/Ferney Riascos"/></div>
     <div class="field">
       <label>Actividades realizadas</label>
@@ -8445,6 +8449,8 @@ let progActual = null;
 let progFilasArchivo = [];
 let progMetaArchivo = null;
 let progDisciplina = localStorage.getItem("kronos_prog_disciplina") || "ELE";
+let progJornadas = [];          // jornadas de la actividad abierta
+let progJornadaFecha = null;    // día que se está registrando
 
 const PROG_DISC_LABEL = { ELE: "eléctricas", MEC: "mecánicas", INS: "de instrumentación", SOL: "de soldadura", TODAS: "de mantenimiento" };
 
@@ -8516,6 +8522,19 @@ async function cargarProgramacionDia() {
     return;
   }
   progLista = data || [];
+
+  /* Arrastre: una actividad que quedó en ejecución un día anterior sigue
+     siendo trabajo de hoy. Se trae a la lista del día en curso para poder
+     continuarla sin tener que retroceder de fecha. */
+  const arr = await sb.rpc("programa_arrastradas", { p_fecha: progFecha });
+  const ids = (arr.data || []).map(x => x.id).filter(id => !progLista.some(a => a.id === id));
+  if (ids.length) {
+    let q2 = sb.from("v_programa_actividades").select("*").in("id", ids);
+    if (progDisciplina !== "TODAS") q2 = q2.contains("disciplinas", [progDisciplina]);
+    const r2 = await q2;
+    (r2.data || []).forEach(a => { a._arrastrada = true; progLista.unshift(a); });
+  }
+
   renderProgramacionDia();
 }
 
@@ -8531,13 +8550,15 @@ function renderProgramacionDia() {
     return;
   }
 
+  const arrastradas = progLista.filter(a => a._arrastrada).length;
   const hechas = progLista.filter(a => a.estado === "ejecutada").length;
   const hhProg = progLista.reduce((t, a) => t + (Number(a.hh_prog_total) || 0), 0);
   const hhEjec = progLista.reduce((t, a) => t + (Number(a.hh_ejec_total) || 0), 0);
   res.innerHTML = '<div class="mat-stock">' + progLista.length + " actividades " +
     (PROG_DISC_LABEL[progDisciplina] || "") + " · " + hechas + " ejecutadas · " +
     progHH(hhProg) + " HH programadas" +
-    (hhEjec ? " · " + progHH(hhEjec) + " HH ejecutadas" : "") + "</div>";
+    (hhEjec ? " · " + progHH(hhEjec) + " HH ejecutadas" : "") +
+    (arrastradas ? " · " + arrastradas + " en curso de días previos" : "") + "</div>";
 
   cont.innerHTML = progLista.map(a => {
     const e = PROG_ESTADOS[a.estado] || PROG_ESTADOS.programada;
@@ -8550,18 +8571,20 @@ function renderProgramacionDia() {
       '<div class="eq-desc">' + (a.descripcion_equipo || a.codigo_equipo || "—") + "</div>" +
       '<div class="eq-loc">' + (a.estacion || "—") + " · " + (a.tipo_mantenimiento || a.tipo_orden || "—") +
       " · " + progHH(hh) + " HH" +
-      (a.avance_pct != null ? " · avance " + a.avance_pct + "%" : "") + "</div></div>" +
+      (a.avance_pct != null ? " · avance " + a.avance_pct + "%" : "") +
+      (a._arrastrada ? " · viene del " + progFmtFecha(a.fecha_programada) : "") + "</div></div>" +
       '<span class="badge badge-prog-' + a.estado + '">' +
-      (a.vencida ? "Vencida" : e.etiqueta) + "</span>" +
+      (a._arrastrada ? "Continúa" : a.vencida ? "Vencida" : e.etiqueta) + "</span>" +
       "</div>";
   }).join("");
 }
 
 /* ---------- Registro de una actividad ---------- */
-function progAbrirActividad(id) {
+async function progAbrirActividad(id) {
   const a = progLista.find(x => String(x.id) === String(id));
   if (!a) return;
   progActual = a;
+  progJornadas = [];
 
   document.getElementById("prog-act-titulo").textContent =
     (a.numero_ot || "Actividad") + " · " + progFmtFecha(a.fecha_programada);
@@ -8581,15 +8604,19 @@ function progAbrirActividad(id) {
     .filter(([, v]) => v !== null && v !== undefined && v !== "")
     .map(([k, v]) => "<tr><td>" + k + "</td><td>" + v + "</td></tr>").join("");
 
-  const cfg = progCfg();
-  document.getElementById("prog-e-estado").value = a.estado || "programada";
-  document.getElementById("prog-e-avance").value = a.avance_pct != null ? a.avance_pct : "";
-  document.getElementById("prog-e-hh").value = a.hh_ejec_ele != null ? a.hh_ejec_ele : (a.hh_ele || "");
-  document.getElementById("prog-e-personal").value = a.personal || cfg.personal || "";
-  document.getElementById("prog-e-actividades").value = a.actividades_realizadas || "";
-  document.getElementById("prog-e-observaciones").value = a.observaciones || "";
-  document.getElementById("prog-e-motivo").value = a.motivo_no_ejecucion || "";
-  progToggleMotivo();
+  /* La jornada que se registra es el día en que estás parado, no la fecha
+     programada: así una actividad arrastrada se le carga trabajo de hoy. */
+  const hoy = progISO(new Date());
+  let fj = progFecha || hoy;
+  if (fj < a.fecha_programada) fj = a.fecha_programada;
+  if (fj > hoy) fj = hoy;
+  progJornadaFecha = fj;
+  document.getElementById("prog-e-fecha").value = fj;
+
+  const rj = await sb.rpc("programa_avances_actividad", { p_actividad_id: a.id });
+  progJornadas = rj.data || [];
+  progRenderJornadas();
+  progPrecargarJornada();
 
   /* Una programada no se borra: viene de Planeación y volvería a
      aparecer en la próxima carga. Solo se limpia su ejecución.
@@ -8607,6 +8634,71 @@ function progAbrirActividad(id) {
   }
 
   abrirPanel("panel-prog-actividad");
+}
+
+/* Tabla de lo ya registrado día por día. Es el histórico que antes se
+   perdía al sobrescribir el registro plano. */
+function progRenderJornadas() {
+  const cont = document.getElementById("prog-jornadas");
+  if (!cont) return;
+  if (!progJornadas.length) {
+    cont.innerHTML = '<div class="mat-stock">Sin jornadas registradas. La primera que guardes abre el trabajo.</div>';
+    return;
+  }
+  const tot = progJornadas.reduce((t, j) => t + (Number(j.hh_ele) || 0), 0);
+  cont.innerHTML = '<table class="tabla-ficha">' +
+    progJornadas.map(j =>
+      "<tr><td>" + progFmtFecha(j.fecha) + (j.fecha === progJornadaFecha ? " <b>·</b>" : "") + "</td><td>" +
+      (j.hh_ele != null ? progHH(j.hh_ele) + " HH" : "sin HH") +
+      (j.avance_pct != null ? " · " + j.avance_pct + "%" : "") +
+      (j.cierra ? " · cierre" : "") +
+      ' <span style="color:var(--danger);cursor:pointer;margin-left:6px" onclick="progBorrarJornada(\'' + j.fecha + '\')">borrar</span>' +
+      "</td></tr>").join("") +
+    "<tr><td><b>Total</b></td><td><b>" + progHH(tot) + " HH en " +
+    progJornadas.length + (progJornadas.length === 1 ? " jornada" : " jornadas") + "</b></td></tr></table>";
+}
+
+/* Precarga el formulario con lo de ESA jornada. HH vacías si es un día
+   nuevo: son horas del día, no el acumulado. */
+function progPrecargarJornada() {
+  const a = progActual;
+  if (!a) return;
+  const cfg = progCfg();
+  const j = progJornadas.find(x => String(x.fecha) === String(progJornadaFecha)) || null;
+
+  document.getElementById("prog-e-estado").value = j
+    ? (j.cierra ? "ejecutada" : "en_ejecucion")
+    : (a.estado === "programada" ? "en_ejecucion" : (a.estado || "en_ejecucion"));
+  document.getElementById("prog-e-avance").value =
+    j && j.avance_pct != null ? j.avance_pct : (a.avance_pct != null ? a.avance_pct : "");
+  document.getElementById("prog-e-hh").value = j && j.hh_ele != null ? j.hh_ele : "";
+  document.getElementById("prog-e-personal").value =
+    (j && j.personal) || a.personal || cfg.personal || "";
+  document.getElementById("prog-e-actividades").value = (j && j.actividades) || "";
+  document.getElementById("prog-e-observaciones").value = (j && j.observaciones) || "";
+  document.getElementById("prog-e-motivo").value = a.motivo_no_ejecucion || "";
+  progToggleMotivo();
+}
+
+function progCambiarJornada(f) {
+  if (!f) return;
+  progJornadaFecha = f;
+  progRenderJornadas();
+  progPrecargarJornada();
+}
+
+async function progBorrarJornada(fecha) {
+  if (!progActual) return;
+  if (!confirm("Se elimina la jornada del " + progFmtFecha(fecha) +
+               ". Los totales de la actividad se recalculan. ¿Continuar?")) return;
+  const { data, error } = await sb.rpc("programa_borrar_avance", {
+    p_actividad_id: progActual.id, p_fecha: fecha,
+  });
+  if (error) { toast("No se pudo borrar: " + error.message); return; }
+  if (data && data.ok === false) { toast(data.error); return; }
+  toast("Jornada eliminada");
+  cerrarPanel("panel-prog-actividad");
+  await cargarProgramacionDia();
 }
 
 function progToggleMotivo() {
@@ -8643,7 +8735,8 @@ async function progGuardarEjecucion() {
     p_actividades: document.getElementById("prog-e-actividades").value.trim(),
     p_observaciones: document.getElementById("prog-e-observaciones").value.trim(),
     p_motivo: motivo,
-    p_fecha: null,
+    // Sin esto la jornada se registraría siempre contra la fecha programada
+    p_fecha: document.getElementById("prog-e-fecha").value || progJornadaFecha || null,
   });
   btn.disabled = false; btn.textContent = "Guardar registro";
 
@@ -9093,6 +9186,26 @@ async function progGuardarNoProgramada() {
   btn.disabled = false; btn.textContent = "Registrar actividad";
   if (error) { toast("No se pudo registrar: " + error.message); return; }
 
+  /* Se registra la jornada para que la actividad quede con bitácora diaria
+     desde el primer día y no como registro plano. */
+  const avNuevo = document.getElementById("np-avance").value !== ""
+    ? parseInt(document.getElementById("np-avance").value, 10) : 100;
+  const idNP = data && (data.actividad_id || data.id);
+  if (idNP) {
+    await sb.rpc("programa_registrar_ejecucion", {
+      p_actividad_id: idNP,
+      p_estado: avNuevo >= 100 ? "ejecutada" : "en_ejecucion",
+      p_avance: avNuevo,
+      p_hh_ele: document.getElementById("np-hh").value !== ""
+        ? parseFloat(document.getElementById("np-hh").value) : null,
+      p_personal: personal,
+      p_actividades: document.getElementById("np-actividades").value.trim(),
+      p_observaciones: document.getElementById("np-observaciones").value.trim(),
+      p_motivo: null,
+      p_fecha: fecha,
+    });
+  }
+
   toast("Actividad no programada registrada" + (data && data.nota ? " · revisa el aviso" : ""));
   if (data && data.nota) {
     document.getElementById("np-equipo-elegido").style.display = "";
@@ -9307,9 +9420,13 @@ async function progGuardarEdicionNP() {
   if (r1.error) { btn.disabled = false; btn.textContent = "Guardar cambios"; toast("No se pudo guardar: " + r1.error.message); return; }
   if (r1.data && r1.data.ok === false) { btn.disabled = false; btn.textContent = "Guardar cambios"; toast(r1.data.error); return; }
 
+  const avNP = document.getElementById("np-avance").value !== ""
+    ? parseInt(document.getElementById("np-avance").value, 10) : 100;
+
   const r2 = await sb.rpc("programa_registrar_ejecucion", {
     p_actividad_id: npEditando,
-    p_estado: "ejecutada",
+    // Antes iba fijo en "ejecutada" y cerraba trabajos que seguían abiertos
+    p_estado: avNP >= 100 ? "ejecutada" : "en_ejecucion",
     p_avance: document.getElementById("np-avance").value !== ""
       ? parseInt(document.getElementById("np-avance").value, 10) : null,
     p_hh_ele: document.getElementById("np-hh").value !== ""
