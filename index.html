@@ -173,6 +173,9 @@ html,body{height:100%;margin:0;}
 #ot-doc .ot-seccion{background:#cfe7e5;font-weight:bold;text-align:center}
 #ot-doc .ot-th{background:#f0f0f0;font-weight:bold;text-align:center;font-size:7pt}
 #ot-doc .ot-libre{height:34pt}
+#ot-doc .ot-datos{border:1px solid #000}
+#ot-doc .ot-datos td{border:none}
+#ot-doc .ot-datos td.ot-div{border-left:1px solid #000}
 #ot-doc .ot-sinborde,#ot-doc .ot-sinborde td{border:none}
 #ot-doc .ot-firma{border:none;border-top:1px solid #000;text-align:center;
                   font-weight:bold;font-size:7pt;padding-top:2pt}
@@ -193,7 +196,9 @@ html,body{height:100%;margin:0;}
   #print-root #ot-doc table,#print-root #ot-doc tr{
     break-inside:auto!important;page-break-inside:auto!important;
   }
-  #print-root #ot-doc .ot-logo{height:30pt;width:auto}
+  /* En impresion el alto lo fija el atributo del <img>; esta regla solo
+     evita que un logo muy grande desborde el encabezado. */
+  #print-root #ot-doc img{max-height:34pt;width:auto}
 }
 
 @media print{
@@ -1966,6 +1971,15 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="section-label" style="margin-top:18px">OPERACIONES</div>
     <div id="ot-operaciones"></div>
     <button class="btn-secondary" style="margin-top:6px" onclick="otAgregarOperacion()">Agregar operaci&#243;n</button>
+
+    <div class="section-label" style="margin-top:18px">REPUESTOS Y MATERIALES</div>
+    <div class="field">
+      <input id="ot-mat-buscar" placeholder="Buscar por c&#243;digo SAP o descripci&#243;n" autocomplete="off"
+             oninput="otBuscarMaterial(this.value)"/>
+      <div id="ot-res-material" class="ot-sugerencias"></div>
+    </div>
+    <div id="ot-materiales"></div>
+    <button class="btn-secondary" style="margin-top:6px" onclick="otAgregarMaterialLibre()">Agregar material sin cat&#225;logo</button>
 
     <div class="section-label" style="margin-top:18px">CIERRE</div>
     <div class="field">
@@ -9630,6 +9644,9 @@ let otOperaciones = [];
 let otPuestos = [];
 let otCatalogo = { SINTOMA: [], CAUSA: [], PARTE: [] };
 let otFecha = null;   // jornada que se está documentando
+let otMateriales = [];
+let otResMaterial = [];   // últimos resultados de búsqueda de material
+let otBuscarMatTimer = null;
 
 const OT_TEXTO_AMBIENTAL =
   "Los residuos generados durante la actividad son clasificados y depositados en las canecas " +
@@ -9765,6 +9782,17 @@ function otRender() {
   otToggleEjecutores();
 
   otEstadoLogo();
+
+  otMateriales = (d.materiales || []).map(x => ({
+    codigo: x.codigo, descripcion: x.descripcion, unidad: x.unidad,
+    cant_reservada: x.cant_reservada, cant_tomada: x.cant_tomada,
+    cant_disponer: x.cant_disponer, almacen: x.almacen,
+  }));
+  otRenderMateriales();
+  const bm = document.getElementById("ot-mat-buscar");
+  if (bm) bm.value = "";
+  const rm = document.getElementById("ot-res-material");
+  if (rm) rm.innerHTML = "";
 
   otOperaciones = (d.operaciones || []).map(x => ({
     orden: x.orden, puesto: x.puesto, descripcion: x.descripcion,
@@ -9903,26 +9931,144 @@ function otRenderOperaciones() {
       '<input type="time" value="' + (op.hora_final || "") + '" oninput="otOpCampo(' + i + ',\'hora_final\',this.value)" style="flex:1"/>' +
     "</div>" +
     '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
-      '<input type="number" min="1" step="1" value="' + (op.cantidad != null ? op.cantidad : "") + '" ' +
+      '<input type="number" min="1" step="1" id="ot-cant-' + i + '" value="' + (op.cantidad != null ? op.cantidad : "") + '" ' +
         'oninput="otOpCampo(' + i + ',\'cantidad\',this.value)" placeholder="N° técnicos" style="flex:1"/>' +
-      '<input type="number" min="0" step="5" value="' + (op.duracion_min != null ? op.duracion_min : "") + '" ' +
+      '<input type="number" min="0" step="5" id="ot-dur-' + i + '" value="' + (op.duracion_min != null ? op.duracion_min : "") + '" ' +
         'oninput="otOpCampo(' + i + ',\'duracion_min\',this.value)" placeholder="Min." style="flex:1"/>' +
       '<span style="color:var(--danger);cursor:pointer;white-space:nowrap" onclick="otQuitarOperacion(' + i + ')">Quitar</span>' +
     "</div>" +
-    '<div class="mat-stock" style="margin-top:4px">' + otHHOperacion(op) + "</div>" +
-    "</div>").join("") + otResumenHH();
+    '<div class="mat-stock" id="ot-hh-' + i + '" style="margin-top:4px">' + otHHOperacion(op) + "</div>" +
+    "</div>").join("") +
+    '<div class="mat-stock" id="ot-hh-total" style="margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:8px">' +
+    otResumenHH() + "</div>";
+}
+
+/* Se actualizan solo los textos calculados. Redibujar la lista completa
+   en cada tecla destruye el campo que se está escribiendo y el cursor se
+   pierde: hay que tocar el DOM lo mínimo. */
+/* ---------- Repuestos ---------- */
+function otRenderMateriales() {
+  const cont = document.getElementById("ot-materiales");
+  if (!cont) return;
+  if (!otMateriales.length) {
+    cont.innerHTML = '<div class="mat-stock">Sin repuestos. Si la intervención no consumió materiales, déjalo así: la tabla sale en blanco.</div>';
+    return;
+  }
+  cont.innerHTML = otMateriales.map((m, i) =>
+    '<div class="field" style="border-left:3px solid var(--line);padding-left:10px">' +
+    '<div style="font-size:13px"><b>' + otEsc(m.codigo || "sin código") + "</b> · " +
+      otEsc(m.descripcion || "") + (m.unidad ? " (" + otEsc(m.unidad) + ")" : "") + "</div>" +
+    '<div style="display:flex;gap:6px;margin-top:6px">' +
+      '<input type="number" step="any" value="' + (m.cant_reservada != null ? m.cant_reservada : "") + '" ' +
+        'oninput="otMatCampo(' + i + ',\'cant_reservada\',this.value)" placeholder="Reservada" style="flex:1"/>' +
+      '<input type="number" step="any" value="' + (m.cant_tomada != null ? m.cant_tomada : "") + '" ' +
+        'oninput="otMatCampo(' + i + ',\'cant_tomada\',this.value)" placeholder="Tomada" style="flex:1"/>' +
+      '<input type="number" step="any" value="' + (m.cant_disponer != null ? m.cant_disponer : "") + '" ' +
+        'oninput="otMatCampo(' + i + ',\'cant_disponer\',this.value)" placeholder="A disponer" style="flex:1"/>' +
+    "</div>" +
+    '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
+      '<input value="' + otEsc(m.almacen || "") + '" oninput="otMatCampo(' + i + ',\'almacen\',this.value)" ' +
+        'placeholder="Almacén o procedencia: C072, TALLER CYC..." style="flex:1"/>' +
+      '<span style="color:var(--danger);cursor:pointer;white-space:nowrap" onclick="otQuitarMaterial(' + i + ')">Quitar</span>' +
+    "</div></div>").join("");
+}
+
+function otMatCampo(i, campo, valor) {
+  if (!otMateriales[i]) return;
+  otMateriales[i][campo] = valor;
+}
+function otQuitarMaterial(i) {
+  otMateriales.splice(i, 1);
+  otRenderMateriales();
+}
+
+/* La búsqueda va contra la base porque el catálogo tiene miles de
+   códigos: traerlo entero al navegador no tiene sentido. Se espera a
+   que el usuario deje de escribir para no disparar una consulta por
+   cada tecla. */
+function otBuscarMaterial(texto) {
+  const cont = document.getElementById("ot-res-material");
+  if (!cont) return;
+  clearTimeout(otBuscarMatTimer);
+  const q = String(texto || "").trim();
+  if (q.length < 3) {
+    cont.innerHTML = q ? '<div class="ot-nota">Escribe al menos tres caracteres.</div>' : "";
+    return;
+  }
+  cont.innerHTML = '<div class="ot-nota">Buscando...</div>';
+  otBuscarMatTimer = setTimeout(async () => {
+    const { data, error } = await sb.rpc("programa_ot_buscar_material", { p_texto: q, p_limite: 12 });
+    if (error) { cont.innerHTML = '<div class="ot-nota">No se pudo buscar: ' + error.message + "</div>"; return; }
+    const hits = data || [];
+    if (!hits.length) {
+      cont.innerHTML = '<div class="ot-nota">Sin coincidencias en el catálogo. Usa "Agregar material sin catálogo".</div>';
+      return;
+    }
+    cont.innerHTML = hits.map((m, k) => {
+      // Si el grupo de equivalencias suma más, se muestra entre paréntesis:
+      // ese excedente existe pero bajo otro código
+      const ex = (m.existencias || []).map(e =>
+        e.centro + ": " + e.stock + (e.grupo != null ? " (grupo " + e.grupo + ")" : "")).join(" · ");
+      return '<div class="ot-op" onclick="otElegirMaterial(' + k + ')">' +
+        "<b>" + otEsc(m.codigo_sap) + "</b> · " + otEsc(m.descripcion || "") +
+        (m.unidad ? " (" + otEsc(m.unidad) + ")" : "") +
+        (ex ? '<div style="font-size:11px;color:var(--text-2);margin-top:2px">Existencias: ' + otEsc(ex) + "</div>"
+            : '<div style="font-size:11px;color:var(--text-2);margin-top:2px">Sin existencias registradas</div>') +
+        "</div>";
+    }).join("");
+    otResMaterial = hits;
+  }, 350);
+}
+
+
+function otElegirMaterial(k) {
+  const m = otResMaterial[k];
+  if (!m) return;
+  if (otMateriales.some(x => x.codigo === m.codigo_sap)) {
+    toast("Ese material ya está en la lista");
+    return;
+  }
+  otMateriales.push({
+    codigo: m.codigo_sap, descripcion: m.descripcion, unidad: m.unidad,
+    cant_reservada: null, cant_tomada: null, cant_disponer: null, almacen: "",
+  });
+  document.getElementById("ot-mat-buscar").value = "";
+  document.getElementById("ot-res-material").innerHTML = "";
+  otRenderMateriales();
+}
+
+/* Un repuesto puede no estar catalogado y aun así haberse instalado.
+   No reportarlo sería peor que reportarlo sin código. */
+function otAgregarMaterialLibre() {
+  const desc = prompt("Descripción del material:");
+  if (!desc || !desc.trim()) return;
+  otMateriales.push({
+    codigo: null, descripcion: desc.trim(), unidad: null,
+    cant_reservada: null, cant_tomada: null, cant_disponer: null, almacen: "",
+  });
+  otRenderMateriales();
 }
 
 function otOpCampo(i, campo, valor) {
-  if (!otOperaciones[i]) return;
-  otOperaciones[i][campo] = valor;
+  const op = otOperaciones[i];
+  if (!op) return;
+  op[campo] = valor;
+
   // La duración se deduce de las horas mientras no se escriba a mano
   if (campo === "hora_inicio" || campo === "hora_final") {
-    const op = otOperaciones[i];
     const d = otMinutos(op.hora_inicio, op.hora_final);
-    if (d != null) op.duracion_min = d;
+    if (d != null) {
+      op.duracion_min = d;
+      const inp = document.getElementById("ot-dur-" + i);
+      // Nunca se escribe sobre el campo que tiene el foco
+      if (inp && document.activeElement !== inp) inp.value = d;
+    }
   }
-  otRenderOperaciones();
+
+  const nota = document.getElementById("ot-hh-" + i);
+  if (nota) nota.textContent = otHHOperacion(op);
+  const tot = document.getElementById("ot-hh-total");
+  if (tot) tot.innerHTML = otResumenHH();
 }
 
 /* La hora de almuerzo no es tiempo de intervención: si la operación la
@@ -9981,7 +10127,7 @@ function otResumenHH() {
     txt += "<br>HH registradas en la jornada: " + progHH(jor) +
       (dif > 0.5 ? ' <span style="color:var(--warn)">· no coinciden, revisa cuál es la correcta</span>' : " · coinciden");
   }
-  return '<div class="mat-stock" style="margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:8px">' + txt + "</div>";
+  return txt;
 }
 function otAgregarOperacion() {
   const ult = otOperaciones.length ? otOperaciones[otOperaciones.length - 1] : null;
@@ -10068,6 +10214,17 @@ async function otGuardar(opciones) {
     p_actividad_id: id, p_fecha: otFecha, p_filas: filas,
   });
 
+  const num = v => (v === "" || v === null || v === undefined) ? null : Number(v);
+  const r3 = await sb.rpc("programa_ot_materiales_guardar", {
+    p_actividad_id: id, p_fecha: otFecha,
+    p_filas: otMateriales.map(m => ({
+      codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad,
+      cant_reservada: num(m.cant_reservada), cant_tomada: num(m.cant_tomada),
+      cant_disponer: num(m.cant_disponer), almacen: m.almacen,
+    })),
+  });
+  if (r3.error) { toast("Los repuestos no se guardaron: " + r3.error.message); }
+
   btn.disabled = false; btn.textContent = "Guardar";
   if (r2.error) { toast("Encabezado guardado, pero fallaron las operaciones: " + r2.error.message); return false; }
 
@@ -10078,25 +10235,56 @@ async function otGuardar(opciones) {
 }
 
 /* ---------- Construcción del documento ---------- */
-function otEncabezado(pagina, total, ot) {
-  const logo = localStorage.getItem(EE_LOGO) || "";
-  return '<table class="ot-cab"><tr>' +
-    '<td style="width:26%;border:none">' +
-      (logo ? '<img class="ot-logo" src="' + logo + '"/>' : "") + "</td>" +
-    '<td style="width:44%">ORDEN DE TRABAJO<br><br>FORMATO<br><br>ORDEN DE TRABAJO No.</td>' +
-    '<td style="width:30%;font-weight:normal;text-align:left;padding:0">' +
-      '<table style="border:none">' +
-      '<tr><td style="border:none;border-bottom:1px solid #000">GTEC-MT-FO-016</td></tr>' +
-      '<tr><td style="border:none;border-bottom:1px solid #000">Versión: 01</td></tr>' +
-      '<tr><td style="border:none;border-bottom:1px solid #000">Fecha: 2019/02/20</td></tr>' +
-      '<tr><td style="border:none;border-bottom:1px solid #000">Página ' + pagina + " de " + total + "</td></tr>" +
-      '<tr><td style="border:none"><b>' + otEsc(ot || "") + "</b></td></tr>" +
-      "</table></td></tr></table>";
+/* Word reparte los anchos a su antojo si no se declaran columna por
+   columna, y las tablas salen desbordadas. Con colgroup y table-layout
+   fijo respeta exactamente lo que se le dice. */
+function otColumnas(anchos) {
+  return "<colgroup>" + anchos.map(a => '<col style="width:' + a + '%"/>').join("") + "</colgroup>";
+}
+function otTabla(anchos, extra, clase) {
+  return '<table width="100%"' + (clase ? ' class="' + clase + '"' : "") +
+    ' style="table-layout:fixed;width:100%' + (extra ? ";" + extra : "") + '">' +
+    otColumnas(anchos);
 }
 
+/* La imagen es el otro punto donde Word ignora el CSS: solo obedece los
+   atributos width y height del <img>. Sin la relación de aspecto sale
+   deformada o del tamaño original, que es lo que la hacía gigante. */
+function otLogoImg(altoPx) {
+  const logo = localStorage.getItem(EE_LOGO);
+  if (!logo) return "";
+  const ar = parseFloat(localStorage.getItem(EE_LOGO_AR)) || 3;
+  const ancho = Math.round(altoPx * ar);
+  return '<img src="' + logo + '" width="' + ancho + '" height="' + altoPx +
+         '" style="width:' + ancho + "px;height:" + altoPx + 'px"/>';
+}
+
+/* Encabezado del formato: el bloque central se divide en tres, alineado
+   con las filas de la derecha tal como en el formato oficial. ORDEN DE
+   TRABAJO ocupa el alto del código y la versión, FORMATO el de la fecha
+   y la página, y ORDEN DE TRABAJO No. el del número. */
+function otEncabezado(pagina, total, ot) {
+  const c = 'text-align:center;font-weight:bold;vertical-align:middle';
+  return otTabla([26, 44, 30]) +
+    '<tr><td rowspan="5" style="border:none;vertical-align:middle">' + otLogoImg(34) + "</td>" +
+      '<td rowspan="2" style="' + c + '">ORDEN DE TRABAJO</td>' +
+      "<td>GTEC-MT-FO-016</td></tr>" +
+    "<tr><td>VERSIÓN: 01</td></tr>" +
+    '<tr><td rowspan="2" style="' + c + '">FORMATO</td>' +
+      "<td>FECHA: 2019/02/20</td></tr>" +
+    "<tr><td>Página " + pagina + " de " + total + "</td></tr>" +
+    '<tr><td style="' + c + '">ORDEN DE TRABAJO No.</td>' +
+      "<td><b>" + otEsc(ot || "") + "</b></td></tr>" +
+    "</table>";
+}
+
+/* El bloque de identificación va sin líneas entre filas: solo el marco
+   exterior y el divisor central, como en el formato en papel. La clase
+   ot-div dibuja ese divisor; no se usa :nth-child porque Word no lo
+   interpreta. */
 function otFila(l1, v1, l2, v2) {
   return '<tr><td class="ot-lbl">' + l1 + '</td><td class="ot-val">' + otEsc(v1) + "</td>" +
-         '<td class="ot-lbl">' + l2 + '</td><td class="ot-val">' + otEsc(v2) + "</td></tr>";
+         '<td class="ot-lbl ot-div">' + l2 + '</td><td class="ot-val">' + otEsc(v2) + "</td></tr>";
 }
 
 function otConstruirDocumento() {
@@ -10110,7 +10298,7 @@ function otConstruirDocumento() {
 
   let h = '<div class="ot-pagina">' + otEncabezado(1, 2, ot);
 
-  h += '<table style="margin-top:4pt">' +
+  h += otTabla([16, 34, 16, 34], "margin-top:4pt", "ot-datos") +
     otFila("DESCRIPCIÓN", a.descripcion, "TAG EQUIPO", o.tag_equipo) +
     otFila("CLASE DE ORDEN", c.orden, "GRUPO PLANIFICADOR", "") +
     otFila("CLASE DE ACTIVIDAD", c.actividad, "PUESTO RESPONSABLE", o.puesto_responsable) +
@@ -10123,9 +10311,10 @@ function otConstruirDocumento() {
     otFila("COMPONENTE EN FALLA", o.componente_falla, "N° INVENTARIO", o.numero_inventario) +
     "</table>";
 
-  h += '<table style="margin-top:6pt"><tr><td class="ot-seccion" colspan="7">OPERACIONES DE MANTENIMIENTO</td></tr>' +
-    '<tr><td class="ot-th" style="width:14%">PUESTO DE TRABAJO</td>' +
-    '<td class="ot-th" style="width:40%">DESCRIPCIÓN DE LA OPERACIÓN</td>' +
+  h += otTabla([12, 37, 9, 9, 6, 12, 15], "margin-top:6pt") +
+    '<tr><td class="ot-seccion" colspan="7">OPERACIONES DE MANTENIMIENTO</td></tr>' +
+    '<tr><td class="ot-th">PUESTO DE TRABAJO</td>' +
+    '<td class="ot-th">DESCRIPCIÓN DE LA OPERACIÓN</td>' +
     '<td class="ot-th">HORA INICIO</td><td class="ot-th">HORA FINAL</td>' +
     '<td class="ot-th">CANT.</td><td class="ot-th">DURACIÓN REAL</td>' +
     '<td class="ot-th">FECHA REALIZACIÓN</td></tr>';
@@ -10138,8 +10327,9 @@ function otConstruirDocumento() {
   });
   h += "</table>";
 
-  h += '<table style="margin-top:6pt"><tr><td class="ot-seccion" colspan="7">REPUESTOS Y MATERIALES</td></tr>' +
-    '<tr><td class="ot-th">CÓDIGO</td><td class="ot-th" style="width:40%">DESCRIPCIÓN</td>' +
+  h += otTabla([13, 33, 12, 8, 12, 12, 10], "margin-top:6pt") +
+    '<tr><td class="ot-seccion" colspan="7">REPUESTOS Y MATERIALES</td></tr>' +
+    '<tr><td class="ot-th">CÓDIGO</td><td class="ot-th">DESCRIPCIÓN</td>' +
     '<td class="ot-th">CANT. RESERVADA</td><td class="ot-th">UND</td>' +
     '<td class="ot-th">CANT. TOMADA</td><td class="ot-th">CANT. DISPONER</td>' +
     '<td class="ot-th">ALMACÉN</td></tr>';
@@ -10153,8 +10343,9 @@ function otConstruirDocumento() {
   }
   h += "</table>";
 
-  h += '<table style="margin-top:6pt"><tr><td class="ot-seccion" colspan="6">SERVICIOS</td></tr>' +
-    '<tr><td class="ot-th">SERVICIO</td><td class="ot-th" style="width:40%">DESCRIPCIÓN</td>' +
+  h += otTabla([15, 35, 10, 8, 14, 18], "margin-top:6pt") +
+    '<tr><td class="ot-seccion" colspan="6">SERVICIOS</td></tr>' +
+    '<tr><td class="ot-th">SERVICIO</td><td class="ot-th">DESCRIPCIÓN</td>' +
     '<td class="ot-th">CANTIDAD</td><td class="ot-th">UND</td>' +
     '<td class="ot-th">SOLPED</td><td class="ot-th">PROVEEDOR</td></tr>';
   const srv = d.servicios || [];
@@ -10167,12 +10358,12 @@ function otConstruirDocumento() {
   h += "</table>";
 
   const estados = ["OPERANDO", "STAND BY", "EN FALLA", "OPERANDO EN FALLA"];
-  h += '<table style="margin-top:6pt">' +
+  h += otTabla([25, 25, 25, 25], "margin-top:6pt") +
     '<tr><td class="ot-seccion" colspan="4">DESCRIPCIÓN DEL TRABAJO</td></tr>' +
     '<tr><td colspan="4"><b>¿Cómo encontró el equipo?</b></td></tr>' +
     "<tr>" + estados.map(e => "<td>" + otCasilla(o.estado_encontrado, e) + "</td>").join("") + "</tr>" +
     '<tr><td colspan="4"><b>¿Qué actividad realizó sobre el equipo?</b></td></tr>' +
-    '<tr><td colspan="4" class="ot-caja" style="min-height:70pt;height:70pt;white-space:pre-wrap">' + otEsc(narrativa) + "</td></tr>" +
+    '<tr><td colspan="4" class="ot-caja" height="110" style="min-height:70pt;height:70pt;white-space:pre-wrap;word-wrap:break-word">' + otEsc(narrativa) + "</td></tr>" +
     '<tr><td colspan="4"><b>¿Cómo quedó el equipo?</b></td></tr>' +
     "<tr>" + estados.map(e => "<td>" + otCasilla(o.estado_final, e) + "</td>").join("") + "</tr>" +
     "</table>";
@@ -10182,11 +10373,11 @@ function otConstruirDocumento() {
   /* ---------- Página 2 ---------- */
   h += '<div class="ot-pagina">' + otEncabezado(2, 2, ot);
 
-  h += '<table style="margin-top:4pt">' +
+  h += otTabla([100], "margin-top:4pt") +
     '<tr><td><b>Recomendaciones y/o observaciones adicionales y/o trabajos pendientes</b></td></tr>' +
-    '<tr><td class="ot-caja" style="min-height:110pt;height:110pt;white-space:pre-wrap">' + otEsc(o.recomendaciones) + "</td></tr></table>";
+    '<tr><td class="ot-caja" height="170" style="min-height:110pt;height:110pt;white-space:pre-wrap;word-wrap:break-word">' + otEsc(o.recomendaciones) + "</td></tr></table>";
 
-  h += '<table style="margin-top:6pt">' +
+  h += otTabla([34, 33, 33], "margin-top:6pt") +
     '<tr><td class="ot-seccion" colspan="3">TIEMPOS DE PARADA E INTERVENCIÓN</td></tr>' +
     "<tr><td>FECHA INICIO PARADA: " + otFmtFecha(o.fecha_inicio_parada) + "</td>" +
     "<td>FECHA INICIO INTERVENCIÓN: " + otFmtFecha(o.fecha_inicio_interv) + "</td>" +
@@ -10195,7 +10386,7 @@ function otConstruirDocumento() {
     "<td>HORA INICIO INTERVENCIÓN: " + otHora(o.hora_inicio_interv) + "</td>" +
     "<td>HORA FIN DE PARADA: " + otHora(o.hora_fin_parada) + "</td></tr></table>";
 
-  h += '<table style="margin-top:6pt">' +
+  h += otTabla([50, 50], "margin-top:6pt") +
     '<tr><td class="ot-seccion" colspan="2">ESTADO DE LA ORDEN DE TRABAJO</td></tr>' +
     "<tr><td>" + otCasilla(o.estado_ot, "EN PROCESO") + "</td>" +
     "<td>" + otCasilla(o.estado_ot, "FINALIZADA") + "</td></tr></table>";
@@ -10203,9 +10394,10 @@ function otConstruirDocumento() {
   /* Firmas: siempre vacias. Si se pidio dejar los ejecutores en blanco,
      tampoco se imprime el nombre. */
   const ejec = enBlanco ? "&nbsp;" : otEsc(o.ejecutores || a.personal || "");
-  h += '<table class="ot-sinborde" style="margin-top:34pt"><tr>' +
-    '<td style="width:25%;text-align:center;font-size:8pt">' + ejec + "</td>" +
-    '<td style="width:25%">&nbsp;</td><td style="width:25%">&nbsp;</td><td style="width:25%">&nbsp;</td></tr>' +
+  h += '<table class="ot-sinborde" width="100%" style="table-layout:fixed;width:100%;margin-top:34pt">' +
+    otColumnas([25, 25, 25, 25]) + "<tr>" +
+    '<td style="text-align:center;font-size:8pt">' + ejec + "</td>" +
+    "<td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>" +
     '<tr><td class="ot-firma">EJECUTOR DE MTTO</td>' +
     '<td class="ot-firma">SUPERVISOR O&amp;M</td>' +
     '<td class="ot-firma">SENIOR / PLANEADOR DE MTTO GTEC</td>' +
@@ -10227,13 +10419,18 @@ async function otDescargarWord() {
   if (!ok) { toast("Corrige lo marcado antes de exportar"); return; }
 
   const estilos = `
-    body{font-family:Arial,sans-serif;font-size:8pt;color:#000}
-    table{border-collapse:collapse;width:100%}
-    td,th{border:1px solid #000;padding:2pt 3pt;vertical-align:top}
+    body{font-family:Arial,sans-serif;font-size:7.5pt;color:#000}
+    table{border-collapse:collapse;width:100%;table-layout:fixed}
+    td,th{border:1px solid #000;padding:1.5pt 2.5pt;vertical-align:top;
+          word-wrap:break-word;overflow-wrap:break-word}
+    img{border:none}
     .ot-cab td{text-align:center;font-weight:bold}
     .ot-lbl{font-weight:bold}
     .ot-seccion{background:#cfe7e5;font-weight:bold;text-align:center}
     .ot-th{background:#f0f0f0;font-weight:bold;text-align:center;font-size:7pt}
+    .ot-datos{border:1px solid #000}
+    .ot-datos td{border:none}
+    .ot-datos td.ot-div{border-left:1px solid #000}
     .ot-sinborde,.ot-sinborde td{border:none}
     .ot-firma{border:none;border-top:1px solid #000;text-align:center;font-weight:bold;font-size:7pt}
     .ot-pagina{page-break-after:always}`;
