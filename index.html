@@ -179,7 +179,12 @@ html,body{height:100%;margin:0;}
 
 @media print{
   body.imprimiendo > #print-root #ot-doc{display:block!important}
-  #print-root #ot-doc{font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#000}
+  #print-root #ot-doc{font-family:Arial,Helvetica,sans-serif;font-size:7.5pt;color:#000;line-height:1.15}
+  #print-root #ot-doc td,#print-root #ot-doc th{padding:1.2pt 2.5pt}
+  #print-root #ot-doc .ot-th{font-size:6.5pt}
+  /* Alturas minimas, no fijas: el bloque crece con el texto en vez de
+     reservar espacio muerto que empuja el resto a otra hoja. */
+  #print-root #ot-doc .ot-caja{height:auto!important}
   #print-root #ot-doc .ot-pagina{page-break-after:always}
   #print-root #ot-doc .ot-pagina:last-child{page-break-after:auto}
   /* El documento es de dos hojas fijas: las tablas SI pueden partirse si el
@@ -2002,7 +2007,8 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     </div>
 
     <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()">Guardar</button>
-    <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir FO-016</button>
+    <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir o guardar como PDF</button>
+    <button class="btn-secondary" style="margin-top:8px" onclick="otDescargarWord()">Descargar en Word</button>
     <div class="hint-box" style="margin-top:8px">&#9888;&#65039; En el di&#225;logo de impresi&#243;n abre <b>M&#225;s configuraciones</b> y desmarca <b>Encabezados y pies de p&#225;gina</b>. Eso quita la URL, la fecha y el n&#250;mero de p&#225;gina que agrega el navegador: no se pueden suprimir desde la aplicaci&#243;n.</div>
   </div>
 </div>
@@ -9897,14 +9903,65 @@ function otRenderOperaciones() {
       '<input type="time" value="' + (op.hora_final || "") + '" oninput="otOpCampo(' + i + ',\'hora_final\',this.value)" style="flex:1"/>' +
     "</div>" +
     '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
-      '<input type="date" value="' + (op.fecha || "") + '" oninput="otOpCampo(' + i + ',\'fecha\',this.value)" style="flex:1"/>' +
+      '<input type="number" min="1" step="1" value="' + (op.cantidad != null ? op.cantidad : "") + '" ' +
+        'oninput="otOpCampo(' + i + ',\'cantidad\',this.value)" placeholder="N° técnicos" style="flex:1"/>' +
+      '<input type="number" min="0" step="5" value="' + (op.duracion_min != null ? op.duracion_min : "") + '" ' +
+        'oninput="otOpCampo(' + i + ',\'duracion_min\',this.value)" placeholder="Min." style="flex:1"/>' +
       '<span style="color:var(--danger);cursor:pointer;white-space:nowrap" onclick="otQuitarOperacion(' + i + ')">Quitar</span>' +
-    "</div></div>").join("");
+    "</div>" +
+    '<div class="mat-stock" style="margin-top:4px">' + otHHOperacion(op) + "</div>" +
+    "</div>").join("") + otResumenHH();
 }
 
 function otOpCampo(i, campo, valor) {
   if (!otOperaciones[i]) return;
   otOperaciones[i][campo] = valor;
+  // La duración se deduce de las horas mientras no se escriba a mano
+  if (campo === "hora_inicio" || campo === "hora_final") {
+    const op = otOperaciones[i];
+    const d = otMinutos(op.hora_inicio, op.hora_final);
+    if (d != null) op.duracion_min = d;
+  }
+  otRenderOperaciones();
+}
+
+/* Minutos entre dos horas del mismo día. Devuelve nulo si falta alguna
+   o si la final es anterior: un cruce de medianoche en una operación de
+   mantenimiento casi siempre es un error de digitación. */
+function otMinutos(hi, hf) {
+  if (!hi || !hf) return null;
+  const a = hi.split(":"), b = hf.split(":");
+  const m = (b[0] * 60 + Number(b[1])) - (a[0] * 60 + Number(a[1]));
+  return m >= 0 ? m : null;
+}
+
+/* HH = duración × número de técnicos. Es como se contabiliza la mano de
+   obra: dos técnicos media hora son 1 HH, no 0,5. */
+function otHHOperacion(op) {
+  const min = Number(op.duracion_min) || 0;
+  const n = Number(op.cantidad) || 0;
+  if (!min) return "Sin duración";
+  if (!n) return progHH(min / 60) + " h · falta el número de técnicos";
+  return min + " min × " + n + (n === 1 ? " técnico" : " técnicos") +
+         " = " + progHH(min * n / 60) + " HH";
+}
+
+function otResumenHH() {
+  let hh = 0, faltan = 0;
+  otOperaciones.forEach(op => {
+    const min = Number(op.duracion_min) || 0;
+    const n = Number(op.cantidad) || 0;
+    if (min && n) hh += min * n / 60; else if (min) faltan++;
+  });
+  const jor = otDatos && otDatos.actividad.hh_ejec_ele;
+  let txt = "<b>Total: " + progHH(hh) + " HH</b>";
+  if (faltan) txt += " · " + faltan + " operación(es) sin número de técnicos";
+  if (jor != null) {
+    const dif = Math.abs(hh - Number(jor));
+    txt += "<br>HH registradas en la jornada: " + progHH(jor) +
+      (dif > 0.5 ? ' <span style="color:var(--warn)">· no coinciden, revisa cuál es la correcta</span>' : " · coinciden");
+  }
+  return '<div class="mat-stock" style="margin-top:8px;padding:8px;border:1px solid var(--line);border-radius:8px">' + txt + "</div>";
 }
 function otAgregarOperacion() {
   const ult = otOperaciones.length ? otOperaciones[otOperaciones.length - 1] : null;
@@ -9912,6 +9969,8 @@ function otAgregarOperacion() {
     orden: (ult ? ult.orden : 0) + 10,
     puesto: document.getElementById("ot-puesto").value || null,
     descripcion: "", hora_inicio: "", hora_final: "",
+    cantidad: ult && ult.cantidad ? ult.cantidad : null,
+    duracion_min: null,
     fecha: document.getElementById("ot-fecha-inicio").value || null,
   });
   otRenderOperaciones();
@@ -10065,7 +10124,7 @@ function otConstruirDocumento() {
     '<td class="ot-th">CANT. TOMADA</td><td class="ot-th">CANT. DISPONER</td>' +
     '<td class="ot-th">ALMACÉN</td></tr>';
   const mats = d.materiales || [];
-  for (let i = 0; i < Math.max(5, mats.length); i++) {
+  for (let i = 0; i < Math.max(4, mats.length); i++) {
     const m = mats[i] || {};
     h += "<tr><td>" + otEsc(m.codigo) + "</td><td>" + otEsc(m.descripcion) + "</td>" +
       "<td>" + otEsc(m.cant_reservada) + "</td><td>" + otEsc(m.unidad) + "</td>" +
@@ -10079,7 +10138,7 @@ function otConstruirDocumento() {
     '<td class="ot-th">CANTIDAD</td><td class="ot-th">UND</td>' +
     '<td class="ot-th">SOLPED</td><td class="ot-th">PROVEEDOR</td></tr>';
   const srv = d.servicios || [];
-  for (let i = 0; i < Math.max(3, srv.length); i++) {
+  for (let i = 0; i < Math.max(2, srv.length); i++) {
     const x = srv[i] || {};
     h += "<tr><td>" + otEsc(x.servicio) + "</td><td>" + otEsc(x.descripcion) + "</td>" +
       "<td>" + otEsc(x.cantidad) + "</td><td>" + otEsc(x.unidad) + "</td>" +
@@ -10093,7 +10152,7 @@ function otConstruirDocumento() {
     '<tr><td colspan="4"><b>¿Cómo encontró el equipo?</b></td></tr>' +
     "<tr>" + estados.map(e => "<td>" + otCasilla(o.estado_encontrado, e) + "</td>").join("") + "</tr>" +
     '<tr><td colspan="4"><b>¿Qué actividad realizó sobre el equipo?</b></td></tr>' +
-    '<tr><td colspan="4" style="height:120pt;white-space:pre-wrap">' + otEsc(narrativa) + "</td></tr>" +
+    '<tr><td colspan="4" class="ot-caja" style="min-height:70pt;height:70pt;white-space:pre-wrap">' + otEsc(narrativa) + "</td></tr>" +
     '<tr><td colspan="4"><b>¿Cómo quedó el equipo?</b></td></tr>' +
     "<tr>" + estados.map(e => "<td>" + otCasilla(o.estado_final, e) + "</td>").join("") + "</tr>" +
     "</table>";
@@ -10105,7 +10164,7 @@ function otConstruirDocumento() {
 
   h += '<table style="margin-top:4pt">' +
     '<tr><td><b>Recomendaciones y/o observaciones adicionales y/o trabajos pendientes</b></td></tr>' +
-    '<tr><td style="height:150pt;white-space:pre-wrap">' + otEsc(o.recomendaciones) + "</td></tr></table>";
+    '<tr><td class="ot-caja" style="min-height:110pt;height:110pt;white-space:pre-wrap">' + otEsc(o.recomendaciones) + "</td></tr></table>";
 
   h += '<table style="margin-top:6pt">' +
     '<tr><td class="ot-seccion" colspan="3">TIEMPOS DE PARADA E INTERVENCIÓN</td></tr>' +
@@ -10124,7 +10183,7 @@ function otConstruirDocumento() {
   /* Firmas: siempre vacias. Si se pidio dejar los ejecutores en blanco,
      tampoco se imprime el nombre. */
   const ejec = enBlanco ? "&nbsp;" : otEsc(o.ejecutores || a.personal || "");
-  h += '<table class="ot-sinborde" style="margin-top:40pt"><tr>' +
+  h += '<table class="ot-sinborde" style="margin-top:34pt"><tr>' +
     '<td style="width:25%;text-align:center;font-size:8pt">' + ejec + "</td>" +
     '<td style="width:25%">&nbsp;</td><td style="width:25%">&nbsp;</td><td style="width:25%">&nbsp;</td></tr>' +
     '<tr><td class="ot-firma">EJECUTOR DE MTTO</td>' +
@@ -10132,11 +10191,51 @@ function otConstruirDocumento() {
     '<td class="ot-firma">SENIOR / PLANEADOR DE MTTO GTEC</td>' +
     '<td class="ot-firma">DOCUMENTADOR O&amp;M</td></tr></table>';
 
-  h += '<table class="ot-sinborde" style="margin-top:36pt;width:50%;margin-left:auto;margin-right:auto">' +
+  h += '<table class="ot-sinborde" style="margin-top:30pt;width:50%;margin-left:auto;margin-right:auto">' +
     '<tr><td>&nbsp;</td></tr><tr><td class="ot-firma">CLERK GTEC</td></tr></table>';
 
   h += "</div>";
   return h;
+}
+
+/* Word abre HTML empaquetado como .doc conservando tablas y bordes, y el
+   documento queda editable. No es un .docx nativo, pero sirve para
+   ajustar algo a mano antes de imprimir sin cargar otra librería. */
+async function otDescargarWord() {
+  if (!otDatos) return;
+  const ok = await otGuardar({ silencioso: true });
+  if (!ok) { toast("Corrige lo marcado antes de exportar"); return; }
+
+  const estilos = `
+    body{font-family:Arial,sans-serif;font-size:8pt;color:#000}
+    table{border-collapse:collapse;width:100%}
+    td,th{border:1px solid #000;padding:2pt 3pt;vertical-align:top}
+    .ot-cab td{text-align:center;font-weight:bold}
+    .ot-lbl{font-weight:bold}
+    .ot-seccion{background:#cfe7e5;font-weight:bold;text-align:center}
+    .ot-th{background:#f0f0f0;font-weight:bold;text-align:center;font-size:7pt}
+    .ot-sinborde,.ot-sinborde td{border:none}
+    .ot-firma{border:none;border-top:1px solid #000;text-align:center;font-weight:bold;font-size:7pt}
+    .ot-pagina{page-break-after:always}`;
+
+  const cuerpo = otConstruirDocumento();
+  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+    xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8"><title>FO-016</title>
+    <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
+    <style>@page{size:21.59cm 27.94cm;margin:1cm}${estilos}</style></head>
+    <body>${cuerpo}</body></html>`;
+
+  const blob = new Blob(["\ufeff", doc], { type: "application/msword" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const ot = (otDatos.actividad.numero_ot || "sinOT").toString().replace(/[^\w-]/g, "");
+  a.href = url;
+  a.download = "FO-016_" + ot + "_" + otFecha + ".doc";
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  toast("Documento descargado");
 }
 
 async function otImprimir() {
