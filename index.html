@@ -1884,7 +1884,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <h2 id="ot-titulo">Reporte FO-016</h2>
   </div>
   <div class="panel-body">
-    <div class="hint-box">&#8505;&#65039; Se imprime con los datos ya diligenciados. Las firmas van siempre en blanco: el documento se firma a mano.</div>
+    <div class="hint-box">&#8505;&#65039; Un formato por jornada. Cada d&#237;a lleva sus actividades, sus recomendaciones y sus tiempos. Las firmas van siempre en blanco.</div>
+
+    <div class="field"><label>Jornada que documenta este formato</label>
+      <select id="ot-jornada" onchange="otCambiarJornada(this.value)"></select>
+    </div>
 
     <div class="section-label">DATOS DE LA ORDEN</div>
     <table class="tabla-ficha" id="ot-ficha"></table>
@@ -9602,6 +9606,7 @@ let otDatos = null;
 let otOperaciones = [];
 let otPuestos = [];
 let otCatalogo = { SINTOMA: [], CAUSA: [], PARTE: [] };
+let otFecha = null;   // jornada que se está documentando
 
 const OT_TEXTO_AMBIENTAL =
   "Los residuos generados durante la actividad son clasificados y depositados en las canecas " +
@@ -9614,19 +9619,25 @@ function otEsc(v) {
   return String(v === null || v === undefined ? "" : v)
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
-function otFecha(iso) { return iso ? progFmtFecha(iso) : ""; }
+function otFmtFecha(iso) { return iso ? progFmtFecha(iso) : ""; }
 function otHora(h) { return h ? String(h).slice(0, 5) : ""; }
 /* Casilla marcada o vacia segun el valor elegido */
 function otCasilla(valor, opcion) {
   return (valor === opcion ? "&#9746;" : "&#9744;") + " " + opcion;
 }
 
-async function otAbrir() {
+async function otAbrir(fecha) {
   if (!progActual) return;
-  const { data, error } = await sb.rpc("programa_ot_abrir", { p_actividad_id: progActual.id });
+  /* Por defecto la jornada en la que se está parado; si esa no tiene
+     avance registrado, la última que sí lo tenga. */
+  otFecha = fecha || progJornadaFecha || progFecha;
+  const { data, error } = await sb.rpc("programa_ot_abrir", {
+    p_actividad_id: progActual.id, p_fecha: otFecha,
+  });
   if (error) { toast("No se pudo abrir el reporte: " + error.message); return; }
   if (data && data.ok === false) { toast(data.error); return; }
   otDatos = data;
+  otFecha = data.fecha || otFecha;
 
   if (!otPuestos.length) {
     const r = await sb.from("puestos_responsables")
@@ -9652,7 +9663,14 @@ async function otAbrir() {
 function otRender() {
   const d = otDatos, a = d.actividad, o = d.ot || {}, c = d.clase || {};
   document.getElementById("ot-titulo").textContent =
-    "FO-016 · " + (a.numero_ot || "sin OT");
+    "FO-016 · " + (a.numero_ot || "sin OT") + " · " + progFmtFecha(otFecha);
+
+  const js = d.jornadas || [];
+  document.getElementById("ot-jornada").innerHTML = js.map(j =>
+    '<option value="' + j.fecha + '"' + (j.fecha === otFecha ? " selected" : "") + ">" +
+    progFmtFecha(j.fecha) +
+    (j.hh_ele != null ? " · " + progHH(j.hh_ele) + " HH" : "") +
+    (j.tiene_formato ? " · formato creado" : "") + "</option>").join("");
 
   const filas = [
     ["OT", a.numero_ot || "Sin OT asignada"],
@@ -9665,8 +9683,9 @@ function otRender() {
     ["Ubicación técnica", a.ubicacion_tecnica],
     ["Marca / Modelo", [a.marca, a.modelo].filter(Boolean).join(" · ")],
     ["Serie", a.serie],
-    ["HH ejecutadas", a.hh_ejec_ele != null ? progHH(a.hh_ejec_ele) : null],
-    ["Jornadas", a.dias_trabajados || null],
+    ["HH de la jornada", a.hh_ejec_ele != null ? progHH(a.hh_ejec_ele) : null],
+    ["Avance al cierre", a.avance_pct != null ? a.avance_pct + "%" : null],
+    ["Jornadas de la actividad", a.dias_trabajados || null],
   ];
   document.getElementById("ot-ficha").innerHTML = filas
     .filter(([, v]) => v !== null && v !== undefined && v !== "")
@@ -9690,7 +9709,7 @@ function otRender() {
 
   document.getElementById("ot-aviso").value = o.numero_aviso || "";
   document.getElementById("ot-autor").value = o.autor_aviso || "";
-  document.getElementById("ot-fecha-inicio").value = o.fecha_inicio || a.fecha_programada || "";
+  document.getElementById("ot-fecha-inicio").value = o.fecha_inicio || otFecha || "";
   document.getElementById("ot-tag").value = o.tag_equipo || "";
   document.getElementById("ot-inventario").value = o.numero_inventario || "";
   document.getElementById("ot-sintoma").value = o.sintoma_averia || "N/A";
@@ -9698,8 +9717,9 @@ function otRender() {
   document.getElementById("ot-componente").value = o.componente_falla || "N/A";
   document.getElementById("ot-estado-ini").value = o.estado_encontrado || "";
   document.getElementById("ot-estado-fin").value = o.estado_final || "";
-  document.getElementById("ot-narrativa").value =
-    a.actividades_realizadas || "Sin narrativa. Regístrala en la jornada de la actividad.";
+  document.getElementById("ot-narrativa").value = a.actividades_realizadas ||
+    "Esta jornada no tiene narrativa. Escríbela en el registro del día " +
+    progFmtFecha(otFecha) + ".";
   document.getElementById("ot-adicional").value = o.actividad_adicional || "";
   // Las observaciones de la intervención son las recomendaciones del formato
   document.getElementById("ot-recomendaciones").value =
@@ -9711,8 +9731,10 @@ function otRender() {
   document.getElementById("ot-ff-parada").value = o.fecha_fin_parada || "";
   document.getElementById("ot-hf-parada").value = otHora(o.hora_fin_parada);
   /* Se propone segun el avance, pero manda lo que decida el ejecutor */
+  /* La orden se finaliza en la jornada que cerró el trabajo; las
+     anteriores quedan en proceso, que es lo que realmente pasó. */
   document.getElementById("ot-estado-orden").value =
-    o.estado_ot || (a.estado === "ejecutada" ? "FINALIZADA" : "EN PROCESO");
+    o.estado_ot || (a.cierra ? "FINALIZADA" : "EN PROCESO");
   document.getElementById("ot-ejecutores").value = o.ejecutores || a.personal || "";
   document.getElementById("ot-ejec-blanco").checked = !!o.ejecutores_en_blanco;
   otToggleEjecutores();
@@ -9757,6 +9779,11 @@ function otArmarPuesto() {
     otOperaciones.forEach(op => { op.puesto = nuevo; });
   }
   otValidarPuesto();
+}
+
+async function otCambiarJornada(f) {
+  if (!f || f === otFecha) return;
+  await otAbrir(f);
 }
 
 /* Reutiliza el mismo logo de los informes de ensayos: una sola imagen
@@ -9834,6 +9861,7 @@ async function otGuardar(opciones) {
   const puesto = otVal("ot-puesto").toUpperCase();
   const r1 = await sb.rpc("programa_ot_guardar", {
     p_actividad_id: id,
+    p_fecha: otFecha,
     p_datos: {
       puesto_responsable: puesto,
       numero_aviso: otVal("ot-aviso"),
@@ -9876,13 +9904,13 @@ async function otGuardar(opciones) {
       fecha: x.fecha || null,
     }));
   const r2 = await sb.rpc("programa_ot_operaciones_guardar", {
-    p_actividad_id: id, p_filas: filas,
+    p_actividad_id: id, p_fecha: otFecha, p_filas: filas,
   });
 
   btn.disabled = false; btn.textContent = "Guardar";
   if (r2.error) { toast("Encabezado guardado, pero fallaron las operaciones: " + r2.error.message); return false; }
 
-  const rr = await sb.rpc("programa_ot_datos", { p_actividad_id: id });
+  const rr = await sb.rpc("programa_ot_datos", { p_actividad_id: id, p_fecha: otFecha });
   if (!rr.error && rr.data) { otDatos = rr.data; otRender(); }
   if (!silencioso) toast("Reporte guardado");
   return true;
@@ -9915,7 +9943,7 @@ function otConstruirDocumento() {
   const ot = a.numero_ot || "";
   const enBlanco = !!o.ejecutores_en_blanco;
 
-  /* La narrativa del FO-016 cubre la intervencion completa, no una jornada */
+  /* Un formato por jornada: la narrativa es la del dia, no la consolidada */
   let narrativa = a.actividades_realizadas || "";
   if (o.actividad_adicional) narrativa += (narrativa ? "\n\n" : "") + o.actividad_adicional;
 
@@ -9925,7 +9953,7 @@ function otConstruirDocumento() {
     otFila("DESCRIPCIÓN", a.descripcion, "TAG EQUIPO", o.tag_equipo) +
     otFila("CLASE DE ORDEN", c.orden, "GRUPO PLANIFICADOR", "") +
     otFila("CLASE DE ACTIVIDAD", c.actividad, "PUESTO RESPONSABLE", o.puesto_responsable) +
-    otFila("Cod EQUIPO", a.codigo_equipo, "FECHA INICIO", otFecha(o.fecha_inicio || a.fecha_programada)) +
+    otFila("Cod EQUIPO", a.codigo_equipo, "FECHA INICIO", otFmtFecha(o.fecha_inicio || d.fecha)) +
     otFila("DESCRIPCIÓN DE EQUIPO", a.descripcion_equipo, "AUTOR DE AVISO", o.autor_aviso) +
     otFila("UBICACIÓN TÉCNICA", a.ubicacion_tecnica, "CLASE DE AVISO", c.aviso) +
     otFila("No AVISO", o.numero_aviso, "MARCA", a.marca) +
@@ -9945,7 +9973,7 @@ function otConstruirDocumento() {
       "<td>" + otHora(x.hora_inicio) + "</td><td>" + otHora(x.hora_final) + "</td>" +
       "<td>" + otEsc(x.cantidad) + "</td>" +
       "<td>" + (x.duracion_min != null ? x.duracion_min + " Min." : "") + "</td>" +
-      "<td>" + otFecha(x.fecha) + "</td></tr>";
+      "<td>" + otFmtFecha(x.fecha || d.fecha) + "</td></tr>";
   });
   h += "</table>";
 
@@ -9999,9 +10027,9 @@ function otConstruirDocumento() {
 
   h += '<table style="margin-top:6pt">' +
     '<tr><td class="ot-seccion" colspan="3">TIEMPOS DE PARADA E INTERVENCIÓN</td></tr>' +
-    "<tr><td>FECHA INICIO PARADA: " + otFecha(o.fecha_inicio_parada) + "</td>" +
-    "<td>FECHA INICIO INTERVENCIÓN: " + otFecha(o.fecha_inicio_interv) + "</td>" +
-    "<td>FECHA FIN DE PARADA: " + otFecha(o.fecha_fin_parada) + "</td></tr>" +
+    "<tr><td>FECHA INICIO PARADA: " + otFmtFecha(o.fecha_inicio_parada) + "</td>" +
+    "<td>FECHA INICIO INTERVENCIÓN: " + otFmtFecha(o.fecha_inicio_interv) + "</td>" +
+    "<td>FECHA FIN DE PARADA: " + otFmtFecha(o.fecha_fin_parada) + "</td></tr>" +
     "<tr><td>HORA INICIO PARADA: " + otHora(o.hora_inicio_parada) + "</td>" +
     "<td>HORA INICIO INTERVENCIÓN: " + otHora(o.hora_inicio_interv) + "</td>" +
     "<td>HORA FIN DE PARADA: " + otHora(o.hora_fin_parada) + "</td></tr></table>";
