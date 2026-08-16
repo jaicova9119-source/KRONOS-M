@@ -10330,17 +10330,6 @@ function otTiempo(etiqueta, valor) {
     (valor || "&nbsp;") + "</span></td>";
 }
 
-/* Fila SI / NO de la recepción del servicio */
-function otRecepcion(texto, si) {
-  const marcado = si !== false;
-  return '<tr><td style="border:none">' + texto + "</td>" +
-    '<td style="border:none;text-align:right">SI</td>' +
-    '<td style="border:none">' + otCajaX(marcado, 13) + "</td>" +
-    '<td style="border:none;text-align:right">NO</td>' +
-    '<td style="border:none">' + otCajaX(!marcado, 13) + "</td>" +
-    '<td style="border:none">&nbsp;</td></tr>';
-}
-
 function otFila(l1, v1, l2, v2) {
   return '<tr><td class="ot-lbl">' + l1 + '</td><td class="ot-val">' + otEsc(v1) + "</td>" +
          '<td class="ot-lbl ot-div">' + l2 + '</td><td class="ot-val">' + otEsc(v2) + "</td></tr>";
@@ -10452,33 +10441,75 @@ function otConstruirDocumento() {
      el avance al lado, que es el dato que pide quien revisa. */
   const enProceso = o.estado_ot !== "FINALIZADA";
   const avance = a.avance_pct != null ? a.avance_pct + "%" : "";
+  /* Las dos casillas van juntas hacia el centro, no repartidas a los
+     extremos: las columnas vacías de los lados son lo que las agrupa. */
   h += '<table class="ot-sinborde" width="100%" style="table-layout:fixed;width:100%;margin-top:10pt">' +
-    otColumnas([50, 50]) +
-    '<tr><td colspan="2" style="text-align:center;font-weight:bold;padding-bottom:2pt">ESTADO DE LA ORDEN DE TRABAJO:</td></tr>' +
-    '<tr><td colspan="2" style="text-align:center;font-weight:bold;padding-bottom:6pt">' +
-      '<span style="border-top:1px solid #000;padding:0 40pt">MARQUE CON "X" EL ESTADO DE LA ORDEN:</span></td></tr>' +
-    '<tr><td style="text-align:center;font-weight:bold">EN PROCESO</td>' +
-      '<td style="text-align:center;font-weight:bold">FINALIZADA</td></tr>' +
-    '<tr><td style="text-align:center">' + otCajaX(enProceso) +
-      (enProceso && avance ? '<div style="font-weight:bold;margin-top:2pt">Avance: ' + avance + "</div>" : "") +
+    otColumnas([28, 22, 22, 28]) +
+    '<tr><td colspan="4" style="text-align:center;font-weight:bold">ESTADO DE LA ORDEN DE TRABAJO:</td></tr>' +
+    '<tr><td colspan="4" style="text-align:center;font-weight:bold;padding-top:1pt">' +
+      '<span style="border-top:1px solid #000;padding:2pt 30pt 0">MARQUE CON "X" EL ESTADO DE LA ORDEN:</span></td></tr>' +
+    '<tr><td>&nbsp;</td>' +
+      '<td style="text-align:center;font-weight:bold;padding-top:6pt">EN PROCESO</td>' +
+      '<td style="text-align:center;font-weight:bold;padding-top:6pt">FINALIZADA</td>' +
+      "<td>&nbsp;</td></tr>" +
+    '<tr><td>&nbsp;</td><td style="text-align:center">' + otCajaX(enProceso) +
+      (enProceso && avance ? '<div style="font-weight:bold;font-size:7pt">Avance: ' + avance + "</div>" : "") +
       "</td>" +
-      '<td style="text-align:center">' + otCajaX(!enProceso) + "</td></tr></table>";
+      '<td style="text-align:center">' + otCajaX(!enProceso) + "</td>" +
+      "<td>&nbsp;</td></tr></table>";
 
-  /* ---------- Recepción de servicio ---------- */
-  h += otTabla([56, 6, 8, 6, 8, 16], "margin-top:12pt") +
-    '<tr><td colspan="6" class="ot-tit3" style="font-size:9pt">RECEPCIÓN DE SERVICIO (USUARIO)</td></tr>' +
-    otRecepcion("Se recibe trabajo a conformidad", o.recepcion_conformidad) +
-    otRecepcion("Se entrega el área en buenas condiciones de orden y aseo", o.recepcion_area) +
-    otRecepcion("Se entrega el equipo en buenas condiciones de orden y aseo", o.recepcion_equipo) +
-    '<tr><td colspan="6" style="border:none;padding-top:4pt"><b>Observaciones:</b> ' +
+  /* ---------- Recepción de servicio ----------
+     Va dentro de un recuadro, con el título subrayado y las líneas de
+     observaciones sin llegar a los bordes, como en el formato en papel.
+     Se arma anidando tablas dentro de una celda: es la única forma de
+     controlar los anchos y que Word lo respete igual. */
+  const filaRec = (texto, si) => {
+    const m = si !== false;
+    return '<tr><td style="border:none">' + texto + "</td>" +
+      '<td style="border:none;text-align:right;padding-right:3pt">SI</td>' +
+      '<td style="border:none">' + otCajaX(m, 13) + "</td>" +
+      '<td style="border:none;text-align:right;padding-right:3pt">NO</td>' +
+      '<td style="border:none">' + otCajaX(!m, 13) + "</td>" +
+      '<td style="border:none">&nbsp;</td></tr>';
+  };
+
+  const lineaObs = txt =>
+    '<tr><td style="border:none">&nbsp;</td>' +
+    '<td style="border:none;border-bottom:1px solid #000;height:11pt">' + (txt || "&nbsp;") + "</td></tr>";
+
+  h += otTabla([100], "margin-top:12pt") +
+    '<tr><td style="padding:5pt 6pt">' +
+
+      '<table width="100%" style="table-layout:fixed;width:100%;border:none">' +
+      '<tr><td style="border:none;border-bottom:1px solid #000;font-weight:bold;font-size:9pt;padding-bottom:2pt">' +
+      "RECEPCIÓN DE SERVICIO(USUARIO)</td></tr></table>" +
+
+      '<table width="100%" style="table-layout:fixed;width:100%;border:none;margin-top:4pt">' +
+      otColumnas([58, 6, 6, 6, 6, 18]) +
+      filaRec("Se recibe trabajo a conformidad", o.recepcion_conformidad) +
+      filaRec("Se entrega el área en buenas condiciones de orden y aseo", o.recepcion_area) +
+      filaRec("Se entrega el equipo en buenas condiciones de orden y aseo", o.recepcion_equipo) +
+      "</table>" +
+
+      '<table width="100%" style="table-layout:fixed;width:100%;border:none;margin-top:5pt">' +
+      otColumnas([16, 84]) +
+      '<tr><td style="border:none">Observaciones:</td>' +
+      '<td style="border:none;border-bottom:1px solid #000;height:11pt">' +
       otEsc(o.recepcion_observaciones || "") + "</td></tr>" +
-    '<tr><td colspan="6" style="border:none;border-bottom:1px solid #000;height:12pt">&nbsp;</td></tr>' +
-    '<tr><td colspan="6" style="border:none;border-bottom:1px solid #000;height:12pt">&nbsp;</td></tr>' +
-    '<tr><td colspan="6" style="border:none;height:22pt">&nbsp;</td></tr>' +
-    '<tr><td colspan="2" class="ot-firma" style="font-weight:normal">NOMBRE</td>' +
-      '<td colspan="2" class="ot-firma" style="font-weight:normal">FIRMA</td>' +
-      '<td colspan="2" class="ot-firma" style="font-weight:normal">ÁREA</td></tr>' +
-    "</table>";
+      lineaObs() + lineaObs() + lineaObs() +
+      "</table>" +
+
+      '<table width="100%" style="table-layout:fixed;width:100%;border:none;margin-top:24pt">' +
+      otColumnas([3, 27, 6, 27, 6, 27, 4]) +
+      '<tr><td style="border:none">&nbsp;</td>' +
+      '<td style="border:none;border-top:1px solid #000;font-size:7pt">NOMBRE</td>' +
+      '<td style="border:none">&nbsp;</td>' +
+      '<td style="border:none;border-top:1px solid #000;font-size:7pt">FIRMA</td>' +
+      '<td style="border:none">&nbsp;</td>' +
+      '<td style="border:none;border-top:1px solid #000;font-size:7pt">AREA</td>' +
+      '<td style="border:none">&nbsp;</td></tr></table>' +
+
+    "</td></tr></table>";
 
   /* Firmas: siempre vacias. Si se pidio dejar los ejecutores en blanco,
      tampoco se imprime el nombre. */
