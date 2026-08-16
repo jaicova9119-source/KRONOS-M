@@ -148,6 +148,37 @@ html,body{height:100%;margin:0;}
    franja angosta en el centro de la hoja. */
 #print-root{display:none}
 
+/* ===== Documento FO-016 =====
+   Vive oculto en el DOM y solo aparece dentro de #print-root al imprimir,
+   igual que el informe de ensayos. Todo en tablas y sin flex: es lo unico
+   que los motores de impresion respetan de forma consistente. */
+#ot-doc{display:none}
+#ot-doc table{border-collapse:collapse;width:100%}
+#ot-doc td,#ot-doc th{border:1px solid #000;padding:2pt 3pt;vertical-align:top}
+#ot-doc .ot-cab td{border:1px solid #000;text-align:center;font-weight:bold}
+#ot-doc .ot-lbl{font-weight:bold;width:16%;white-space:nowrap}
+#ot-doc .ot-val{width:34%}
+#ot-doc .ot-seccion{background:#cfe7e5;font-weight:bold;text-align:center}
+#ot-doc .ot-th{background:#f0f0f0;font-weight:bold;text-align:center;font-size:7pt}
+#ot-doc .ot-libre{height:34pt}
+#ot-doc .ot-sinborde,#ot-doc .ot-sinborde td{border:none}
+#ot-doc .ot-firma{border:none;border-top:1px solid #000;text-align:center;
+                  font-weight:bold;font-size:7pt;padding-top:2pt}
+
+@media print{
+  body.imprimiendo > #print-root #ot-doc{display:block!important}
+  #print-root #ot-doc{font-family:Arial,Helvetica,sans-serif;font-size:8pt;color:#000}
+  #print-root #ot-doc .ot-pagina{page-break-after:always}
+  #print-root #ot-doc .ot-pagina:last-child{page-break-after:auto}
+  /* El documento es de dos hojas fijas: las tablas SI pueden partirse si el
+     texto crece, al reves que en el informe de ensayos. Forzar avoid aqui
+     empujaria secciones enteras a una tercera hoja. */
+  #print-root #ot-doc table,#print-root #ot-doc tr{
+    break-inside:auto!important;page-break-inside:auto!important;
+  }
+  #print-root #ot-doc .ot-logo{height:30pt;width:auto}
+}
+
 @media print{
   html,body{
     overflow:visible!important;height:auto!important;
@@ -1845,6 +1876,85 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <button class="btn-primary" id="np-btn-guardar" onclick="progGuardarNoProgramada()">Registrar actividad</button>
   </div>
 </div>
+
+<!-- ===== Programación: reporte FO-016 ===== -->
+<div class="panel" id="panel-prog-ot">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-prog-ot')">&#8592;</button>
+    <h2 id="ot-titulo">Reporte FO-016</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box">&#8505;&#65039; Se imprime con los datos ya diligenciados. Las firmas van siempre en blanco: el documento se firma a mano.</div>
+
+    <div class="section-label">DATOS DE LA ORDEN</div>
+    <table class="tabla-ficha" id="ot-ficha"></table>
+
+    <div class="field"><label>Puesto responsable</label><select id="ot-puesto"></select></div>
+    <div class="field"><label>N&#186; Aviso</label><input id="ot-aviso"/></div>
+    <div class="field"><label>Autor del aviso</label><input id="ot-autor"/></div>
+    <div class="field"><label>Fecha inicio</label><input id="ot-fecha-inicio" type="date"/></div>
+    <div class="field"><label>Tag equipo</label><input id="ot-tag"/></div>
+    <div class="field"><label>N&#186; inventario</label><input id="ot-inventario"/></div>
+
+    <div class="section-label" style="margin-top:18px">FALLA</div>
+    <div class="field"><label>S&#237;ntoma de aver&#237;a</label><input id="ot-sintoma" placeholder="N/A"/></div>
+    <div class="field"><label>Causa</label><input id="ot-causa" placeholder="N/A"/></div>
+    <div class="field"><label>Componente en falla</label><input id="ot-componente" placeholder="N/A"/></div>
+
+    <div class="section-label" style="margin-top:18px">ESTADO DEL EQUIPO</div>
+    <div class="field"><label>&#191;C&#243;mo encontr&#243; el equipo?</label>
+      <select id="ot-estado-ini">
+        <option value="">Sin marcar</option>
+        <option>OPERANDO</option><option>STAND BY</option>
+        <option>EN FALLA</option><option>OPERANDO EN FALLA</option>
+      </select>
+    </div>
+    <div class="field"><label>&#191;C&#243;mo qued&#243; el equipo?</label>
+      <select id="ot-estado-fin">
+        <option value="">Sin marcar</option>
+        <option>OPERANDO</option><option>STAND BY</option>
+        <option>EN FALLA</option><option>OPERANDO EN FALLA</option>
+      </select>
+    </div>
+
+    <div class="section-label" style="margin-top:18px">OPERACIONES</div>
+    <div id="ot-operaciones"></div>
+    <button class="btn-secondary" style="margin-top:6px" onclick="otAgregarOperacion()">Agregar operaci&#243;n</button>
+
+    <div class="section-label" style="margin-top:18px">CIERRE</div>
+    <div class="field"><label>Actividad adicional realizada</label><textarea id="ot-adicional" rows="3" placeholder="Opcional. Se imprime debajo de la narrativa."></textarea></div>
+    <div class="field">
+      <label>Recomendaciones y trabajos pendientes</label>
+      <textarea id="ot-recomendaciones" rows="4"></textarea>
+      <button class="btn-secondary" style="margin-top:6px" onclick="otTextoAmbiental()">Insertar texto ambiental</button>
+    </div>
+
+    <div class="section-label" style="margin-top:18px">TIEMPOS DE PARADA E INTERVENCI&#211;N</div>
+    <div class="field"><label>Inicio de parada</label>
+      <input id="ot-fi-parada" type="date"/><input id="ot-hi-parada" type="time" style="margin-top:6px"/></div>
+    <div class="field"><label>Inicio de intervenci&#243;n</label>
+      <input id="ot-fi-interv" type="date"/><input id="ot-hi-interv" type="time" style="margin-top:6px"/></div>
+    <div class="field"><label>Fin de parada</label>
+      <input id="ot-ff-parada" type="date"/><input id="ot-hf-parada" type="time" style="margin-top:6px"/></div>
+
+    <div class="field"><label>Estado de la orden</label>
+      <select id="ot-estado-orden"><option>EN PROCESO</option><option>FINALIZADA</option></select>
+    </div>
+    <div class="field"><label>Ejecutores</label>
+      <input id="ot-ejecutores" placeholder="Ej. Jaime C&#243;rdoba / Ferney Riascos"/>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:normal">
+        <input type="checkbox" id="ot-ejec-blanco" style="width:auto" onchange="otToggleEjecutores()"/>
+        Dejar en blanco para escribirlos a mano
+      </label>
+    </div>
+
+    <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()">Guardar</button>
+    <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir FO-016</button>
+    <div class="mat-stock" style="margin-top:8px">En el di&#225;logo de impresi&#243;n abre <b>M&#225;s configuraciones</b> y desmarca encabezados y pies de p&#225;gina.</div>
+  </div>
+</div>
+
+<div id="ot-doc"></div>
 
 <!-- ===== Programación: cargar el Excel ===== -->
 <div class="panel" id="panel-prog-carga">
@@ -8622,15 +8732,16 @@ async function progAbrirActividad(id) {
      aparecer en la próxima carga. Solo se limpia su ejecución.
      Una no programada sí, porque solo existe aquí. */
   const extra = document.getElementById("prog-acciones-extra");
+  const btnOT = '<button class="btn-secondary" onclick="otAbrir()">Reporte FO-016</button>';
   if (a.no_programada) {
-    extra.innerHTML =
+    extra.innerHTML = btnOT +
       '<button class="btn-secondary" onclick="progEditarNP()">Editar datos</button>' +
       '<button class="btn-secondary" style="color:var(--danger)" onclick="progEliminarNP()">Eliminar actividad</button>';
   } else if (a.estado !== "programada") {
-    extra.innerHTML =
+    extra.innerHTML = btnOT +
       '<button class="btn-secondary" onclick="progLimpiarEjecucion()">Limpiar registro de ejecución</button>';
   } else {
-    extra.innerHTML = "";
+    extra.innerHTML = btnOT;
   }
 
   abrirPanel("panel-prog-actividad");
@@ -9446,6 +9557,389 @@ async function progGuardarEdicionNP() {
   progFecha = document.getElementById("np-fecha").value || progFecha;
   const b = document.querySelector('[data-tab="prog-dia"]');
   if (b) b.click();
+}
+
+/* ============================================================
+   REPORTE DE ACTIVIDAD GTEC-MT-FO-016
+
+   Kronos arma el documento con lo que ya tiene y lo imprime listo para
+   firmar. Nada se simula: las firmas y, si asi se elige, los ejecutores
+   salen en blanco para diligenciarlos de puño y letra.
+   ============================================================ */
+let otDatos = null;
+let otOperaciones = [];
+let otPuestos = [];
+
+const OT_TEXTO_AMBIENTAL =
+  "Los residuos generados durante la actividad son clasificados y depositados en las canecas " +
+  "correspondientes, de acuerdo con su tipo: residuos ordinarios en caneca de color negro, " +
+  "residuos reciclables en caneca de color blanco y residuos peligrosos en caneca de color rojo. " +
+  "Esta disposición se realiza conforme a los lineamientos del plan de gestión ambiental, " +
+  "fomentando buenas prácticas de manejo de residuos y protección del medio ambiente.";
+
+function otEsc(v) {
+  return String(v === null || v === undefined ? "" : v)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function otFecha(iso) { return iso ? progFmtFecha(iso) : ""; }
+function otHora(h) { return h ? String(h).slice(0, 5) : ""; }
+/* Casilla marcada o vacia segun el valor elegido */
+function otCasilla(valor, opcion) {
+  return (valor === opcion ? "&#9746;" : "&#9744;") + " " + opcion;
+}
+
+async function otAbrir() {
+  if (!progActual) return;
+  const { data, error } = await sb.rpc("programa_ot_abrir", { p_actividad_id: progActual.id });
+  if (error) { toast("No se pudo abrir el reporte: " + error.message); return; }
+  if (data && data.ok === false) { toast(data.error); return; }
+  otDatos = data;
+
+  if (!otPuestos.length) {
+    const r = await sb.from("puestos_responsables")
+      .select("codigo").eq("activo", true).order("codigo");
+    otPuestos = (r.data || []).map(x => x.codigo);
+  }
+
+  otRender();
+  abrirPanel("panel-prog-ot");
+}
+
+function otRender() {
+  const d = otDatos, a = d.actividad, o = d.ot || {}, c = d.clase || {};
+  document.getElementById("ot-titulo").textContent =
+    "FO-016 · " + (a.numero_ot || "sin OT");
+
+  const filas = [
+    ["OT", a.numero_ot || "Sin OT asignada"],
+    ["Descripción", a.descripcion],
+    ["Clase de orden", c.orden],
+    ["Clase de actividad", c.actividad],
+    ["Clase de aviso", c.aviso],
+    ["Cód. equipo", a.codigo_equipo],
+    ["Equipo", a.descripcion_equipo],
+    ["Ubicación técnica", a.ubicacion_tecnica],
+    ["Marca / Modelo", [a.marca, a.modelo].filter(Boolean).join(" · ")],
+    ["Serie", a.serie],
+    ["HH ejecutadas", a.hh_ejec_ele != null ? progHH(a.hh_ejec_ele) : null],
+    ["Jornadas", a.dias_trabajados || null],
+  ];
+  document.getElementById("ot-ficha").innerHTML = filas
+    .filter(([, v]) => v !== null && v !== undefined && v !== "")
+    .map(([k, v]) => "<tr><td>" + k + "</td><td>" + otEsc(v) + "</td></tr>").join("");
+
+  const sel = document.getElementById("ot-puesto");
+  sel.innerHTML = '<option value="">Sin definir</option>' +
+    otPuestos.map(x => '<option value="' + x + '">' + x + "</option>").join("");
+  sel.value = o.puesto_responsable || "";
+
+  document.getElementById("ot-aviso").value = o.numero_aviso || "";
+  document.getElementById("ot-autor").value = o.autor_aviso || "";
+  document.getElementById("ot-fecha-inicio").value = o.fecha_inicio || a.fecha_programada || "";
+  document.getElementById("ot-tag").value = o.tag_equipo || "";
+  document.getElementById("ot-inventario").value = o.numero_inventario || "";
+  document.getElementById("ot-sintoma").value = o.sintoma_averia || "N/A";
+  document.getElementById("ot-causa").value = o.causa || "N/A";
+  document.getElementById("ot-componente").value = o.componente_falla || "N/A";
+  document.getElementById("ot-estado-ini").value = o.estado_encontrado || "";
+  document.getElementById("ot-estado-fin").value = o.estado_final || "";
+  document.getElementById("ot-adicional").value = o.actividad_adicional || "";
+  document.getElementById("ot-recomendaciones").value = o.recomendaciones || "";
+  document.getElementById("ot-fi-parada").value = o.fecha_inicio_parada || "";
+  document.getElementById("ot-hi-parada").value = otHora(o.hora_inicio_parada);
+  document.getElementById("ot-fi-interv").value = o.fecha_inicio_interv || "";
+  document.getElementById("ot-hi-interv").value = otHora(o.hora_inicio_interv);
+  document.getElementById("ot-ff-parada").value = o.fecha_fin_parada || "";
+  document.getElementById("ot-hf-parada").value = otHora(o.hora_fin_parada);
+  /* Se propone segun el avance, pero manda lo que decida el ejecutor */
+  document.getElementById("ot-estado-orden").value =
+    o.estado_ot || (a.estado === "ejecutada" ? "FINALIZADA" : "EN PROCESO");
+  document.getElementById("ot-ejecutores").value = o.ejecutores || a.personal || "";
+  document.getElementById("ot-ejec-blanco").checked = !!o.ejecutores_en_blanco;
+  otToggleEjecutores();
+
+  otOperaciones = (d.operaciones || []).map(x => ({
+    orden: x.orden, puesto: x.puesto, descripcion: x.descripcion,
+    hora_inicio: otHora(x.hora_inicio), hora_final: otHora(x.hora_final),
+    cantidad: x.cantidad, duracion_min: x.duracion_min, fecha: x.fecha,
+  }));
+  otRenderOperaciones();
+}
+
+function otToggleEjecutores() {
+  const blanco = document.getElementById("ot-ejec-blanco").checked;
+  document.getElementById("ot-ejecutores").disabled = blanco;
+}
+
+function otRenderOperaciones() {
+  const cont = document.getElementById("ot-operaciones");
+  cont.innerHTML = otOperaciones.map((op, i) =>
+    '<div class="field" style="border-left:3px solid var(--line);padding-left:10px">' +
+    '<input value="' + otEsc(op.descripcion) + '" oninput="otOpCampo(' + i + ',\'descripcion\',this.value)" placeholder="Descripción de la operación"/>' +
+    '<div style="display:flex;gap:6px;margin-top:6px">' +
+      '<input type="time" value="' + (op.hora_inicio || "") + '" oninput="otOpCampo(' + i + ',\'hora_inicio\',this.value)" style="flex:1"/>' +
+      '<input type="time" value="' + (op.hora_final || "") + '" oninput="otOpCampo(' + i + ',\'hora_final\',this.value)" style="flex:1"/>' +
+    "</div>" +
+    '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
+      '<input type="date" value="' + (op.fecha || "") + '" oninput="otOpCampo(' + i + ',\'fecha\',this.value)" style="flex:1"/>' +
+      '<span style="color:var(--danger);cursor:pointer;white-space:nowrap" onclick="otQuitarOperacion(' + i + ')">Quitar</span>' +
+    "</div></div>").join("");
+}
+
+function otOpCampo(i, campo, valor) {
+  if (!otOperaciones[i]) return;
+  otOperaciones[i][campo] = valor;
+}
+function otAgregarOperacion() {
+  const ult = otOperaciones.length ? otOperaciones[otOperaciones.length - 1] : null;
+  otOperaciones.push({
+    orden: (ult ? ult.orden : 0) + 10,
+    puesto: document.getElementById("ot-puesto").value || null,
+    descripcion: "", hora_inicio: "", hora_final: "",
+    fecha: document.getElementById("ot-fecha-inicio").value || null,
+  });
+  otRenderOperaciones();
+}
+function otQuitarOperacion(i) {
+  otOperaciones.splice(i, 1);
+  otRenderOperaciones();
+}
+function otTextoAmbiental() {
+  const t = document.getElementById("ot-recomendaciones");
+  if (t.value.indexOf("canecas") >= 0) { toast("Ya está incluido"); return; }
+  t.value = (t.value ? t.value.trim() + "\n\n" : "") + OT_TEXTO_AMBIENTAL;
+}
+
+function otVal(id) { const e = document.getElementById(id); return e ? e.value.trim() : ""; }
+
+async function otGuardar() {
+  if (!otDatos) return;
+  const id = otDatos.actividad.id;
+  const btn = document.getElementById("ot-btn-guardar");
+  btn.disabled = true; btn.textContent = "Guardando...";
+
+  const puesto = otVal("ot-puesto");
+  const r1 = await sb.rpc("programa_ot_guardar", {
+    p_actividad_id: id,
+    p_datos: {
+      puesto_responsable: puesto,
+      numero_aviso: otVal("ot-aviso"),
+      autor_aviso: otVal("ot-autor"),
+      fecha_inicio: otVal("ot-fecha-inicio") || null,
+      tag_equipo: otVal("ot-tag"),
+      numero_inventario: otVal("ot-inventario"),
+      sintoma_averia: otVal("ot-sintoma"),
+      causa: otVal("ot-causa"),
+      componente_falla: otVal("ot-componente"),
+      estado_encontrado: otVal("ot-estado-ini"),
+      estado_final: otVal("ot-estado-fin"),
+      actividad_adicional: otVal("ot-adicional"),
+      recomendaciones: otVal("ot-recomendaciones"),
+      fecha_inicio_parada: otVal("ot-fi-parada") || null,
+      hora_inicio_parada: otVal("ot-hi-parada") || null,
+      fecha_inicio_interv: otVal("ot-fi-interv") || null,
+      hora_inicio_interv: otVal("ot-hi-interv") || null,
+      fecha_fin_parada: otVal("ot-ff-parada") || null,
+      hora_fin_parada: otVal("ot-hf-parada") || null,
+      estado_ot: otVal("ot-estado-orden"),
+      ejecutores: otVal("ot-ejecutores"),
+      ejecutores_en_blanco: document.getElementById("ot-ejec-blanco").checked,
+    },
+  });
+
+  if (r1.error) { btn.disabled = false; btn.textContent = "Guardar"; toast("No se pudo guardar: " + r1.error.message); return; }
+  if (r1.data && r1.data.ok === false) { btn.disabled = false; btn.textContent = "Guardar"; toast(r1.data.error); return; }
+
+  const filas = otOperaciones
+    .filter(x => (x.descripcion || "").trim())
+    .map((x, i) => ({
+      orden: (i + 1) * 10,
+      puesto: x.puesto || puesto || null,
+      descripcion: x.descripcion,
+      hora_inicio: x.hora_inicio || null,
+      hora_final: x.hora_final || null,
+      cantidad: x.cantidad != null ? x.cantidad : null,
+      duracion_min: x.duracion_min != null ? x.duracion_min : null,
+      fecha: x.fecha || null,
+    }));
+  const r2 = await sb.rpc("programa_ot_operaciones_guardar", {
+    p_actividad_id: id, p_filas: filas,
+  });
+
+  btn.disabled = false; btn.textContent = "Guardar";
+  if (r2.error) { toast("Encabezado guardado, pero fallaron las operaciones: " + r2.error.message); return; }
+
+  const rr = await sb.rpc("programa_ot_datos", { p_actividad_id: id });
+  if (!rr.error && rr.data) { otDatos = rr.data; otRender(); }
+  toast("Reporte guardado");
+}
+
+/* ---------- Construcción del documento ---------- */
+function otEncabezado(pagina, total, ot) {
+  const logo = localStorage.getItem(EE_LOGO) || "";
+  return '<table class="ot-cab"><tr>' +
+    '<td style="width:26%;border:none">' +
+      (logo ? '<img class="ot-logo" src="' + logo + '"/>' : "") + "</td>" +
+    '<td style="width:44%">ORDEN DE TRABAJO<br><br>FORMATO<br><br>ORDEN DE TRABAJO No.</td>' +
+    '<td style="width:30%;font-weight:normal;text-align:left;padding:0">' +
+      '<table style="border:none">' +
+      '<tr><td style="border:none;border-bottom:1px solid #000">GTEC-MT-FO-016</td></tr>' +
+      '<tr><td style="border:none;border-bottom:1px solid #000">Versión: 01</td></tr>' +
+      '<tr><td style="border:none;border-bottom:1px solid #000">Fecha: 2019/02/20</td></tr>' +
+      '<tr><td style="border:none;border-bottom:1px solid #000">Página ' + pagina + " de " + total + "</td></tr>" +
+      '<tr><td style="border:none"><b>' + otEsc(ot || "") + "</b></td></tr>" +
+      "</table></td></tr></table>";
+}
+
+function otFila(l1, v1, l2, v2) {
+  return '<tr><td class="ot-lbl">' + l1 + '</td><td class="ot-val">' + otEsc(v1) + "</td>" +
+         '<td class="ot-lbl">' + l2 + '</td><td class="ot-val">' + otEsc(v2) + "</td></tr>";
+}
+
+function otConstruirDocumento() {
+  const d = otDatos, a = d.actividad, o = d.ot || {}, c = d.clase || {};
+  const ot = a.numero_ot || "";
+  const enBlanco = !!o.ejecutores_en_blanco;
+
+  /* La narrativa del FO-016 cubre la intervencion completa, no una jornada */
+  let narrativa = a.actividades_realizadas || "";
+  if (o.actividad_adicional) narrativa += (narrativa ? "\n\n" : "") + o.actividad_adicional;
+
+  let h = '<div class="ot-pagina">' + otEncabezado(1, 2, ot);
+
+  h += '<table style="margin-top:4pt">' +
+    otFila("DESCRIPCIÓN", a.descripcion, "TAG EQUIPO", o.tag_equipo) +
+    otFila("CLASE DE ORDEN", c.orden, "GRUPO PLANIFICADOR", "") +
+    otFila("CLASE DE ACTIVIDAD", c.actividad, "PUESTO RESPONSABLE", o.puesto_responsable) +
+    otFila("Cod EQUIPO", a.codigo_equipo, "FECHA INICIO", otFecha(o.fecha_inicio || a.fecha_programada)) +
+    otFila("DESCRIPCIÓN DE EQUIPO", a.descripcion_equipo, "AUTOR DE AVISO", o.autor_aviso) +
+    otFila("UBICACIÓN TÉCNICA", a.ubicacion_tecnica, "CLASE DE AVISO", c.aviso) +
+    otFila("No AVISO", o.numero_aviso, "MARCA", a.marca) +
+    otFila("SÍNTOMA DE AVERÍA", o.sintoma_averia, "MODELO", a.modelo) +
+    otFila("CAUSA", o.causa, "SERIE", a.serie) +
+    otFila("COMPONENTE EN FALLA", o.componente_falla, "N° INVENTARIO", o.numero_inventario) +
+    "</table>";
+
+  h += '<table style="margin-top:6pt"><tr><td class="ot-seccion" colspan="7">OPERACIONES DE MANTENIMIENTO</td></tr>' +
+    '<tr><td class="ot-th" style="width:14%">PUESTO DE TRABAJO</td>' +
+    '<td class="ot-th" style="width:40%">DESCRIPCIÓN DE LA OPERACIÓN</td>' +
+    '<td class="ot-th">HORA INICIO</td><td class="ot-th">HORA FINAL</td>' +
+    '<td class="ot-th">CANT.</td><td class="ot-th">DURACIÓN REAL</td>' +
+    '<td class="ot-th">FECHA REALIZACIÓN</td></tr>';
+  (d.operaciones || []).forEach(x => {
+    h += "<tr><td>" + otEsc(x.puesto) + "</td><td>" + otEsc(x.descripcion) + "</td>" +
+      "<td>" + otHora(x.hora_inicio) + "</td><td>" + otHora(x.hora_final) + "</td>" +
+      "<td>" + otEsc(x.cantidad) + "</td>" +
+      "<td>" + (x.duracion_min != null ? x.duracion_min + " Min." : "") + "</td>" +
+      "<td>" + otFecha(x.fecha) + "</td></tr>";
+  });
+  h += "</table>";
+
+  h += '<table style="margin-top:6pt"><tr><td class="ot-seccion" colspan="7">REPUESTOS Y MATERIALES</td></tr>' +
+    '<tr><td class="ot-th">CÓDIGO</td><td class="ot-th" style="width:40%">DESCRIPCIÓN</td>' +
+    '<td class="ot-th">CANT. RESERVADA</td><td class="ot-th">UND</td>' +
+    '<td class="ot-th">CANT. TOMADA</td><td class="ot-th">CANT. DISPONER</td>' +
+    '<td class="ot-th">ALMACÉN</td></tr>';
+  const mats = d.materiales || [];
+  for (let i = 0; i < Math.max(5, mats.length); i++) {
+    const m = mats[i] || {};
+    h += "<tr><td>" + otEsc(m.codigo) + "</td><td>" + otEsc(m.descripcion) + "</td>" +
+      "<td>" + otEsc(m.cant_reservada) + "</td><td>" + otEsc(m.unidad) + "</td>" +
+      "<td>" + otEsc(m.cant_tomada) + "</td><td>" + otEsc(m.cant_disponer) + "</td>" +
+      "<td>" + otEsc(m.almacen) + "</td></tr>";
+  }
+  h += "</table>";
+
+  h += '<table style="margin-top:6pt"><tr><td class="ot-seccion" colspan="6">SERVICIOS</td></tr>' +
+    '<tr><td class="ot-th">SERVICIO</td><td class="ot-th" style="width:40%">DESCRIPCIÓN</td>' +
+    '<td class="ot-th">CANTIDAD</td><td class="ot-th">UND</td>' +
+    '<td class="ot-th">SOLPED</td><td class="ot-th">PROVEEDOR</td></tr>';
+  const srv = d.servicios || [];
+  for (let i = 0; i < Math.max(3, srv.length); i++) {
+    const x = srv[i] || {};
+    h += "<tr><td>" + otEsc(x.servicio) + "</td><td>" + otEsc(x.descripcion) + "</td>" +
+      "<td>" + otEsc(x.cantidad) + "</td><td>" + otEsc(x.unidad) + "</td>" +
+      "<td>" + otEsc(x.solped) + "</td><td>" + otEsc(x.proveedor) + "</td></tr>";
+  }
+  h += "</table>";
+
+  const estados = ["OPERANDO", "STAND BY", "EN FALLA", "OPERANDO EN FALLA"];
+  h += '<table style="margin-top:6pt">' +
+    '<tr><td class="ot-seccion" colspan="4">DESCRIPCIÓN DEL TRABAJO</td></tr>' +
+    '<tr><td colspan="4"><b>¿Cómo encontró el equipo?</b></td></tr>' +
+    "<tr>" + estados.map(e => "<td>" + otCasilla(o.estado_encontrado, e) + "</td>").join("") + "</tr>" +
+    '<tr><td colspan="4"><b>¿Qué actividad realizó sobre el equipo?</b></td></tr>' +
+    '<tr><td colspan="4" style="height:120pt;white-space:pre-wrap">' + otEsc(narrativa) + "</td></tr>" +
+    '<tr><td colspan="4"><b>¿Cómo quedó el equipo?</b></td></tr>' +
+    "<tr>" + estados.map(e => "<td>" + otCasilla(o.estado_final, e) + "</td>").join("") + "</tr>" +
+    "</table>";
+
+  h += "</div>";
+
+  /* ---------- Página 2 ---------- */
+  h += '<div class="ot-pagina">' + otEncabezado(2, 2, ot);
+
+  h += '<table style="margin-top:4pt">' +
+    '<tr><td><b>Recomendaciones y/o observaciones adicionales y/o trabajos pendientes</b></td></tr>' +
+    '<tr><td style="height:150pt;white-space:pre-wrap">' + otEsc(o.recomendaciones) + "</td></tr></table>";
+
+  h += '<table style="margin-top:6pt">' +
+    '<tr><td class="ot-seccion" colspan="3">TIEMPOS DE PARADA E INTERVENCIÓN</td></tr>' +
+    "<tr><td>FECHA INICIO PARADA: " + otFecha(o.fecha_inicio_parada) + "</td>" +
+    "<td>FECHA INICIO INTERVENCIÓN: " + otFecha(o.fecha_inicio_interv) + "</td>" +
+    "<td>FECHA FIN DE PARADA: " + otFecha(o.fecha_fin_parada) + "</td></tr>" +
+    "<tr><td>HORA INICIO PARADA: " + otHora(o.hora_inicio_parada) + "</td>" +
+    "<td>HORA INICIO INTERVENCIÓN: " + otHora(o.hora_inicio_interv) + "</td>" +
+    "<td>HORA FIN DE PARADA: " + otHora(o.hora_fin_parada) + "</td></tr></table>";
+
+  h += '<table style="margin-top:6pt">' +
+    '<tr><td class="ot-seccion" colspan="2">ESTADO DE LA ORDEN DE TRABAJO</td></tr>' +
+    "<tr><td>" + otCasilla(o.estado_ot, "EN PROCESO") + "</td>" +
+    "<td>" + otCasilla(o.estado_ot, "FINALIZADA") + "</td></tr></table>";
+
+  /* Firmas: siempre vacias. Si se pidio dejar los ejecutores en blanco,
+     tampoco se imprime el nombre. */
+  const ejec = enBlanco ? "&nbsp;" : otEsc(o.ejecutores || a.personal || "");
+  h += '<table class="ot-sinborde" style="margin-top:40pt"><tr>' +
+    '<td style="width:25%;text-align:center;font-size:8pt">' + ejec + "</td>" +
+    '<td style="width:25%">&nbsp;</td><td style="width:25%">&nbsp;</td><td style="width:25%">&nbsp;</td></tr>' +
+    '<tr><td class="ot-firma">EJECUTOR DE MTTO</td>' +
+    '<td class="ot-firma">SUPERVISOR O&amp;M</td>' +
+    '<td class="ot-firma">SENIOR / PLANEADOR DE MTTO GTEC</td>' +
+    '<td class="ot-firma">DOCUMENTADOR O&amp;M</td></tr></table>';
+
+  h += '<table class="ot-sinborde" style="margin-top:36pt;width:50%;margin-left:auto;margin-right:auto">' +
+    '<tr><td>&nbsp;</td></tr><tr><td class="ot-firma">CLERK GTEC</td></tr></table>';
+
+  h += "</div>";
+  return h;
+}
+
+function otImprimir() {
+  if (!otDatos) return;
+  const doc = document.getElementById("ot-doc");
+  doc.innerHTML = otConstruirDocumento();
+
+  const ancla = document.createComment("ot-doc");
+  doc.parentNode.insertBefore(ancla, doc);
+  const root = document.createElement("div");
+  root.id = "print-root";
+  root.appendChild(doc);
+  document.body.appendChild(root);
+  document.body.classList.add("imprimiendo");
+
+  let restaurado = false;
+  const restaurar = () => {
+    if (restaurado) return;
+    restaurado = true;
+    if (ancla.parentNode) ancla.parentNode.insertBefore(doc, ancla);
+    ancla.remove();
+    root.remove();
+    document.body.classList.remove("imprimiendo");
+    window.removeEventListener("afterprint", restaurar);
+  };
+  window.addEventListener("afterprint", restaurar);
+  try { window.print(); } finally { setTimeout(restaurar, 0); }
 }
 
 const ASIS_MODULOS = {
