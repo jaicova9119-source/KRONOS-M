@@ -53,7 +53,7 @@ const FO016 = (function () {
     opBanda: 0.46, opCab: 0.94, opFila: 0.44,
     matFila: 0.46, matMin: 4,
     dsBanda: 0.62, dsCbx: 0.50, dsRengl: 0.63,
-    p2Rengl: 0.63
+    p2Rengl: 0.655
   };
 
   /* ----------------------------- utilidades ------------------------------- */
@@ -81,6 +81,30 @@ const FO016 = (function () {
   const oper = (v, i) => (v != null && v !== '')
     ? String(v).padStart(4, '0')
     : String((i + 1) * 10).padStart(4, '0');
+
+  /* El bloque de descripción va en Courier 10 pt, que es monoespaciada: el
+     ancho de carácter es exacto (0.6 em = 2.12 mm), así que el texto se puede
+     repartir en renglones de forma determinista y escribir cada uno SOBRE su
+     línea, como se diligencia a mano. Con el texto en un solo bloque quedaba
+     un párrafo suelto y debajo un montón de rayas vacías. */
+  const CHARS_RENGLON = 85;
+
+  function renglonear(txt, n) {
+    const out = [];
+    String(txt == null ? '' : txt).split('\n').forEach(parrafo => {
+      const p = parrafo.trim();
+      if (!p) { out.push(''); return; }
+      let linea = '';
+      p.split(/\s+/).forEach(palabra => {
+        if (!linea) linea = palabra;
+        else if ((linea + ' ' + palabra).length <= n) linea += ' ' + palabra;
+        else { out.push(linea); linea = palabra; }
+        while (linea.length > n) { out.push(linea.slice(0, n)); linea = linea.slice(n); }
+      });
+      if (linea) out.push(linea);
+    });
+    return out;
+  }
 
   const cols = a => '<colgroup>' + a.map(w => `<col style="width:${w}cm">`).join('') + '</colgroup>';
   const col1 = w => `<colgroup><col style="width:${w}cm"></colgroup>`;
@@ -124,8 +148,9 @@ const FO016 = (function () {
     `<tr><td style="${CBX};height:${alto || lado}cm">${m}</td></tr></table>`;
 
   /** Campo con línea inferior para diligenciar. */
-  const campo = (ancho, valor, alto) => `${tbl(ancho, ancho)}` +
-    `<tr><td style="${TD};${BB};text-align:center;height:${alto || 0.52}cm">${valor}</td></tr></table>`;
+  const campo = (ancho, valor, alto, alinear) => `${tbl(ancho, ancho)}` +
+    `<tr><td style="${TD};${BB};text-align:${alinear || 'center'};` +
+    `height:${alto || 0.52}cm">${valor}</td></tr></table>`;
 
   /** Marco exterior: una sola celda con borde que envuelve el contenido. */
   const marco = (ancho, contenido, pad) => `${tbl(ancho, ancho)}` +
@@ -347,14 +372,14 @@ ${filas}
     const qb = t => `<tr><td style="${LAT};${BB};padding:1px 4px 0;${MONO};height:0.44cm">${t}</td></tr>`;
     const cb = m => `<tr><td style="${LAT};padding:0">${boxes(m)}</td></tr>`;
 
+    const lineas = ot.actividad_realizada
+      ? renglonear(ot.actividad_realizada, CHARS_RENGLON) : [];
+    const total = Math.max(nRengl, lineas.length);
+    const est = `${LAT};${BB};height:${H.dsRengl}cm;${MONO};` +
+                'vertical-align:bottom;padding:0 4px 1px';
     let ren = '';
-    if (ot.actividad_realizada) {
-      ren += `<tr><td style="${LAT};${BB};padding:2px 4px;${MONO}">` +
-             escT(ot.actividad_realizada).replace(/\n/g, '<br>') + '</td></tr>';
-      nRengl = Math.max(nRengl - 1, 0);
-    }
-    for (let i = 0; i < nRengl; i++) {
-      ren += `<tr><td style="${LAT};${BB};height:${H.dsRengl}cm">&nbsp;</td></tr>`;
+    for (let i = 0; i < total; i++) {
+      ren += `<tr><td style="${est}">${lineas[i] ? escT(lineas[i]) : '&nbsp;'}</td></tr>`;
     }
 
     return `${tabla(W.total)}
@@ -376,17 +401,15 @@ ${qb('Recomendaciones adicionales y/o trabajos pendientes?')}
     const bc = 'border:none;padding:0 0 0 2px;vertical-align:bottom';
     const u = (v, w) => `<td style="${bc}">${campo(w, escT(v))}</td>`;
 
+    const lineas = ot.recomendaciones
+      ? renglonear(ot.recomendaciones, CHARS_RENGLON) : [];
+    const total = Math.max(nRengl, lineas.length);
+    const est = `${LAT};${BB};height:${H.p2Rengl}cm;${MONO};` +
+                'vertical-align:bottom;padding:0 4px 1px';
     let ren = '';
-    if (ot.recomendaciones) {
-      ren = `<tr><td style="${LAT};${BT};${BB};padding:2px 4px;${MONO}">` +
-            escT(ot.recomendaciones).replace(/\n/g, '<br>') + '</td></tr>';
-      nRengl = Math.max(nRengl - 1, 0);
-    } else {
-      ren = `<tr><td style="${LAT};${BT};${BB};height:${H.p2Rengl}cm">&nbsp;</td></tr>`;
-      nRengl = Math.max(nRengl - 1, 0);
-    }
-    for (let i = 0; i < nRengl; i++) {
-      ren += `<tr><td style="${LAT};${BB};height:${H.p2Rengl}cm">&nbsp;</td></tr>`;
+    for (let i = 0; i < total; i++) {
+      ren += `<tr><td style="${est}${i === 0 ? ';' + BT : ''}">` +
+             `${lineas[i] ? escT(lineas[i]) : '&nbsp;'}</td></tr>`;
     }
 
     const T = W.tiemp;
@@ -452,7 +475,7 @@ ${tbN(W.total, W.estad)}
 
   function recepcion(ot) {
     const r  = ot.recepcion || {};
-    const mr = `border:none;text-align:right;vertical-align:middle;${MONO};font-size:10pt`;
+    const mr = `border:none;text-align:right;vertical-align:middle;${MONO};font-size:10pt;padding-right:0.18cm`;
     const vb = 'border:none;padding:0 0 2px;vertical-align:bottom';
     const preg = (txt, v) => `<tr>
   <td style="${NB};height:0.65cm;vertical-align:middle;font-size:10pt">${txt}</td>
@@ -461,7 +484,7 @@ ${tbN(W.total, W.estad)}
   <td style="border:none"></td>
 </tr>`;
     const lineaObs = txt => `<tr><td style="border:none"></td>
-      <td style="border:none;padding:0">${campo(15.89, txt || '&nbsp;', 0.44)}</td></tr>`;
+      <td style="border:none;padding:0">${campo(15.89, txt || '&nbsp;', 0.44, 'left')}</td></tr>`;
 
     const cuerpo = `
 ${tbN(W.rint, W.rint)}
@@ -476,7 +499,7 @@ ${preg('Se entrega el equipo en buenas condiciones de orden y aseo', r.equipo)}
 ${SPACER(0.20)}
 ${tbN(W.rint, [3.55, 12.85])}
   <tr><td style="${NB};height:0.52cm">Observaciones:</td>
-      <td style="border:none;padding:0">${campo(12.85, escT(r.observaciones) || '&nbsp;')}</td></tr>
+      <td style="border:none;padding:0">${campo(12.85, escT(r.observaciones) || '&nbsp;', 0.52, 'left')}</td></tr>
 </table>
 ${tbN(W.rint, [0.51, 15.89])}
 ${lineaObs()}${lineaObs()}${lineaObs()}
