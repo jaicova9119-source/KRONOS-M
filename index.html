@@ -2508,8 +2508,12 @@ async function cargarEquipos() {
     let desde = 0;
     const TAMANO_PAGINA = 1000;
     while (true) {
+      /* Se lee de la vista, no de la tabla: agrega la denominación de la
+         ubicación técnica resolviéndola contra el catálogo. Es un LEFT JOIN,
+         así que un equipo cuya ubicación aún no esté catalogada sigue
+         apareciendo, con ese campo vacío. */
       const { data, error } = await sb
-        .from("equipos")
+        .from("v_equipos_ubicacion")
         .select("*")
         .order("descripcion")
         .range(desde, desde + TAMANO_PAGINA - 1);
@@ -2991,6 +2995,7 @@ async function abrirFicha(equipo) {
     ["Número de serie", equipo.numero_serie],
     ["Campo", equipo.campo_codigo],
     ["Ubicación técnica SAP", equipo.ubicacion_tecnica_sap],
+    ["Denominación de la ubicación", equipo.ubicacion_tecnica_desc],
     ["Ubicación actual", equipo.ubicacion_actual],
     ["Equipo superior SAP", equipo.equipo_superior_sap],
     ["Último contraste SAP", equipo.fecha_ultimo_contraste_sap],
@@ -7835,16 +7840,39 @@ async function inicializarApp() {
 
 const IH08_MAPEO_KEY = "equipos_gte_ih08_mapeo";
 
+/* Cada campo declara pistas (lo que debe contener el encabezado) y exclusiones
+   (lo que lo descalifica). Las exclusiones no son un lujo: el IH08 actual trae
+   "Denominación de la ubicación técnica" ANTES que "Denominación de objeto
+   técnico", y con la búsqueda por primera coincidencia la descripción del
+   equipo se llenaba con el texto de la ubicación -- 20.000 filas dañadas en
+   silencio. Lo mismo pasaba entre "Fabricante del activo fijo" y "Número de
+   serie de fabricante". */
 const IH08_CAMPOS = [
-  { key: "codigo_sap", label: "Código de equipo SAP", requerido: true, pistas: ["equipo", "codigo", "código"] },
-  { key: "descripcion", label: "Descripción", requerido: false, pistas: ["denominac", "descrip"] },
-  { key: "marca", label: "Marca", requerido: false, pistas: ["marca", "fabricante"] },
-  { key: "modelo", label: "Modelo", requerido: false, pistas: ["modelo"] },
-  { key: "numero_serie", label: "Número de serie", requerido: false, pistas: ["serie"] },
-  { key: "campo_codigo", label: "Campo / centro", requerido: false, pistas: ["campo", "centro"] },
-  { key: "ubicacion_tecnica_sap", label: "Ubicación técnica SAP", requerido: false, pistas: ["ubicac"] },
-  { key: "equipo_superior_sap", label: "Equipo superior", requerido: false, pistas: ["superior", "padre"] },
-  { key: "estado_operativo", label: "Estado operativo", requerido: false, pistas: ["estado"] },
+  { key: "codigo_sap", label: "Código de equipo SAP", requerido: true,
+    pistas: ["equipo"], excluye: ["superior", "tipo de equipo"] },
+  { key: "descripcion", label: "Descripción del equipo", requerido: false,
+    pistas: ["denominacion de objeto tecnico", "objeto tecnico", "descrip"],
+    excluye: ["ubicacion", "de tipo"] },
+  { key: "marca", label: "Marca / fabricante", requerido: false,
+    pistas: ["fabricante del activo fijo", "fabricante", "marca"],
+    excluye: ["serie"] },
+  { key: "modelo", label: "Modelo", requerido: false,
+    pistas: ["denominacion de tipo", "modelo"],
+    excluye: ["ubicacion", "objeto"] },
+  { key: "numero_serie", label: "Número de serie", requerido: false,
+    pistas: ["numero de serie", "serie"], excluye: ["fabricante"] },
+  { key: "campo_codigo", label: "Campo / centro", requerido: false,
+    pistas: ["centro planificacion", "campo", "centro"],
+    excluye: ["emplazamiento"] },
+  { key: "ubicacion_tecnica_sap", label: "Ubicación técnica SAP", requerido: false,
+    pistas: ["ubicacion tecnica", "ubicac"], excluye: ["denominacion"] },
+  { key: "ubicacion_tecnica_desc", label: "Denominación de la ubicación técnica", requerido: false,
+    pistas: ["denominacion de la ubicacion tecnica", "denominacion de la ubicacion"],
+    excluye: [] },
+  { key: "equipo_superior_sap", label: "Equipo superior", requerido: false,
+    pistas: ["equipo superior", "superior", "padre"], excluye: [] },
+  { key: "estado_operativo", label: "Estado operativo", requerido: false,
+    pistas: ["status de usuario", "estado"], excluye: [] },
 ];
 
 let ih08FilasCrudas = [];
@@ -7882,16 +7910,67 @@ document.getElementById("ih08-input-archivo").addEventListener("change", async (
   }
 });
 
+/* Sin tildes y en minúscula: los encabezados de SAP varían entre extractos. */
+const ih08Plano = t => String(t == null ? "" : t).toLowerCase()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+
+/* Puntaje de un encabezado para un campo. 0 = no aplica. La coincidencia
+   exacta gana siempre; entre parciales gana la pista más larga, que es la
+   más específica. */
+function ih08Puntaje(campo, header) {
+  const h = ih08Plano(header);
+  if (!h) return 0;
+  if ((campo.excluye || []).some(x => h.includes(ih08Plano(x)))) return 0;
+  let mejor = 0;
+  (campo.pistas || []).forEach(p => {
+    const pn = ih08Plano(p);
+    if (!pn) return;
+    if (h === pn) mejor = Math.max(mejor, 1000);
+    else if (h.includes(pn)) mejor = Math.max(mejor, pn.length);
+  });
+  return mejor;
+}
+
+/* Asigna una columna por campo, de mayor puntaje a menor y sin repetir
+   columna. Con la búsqueda por primera coincidencia dos campos podían
+   quedarse con el mismo encabezado. */
+function ih08Sugerencias(mapeoGuardado) {
+  const sug = {}, usados = new Set();
+
+  /* El mapeo guardado manda, si la columna sigue existiendo en el archivo:
+     es una decisión que el usuario ya tomó. */
+  IH08_CAMPOS.forEach(c => {
+    const g = mapeoGuardado[c.key];
+    if (g && ih08Headers.includes(g)) { sug[c.key] = g; usados.add(g); }
+  });
+
+  /* Los campos que el mapeo guardado no cubre -- por ejemplo uno nuevo que
+     antes no existía -- se autodetectan, en vez de quedar en blanco y
+     obligar a reconfigurar todo desde cero. */
+  const cand = [];
+  IH08_CAMPOS.filter(c => !sug[c.key]).forEach(c => {
+    ih08Headers.forEach(h => {
+      const p = ih08Puntaje(c, h);
+      if (p > 0) cand.push({ key: c.key, h, p });
+    });
+  });
+  cand.sort((a, b) => b.p - a.p);
+  cand.forEach(x => {
+    if (sug[x.key] || usados.has(x.h)) return;
+    sug[x.key] = x.h;
+    usados.add(x.h);
+  });
+  return sug;
+}
+
 function mostrarMapeoIH08() {
   let mapeoGuardado = {};
   try { mapeoGuardado = JSON.parse(localStorage.getItem(IH08_MAPEO_KEY) || "{}"); } catch (e) {}
 
+  const sugerencias = ih08Sugerencias(mapeoGuardado);
   const cont = document.getElementById("ih08-campos-mapeo");
   cont.innerHTML = IH08_CAMPOS.map(campo => {
-    const guardado = mapeoGuardado[campo.key];
-    const sugerido = ih08Headers.includes(guardado)
-      ? guardado
-      : (ih08Headers.find(h => campo.pistas.some(p => h.toLowerCase().includes(p))) || "");
+    const sugerido = sugerencias[campo.key] || "";
     const opciones = ["<option value=''>-- no disponible --</option>"]
       .concat(ih08Headers.map(h => `<option value="${h}" ${h === sugerido ? "selected" : ""}>${h}</option>`));
     return `
@@ -7926,7 +8005,69 @@ async function confirmarMapeoIH08() {
     return obj;
   }).filter(f => f.codigo_sap);
 
+  await sincronizarUbicacionesTecnicas(filasNormalizadas);
   await contrastarIH08(filasNormalizadas);
+}
+
+/* ============================================================
+   CATÁLOGO DE UBICACIONES TÉCNICAS
+
+   La descripción de la ubicación viene en el IH08 pero antes se descartaba
+   al terminar la importación: solo se guardaban las columnas mapeadas a
+   campos de "equipos". Por eso el FO-016 mostraba Des.ubi.técnica en las
+   órdenes de pozos (programa_ot_abrir la derivaba de la tabla pozos) y en
+   blanco en todo lo demás.
+
+   Va en tabla aparte y no como columna de "equipos" porque la descripción
+   pertenece a la ubicación: en una misma ubicación hay motor, variador y
+   sistema de control, y el texto quedaría repetido tres veces.
+   ============================================================ */
+
+async function sincronizarUbicacionesTecnicas(filas) {
+  /* Una fila por ubicación. El IH08 repite la ubicación en cada equipo. */
+  const porCodigo = new Map();
+  filas.forEach(f => {
+    const codigo = String(f.ubicacion_tecnica_sap || "").trim().toUpperCase();
+    const desc = String(f.ubicacion_tecnica_desc || "").trim();
+    if (!codigo || !desc) return;
+    if (!porCodigo.has(codigo)) {
+      porCodigo.set(codigo, {
+        codigo,
+        descripcion: desc,
+        campo: String(f.campo_codigo || "").trim().toUpperCase() || null,
+        fuente: "IH08",
+      });
+    }
+  });
+  if (!porCodigo.size) return;
+
+  /* El padre se deduce quitando el último segmento, pero solo se guarda si
+     esa ubicación también vino en el archivo. Si no, quedaría apuntando a
+     una fila inexistente y v_ubic_huerfanas se llenaría de ruido: el IH08
+     solo lista ubicaciones que tienen equipo, no la jerarquía completa. */
+  porCodigo.forEach(u => {
+    const partes = u.codigo.split("-");
+    if (partes.length < 2) { u.padre = null; return; }
+    const padre = partes.slice(0, -1).join("-");
+    u.padre = porCodigo.has(padre) ? padre : null;
+  });
+
+  const registros = Array.from(porCodigo.values());
+  let guardadas = 0, fallos = 0;
+
+  /* En lotes: 2.000 ubicaciones en un solo upsert supera el límite de la
+     petición y falla completo. */
+  for (let i = 0; i < registros.length; i += 400) {
+    const lote = registros.slice(i, i + 400);
+    const { error } = await sb
+      .from("ubicaciones_tecnicas")
+      .upsert(lote, { onConflict: "codigo" });
+    if (error) { fallos += lote.length; console.warn("Ubicaciones técnicas:", error); }
+    else guardadas += lote.length;
+  }
+
+  if (fallos) toast("Ubicaciones técnicas: " + guardadas + " guardadas, " + fallos + " con error");
+  else toast(guardadas + " ubicaciones técnicas actualizadas");
 }
 
 async function contrastarIH08(filasSap) {
