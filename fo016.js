@@ -36,7 +36,7 @@ const FO016 = (function () {
     oper:  [1.19, 1.75, 8.13, 1.72, 1.25, 0.96, 1.63, 1.95],
     mat:   [2.60, 5.57, 2.42, 1.30, 2.23, 2.23, 2.23],
     chk:   [1.99, 0.51, 3.00, 0.49, 3.00, 0.49, 3.00, 0.51, 5.59],
-    tiemp: [4.06, 1.99, 0.22, 3.90, 2.11, 0.19, 3.93, 2.04],
+    tiemp: [4.06, 1.99, 0.22, 3.90, 2.11, 0.19, 3.93, 1.98],
     estad: [4.89, 4.20, 0.57, 4.20, 4.76],
     rext:  [1.03, 16.80, 0.75],
     rint:  16.40,
@@ -106,6 +106,28 @@ const FO016 = (function () {
     return out;
   }
 
+  /* Igual que renglonear, pero cada renglón puede tener un ancho distinto:
+     la primera línea de Observaciones es más corta porque comparte fila con
+     el rótulo. Va en Arial, que no es monoespaciada, así que los topes son
+     conservadores para que ninguna línea se desborde. */
+  function renglonearVar(txt, anchos) {
+    const palabras = String(txt == null ? '' : txt).trim().split(/\s+/).filter(Boolean);
+    const out = [];
+    let i = 0;
+    while (palabras.length) {
+      const n = anchos[Math.min(i, anchos.length - 1)];
+      let linea = '';
+      while (palabras.length &&
+             (linea ? linea.length + 1 + palabras[0].length : palabras[0].length) <= n) {
+        linea = linea ? linea + ' ' + palabras.shift() : palabras.shift();
+      }
+      if (!linea) linea = palabras.shift().slice(0, n);
+      out.push(linea);
+      i++;
+    }
+    return out;
+  }
+
   const cols = a => '<colgroup>' + a.map(w => `<col style="width:${w}cm">`).join('') + '</colgroup>';
   const col1 = w => `<colgroup><col style="width:${w}cm"></colgroup>`;
 
@@ -116,10 +138,18 @@ const FO016 = (function () {
   const MONO  = "font-family:'Courier New',Courier,monospace;font-size:10pt";
   const TD    = `padding:1px 3px;vertical-align:top;${ARIAL};font-size:8.5pt`;
   const NB    = `padding:1px 3px;vertical-align:top;${ARIAL};font-size:8.5pt;border:none`;
-  const BD    = `border:${B}`;
-  const BB    = `border-bottom:${B}`;
-  const BT    = `border-top:${B}`;
-  const LAT   = `border-left:${B};border-right:${B}`;
+  /* Word no interpreta la AUSENCIA de un borde: si una celda solo declara
+     border-bottom, le aplica los cuatro lados. Hay que declarar los cuatro
+     siempre, con "none" en los que no van. bord(arriba,derecha,abajo,izq). */
+  const bord = (t, r, b, l) =>
+    `border-top:${t ? B : 'none'};border-right:${r ? B : 'none'};` +
+    `border-bottom:${b ? B : 'none'};border-left:${l ? B : 'none'}`;
+  const BD    = bord(1, 1, 1, 1);
+  const BB    = bord(0, 0, 1, 0);
+  const BT    = bord(1, 0, 0, 0);
+  const LAT   = bord(0, 1, 0, 1);
+  const LAT_B = bord(0, 1, 1, 1);   // laterales + inferior
+  const LAT_TB= bord(1, 1, 1, 1);   // laterales + superior + inferior
   const BANDA = `${TD};background:#ABD4D4;${BD};font-weight:bold;text-align:center;` +
                 `font-size:10.5pt;padding:1px;vertical-align:middle`;
   const THD   = `${TD};${BD};font-weight:bold;text-align:center;font-size:8.5pt;padding:1px`;
@@ -369,13 +399,13 @@ ${filas}
 
   function cajaDescripcion(ot, nRengl) {
     const q  = t => `<tr><td style="${LAT};padding:2px 4px 0;${MONO};height:0.66cm">${t}</td></tr>`;
-    const qb = t => `<tr><td style="${LAT};${BB};padding:1px 4px 0;${MONO};height:0.44cm">${t}</td></tr>`;
+    const qb = t => `<tr><td style="${LAT_B};padding:1px 4px 0;${MONO};height:0.44cm">${t}</td></tr>`;
     const cb = m => `<tr><td style="${LAT};padding:0">${boxes(m)}</td></tr>`;
 
     const lineas = ot.actividad_realizada
       ? renglonear(ot.actividad_realizada, CHARS_RENGLON) : [];
     const total = Math.max(nRengl, lineas.length);
-    const est = `${LAT};${BB};height:${H.dsRengl}cm;${MONO};` +
+    const est = `${LAT_B};height:${H.dsRengl}cm;${MONO};` +
                 'vertical-align:bottom;padding:0 4px 1px';
     let ren = '';
     for (let i = 0; i < total; i++) {
@@ -404,11 +434,12 @@ ${qb('Recomendaciones adicionales y/o trabajos pendientes?')}
     const lineas = ot.recomendaciones
       ? renglonear(ot.recomendaciones, CHARS_RENGLON) : [];
     const total = Math.max(nRengl, lineas.length);
-    const est = `${LAT};${BB};height:${H.p2Rengl}cm;${MONO};` +
+    const est = `${LAT_B};height:${H.p2Rengl}cm;${MONO};` +
                 'vertical-align:bottom;padding:0 4px 1px';
     let ren = '';
     for (let i = 0; i < total; i++) {
-      ren += `<tr><td style="${est}${i === 0 ? ';' + BT : ''}">` +
+      const e0 = i === 0 ? est.replace(bord(0, 1, 1, 1), LAT_TB) : est;
+      ren += `<tr><td style="${e0}">` +
              `${lineas[i] ? escT(lineas[i]) : '&nbsp;'}</td></tr>`;
     }
 
@@ -431,7 +462,7 @@ ${tabla(W.total)}
 ${ren}
   <tr><td style="${LAT};padding:0.42cm 4px 0.08cm;${MONO}">Tiempos de Parada e Intervención</td></tr>
   <tr><td style="${LAT};padding:0 3px">${interior}</td></tr>
-  <tr><td style="${LAT};${BB};height:1.17cm">&nbsp;</td></tr>
+  <tr><td style="${LAT_B};height:1.17cm">&nbsp;</td></tr>
 </table>`;
   }
 
@@ -485,6 +516,10 @@ ${tbN(W.total, W.estad)}
 </tr>`;
     const lineaObs = txt => `<tr><td style="border:none"></td>
       <td style="border:none;padding:0">${campo(15.89, txt || '&nbsp;', 0.44, 'left')}</td></tr>`;
+    /* Cuatro renglones como mínimo, y los que haga falta si el texto es
+       más largo. Topes en caracteres: 80 la primera línea, 98 las demás. */
+    const lin = renglonearVar(r.observaciones, [80, 98]);
+    const obs = lin.length >= 4 ? lin : lin.concat(Array(4 - lin.length).fill(''));
 
     const cuerpo = `
 ${tbN(W.rint, W.rint)}
@@ -499,10 +534,10 @@ ${preg('Se entrega el equipo en buenas condiciones de orden y aseo', r.equipo)}
 ${SPACER(0.20)}
 ${tbN(W.rint, [3.55, 12.85])}
   <tr><td style="${NB};height:0.52cm">Observaciones:</td>
-      <td style="border:none;padding:0">${campo(12.85, escT(r.observaciones) || '&nbsp;', 0.52, 'left')}</td></tr>
+      <td style="border:none;padding:0">${campo(12.85, obs[0] ? escT(obs[0]) : '&nbsp;', 0.52, 'left')}</td></tr>
 </table>
 ${tbN(W.rint, [0.51, 15.89])}
-${lineaObs()}${lineaObs()}${lineaObs()}
+${obs.slice(1).map(l => lineaObs(escT(l))).join('')}
 </table>
 ${SPACER(1.14)}
 ${tbN(W.rint, W.nfa)}
