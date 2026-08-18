@@ -12,13 +12,15 @@
  * cargue sin señal.
  */
 
-const CACHE_NAME = "kronos-m-v35";
+const CACHE_NAME = "kronos-m-v36";
 
 /* Archivos propios. Estos tienen que quedar guardados si o si: sin ellos
    la app no abre sin señal. */
 const ARCHIVOS_PROPIOS = [
   "./",
   "./index.html",
+  "./fo016.js",
+  "./fo016-logo.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
@@ -132,8 +134,30 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  /* Para todo lo demas (iconos, librerias): responde de inmediato desde
-     la memoria guardada y actualiza la copia en segundo plano. */
+  /* Los scripts propios van a la red primero, igual que la pagina.
+     Con "cache primero y actualiza en segundo plano" el navegador entrega
+     SIEMPRE la version anterior y guarda la nueva para la proxima carga:
+     la app queda un despliegue atrasada de forma permanente. Con index.html
+     no se notaba porque las paginas ya iban a la red primero, pero los .js
+     externalizados si lo sufren. */
+  if (url.startsWith(self.location.origin) &&
+      new URL(url).pathname.endsWith(".js")) {
+    event.respondWith(
+      fetch(req)
+        .then((respuesta) => {
+          if (respuesta && respuesta.ok) {
+            const copia = respuesta.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(req, copia));
+          }
+          return respuesta;
+        })
+        .catch(() => caches.match(req))
+    );
+    return;
+  }
+
+  /* Para todo lo demas (iconos, librerias de CDN): responde de inmediato
+     desde la memoria guardada y actualiza la copia en segundo plano. */
   event.respondWith(
     caches.match(req).then((guardado) => {
       const buscarEnRed = fetch(req)
