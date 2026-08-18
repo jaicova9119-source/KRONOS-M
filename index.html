@@ -10375,6 +10375,13 @@ function otConstruirDocumento() {
   return FO016.render(otMapear());
 }
 
+/* Nombre del archivo, igual para el PDF impreso y para el .doc exportado. */
+function otNombreArchivo() {
+  const ot = (otDatos && otDatos.actividad.numero_ot ? otDatos.actividad.numero_ot : "sinOT")
+    .toString().replace(/[^\w-]/g, "");
+  return "FO-016_" + ot + "_" + otFecha;
+}
+
 /* La exportación la resuelve fo016.js: mismo documento que se imprime,
    empaquetado como .doc para poder ajustarlo a mano antes de firmar. */
 async function otDescargarWord() {
@@ -10382,8 +10389,7 @@ async function otDescargarWord() {
   const ok = await otGuardar({ silencioso: true });
   if (!ok) { toast("Corrige lo marcado antes de exportar"); return; }
 
-  const ot = (otDatos.actividad.numero_ot || "sinOT").toString().replace(/[^\w-]/g, "");
-  FO016.exportarWord(otMapear(), "FO-016_" + ot + "_" + otFecha + ".doc");
+  FO016.exportarWord(otMapear(), otNombreArchivo() + ".doc");
   toast("Documento descargado");
 }
 
@@ -10424,10 +10430,17 @@ async function otImprimir() {
   document.body.classList.add("imprimiendo");
   otReglaPagina(true);
 
+  /* Chrome y Edge proponen el titulo de la pagina como nombre del archivo al
+     "Guardar como PDF": sin esto todos los reportes salen llamados Kronos-M.
+     Se cambia solo mientras dura la impresion y se restaura despues. */
+  const tituloPrevio = document.title;
+  document.title = otNombreArchivo();
+
   let restaurado = false;
   const restaurar = () => {
     if (restaurado) return;
     restaurado = true;
+    document.title = tituloPrevio;
     if (ancla.parentNode) ancla.parentNode.insertBefore(doc, ancla);
     ancla.remove();
     root.remove();
