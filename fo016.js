@@ -472,6 +472,14 @@ ${ren}
     const e = String(ot.estado_orden || '').toUpperCase().trim();
     const t = `${NB};text-align:center;font-weight:bold;font-size:10.5pt`;
     const bc = 'border:none;padding:0;text-align:center';
+    /* El porcentaje de avance no existe en la versión 00 del formato: es un
+       agregado deliberado, y solo se imprime si la orden va en proceso y hay
+       un valor. Sin él la retícula queda idéntica al impreso de SAP. */
+    const enProceso = e === 'EN PROCESO';
+    const avance = (enProceso && ot.avance_pct != null && ot.avance_pct !== '')
+      ? `<div style="${ARIAL};font-size:8pt;font-weight:bold;text-align:center;` +
+        `padding-top:2px">Avance: ${esc(ot.avance_pct)}%</div>`
+      : '';
     return `
 ${SPACER(0.20)}
 ${tbN(W.total, W.total)}
@@ -494,7 +502,7 @@ ${tbN(W.total, W.estad)}
   <tr><td colspan="5" style="border:none;height:0.42cm;font-size:1pt;line-height:1pt;padding:0"></td></tr>
   <tr>
     <td style="border:none"></td>
-    <td style="${bc}"><div style="width:0.72cm;margin:0 auto">${cuadro(e === 'EN PROCESO' ? 'X' : '&nbsp;', 0.72, 0.56)}</div></td>
+    <td style="${bc}"><div style="width:0.72cm;margin:0 auto">${cuadro(enProceso ? 'X' : '&nbsp;', 0.72, 0.56)}</div>${avance}</td>
     <td style="border:none"></td>
     <td style="${bc}"><div style="width:0.72cm;margin:0 auto">${cuadro(e === 'FINALIZADA' ? 'X' : '&nbsp;', 0.72, 0.56)}</div></td>
     <td style="border:none"></td>
@@ -706,6 +714,7 @@ div.WordSection1{page:WordSection1;}
     fecha_inicio_interv:'', hora_inicio_interv:'',
     fecha_fin_parada:'',    hora_fin_parada:'',
     estado_orden: '',
+    avance_pct: null,        // solo se imprime si estado_orden es EN PROCESO
     recepcion: { conformidad:null, area:null, equipo:null, observaciones:'' }
   };
 
