@@ -758,6 +758,8 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 }
 
 </style>
+<script src="fo016-logo.js"></script>
+<script src="fo016.js"></script>
 </head>
 <body>
 
@@ -10279,310 +10281,117 @@ async function otGuardar(opciones) {
 /* Word reparte los anchos a su antojo si no se declaran columna por
    columna, y las tablas salen desbordadas. Con colgroup y table-layout
    fijo respeta exactamente lo que se le dice. */
-function otColumnas(anchos) {
-  return "<colgroup>" + anchos.map(a => '<col style="width:' + a + '%"/>').join("") + "</colgroup>";
-}
-function otTabla(anchos, extra, clase) {
-  return '<table width="100%"' + (clase ? ' class="' + clase + '"' : "") +
-    ' style="table-layout:fixed;width:100%' + (extra ? ";" + extra : "") + '">' +
-    otColumnas(anchos);
-}
+/* ============================================================
+   Puente hacia el generador FO-016 versión 00 (fo016.js)
 
-/* La imagen es el otro punto donde Word ignora el CSS: solo obedece los
-   atributos width y height del <img>. Sin la relación de aspecto sale
-   deformada o del tamaño original, que es lo que la hacía gigante. */
-function otLogoImg(altoPx) {
-  const logo = localStorage.getItem(EE_LOGO);
-  if (!logo) return "";
-  const ar = parseFloat(localStorage.getItem(EE_LOGO_AR)) || 3;
-  const ancho = Math.round(altoPx * ar);
-  return '<img src="' + logo + '" width="' + ancho + '" height="' + altoPx +
-         '" style="width:' + ancho + "px;height:" + altoPx + 'px"/>';
-}
-
-/* Encabezado del formato: el bloque central se divide en tres, alineado
-   con las filas de la derecha tal como en el formato oficial. ORDEN DE
-   TRABAJO ocupa el alto del código y la versión, FORMATO el de la fecha
-   y la página, y ORDEN DE TRABAJO No. el del número. */
-function otEncabezado(pagina, total, ot) {
-  const c = 'text-align:center;font-weight:bold;vertical-align:middle';
-  return otTabla([26, 44, 30]) +
-    '<tr><td rowspan="5" style="border:none;vertical-align:middle;text-align:center">' + otLogoImg(52) + "</td>" +
-      '<td rowspan="2" style="' + c + '">ORDEN DE TRABAJO</td>' +
-      "<td>GTEC-MT-FO-016</td></tr>" +
-    "<tr><td>VERSIÓN: 01</td></tr>" +
-    '<tr><td rowspan="2" style="' + c + '">FORMATO</td>' +
-      "<td>FECHA: 2019/02/20</td></tr>" +
-    "<tr><td>Página " + pagina + " de " + total + "</td></tr>" +
-    '<tr><td style="' + c + '">ORDEN DE TRABAJO No.</td>' +
-      "<td><b>" + otEsc(ot || "") + "</b></td></tr>" +
-    "</table>";
-}
-
-/* El bloque de identificación va sin líneas entre filas: solo el marco
-   exterior y el divisor central, como en el formato en papel. La clase
-   ot-div dibuja ese divisor; no se usa :nth-child porque Word no lo
-   interpreta. */
-/* Etiqueta con línea para diligenciar, como en el formato impreso */
-function otTiempo(etiqueta, valor) {
-  return '<td style="border:none;white-space:nowrap">' + etiqueta +
-    ' <span style="border-bottom:1px solid #000;display:inline-block;min-width:52pt;text-align:center">' +
-    (valor || "&nbsp;") + "</span></td>";
-}
-
-function otFila(l1, v1, l2, v2) {
-  return '<tr><td class="ot-lbl">' + l1 + '</td><td class="ot-val">' + otEsc(v1) + "</td>" +
-         '<td class="ot-lbl ot-div">' + l2 + '</td><td class="ot-val">' + otEsc(v2) + "</td></tr>";
-}
-
-function otConstruirDocumento() {
+   El documento ya no se arma aquí. fo016.js reproduce la retícula del
+   formato oficial, medida sobre el impreso de SAP: hoja A4, área útil
+   18.58 cm, banda #ABD4D4, y tipografías por bloque. Esta función solo
+   traduce lo que devuelve programa_ot_abrir al objeto que espera el
+   generador.
+   ============================================================ */
+function otMapear() {
   const d = otDatos, a = d.actividad, o = d.ot || {}, c = d.clase || {};
-  const ot = a.numero_ot || "";
-  const enBlanco = !!o.ejecutores_en_blanco;
 
-  /* Un formato por jornada: la narrativa es la del dia, no la consolidada */
+  /* Un formato por jornada: la narrativa es la del día, no la consolidada */
   let narrativa = a.actividades_realizadas || "";
   if (o.actividad_adicional) narrativa += (narrativa ? "\n\n" : "") + o.actividad_adicional;
 
-  let h = '<div class="ot-pagina">' + otEncabezado(1, 2, ot);
+  /* Si hay logo cargado desde Ensayos se usa ese; si no, el institucional
+     que trae fo016-logo.js */
+  const logo = localStorage.getItem(EE_LOGO) ||
+               (typeof FO016_LOGO !== "undefined" ? FO016_LOGO : null);
 
-  h += otTabla([21, 29, 21, 29], "margin-top:4pt", "ot-datos") +
-    otFila("DESCRIPCIÓN", a.descripcion, "TAG EQUIPO", o.tag_equipo) +
-    otFila("CLASE DE ORDEN", c.orden, "GRUPO PLANIFICADOR", "") +
-    otFila("CLASE DE ACTIVIDAD", c.actividad, "PUESTO RESPONSABLE", o.puesto_responsable) +
-    otFila("Cod EQUIPO", a.codigo_equipo, "FECHA INICIO", otFmtFecha(o.fecha_inicio || d.fecha)) +
-    otFila("DESCRIPCIÓN DE EQUIPO", a.descripcion_equipo, "AUTOR DE AVISO", o.autor_aviso) +
-    otFila("UBICACIÓN TÉCNICA", a.ubicacion_tecnica, "CLASE DE AVISO", c.aviso) +
-    otFila("No AVISO", o.numero_aviso, "MARCA", a.marca) +
-    otFila("SÍNTOMA DE AVERÍA", o.sintoma_averia, "MODELO", a.modelo) +
-    otFila("CAUSA", o.causa, "SERIE", a.serie) +
-    otFila("COMPONENTE EN FALLA", o.componente_falla, "N° INVENTARIO", o.numero_inventario) +
-    "</table>";
+  return {
+    numero_ot:          a.numero_ot || "",
+    logo:               logo,
+    descripcion:        a.descripcion,
+    tag_equipo:         o.tag_equipo,
+    clase_orden:        c.orden,
+    grp_planificador:   o.grupo_planificador || "",
+    clase_actividad:    c.actividad,
+    puesto_responsable: o.puesto_responsable,
+    cod_equipo:         a.codigo_equipo,
+    fecha_inicio:       o.fecha_inicio || d.fecha,
+    desc_equipo:        a.descripcion_equipo,
+    autor_aviso:        o.autor_aviso,
+    ubicacion_tecnica:  a.ubicacion_tecnica,
+    clase_aviso:        c.aviso,
+    des_ubi_tecnica:    a.descripcion_ubicacion || "",
+    no_aviso:           o.numero_aviso,
+    marca:              a.marca,
+    sintoma_averia:     o.sintoma_averia,
+    modelo:             a.modelo,
+    causa:              o.causa,
+    serie:              a.serie,
+    componente_falla:   o.componente_falla,
+    no_inventario:      o.numero_inventario,
 
-  h += otTabla([12, 37, 9, 9, 6, 12, 15], "margin-top:6pt") +
-    '<tr><td class="ot-seccion" colspan="7">OPERACIONES DE MANTENIMIENTO</td></tr>' +
-    '<tr><td class="ot-th">PUESTO DE TRABAJO</td>' +
-    '<td class="ot-th">DESCRIPCIÓN DE LA OPERACIÓN</td>' +
-    '<td class="ot-th">HORA INICIO</td><td class="ot-th">HORA FINAL</td>' +
-    '<td class="ot-th">CANT.</td><td class="ot-th">DURACIÓN REAL</td>' +
-    '<td class="ot-th">FECHA REALIZACIÓN</td></tr>';
-  (d.operaciones || []).forEach(x => {
-    h += "<tr><td>" + otEsc(x.puesto) + "</td><td>" + otEsc(x.descripcion) + "</td>" +
-      "<td>" + otHora(x.hora_inicio) + "</td><td>" + otHora(x.hora_final) + "</td>" +
-      "<td>" + otEsc(x.cantidad) + "</td>" +
-      "<td>" + (x.duracion_min != null ? x.duracion_min + " Min." : "") + "</td>" +
-      "<td>" + otFmtFecha(x.fecha || d.fecha) + "</td></tr>";
-  });
-  h += "</table>";
+    operaciones: (d.operaciones || []).map(x => ({
+      oper:        x.oper || null,
+      puesto:      x.puesto,
+      descripcion: x.descripcion,
+      hora_inicio: x.hora_inicio,
+      hora_fin:    x.hora_final,
+      cant:        x.cantidad,
+      duracion:    x.duracion_min != null ? x.duracion_min + " Min." : "",
+      fecha:       x.fecha || d.fecha,
+    })),
 
-  h += otTabla([14, 30, 13, 7, 12, 12, 12], "margin-top:6pt") +
-    '<tr><td class="ot-seccion" colspan="7">REPUESTOS Y MATERIALES</td></tr>' +
-    '<tr><td class="ot-th">CÓDIGO</td><td class="ot-th">DESCRIPCIÓN</td>' +
-    '<td class="ot-th">CANT. RESERVADA</td><td class="ot-th">UND</td>' +
-    '<td class="ot-th">CANT. TOMADA</td><td class="ot-th">CANT. DISPONER</td>' +
-    '<td class="ot-th">ALMACÉN</td></tr>';
-  const mats = d.materiales || [];
-  for (let i = 0; i < Math.max(4, mats.length); i++) {
-    const m = mats[i] || {};
-    // Las filas vacías llevan alto: son para escribir a mano en campo
-    h += '<tr height="16"><td>' + otEsc(m.codigo) + "</td><td>" + otEsc(m.descripcion) + "</td>" +
-      "<td>" + otEsc(m.cant_reservada) + "</td><td>" + otEsc(m.unidad) + "</td>" +
-      "<td>" + otEsc(m.cant_tomada) + "</td><td>" + otEsc(m.cant_disponer) + "</td>" +
-      "<td>" + otEsc(m.almacen) + "</td></tr>";
-  }
-  h += "</table>";
+    /* La sección de materiales solo se imprime si la jornada trae alguno */
+    materiales: (d.materiales || []).map(m => ({
+      codigo:         m.codigo,
+      descripcion:    m.descripcion,
+      cant_reservada: m.cant_reservada,
+      unidad:         m.unidad,
+      cant_tomada:    m.cant_tomada,
+      cant_disponer:  m.cant_disponer,
+      almacen:        m.almacen,
+    })),
 
-  h += otTabla([16, 32, 11, 7, 14, 20], "margin-top:6pt") +
-    '<tr><td class="ot-seccion" colspan="6">SERVICIOS</td></tr>' +
-    '<tr><td class="ot-th">SERVICIO</td><td class="ot-th">DESCRIPCIÓN</td>' +
-    '<td class="ot-th">CANTIDAD</td><td class="ot-th">UND</td>' +
-    '<td class="ot-th">SOLPED</td><td class="ot-th">PROVEEDOR</td></tr>';
-  const srv = d.servicios || [];
-  for (let i = 0; i < Math.max(2, srv.length); i++) {
-    const x = srv[i] || {};
-    h += '<tr height="16"><td>' + otEsc(x.servicio) + "</td><td>" + otEsc(x.descripcion) + "</td>" +
-      "<td>" + otEsc(x.cantidad) + "</td><td>" + otEsc(x.unidad) + "</td>" +
-      "<td>" + otEsc(x.solped) + "</td><td>" + otEsc(x.proveedor) + "</td></tr>";
-  }
-  h += "</table>";
+    como_encontro:       o.estado_encontrado,
+    actividad_realizada: narrativa,
+    como_quedo:          o.estado_final,
+    recomendaciones:     o.recomendaciones,
 
-  const estados = ["OPERANDO", "STAND BY", "EN FALLA", "OPERANDO EN FALLA"];
-  h += otTabla([25, 25, 25, 25], "margin-top:6pt") +
-    '<tr><td class="ot-seccion" colspan="4">DESCRIPCIÓN DEL TRABAJO</td></tr>' +
-    '<tr><td colspan="4"><b>¿Cómo encontró el equipo?</b></td></tr>' +
-    "<tr>" + estados.map(e => "<td>" + otCasilla(o.estado_encontrado, e) + "</td>").join("") + "</tr>" +
-    '<tr><td colspan="4"><b>¿Qué actividad realizó sobre el equipo?</b></td></tr>' +
-    '<tr><td colspan="4" class="ot-caja" height="110" style="min-height:70pt;height:70pt;white-space:pre-wrap;word-wrap:break-word">' + otEsc(narrativa) + "</td></tr>" +
-    '<tr><td colspan="4"><b>¿Cómo quedó el equipo?</b></td></tr>' +
-    "<tr>" + estados.map(e => "<td>" + otCasilla(o.estado_final, e) + "</td>").join("") + "</tr>" +
-    "</table>";
+    fecha_inicio_parada: o.fecha_inicio_parada, hora_inicio_parada: o.hora_inicio_parada,
+    fecha_inicio_interv: o.fecha_inicio_interv, hora_inicio_interv: o.hora_inicio_interv,
+    fecha_fin_parada:    o.fecha_fin_parada,    hora_fin_parada:    o.hora_fin_parada,
 
-  h += "</div>";
+    estado_orden: o.estado_ot === "FINALIZADA" ? "FINALIZADA" : "EN PROCESO",
 
-  /* ---------- Página 2 ---------- */
-  h += '<div class="ot-pagina">' + otEncabezado(2, 2, ot);
-
-  h += otTabla([100], "margin-top:4pt") +
-    '<tr><td><b>Recomendaciones y/o observaciones adicionales y/o trabajos pendientes</b></td></tr>' +
-    '<tr><td class="ot-caja" height="170" style="min-height:110pt;height:110pt;white-space:pre-wrap;word-wrap:break-word">' + otEsc(o.recomendaciones) + "</td></tr></table>";
-
-  h += otTabla([34, 33, 33], "margin-top:6pt") +
-    '<tr><td class="ot-tit3" colspan="3">Tiempos de Parada e Intervención</td></tr>' +
-    "<tr>" + otTiempo("FECHA INICIO PARADA:", otFmtFecha(o.fecha_inicio_parada)) +
-             otTiempo("FECHA INICIO INTERV:", otFmtFecha(o.fecha_inicio_interv)) +
-             otTiempo("FECHA FIN PARADA:", otFmtFecha(o.fecha_fin_parada)) + "</tr>" +
-    "<tr>" + otTiempo("HORA INICIO PARADA:", otHora(o.hora_inicio_parada)) +
-             otTiempo("HORA INICIO INTERV:", otHora(o.hora_inicio_interv)) +
-             otTiempo("HORA FIN PARADA:", otHora(o.hora_fin_parada)) + "</tr>" +
-    '<tr><td colspan="3" style="border:none;height:12pt">&nbsp;</td></tr></table>';
-
-  /* Estado de la orden: sin recuadro de tabla, centrado y con casillas
-     grandes, como en el formato en papel. Si queda en proceso se imprime
-     el avance al lado, que es el dato que pide quien revisa. */
-  const enProceso = o.estado_ot !== "FINALIZADA";
-  const avance = a.avance_pct != null ? a.avance_pct + "%" : "";
-  /* Las dos casillas van juntas hacia el centro, no repartidas a los
-     extremos: las columnas vacías de los lados son lo que las agrupa. */
-  h += '<table class="ot-sinborde" width="100%" style="table-layout:fixed;width:100%;margin-top:10pt">' +
-    otColumnas([28, 22, 22, 28]) +
-    '<tr><td colspan="4" style="text-align:center;font-weight:bold">ESTADO DE LA ORDEN DE TRABAJO:</td></tr>' +
-    '<tr><td colspan="4" style="text-align:center;font-weight:bold;padding-top:1pt">' +
-      '<span style="border-top:1px solid #000;padding:2pt 30pt 0">MARQUE CON "X" EL ESTADO DE LA ORDEN:</span></td></tr>' +
-    '<tr><td>&nbsp;</td>' +
-      '<td style="text-align:center;font-weight:bold;padding-top:6pt">EN PROCESO</td>' +
-      '<td style="text-align:center;font-weight:bold;padding-top:6pt">FINALIZADA</td>' +
-      "<td>&nbsp;</td></tr>" +
-    '<tr><td>&nbsp;</td><td style="text-align:center">' + otCajaX(enProceso) +
-      (enProceso && avance ? '<div style="font-weight:bold;font-size:7pt">Avance: ' + avance + "</div>" : "") +
-      "</td>" +
-      '<td style="text-align:center">' + otCajaX(!enProceso) + "</td>" +
-      "<td>&nbsp;</td></tr></table>";
-
-  /* ---------- Recepción de servicio ----------
-     Va dentro de un recuadro, con el título subrayado y las líneas de
-     observaciones sin llegar a los bordes, como en el formato en papel.
-     Se arma anidando tablas dentro de una celda: es la única forma de
-     controlar los anchos y que Word lo respete igual. */
-  const filaRec = (texto, si) => {
-    const m = si !== false;
-    return '<tr><td style="border:none">' + texto + "</td>" +
-      '<td style="border:none;text-align:right;padding-right:3pt">SI</td>' +
-      '<td style="border:none">' + otCajaX(m, 13) + "</td>" +
-      '<td style="border:none;text-align:right;padding-right:3pt">NO</td>' +
-      '<td style="border:none">' + otCajaX(!m, 13) + "</td>" +
-      '<td style="border:none">&nbsp;</td></tr>';
+    recepcion: {
+      conformidad:   o.recepcion_conformidad !== false,
+      area:          o.recepcion_area !== false,
+      equipo:        o.recepcion_equipo !== false,
+      observaciones: o.recepcion_observaciones || "",
+    },
   };
-
-  const lineaObs = txt =>
-    '<tr><td style="border:none">&nbsp;</td>' +
-    '<td style="border:none;border-bottom:1px solid #000;height:11pt">' + (txt || "&nbsp;") + "</td></tr>";
-
-  h += otTabla([100], "margin-top:12pt") +
-    '<tr><td style="padding:5pt 6pt">' +
-
-      '<table width="100%" style="table-layout:fixed;width:100%;border:none">' +
-      '<tr><td style="border:none;border-bottom:1px solid #000;font-weight:bold;font-size:9pt;padding-bottom:2pt">' +
-      "RECEPCIÓN DE SERVICIO(USUARIO)</td></tr></table>" +
-
-      '<table width="100%" style="table-layout:fixed;width:100%;border:none;margin-top:4pt">' +
-      otColumnas([58, 6, 6, 6, 6, 18]) +
-      filaRec("Se recibe trabajo a conformidad", o.recepcion_conformidad) +
-      filaRec("Se entrega el área en buenas condiciones de orden y aseo", o.recepcion_area) +
-      filaRec("Se entrega el equipo en buenas condiciones de orden y aseo", o.recepcion_equipo) +
-      "</table>" +
-
-      '<table width="100%" style="table-layout:fixed;width:100%;border:none;margin-top:5pt">' +
-      otColumnas([16, 84]) +
-      '<tr><td style="border:none">Observaciones:</td>' +
-      '<td style="border:none;border-bottom:1px solid #000;height:11pt">' +
-      otEsc(o.recepcion_observaciones || "") + "</td></tr>" +
-      lineaObs() + lineaObs() + lineaObs() +
-      "</table>" +
-
-      '<table width="100%" style="table-layout:fixed;width:100%;border:none;margin-top:24pt">' +
-      otColumnas([3, 27, 6, 27, 6, 27, 4]) +
-      '<tr><td style="border:none">&nbsp;</td>' +
-      '<td style="border:none;border-top:1px solid #000;font-size:7pt">NOMBRE</td>' +
-      '<td style="border:none">&nbsp;</td>' +
-      '<td style="border:none;border-top:1px solid #000;font-size:7pt">FIRMA</td>' +
-      '<td style="border:none">&nbsp;</td>' +
-      '<td style="border:none;border-top:1px solid #000;font-size:7pt">AREA</td>' +
-      '<td style="border:none">&nbsp;</td></tr></table>' +
-
-    "</td></tr></table>";
-
-  /* Firmas: siempre vacias. Si se pidio dejar los ejecutores en blanco,
-     tampoco se imprime el nombre. */
-  const ejec = enBlanco ? "&nbsp;" : otEsc(o.ejecutores || a.personal || "");
-  h += '<table class="ot-sinborde" width="100%" style="table-layout:fixed;width:100%;margin-top:34pt">' +
-    otColumnas([25, 25, 25, 25]) + "<tr>" +
-    '<td style="text-align:center;font-size:8pt">' + ejec + "</td>" +
-    "<td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>" +
-    '<tr><td class="ot-firma">EJECUTOR DE MTTO</td>' +
-    '<td class="ot-firma">SUPERVISOR O&amp;M</td>' +
-    '<td class="ot-firma">SENIOR / PLANEADOR DE MTTO GTEC</td>' +
-    '<td class="ot-firma">DOCUMENTADOR O&amp;M</td></tr></table>';
-
-  h += '<table class="ot-sinborde" style="margin-top:30pt;width:50%;margin-left:auto;margin-right:auto">' +
-    '<tr><td>&nbsp;</td></tr><tr><td class="ot-firma">CLERK GTEC</td></tr></table>';
-
-  h += "</div>";
-  return h;
 }
 
-/* Word abre HTML empaquetado como .doc conservando tablas y bordes, y el
-   documento queda editable. No es un .docx nativo, pero sirve para
-   ajustar algo a mano antes de imprimir sin cargar otra librería. */
+function otConstruirDocumento() {
+  return FO016.render(otMapear());
+}
+
+/* La exportación la resuelve fo016.js: mismo documento que se imprime,
+   empaquetado como .doc para poder ajustarlo a mano antes de firmar. */
 async function otDescargarWord() {
   if (!otDatos) return;
   const ok = await otGuardar({ silencioso: true });
   if (!ok) { toast("Corrige lo marcado antes de exportar"); return; }
 
-  const estilos = `
-    body{font-family:Arial,sans-serif;font-size:7.5pt;color:#000}
-    table{border-collapse:collapse;width:100%;table-layout:fixed}
-    td,th{border:1px solid #000;padding:1.5pt 2.5pt;vertical-align:top;
-          word-wrap:break-word;overflow-wrap:break-word}
-    img{border:none}
-    .ot-cab td{text-align:center;font-weight:bold}
-    .ot-lbl{font-weight:bold;padding-right:8pt}
-    .ot-val{padding-left:2pt}
-    .ot-seccion{background:#cfe7e5;font-weight:bold;text-align:center}
-    .ot-tit3{font-weight:bold;border:none;padding-bottom:3pt}
-    .ot-th{background:#f0f0f0;font-weight:bold;text-align:center;font-size:7pt}
-    .ot-datos{border:1px solid #000}
-    .ot-datos td{border:none}
-    .ot-datos td.ot-div{border-left:1px solid #000}
-    .ot-sinborde,.ot-sinborde td{border:none}
-    .ot-firma{border:none;border-top:1px solid #000;text-align:center;font-weight:bold;font-size:7pt}
-    .ot-pagina{page-break-after:always}`;
-
-  const cuerpo = otConstruirDocumento();
-  const doc = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
-    xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-    <head><meta charset="utf-8"><title>FO-016</title>
-    <!--[if gte mso 9]><xml><w:WordDocument><w:View>Print</w:View></w:WordDocument></xml><![endif]-->
-    <style>@page{size:21.59cm 27.94cm;margin:1cm}${estilos}</style></head>
-    <body>${cuerpo}</body></html>`;
-
-  const blob = new Blob(["\ufeff", doc], { type: "application/msword" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
   const ot = (otDatos.actividad.numero_ot || "sinOT").toString().replace(/[^\w-]/g, "");
-  a.href = url;
-  a.download = "FO-016_" + ot + "_" + otFecha + ".doc";
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 1000);
+  FO016.exportarWord(otMapear(), "FO-016_" + ot + "_" + otFecha + ".doc");
   toast("Documento descargado");
 }
 
 /* El encabezado y el pie que agrega el navegador (URL, fecha, número de
-   página) no se pueden desactivar por CSS, pero Chrome y Firefox dejan de
-   imprimirlos cuando el margen de página es cero. Se compensa con relleno
-   dentro de cada hoja para que el contenido no quede al borde.
-   La regla se inyecta solo durante esta impresión: si se dejara fija,
-   afectaría también a los informes de ensayos. */
+   página) no se pueden desactivar por CSS, pero Chrome y Edge dejan de
+   imprimirlos cuando el margen de @page es cero. Por eso el margen real
+   del formato (0.88 / 1.30 / 0.88 / 1.12 cm sobre A4) va como relleno
+   dentro de cada hoja. La regla la define fo016.js y se inyecta solo
+   durante esta impresión: si quedara fija afectaría a los informes de
+   ensayos. */
 function otReglaPagina(activar) {
   const id = "ot-regla-pagina";
   const previo = document.getElementById(id);
@@ -10590,8 +10399,7 @@ function otReglaPagina(activar) {
   if (!activar) return;
   const st = document.createElement("style");
   st.id = id;
-  st.textContent = "@media print{@page{size:letter portrait;margin:0}" +
-    "#print-root #ot-doc .ot-pagina{padding:10mm 9mm}}";
+  st.textContent = FO016.PRINT_CSS;
   document.head.appendChild(st);
 }
 
