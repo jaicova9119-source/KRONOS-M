@@ -3,11 +3,15 @@
    Clon estructural del formato GTEC-MT-FO-016 VERSIÓN 00 (FECHA 2018/05/16)
    tal como lo imprime SAP.
 
-   rev.5 — Estilos EN LÍNEA, sin hoja de estilos.
-           Word no interpreta selectores de descendencia (".fo016 .bx td"):
-           los reduce a "td" y acaba poniendo borde a todas las celdas,
-           incluidas las que deben ir sin líneas. Con estilos en línea el
-           resultado es idéntico en pantalla, al imprimir y en Word.
+   rev.6 — Estilos EN LÍNEA y ninguna tabla con bordes mezclados.
+
+           Dos limitaciones de Word obligan a esto:
+           1. No interpreta selectores de descendencia (".fo016 .bx td"):
+              los reduce a "td" y pone borde a todas las celdas.
+           2. Si dentro de una misma tabla unas celdas llevan borde y otras
+              no, se lo aplica a todas. Por eso cada raya y cada casilla van
+              en su propia tabla anidada, y las tablas contenedoras no
+              llevan borde en ninguna celda.
 
    Retícula tomada del impreso SAP de la OT 100032747, midiendo el
    rasterizado a 200 dpi y leyendo los operadores de color del PDF:
@@ -100,6 +104,33 @@ const FO016 = (function () {
   const LBL   = `${TD};font-weight:bold;white-space:nowrap`;
   const SPACER = alto => `<div style="height:${alto}cm;font-size:1pt;line-height:1pt">&nbsp;</div>`;
 
+  /* tbN: tabla sin bordes en ninguna celda (lleva border="0", que es la
+     pista que Word entiende). tbl: tabla cuyas celdas sí llevan borde. */
+  const tbN = (ancho, anchos) =>
+    `<table border="0" cellspacing="0" cellpadding="0" ` +
+    `style="border-collapse:collapse;margin:0;width:${ancho}cm">` +
+    (Array.isArray(anchos) ? cols(anchos) : col1(anchos));
+  const tbl = (ancho, anchos) =>
+    `<table cellspacing="0" cellpadding="0" ` +
+    `style="border-collapse:collapse;margin:0;width:${ancho}cm">` +
+    (Array.isArray(anchos) ? cols(anchos) : col1(anchos));
+
+  /** Raya horizontal suelta, en su propia tabla. */
+  const raya = ancho => `${tbl(ancho, ancho)}` +
+    `<tr><td style="${BB};height:1pt;font-size:1pt;line-height:1pt;padding:0">&nbsp;</td></tr></table>`;
+
+  /** Casilla de marcar: cuadro fijo que no se estira con la fila. */
+  const cuadro = (m, lado, alto) => `${tbl(lado, lado)}` +
+    `<tr><td style="${CBX};height:${alto || lado}cm">${m}</td></tr></table>`;
+
+  /** Campo con línea inferior para diligenciar. */
+  const campo = (ancho, valor, alto) => `${tbl(ancho, ancho)}` +
+    `<tr><td style="${TD};${BB};text-align:center;height:${alto || 0.52}cm">${valor}</td></tr></table>`;
+
+  /** Marco exterior: una sola celda con borde que envuelve el contenido. */
+  const marco = (ancho, contenido, pad) => `${tbl(ancho, ancho)}` +
+    `<tr><td style="${BD};padding:${pad || '0'};vertical-align:top">${contenido}</td></tr></table>`;
+
   const tabla = (anchos, extra) =>
     `<table style="border-collapse:collapse;margin:0;width:${W.total}cm` +
     (extra ? ';' + extra : '') + '">' +
@@ -129,18 +160,20 @@ const FO016 = (function () {
   /* ------------------------------ cabecera -------------------------------- */
 
   function cabecera(ot, pag) {
-    /* Logo: 5.40 x 1.47 cm, borde superior a 0.62 cm del tope de la cabecera
-       y 0.24 cm del margen. No va centrado verticalmente. */
+    /* Logo: 5.40 x 1.47 cm, borde superior a 0.62 cm del tope y 0.24 cm del
+       margen. No va centrado verticalmente. La celda del logo no lleva borde,
+       así que el recuadro de la derecha va en su propia tabla anidada: si
+       compartieran tabla, Word le pondría borde también al logo. */
     const src = ot.logo || (typeof FO016_LOGO !== 'undefined' ? FO016_LOGO : null);
     const logo = src
       ? `<img src="${esc(src)}" width="204" height="56" style="width:5.40cm;height:1.47cm" alt="">`
       : '';
+    const anchoDer = W.cab[1] + W.cab[2];
     const ttl = `${TD};${BD};font-weight:bold;text-align:center;font-size:10.5pt;vertical-align:middle`;
     const cod = `${TD};${BD};font-size:8.5pt;height:${H.cab}cm;vertical-align:middle`;
-    return `
-${tabla(W.cab)}
+
+    const recuadro = `${tbl(anchoDer, [W.cab[1], W.cab[2]])}
   <tr>
-    <td rowspan="5" style="border:none;padding:0.62cm 0 0 0.24cm;vertical-align:top">${logo}</td>
     <td rowspan="2" style="${ttl}">ORDEN DE TRABAJO</td>
     <td style="${cod}">${CODIGO}</td>
   </tr>
@@ -154,36 +187,42 @@ ${tabla(W.cab)}
     <td style="${ttl}">ORDEN DE TRABAJO No.</td>
     <td style="${TD};${BD};font-size:8.5pt;height:${H.cabUlt}cm">${esc(ot.numero_ot)}</td>
   </tr>
+</table>`;
+
+    return `
+${tbN(W.total, [W.cab[0], anchoDer])}
+  <tr>
+    <td style="border:none;padding:0.62cm 0 0 0.24cm;vertical-align:top">${logo}</td>
+    <td style="border:none;padding:0;vertical-align:top">${recuadro}</td>
+  </tr>
 </table>
 ${SPACER(0.20)}`;
   }
 
   /* --------------------------- bloque de datos ----------------------------
-     Marco exterior sin líneas internas. El borde va en las celdas de los
-     extremos, nunca en la etiqueta <table>: Word convierte el borde de tabla
-     en borde de todas las celdas.                                          */
+     Marco exterior sin líneas internas. El marco es una tabla de una sola
+     celda y el contenido va en una tabla interior sin bordes: es la única
+     forma de que Word no dibuje la cuadrícula completa.                   */
 
   function bloqueDatos(ot) {
     const h = `height:${H.datos}cm`;
-    const F = (l1, v1, l2, v2, primera, ultima) => {
-      const t = primera ? `;${BT}` : '';
-      const b = ultima ? `;${BB}` : '';
-      return `<tr>
-  <td style="${LBL};${h};border-left:${B}${t}${b}">${l1}</td>
-  <td style="${TD};${h};border:none${t}${b}">${escT(v1)}</td>
-  <td style="${LBL};${h};border:none${t}${b}">${l2}</td>
-  <td style="${TD};${h};border-right:${B}${t}${b}">${escT(v2)}</td>
+    const A = W.total - 0.06;                    // descuenta el grosor del marco
+    const anchos = [W.datos[0], W.datos[1], W.datos[2], W.datos[3] - 0.06];
+    const F = (l1, v1, l2, v2) => `<tr>
+  <td style="${LBL};${h};border:none">${l1}</td>
+  <td style="${TD};${h};border:none">${escT(v1)}</td>
+  <td style="${LBL};${h};border:none">${l2}</td>
+  <td style="${TD};${h};border:none">${escT(v2)}</td>
 </tr>`;
-    };
     /* Des.ubi.técnica: negrita y a tres columnas — en el impreso SAP nunca se
        parte en dos líneas aunque el texto sea largo. */
     const desUbi = `<tr>
-  <td style="${LBL};${h};border-left:${B}">Des.ubi.técnica</td>
-  <td colspan="3" style="${TD};${h};border-right:${B};font-weight:bold;white-space:nowrap">${escT(ot.des_ubi_tecnica)}</td>
+  <td style="${LBL};${h};border:none">Des.ubi.técnica</td>
+  <td colspan="3" style="${TD};${h};border:none;font-weight:bold;white-space:nowrap">${escT(ot.des_ubi_tecnica)}</td>
 </tr>`;
-    return `
-${tabla(W.datos)}
-${F('Descripción',         ot.descripcion,       'Tag Equipo',         ot.tag_equipo, true)}
+
+    const interior = `${tbN(A, anchos)}
+${F('Descripción',         ot.descripcion,       'Tag Equipo',         ot.tag_equipo)}
 ${F('Clase de orden',      ot.clase_orden,       'GRP Planificador',   ot.grp_planificador)}
 ${F('Clase de Actividad',  ot.clase_actividad,   'Puesto responsable', ot.puesto_responsable)}
 ${F('Cod Equipo',          ot.cod_equipo,        'Fecha Inicio',       fechaSAP(ot.fecha_inicio))}
@@ -193,8 +232,11 @@ ${desUbi}
 ${F('No.Aviso',            ot.no_aviso,          'Marca',              ot.marca)}
 ${F('Sintoma de Averia',   ot.sintoma_averia,    'Modelo',             ot.modelo)}
 ${F('Causa',               ot.causa,             'Serie',              ot.serie)}
-${F('Componente en falla', ot.componente_falla,  'No. Inventario',     ot.no_inventario, false, true)}
-</table>
+${F('Componente en falla', ot.componente_falla,  'No. Inventario',     ot.no_inventario)}
+</table>`;
+
+    return `
+${marco(W.total, interior, '0')}
 ${SPACER(0.20)}`;
   }
 
@@ -284,15 +326,16 @@ ${filas}
   function boxes(marca) {
     const et = ['OPERANDO', 'STAND BY', 'EN FALLA', 'OPERANDO EN FALLA'];
     const c = e => (marca && String(marca).toUpperCase().trim() === e) ? 'X' : '&nbsp;';
-    const cb = `${CBX};height:${H.dsCbx}cm`;
+    const bc = 'border:none;padding:0;vertical-align:top';
     const lb = `border:none;padding:1px 0 1px 6px;vertical-align:middle;${MONO}`;
-    return `${tabla(W.chk)}
+    const q = e => `<td style="${bc}">${cuadro(c(e), 0.51, H.dsCbx)}</td>`;
+    return `${tbN(W.total, W.chk)}
   <tr>
     <td style="border:none">&nbsp;</td>
-    <td style="${cb}">${c(et[0])}</td><td style="${lb}">${et[0]}</td>
-    <td style="${cb}">${c(et[1])}</td><td style="${lb}">${et[1]}</td>
-    <td style="${cb}">${c(et[2])}</td><td style="${lb}">${et[2]}</td>
-    <td style="${cb}">${c(et[3])}</td><td style="${lb}">${et[3]}</td>
+    ${q(et[0])}<td style="${lb}">${et[0]}</td>
+    ${q(et[1])}<td style="${lb}">${et[1]}</td>
+    ${q(et[2])}<td style="${lb}">${et[2]}</td>
+    ${q(et[3])}<td style="${lb}">${et[3]}</td>
   </tr>
 </table>`;
   }
@@ -329,8 +372,9 @@ ${qb('Recomendaciones adicionales y/o trabajos pendientes?')}
   /* ------- caja renglones + tiempos de parada (página 2) ------------------ */
 
   function cajaTiempos(ot, nRengl) {
-    const u = v => `<td style="${TD};${BB};text-align:center;height:0.52cm">${escT(v)}</td>`;
     const e = `${NB};white-space:nowrap`;
+    const bc = 'border:none;padding:0 0 0 2px;vertical-align:bottom';
+    const u = (v, w) => `<td style="${bc}">${campo(w, escT(v))}</td>`;
 
     let ren = '';
     if (ot.recomendaciones) {
@@ -345,16 +389,17 @@ ${qb('Recomendaciones adicionales y/o trabajos pendientes?')}
       ren += `<tr><td style="${LAT};${BB};height:${H.p2Rengl}cm">&nbsp;</td></tr>`;
     }
 
-    const interior = `${tablaAncho(W.total - 0.20, W.tiemp)}
+    const T = W.tiemp;
+    const interior = `${tbN(W.total - 0.20, T)}
   <tr>
-    <td style="${e}">FECHA INICIO PARADA:</td>${u(fechaSAP(ot.fecha_inicio_parada))}<td style="border:none"></td>
-    <td style="${e}">FECHA INICIO INTERV:</td>${u(fechaSAP(ot.fecha_inicio_interv))}<td style="border:none"></td>
-    <td style="${e}">FECHA FIN PARADA:</td>${u(fechaSAP(ot.fecha_fin_parada))}
+    <td style="${e}">FECHA INICIO PARADA:</td>${u(fechaSAP(ot.fecha_inicio_parada), T[1] - 0.05)}<td style="border:none"></td>
+    <td style="${e}">FECHA INICIO INTERV:</td>${u(fechaSAP(ot.fecha_inicio_interv), T[4] - 0.05)}<td style="border:none"></td>
+    <td style="${e}">FECHA FIN PARADA:</td>${u(fechaSAP(ot.fecha_fin_parada), T[7] - 0.05)}
   </tr>
   <tr>
-    <td style="${e}">HORA INICIO PARADA:</td>${u(hora(ot.hora_inicio_parada))}<td style="border:none"></td>
-    <td style="${e}">HORA INICIO INTERV:</td>${u(hora(ot.hora_inicio_interv))}<td style="border:none"></td>
-    <td style="${e}">HORA FIN PARADA:</td>${u(hora(ot.hora_fin_parada))}
+    <td style="${e}">HORA INICIO PARADA:</td>${u(hora(ot.hora_inicio_parada), T[1] - 0.05)}<td style="border:none"></td>
+    <td style="${e}">HORA INICIO INTERV:</td>${u(hora(ot.hora_inicio_interv), T[4] - 0.05)}<td style="border:none"></td>
+    <td style="${e}">HORA FIN PARADA:</td>${u(hora(ot.hora_fin_parada), T[7] - 0.05)}
   </tr>
 </table>`;
 
@@ -372,21 +417,22 @@ ${ren}
   function estadoOrden(ot) {
     const e = String(ot.estado_orden || '').toUpperCase().trim();
     const t = `${NB};text-align:center;font-weight:bold;font-size:10.5pt`;
-    const caja = m => `${tablaAncho(0.72, 0.72)}` +
-      `<tr><td style="${CBX};height:0.56cm">${m}</td></tr></table>`;
+    const bc = 'border:none;padding:0;text-align:center';
     return `
 ${SPACER(0.20)}
-${tabla(W.total)}
+${tbN(W.total, W.total)}
   <tr><td style="${t};padding-bottom:0.34cm">ESTADO DE LA ORDEN DE TRABAJO:</td></tr>
 </table>
-${tabla([5.08, 8.64, 4.86])}
-  <tr><td style="border:none"></td><td style="${RULE}"></td><td style="border:none"></td></tr>
+${tbN(W.total, [5.08, 8.64, 4.86])}
+  <tr><td style="border:none"></td>
+      <td style="border:none;padding:0">${raya(8.64)}</td>
+      <td style="border:none"></td></tr>
 </table>
-${tabla(W.total)}
+${tbN(W.total, W.total)}
   <tr><td style="${t};padding-top:0.22cm">MARQUE CON "X" EL ESTADO DE LA ORDEN:</td></tr>
 </table>
 ${SPACER(0.62)}
-${tabla(W.estad)}
+${tbN(W.total, W.estad)}
   <tr>
     <td style="border:none"></td><td style="${t}">EN PROCESO</td>
     <td style="border:none"></td><td style="${t}">FINALIZADA</td><td style="border:none"></td>
@@ -394,9 +440,9 @@ ${tabla(W.estad)}
   <tr><td colspan="5" style="border:none;height:0.42cm;font-size:1pt;line-height:1pt;padding:0"></td></tr>
   <tr>
     <td style="border:none"></td>
-    <td style="border:none;text-align:center;padding:0">${caja(e === 'EN PROCESO' ? 'X' : '&nbsp;')}</td>
+    <td style="${bc}"><div style="width:0.72cm;margin:0 auto">${cuadro(e === 'EN PROCESO' ? 'X' : '&nbsp;', 0.72, 0.56)}</div></td>
     <td style="border:none"></td>
-    <td style="border:none;text-align:center;padding:0">${caja(e === 'FINALIZADA' ? 'X' : '&nbsp;')}</td>
+    <td style="${bc}"><div style="width:0.72cm;margin:0 auto">${cuadro(e === 'FINALIZADA' ? 'X' : '&nbsp;', 0.72, 0.56)}</div></td>
     <td style="border:none"></td>
   </tr>
 </table>`;
@@ -407,41 +453,39 @@ ${tabla(W.estad)}
   function recepcion(ot) {
     const r  = ot.recepcion || {};
     const mr = `border:none;text-align:right;vertical-align:middle;${MONO};font-size:10pt`;
-    /* La casilla es un cuadro fijo de 0.51 cm: como celda directa se estira
-       hasta la altura de la fila, así que va anidada en su propia tabla. */
-    const caja = m => `${tablaAncho(0.51, 0.51)}` +
-      `<tr><td style="${CBX};height:0.51cm">${m}</td></tr></table>`;
     const vb = 'border:none;padding:0 0 2px;vertical-align:bottom';
     const preg = (txt, v) => `<tr>
   <td style="${NB};height:0.65cm;vertical-align:middle;font-size:10pt">${txt}</td>
-  <td style="${mr}">SI</td><td style="${vb}">${caja(v === true ? 'X' : '&nbsp;')}</td>
-  <td style="${mr}">NO</td><td style="${vb}">${caja(v === false ? 'X' : '&nbsp;')}</td>
+  <td style="${mr}">SI</td><td style="${vb}">${cuadro(v === true ? 'X' : '&nbsp;', 0.51)}</td>
+  <td style="${mr}">NO</td><td style="${vb}">${cuadro(v === false ? 'X' : '&nbsp;', 0.51)}</td>
   <td style="border:none"></td>
 </tr>`;
+    const lineaObs = txt => `<tr><td style="border:none"></td>
+      <td style="border:none;padding:0">${campo(15.89, txt || '&nbsp;', 0.44)}</td></tr>`;
 
     const cuerpo = `
-${tablaAncho(W.rint, W.rint)}
-  <tr><td style="${NB};font-weight:bold;font-size:12pt;${BB};padding:2px 2px 2px">RECEPCIÓN DE SERVICIO(USUARIO)</td></tr>
+${tbN(W.rint, W.rint)}
+  <tr><td style="${NB};font-weight:bold;font-size:12pt;padding:2px 2px 2px">RECEPCIÓN DE SERVICIO(USUARIO)</td></tr>
+  <tr><td style="border:none;padding:0">${raya(W.rint)}</td></tr>
 </table>
-${tablaAncho(W.rint, W.sino)}
+${tbN(W.rint, W.sino)}
 ${preg('Se recibe trabajo a conformidad', r.conformidad)}
 ${preg('Se entrega el área en buenas condiciones de orden y aseo', r.area)}
 ${preg('Se entrega el equipo en buenas condiciones de orden y aseo', r.equipo)}
 </table>
 ${SPACER(0.20)}
-${tablaAncho(W.rint, [3.55, 12.85])}
+${tbN(W.rint, [3.55, 12.85])}
   <tr><td style="${NB};height:0.52cm">Observaciones:</td>
-      <td style="${TD};${BB};height:0.52cm">${escT(r.observaciones)}</td></tr>
+      <td style="border:none;padding:0">${campo(12.85, escT(r.observaciones) || '&nbsp;')}</td></tr>
 </table>
-${tablaAncho(W.rint, [0.51, 15.89])}
-  <tr><td style="border:none"></td><td style="${TD};${BB};height:0.44cm">&nbsp;</td></tr>
-  <tr><td style="border:none"></td><td style="${TD};${BB};height:0.44cm">&nbsp;</td></tr>
-  <tr><td style="border:none"></td><td style="${TD};${BB};height:0.44cm">&nbsp;</td></tr>
+${tbN(W.rint, [0.51, 15.89])}
+${lineaObs()}${lineaObs()}${lineaObs()}
 </table>
 ${SPACER(1.14)}
-${tablaAncho(W.rint, W.nfa)}
-  <tr><td style="border:none"></td><td style="${RULE}"></td><td style="border:none"></td>
-      <td style="${RULE}"></td><td style="border:none"></td><td style="${RULE}"></td>
+${tbN(W.rint, W.nfa)}
+  <tr><td style="border:none"></td><td style="border:none;padding:0">${raya(W.nfa[1])}</td>
+      <td style="border:none"></td><td style="border:none;padding:0">${raya(W.nfa[3])}</td>
+      <td style="border:none"></td><td style="border:none;padding:0">${raya(W.nfa[5])}</td>
       <td style="border:none"></td></tr>
   <tr><td style="border:none"></td><td style="${NB};${MONO};padding-top:5px">NOMBRE</td>
       <td style="border:none"></td><td style="${NB};${MONO};padding-top:5px">FIRMA</td>
@@ -451,10 +495,10 @@ ${tablaAncho(W.rint, W.nfa)}
 
     return `
 ${SPACER(0.55)}
-${tabla(W.rext)}
+${tbN(W.total, W.rext)}
   <tr>
     <td style="border:none"></td>
-    <td style="${BD};padding:3px 6px 6px;vertical-align:top">${cuerpo}</td>
+    <td style="border:none;padding:0">${marco(W.rext[1], cuerpo, '3px 6px 6px')}</td>
     <td style="border:none"></td>
   </tr>
 </table>`;
@@ -465,28 +509,32 @@ ${tabla(W.rext)}
 
   function firmas() {
     const lb = `border:none;font-weight:bold;padding:2px 0 0 6px;${ARIAL};font-size:8.5pt`;
-    const nada = 'border:none';
+    const n = 'border:none';
+    const p = 'border:none;padding:0';
+    const F = W.firma;
     return `
 ${SPACER(2.40)}
-${tabla(W.firma)}
+${tbN(W.total, F)}
   <tr>
-    <td style="${nada}"></td><td style="${RULE}"></td><td style="${nada}"></td><td style="${RULE}"></td>
-    <td style="${nada}"></td><td style="${RULE}"></td><td style="${nada}"></td><td style="${RULE}"></td>
-    <td style="${nada}"></td>
+    <td style="${n}"></td><td style="${p}">${raya(F[1])}</td>
+    <td style="${n}"></td><td style="${p}">${raya(F[3])}</td>
+    <td style="${n}"></td><td style="${p}">${raya(F[5])}</td>
+    <td style="${n}"></td><td style="${p}">${raya(F[7])}</td>
+    <td style="${n}"></td>
   </tr>
   <tr>
-    <td style="${nada}"></td><td style="${lb}">EJECUTOR DE MTTO</td>
-    <td style="${nada}"></td><td style="${lb}">SUPERVISOR O&amp;M</td>
-    <td style="${nada}"></td><td style="${lb}">SENIOR / PLANEADOR DE<br>MTTO GTEC</td>
-    <td style="${nada}"></td><td style="${lb}">DOCUMENTADOR O&amp;M</td><td style="${nada}"></td>
+    <td style="${n}"></td><td style="${lb}">EJECUTOR DE MTTO</td>
+    <td style="${n}"></td><td style="${lb}">SUPERVISOR O&amp;M</td>
+    <td style="${n}"></td><td style="${lb}">SENIOR / PLANEADOR DE<br>MTTO GTEC</td>
+    <td style="${n}"></td><td style="${lb}">DOCUMENTADOR O&amp;M</td><td style="${n}"></td>
   </tr>
 </table>
 ${SPACER(2.35)}
-${tabla(W.clerk)}
-  <tr><td style="${nada}"></td><td style="${RULE}"></td><td style="${nada}"></td></tr>
-  <tr><td style="${nada}"></td>
+${tbN(W.total, W.clerk)}
+  <tr><td style="${n}"></td><td style="${p}">${raya(W.clerk[1])}</td><td style="${n}"></td></tr>
+  <tr><td style="${n}"></td>
       <td style="${NB};text-align:center;font-weight:bold;padding-top:2px">CLERK GTEC</td>
-      <td style="${nada}"></td></tr>
+      <td style="${n}"></td></tr>
 </table>`;
   }
 
