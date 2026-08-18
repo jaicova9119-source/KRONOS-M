@@ -10358,6 +10358,8 @@ function otMapear() {
     fecha_inicio_interv: o.fecha_inicio_interv, hora_inicio_interv: o.hora_inicio_interv,
     fecha_fin_parada:    o.fecha_fin_parada,    hora_fin_parada:    o.hora_fin_parada,
 
+    /* Solo se imprime si la orden queda EN PROCESO */
+    avance_pct:   a.avance_pct,
     estado_orden: o.estado_ot === "FINALIZADA" ? "FINALIZADA" : "EN PROCESO",
 
     recepcion: {
