@@ -2033,17 +2033,13 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="field"><label>Observaciones de la entrega</label>
       <textarea id="ot-rec-obs" rows="3"></textarea></div>
 
-    <div class="section-label" style="margin-top:18px">LOGO DEL ENCABEZADO</div>
-    <div class="field">
-      <input type="file" accept="image/*" onchange="otCargarLogo(this)"/>
-      <div id="ot-logo-estado" style="margin-top:6px"></div>
-      <div class="mat-stock" style="margin-top:4px">Se guarda en este dispositivo y lo comparte con los informes de ensayos. Hay que cargarlo una vez por equipo o navegador.</div>
-    </div>
-
     <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()">Guardar</button>
     <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir o guardar como PDF</button>
     <button class="btn-secondary" style="margin-top:8px" onclick="otDescargarWord()">Descargar en Word</button>
-    <div class="hint-box" style="margin-top:8px">&#8505;&#65039; La impresi&#243;n fuerza margen cero, que es lo que hace que el navegador deje de poner su propia URL y fecha. Si aun as&#237; aparecen, en el di&#225;logo pon <b>M&#225;rgenes: Ninguno</b> o desmarca <b>Encabezados y pies de p&#225;gina</b> dentro de Opciones.</div>
+    <!-- El logo viene por defecto en fo016-logo.js, asi que ya no se pide
+         cargarlo. La nota sobre margenes del navegador se retiro: ocupaba
+         media pantalla en el movil para una indicacion que solo aplica la
+         primera vez. Quien la necesite la tiene en la hoja de Metodologia. -->
   </div>
 </div>
 
