@@ -6219,7 +6219,31 @@ function eeImprimirInforme() {
     window.removeEventListener("afterprint", restaurar);
   };
   window.addEventListener("afterprint", restaurar);
-  try { window.print(); } finally { setTimeout(restaurar, 0); }
+  /* window.print() bloquea en escritorio hasta que se cierra el dialogo, pero
+     en Chrome de Android retorna de inmediato y el preview se arma despues.
+     Restaurar el DOM en ese instante retira #print-root y la clase
+     "imprimiendo" antes de que el navegador capture la pagina, y lo que sale
+     impreso es la aplicacion completa con el panel lateral y los botones.
+     Por eso ya no se restaura al vuelo: se espera al evento afterprint y,
+     para los navegadores moviles que no lo emiten, a que el usuario regrese
+     a la pestana. El respaldo por tiempo evita que la interfaz quede oculta
+     si no ocurre ninguna de las dos cosas. */
+  const finImpresion = () => {
+    clearTimeout(respaldoImpresion);
+    window.removeEventListener("focus", finImpresion);
+    document.removeEventListener("visibilitychange", alVolverDeImprimir);
+    restaurar();
+  };
+  const alVolverDeImprimir = () => { if (!document.hidden) finImpresion(); };
+  const respaldoImpresion = setTimeout(finImpresion, 120000);
+  window.addEventListener("afterprint", finImpresion, { once: true });
+  /* La espera evita que el foco que devuelve el propio dialogo al abrirse
+     dispare la restauracion antes de tiempo. */
+  setTimeout(() => {
+    window.addEventListener("focus", finImpresion);
+    document.addEventListener("visibilitychange", alVolverDeImprimir);
+  }, 1500);
+  try { window.print(); } catch (e) { finImpresion(); }
 }
 
 // Word abre HTML empaquetado como .doc conservando tablas y colores, y el
@@ -10847,7 +10871,31 @@ async function otImprimir() {
     window.removeEventListener("afterprint", restaurar);
   };
   window.addEventListener("afterprint", restaurar);
-  try { window.print(); } finally { setTimeout(restaurar, 0); }
+  /* window.print() bloquea en escritorio hasta que se cierra el dialogo, pero
+     en Chrome de Android retorna de inmediato y el preview se arma despues.
+     Restaurar el DOM en ese instante retira #print-root y la clase
+     "imprimiendo" antes de que el navegador capture la pagina, y lo que sale
+     impreso es la aplicacion completa con el panel lateral y los botones.
+     Por eso ya no se restaura al vuelo: se espera al evento afterprint y,
+     para los navegadores moviles que no lo emiten, a que el usuario regrese
+     a la pestana. El respaldo por tiempo evita que la interfaz quede oculta
+     si no ocurre ninguna de las dos cosas. */
+  const finImpresion = () => {
+    clearTimeout(respaldoImpresion);
+    window.removeEventListener("focus", finImpresion);
+    document.removeEventListener("visibilitychange", alVolverDeImprimir);
+    restaurar();
+  };
+  const alVolverDeImprimir = () => { if (!document.hidden) finImpresion(); };
+  const respaldoImpresion = setTimeout(finImpresion, 120000);
+  window.addEventListener("afterprint", finImpresion, { once: true });
+  /* La espera evita que el foco que devuelve el propio dialogo al abrirse
+     dispare la restauracion antes de tiempo. */
+  setTimeout(() => {
+    window.addEventListener("focus", finImpresion);
+    document.addEventListener("visibilitychange", alVolverDeImprimir);
+  }, 1500);
+  try { window.print(); } catch (e) { finImpresion(); }
 }
 
 const ASIS_MODULOS = {
