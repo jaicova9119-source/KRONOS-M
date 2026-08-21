@@ -4162,9 +4162,46 @@ function construirLibroReporte(materiales, opciones = {}) {
        pueda pasar el mismo mapa. Si llega vacio, las columnas de balance
        salen en blanco y el resto del reporte no cambia. */
     traslados = new Map(),
+    /* Consumo real (v_consumo_material, por codigo) y solicitudes abiertas
+       (v_compras_abiertas, por codigo+centro). Ya se cargan para la ficha del
+       material; aqui se reciben por parametro por la misma razon que los
+       traslados. Si llegan vacios, las columnas salen en blanco y el resto
+       del reporte no cambia. */
+    consumo = new Map(),
+    tramites = new Map(),
   } = opciones;
 
   const repTras = (m) => traslados.get(`${m.codigo_sap}|${m.centro}`) || null;
+  const repCons = (m) => consumo.get(String(m.codigo_sap ?? "")) || null;
+  const repTram = (m) => tramites.get(`${m.codigo_sap}|${m.centro}`) || null;
+
+  /* Umbral a partir del cual una solicitud sin orden de compra pierde
+     vigencia: superado el lead time, reactivarla llega mas tarde que emitir
+     una nueva. Piso de 120 dias para no marcar prematuro un material de
+     reposicion rapida. Si la vista ya lo calcula, se usa el suyo. */
+  const repUmbral = (m, t) =>
+    repNum(t?.umbral_dias) || Math.max(repNum(m.lead_time_dias) || 90, 120);
+
+  /* Dias que lleva la solicitud mas antigua sin convertirse en orden. Las
+     versiones anteriores de v_compras_abiertas no exponen dias_sin_oc; en ese
+     caso se usa la antiguedad total, que es la mejor aproximacion disponible. */
+  const repDiasSinOC = (t) =>
+    t ? (t.dias_sin_oc ?? t.dias_en_tramite ?? null) : null;
+
+  /* Que hacer con la linea. Es la columna que evita el reproche de duplicar
+     requerimientos: distingue lo que ya esta pedido de lo que hay que pedir. */
+  function repAccion(m, t, faltante) {
+    if (!t) return "NUEVA SOLICITUD";
+    const enTramite = repNum(t.cantidad_en_tramite);
+    if (enTramite <= 0) return "NUEVA SOLICITUD";
+    const conOC   = t.cantidad_con_oc == null ? null : repNum(t.cantidad_con_oc);
+    const dias    = repDiasSinOC(t);
+    const vencida = conOC === 0 && dias != null && dias > repUmbral(m, t);
+    if (vencida) return "REEMPLAZAR SOLICITUD";
+    if (conOC != null && conOC >= faltante) return "SEGUIMIENTO OC";
+    if (enTramite >= faltante) return "YA SOLICITADO · NO PEDIR";
+    return "AMPLIAR CANTIDAD";
+  }
 
   const corteTxt = repFechaCorta(corte instanceof Date ? corte : new Date(corte));
 
@@ -4239,6 +4276,41 @@ function construirLibroReporte(materiales, opciones = {}) {
   const ahorroTraslado = trasFilas.reduce((s, t) => s + (t ? repNum(t.ahorro_estimado) : 0), 0);
   const critATraslado = pedirOrd.filter((m, i) =>
     m.criticidad === "A" && trasFilas[i] && repNum(trasFilas[i].cant_posible_traslado) > 0).length;
+  /* Contraste con lo ya solicitado. Separa las tres situaciones que exigen
+     gestion distinta: con orden de compra (abastecimiento asegurado), sin
+     orden dentro de plazo (gestion viva) y sin orden fuera de plazo (la
+     solicitud perdio vigencia y hay que reemplazarla). */
+  const tramFilas = pedirOrd.map(repTram);
+  const totalYaSolicitado = tramFilas.reduce((s, t) => s + (t ? repNum(t.cantidad_en_tramite) : 0), 0);
+  const lineasEnTramite = tramFilas.filter(t => t && repNum(t.cantidad_en_tramite) > 0).length;
+  const lineasVencidas = pedirOrd.filter((m, i) => {
+    const t = tramFilas[i];
+    if (!t || repNum(t.cantidad_en_tramite) <= 0) return false;
+    const d = repDiasSinOC(t);
+    return d != null && d > repUmbral(m, t);
+  }).length;
+  const unidadesVencidas = pedirOrd.reduce((s, m, i) => {
+    const t = tramFilas[i];
+    if (!t || repNum(t.cantidad_en_tramite) <= 0) return s;
+    const d = repDiasSinOC(t);
+    return s + ((d != null && d > repUmbral(m, t)) ? repNum(t.cantidad_en_tramite) : 0);
+  }, 0);
+  const diasMasAntiguo = tramFilas.reduce((mx, t) => {
+    const d = repDiasSinOC(t);
+    return d != null && d > mx ? d : mx;
+  }, 0);
+  const lineasSinPedir = pedirOrd.filter((m, i) => !tramFilas[i]
+    || repNum(tramFilas[i].cantidad_en_tramite) <= 0).length;
+
+  /* Sobrestock frente a rotacion: maximo que cubre mas de dos anos de consumo
+     observado. Es la senal que permite revisar el nivel antes de reponer. */
+  const lineasSobreRotacion = pedirOrd.filter(m => {
+    const cs = repCons(m);
+    const p = cs ? repNum(cs.prom_mensual_24m) : 0;
+    return p > 0 && repNum(m.stock_maximo) / p > 24;
+  }).length;
+  const lineasSinHistorial = pedirOrd.filter(m => !repCons(m)).length;
+
   const cuentaEstado = (e) => configurados.filter(m => m.estado === e).length;
   const cuentaCrit   = (c) => configurados.filter(m => m.criticidad === c).length;
   const unidadesCrit = (c) => pedirOrd.filter(m => m.criticidad === c)
@@ -4262,7 +4334,7 @@ function construirLibroReporte(materiales, opciones = {}) {
   /* ============ Hoja 2: A Pedir (SOLPED) ============ */
   const wsPed = wb.addWorksheet("A Pedir (SOLPED)");
   repTitulo(wsPed, "MATERIALES A PEDIR  ·  ordenados por prioridad de reposición",
-    `Prioridad: criticidad (A > B > C), luego menor cobertura, luego mayor cantidad   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 15);
+    `Prioridad: criticidad (A > B > C), luego menor cobertura, luego mayor cantidad   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 22);
   repEncabezado(wsPed, F, [
     { h: "Prio.", w: 6 }, { h: "Código", w: 11 }, { h: "N° parte", w: 15 },
     { h: "Centro", w: 8 }, { h: "Nombre técnico", w: 42 }, { h: "Crit.", w: 6 },
@@ -4271,6 +4343,13 @@ function construirLibroReporte(materiales, opciones = {}) {
     { h: "A pedir", w: 10 }, { h: "Proveedor", w: 22 },
     { h: "Cubre traslado", w: 13 }, { h: "Neto a comprar", w: 13 },
     { h: "Excedente en", w: 26 },
+    /* Bloque de rotacion y trazabilidad de lo ya solicitado. Va al final y no
+       intercalado a proposito: las formulas y los estilos de las hojas
+       referencian las columnas anteriores por letra, y moverlas las rompe. */
+    { h: "Consumo 24m", w: 12 }, { h: "Meses que cubre el máx.", w: 13 },
+    { h: "Ya solicitado", w: 12 }, { h: "Con orden de compra", w: 13 },
+    { h: "Días sin gestión", w: 12 }, { h: "SOLPED / OC", w: 24 },
+    { h: "Acción", w: 24 },
   ]);
   pedirOrd.forEach((m, i) => {
     const r = F + 1 + i;
@@ -4285,6 +4364,29 @@ function construirLibroReporte(materiales, opciones = {}) {
       repNum(m.cantidad_sugerida_compra), m.proveedor || "Sin asignar",
       traslado, neto, (t && traslado > 0) ? (t.centros_con_excedente || "") : "",
     ];
+    /* Rotacion y solicitudes abiertas. La cantidad a pedir NO se modifica con
+       lo que este en tramite: si la solicitud lleva un ano sin orden de
+       compra, la necesidad sigue siendo la misma. Lo que cambia es la accion
+       que se pide ejecutar, que va en la ultima columna. */
+    const cs = repCons(m);
+    const tr = repTram(m);
+    const faltante = repNum(m.cantidad_sugerida_compra);
+    const cons24 = cs ? repNum(cs.consumo_24m) : null;
+    const promMes = cs ? repNum(cs.prom_mensual_24m) : 0;
+    const mesesMax = promMes > 0 ? repNum(m.stock_maximo) / promMes : null;
+    const enTramite = tr ? repNum(tr.cantidad_en_tramite) : 0;
+    const conOC = tr && tr.cantidad_con_oc != null ? repNum(tr.cantidad_con_oc) : null;
+    const diasSinOC = repDiasSinOC(tr);
+    const refDocs = tr ? [tr.ordenes_compra, tr.solicitudes].filter(Boolean).join("  ·  ") : "";
+    vals.push(
+      cons24,
+      mesesMax == null ? null : Math.round(mesesMax * 10) / 10,
+      enTramite > 0 ? enTramite : null,
+      conOC,
+      enTramite > 0 ? diasSinOC : null,
+      refDocs,
+      repAccion(m, tr, faltante),
+    );
     vals.forEach((v, j) => {
       const c = wsPed.getCell(r, j + 1);
       c.value = v;
@@ -4330,9 +4432,46 @@ function construirLibroReporte(materiales, opciones = {}) {
       wsPed.getCell(r, 1).font = repFuente(10, true, REP_C.blanco);
       wsPed.getCell(r, 1).fill = repRelleno(REP_C.azul);
     }
+    /* --- Formato del bloque de rotacion y tramites (columnas 16 a 22) --- */
+    [16, 18, 19, 20].forEach(col => { wsPed.getCell(r, col).numFmt = "#,##0"; });
+    wsPed.getCell(r, 17).numFmt = "0.0";
+    wsPed.getCell(r, 21).font = repFuente(9, false, REP_C.gris);
+    wsPed.getCell(r, 21).alignment = REP_IZQ;
+    /* Sin historial de consumo la celda queda en gris: la ausencia de rotacion
+       no es rotacion cero. Un repuesto critico que no ha fallado en dos anos
+       no registra consumo y aun asi debe mantenerse en bodega. */
+    if (cons24 == null) {
+      wsPed.getCell(r, 16).value = "s/d";
+      wsPed.getCell(r, 16).font = repFuente(9, false, REP_C.gris);
+    }
+    /* Maximo que cubre mas de dos anos de consumo: senal de sobrestock que
+       conviene revisar antes de reponer. */
+    if (mesesMax != null && mesesMax > 24) {
+      wsPed.getCell(r, 17).font = repFuente(10, true, REP_C.azul2);
+      wsPed.getCell(r, 17).fill = repRelleno(REP_C.fAzul);
+    }
+    const acc = wsPed.getCell(r, 22);
+    acc.alignment = REP_IZQ;
+    const estiloAccion = {
+      "NUEVA SOLICITUD":          [REP_C.rojo,    REP_C.fRojo],
+      "REEMPLAZAR SOLICITUD":     [REP_C.naranja, REP_C.fNaranja],
+      "AMPLIAR CANTIDAD":         [REP_C.naranja, REP_C.fNaranja],
+      "YA SOLICITADO · NO PEDIR": [REP_C.gris,    REP_C.fGris],
+      "SEGUIMIENTO OC":           [REP_C.verde,   REP_C.fVerde],
+    }[acc.value];
+    if (estiloAccion) {
+      acc.font = repFuente(9, true, estiloAccion[0]);
+      acc.fill = repRelleno(estiloAccion[1]);
+    }
+    /* Solicitud sin orden de compra pasado el umbral: no es abastecimiento.
+       Se marca la antiguedad, que es el sustento para pedir su reemplazo. */
+    if (enTramite > 0 && diasSinOC != null && diasSinOC > repUmbral(m, tr)) {
+      wsPed.getCell(r, 20).font = repFuente(10, true, REP_C.rojo);
+      wsPed.getCell(r, 20).fill = repRelleno(REP_C.fRojo);
+    }
   });
   if (pedirOrd.length) {
-    wsPed.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPedir, column: 15 } };
+    wsPed.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPedir, column: 22 } };
     wsPed.addConditionalFormatting({
       ref: `J${F + 1}:J${ultPedir}`,
       rules: [{
@@ -4367,6 +4506,17 @@ function construirLibroReporte(materiales, opciones = {}) {
     ctN.numFmt = "#,##0";
     wsPed.getCell(rt, 15).value = "cubrible por traslado  /  neto a comprar";
     wsPed.getCell(rt, 15).font = repFuente(9, false, REP_C.gris);
+    /* Total de lo ya solicitado. No se resta del total a pedir: es una cifra
+       de contraste, para ver de un vistazo cuanto del requerimiento ya tiene
+       una solicitud radicada. */
+    const ctS = wsPed.getCell(rt, 18);
+    ctS.value = { formula: `SUM(R${F + 1}:R${ultPedir})`, result: totalYaSolicitado };
+    ctS.font = repFuente(11, true, REP_C.gris);
+    ctS.fill = repRelleno(REP_C.fGris);
+    ctS.alignment = REP_CEN;
+    ctS.numFmt = "#,##0";
+    wsPed.getCell(rt, 19).value = "ya solicitado";
+    wsPed.getCell(rt, 19).font = repFuente(9, false, REP_C.gris);
   }
   wsPed.views = [{ state: "frozen", xSplit: 5, ySplit: F }];
   repImpresion(wsPed, F, corteTxt);
@@ -4672,6 +4822,42 @@ function construirLibroReporte(materiales, opciones = {}) {
     wsRes.getCell(iBal + 5, 2).font = repFuente(10, true, REP_C.azul);
   }
 
+  /* Solicitudes ya radicadas. Igual que el balance entre centros, solo
+     aparece si hay algo que mostrar. */
+  if (lineasEnTramite > 0) {
+    const iTram = f + 2;
+    bloque("Antes de pedir: lo que ya tiene solicitud radicada", ["Concepto", "Cantidad", "Detalle"], [
+      ["Líneas con solicitud abierta", lineasEnTramite, `de ${pedirOrd.length} líneas a pedir`],
+      ["Unidades ya solicitadas", totalYaSolicitado, "no requieren nueva solicitud si el trámite avanza"],
+      ["Líneas sin solicitud previa", lineasSinPedir, "requieren solicitud nueva"],
+      ["Líneas con solicitud vencida", lineasVencidas, "superaron el plazo sin orden de compra"],
+      ["Unidades en solicitud vencida", unidadesVencidas, "no cuentan como abastecimiento asegurado"],
+      ["Mayor antigüedad sin gestión", diasMasAntiguo || null,
+        diasMasAntiguo ? "días de la solicitud más antigua sin orden de compra" : "sin dato de antigüedad"],
+    ]);
+    for (let i = 0; i < 6; i++) wsRes.getCell(iTram + i, 2).numFmt = "#,##0";
+    wsRes.getCell(iTram + 1, 2).font = repFuente(10, true, REP_C.gris);
+    wsRes.getCell(iTram + 2, 2).font = repFuente(10, true, REP_C.rojo);
+    wsRes.getCell(iTram + 3, 2).font = repFuente(10, true, REP_C.naranja);
+    wsRes.getCell(iTram + 4, 2).font = repFuente(10, true, REP_C.naranja);
+    wsRes.getCell(iTram + 5, 2).font = repFuente(11, true, REP_C.rojo);
+  }
+
+  /* Contraste con la rotacion. Es la respuesta directa a la observacion de
+     sobrestock: senala las lineas donde el nivel definido cubre mas de dos
+     anos de consumo observado, para revisarlas antes de reponer. */
+  if (lineasSobreRotacion > 0 || lineasSinHistorial > 0) {
+    const iRot = f + 2;
+    bloque("Contraste con el consumo observado (24 meses)", ["Concepto", "Cantidad", "Detalle"], [
+      ["Líneas cuyo máximo cubre más de 2 años", lineasSobreRotacion, "revisar el nivel antes de reponer"],
+      ["Líneas sin consumo registrado", lineasSinHistorial,
+        "sin historial no hay rotación que comparar; el nivel se sustenta en criticidad y población instalada"],
+    ]);
+    for (let i = 0; i < 2; i++) wsRes.getCell(iRot + i, 2).numFmt = "#,##0";
+    wsRes.getCell(iRot, 2).font = repFuente(10, true, REP_C.azul2);
+    wsRes.getCell(iRot + 1, 2).font = repFuente(10, true, REP_C.gris);
+  }
+
   wsRes.getCell(f, 1).value = "Pendientes por configurar:";
   wsRes.getCell(f, 1).font = repFuente(10, true, REP_C.naranja);
   const cp = wsRes.getCell(f, 2);
@@ -4692,7 +4878,8 @@ function construirLibroReporte(materiales, opciones = {}) {
   wsMet.getColumn(1).width = 26;
   wsMet.getColumn(2).width = 95;
   const met = [
-    ["Fuente de los datos", "Vista v_materiales_estado de la plataforma. Las existencias provienen del último cargue del reporte de inventario de SAP; los parámetros mín-máx, de la configuración registrada en la plataforma."],
+    ["Fuente de los datos", "Vista v_materiales_estado de la plataforma. Las existencias provienen del último cargue del reporte de inventario de SAP; los parámetros mín-máx, de la configuración registrada en la plataforma. El consumo proviene de los movimientos de material y las solicitudes abiertas del reporte de solicitudes de pedido, ambos cargados desde SAP."],
+    ["Origen de los niveles mín-máx", "Los niveles se establecen por criterio técnico, no se heredan de una parametrización previa: población de equipos instalados, piezas por equipo, fallas observadas en el periodo, frecuencia de reemplazo del fabricante y criticidad del equipo atendido. Los materiales con mayor incidencia de falla llevan un nivel superior al que arrojaría un promedio de rotación."],
     ["Corte de datos", `${corteTxt}. Todas las cifras corresponden a esa fecha, no a la fecha de generación del archivo.`],
     ["Alcance", alcance],
     ["", ""],
@@ -4724,7 +4911,17 @@ function construirLibroReporte(materiales, opciones = {}) {
     ["Valor del traslado", "Única cifra valorizada del reporte. Es posible porque el centro con excedente sí tiene existencia y por tanto valor unitario conocido, a diferencia del material en cero."],
     ["Traslado: qué NO valida", "Viabilidad. No considera zona operativa, propiedad del inventario, costo de transporte ni diferencias de revisión entre lotes del mismo número de parte. La confirmación es de quien gestiona el material."],
     ["", ""],
-    ["Limitación conocida", "El cálculo no considera consumo histórico ni tiempo de entrega del proveedor. Un material de rotación alta y uno de rotación nula, con la misma cobertura, aparecen con la misma prioridad."],
+    ["", ""],
+    ["Consumo 24m", "Unidades efectivamente consumidas en los últimos 24 meses, tomadas de los movimientos de material registrados en SAP. 's/d' significa que el material no registra movimientos en el periodo, no que su consumo sea cero."],
+    ["Meses que cubre el máx.", "Stock máximo dividido entre el consumo promedio mensual. Es la medida de sobrestock: un valor superior a 24 indica que el nivel definido cubre más de dos años de consumo observado y conviene revisarlo. La celda se resalta en esos casos."],
+    ["Rotación nula", "Un repuesto crítico que no ha fallado en el periodo registra consumo cero. El nivel de ese material no se dimensiona por rotación sino por población de equipos instalados, frecuencia de reemplazo del fabricante y criticidad: sin historial no hay contra qué comparar, y llevarlo a cero por ausencia de movimientos es el error opuesto al sobrestock."],
+    ["Ya solicitado", "Unidades del material que ya cuentan con solicitud de pedido abierta para ese centro. No se descuentan de la columna 'A pedir': la necesidad no cambia porque exista un documento radicado. Lo que cambia es la acción a ejecutar."],
+    ["Con orden de compra", "Porción de lo solicitado que ya se convirtió en orden de compra. Es la única cifra que representa abastecimiento asegurado. Una solicitud sin orden no garantiza que el material llegue."],
+    ["Días sin gestión", "Días transcurridos desde la solicitud más antigua sin convertirse en orden de compra. Se resalta en rojo cuando supera el plazo de vigencia."],
+    ["Plazo de vigencia", "Lead time del material, con un piso de 120 días. Superado ese plazo la solicitud pierde vigencia práctica: aun reactivándola, la disponibilidad se proyecta más allá de lo que tardaría una solicitud nueva."],
+    ["Acción", "Qué corresponde hacer con la línea. NUEVA SOLICITUD: sin trámite previo. AMPLIAR CANTIDAD: existe solicitud pero por menos de lo requerido. YA SOLICITADO · NO PEDIR: el trámite abierto cubre la necesidad. SEGUIMIENTO OC: ya hay orden de compra, corresponde seguimiento y no una nueva solicitud. REEMPLAZAR SOLICITUD: la solicitud superó el plazo sin orden de compra."],
+    ["", ""],
+    ["Limitación conocida", "El plazo de vigencia no distingue la causa del retraso. Una solicitud puede llevar meses detenida por falta de presupuesto, ausencia de fuente de aprovisionamiento o un dato maestro incompleto; en esos casos emitir una nueva solicitud se detiene en el mismo punto y lo que corresponde es resolver el bloqueo. La causa la aporta el área de compras, no este reporte."],
     ["Sin valorización", "Este reporte no incluye el costo de la reposición: la plataforma deriva el precio unitario del valor del stock, que es cero justamente en los materiales sin existencia."],
   ];
   met.forEach(([k, v], i) => {
@@ -4878,6 +5075,11 @@ async function descargarReporteInventario() {
       /* Global a proposito: el excedente que cubre un faltante de Put Norte
          puede estar en un centro que no esta en la seleccion. */
       traslados: mapaTraslados,
+      /* Los mismos mapas que alimentan la ficha del material. Se pasan tal
+         cual: el filtrado por centro ya lo hizo datosReporteSeleccionados(),
+         y aqui solo se consultan por clave. */
+      consumo: mapaConsumo,
+      tramites: mapaTramites,
     });
 
     const sufijoCentro = centros.length === centrosConocidos.length
