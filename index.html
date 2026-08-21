@@ -3461,6 +3461,7 @@ async function cargarMateriales() {
     materialesData = todos;
     await cargarBalanceTraslados();
     await cargarConsumoYTramites();
+    await cargarUbicaciones();
 
     // Poblar filtro de centros (unicos, ordenados)
     const selCentro = document.getElementById("mat-filtro-centro");
@@ -3570,6 +3571,32 @@ function trasladoDe(m) {
    porque una solicitud se radica para un centro concreto. */
 let mapaConsumo = new Map();    // codigo_sap -> fila de v_consumo_material
 let mapaTramites = new Map();   // "codigo|centro" -> fila de v_compras_abiertas
+let mapaUbicaciones = new Map();// "codigo|centro" -> fila de v_ubicaciones_material
+
+/* Storage bin de bodega. Va en mapa aparte y no en v_materiales_estado porque
+   de esa vista cuelgan los calculos de traslado y reposicion: agregarle una
+   columna informativa obliga a recrearla en produccion sin necesidad. */
+async function cargarUbicaciones() {
+  mapaUbicaciones = new Map();
+  try {
+    const PAGINA = 1000;
+    let desde = 0;
+    while (true) {
+      const { data, error } = await sb.from("v_ubicaciones_material")
+        .select("*").range(desde, desde + PAGINA - 1);
+      if (error) throw error;
+      (data || []).forEach(u => {
+        mapaUbicaciones.set(`${u.codigo_sap}|${u.centro}`, u);
+      });
+      if (!data || data.length < PAGINA) break;
+      desde += PAGINA;
+    }
+  } catch (e) { console.warn("Ubicaciones de bodega no disponibles:", e.message); }
+}
+
+function ubicacionDe(m) {
+  return mapaUbicaciones.get(`${m.codigo_sap}|${m.centro}`) || null;
+}
 
 async function cargarConsumoYTramites() {
   mapaConsumo = new Map();
@@ -3738,6 +3765,24 @@ function renderBalance() {
 /* Filas de consumo real y solicitudes abiertas para la ficha.
    Las dos son el contraste que faltaba: el mínimo se juzga contra lo que
    se consume, y la compra se juzga contra lo que ya está pedido. */
+/* Ubicacion en bodega. Va justo debajo del stock porque la pregunta en campo
+   no es cuanto hay, es donde esta. Cuando el material tiene equivalencias la
+   cantidad mostrada es la del grupo, asi que los bins tambien son los del
+   grupo y cada uno lleva el codigo al que pertenece: sin eso el tecnico va al
+   bin equivocado. */
+function filaUbicacion(m) {
+  const u = ubicacionDe(m);
+  if (!u || !u.ubicaciones) return "";
+  const varios = (u.n_bins || 0) > 1;
+  const nota = u.es_grupo
+    ? "ubicaciones del grupo de equivalencia"
+    : (varios ? `repartido en ${u.n_bins} ubicaciones` : "");
+  return `<tr><td>Ubicación en bodega</td><td style="white-space:normal;line-height:1.45">`
+       + `<b>${u.ubicaciones}</b>`
+       + (nota ? `<br><span style="font-weight:400;opacity:.6;font-size:11px">${nota}</span>` : "")
+       + `</td></tr>`;
+}
+
 function filasConsumoTramite(m) {
   let out = "";
 
@@ -3804,6 +3849,7 @@ function abrirFichaMaterial(m) {
     <tr><td>Proveedor</td><td>${m.proveedor || "Por configurar"}</td></tr>
     <tr><td>Criticidad</td><td>${m.criticidad || "—"}</td></tr>
     <tr><td>Stock actual</td><td>${Math.round(m.stock_actual)}</td></tr>
+    ${filaUbicacion(m)}
     <tr><td>Mínimo / Máximo</td><td>${Math.round(m.stock_minimo)} / ${Math.round(m.stock_maximo)}</td></tr>
     <tr><td>Lead time</td><td>${m.lead_time_dias} días</td></tr>
     <tr><td>Consumo prom. mensual</td><td>${m.consumo_prom_mensual}</td></tr>
@@ -4169,11 +4215,14 @@ function construirLibroReporte(materiales, opciones = {}) {
        del reporte no cambia. */
     consumo = new Map(),
     tramites = new Map(),
+    /* Storage bin por codigo+centro (v_ubicaciones_material). */
+    ubicaciones = new Map(),
   } = opciones;
 
   const repTras = (m) => traslados.get(`${m.codigo_sap}|${m.centro}`) || null;
   const repCons = (m) => consumo.get(String(m.codigo_sap ?? "")) || null;
   const repTram = (m) => tramites.get(`${m.codigo_sap}|${m.centro}`) || null;
+  const repUbic = (m) => ubicaciones.get(`${m.codigo_sap}|${m.centro}`) || null;
 
   /* Umbral a partir del cual una solicitud sin orden de compra pierde
      vigencia: superado el lead time, reactivarla llega mas tarde que emitir
@@ -4334,7 +4383,7 @@ function construirLibroReporte(materiales, opciones = {}) {
   /* ============ Hoja 2: A Pedir (SOLPED) ============ */
   const wsPed = wb.addWorksheet("A Pedir (SOLPED)");
   repTitulo(wsPed, "MATERIALES A PEDIR  ·  ordenados por prioridad de reposición",
-    `Prioridad: criticidad (A > B > C), luego menor cobertura, luego mayor cantidad   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 22);
+    `Prioridad: criticidad (A > B > C), luego menor cobertura, luego mayor cantidad   |   ${alcance}   |   Corte de datos: ${corteTxt}`, 23);
   repEncabezado(wsPed, F, [
     { h: "Prio.", w: 6 }, { h: "Código", w: 11 }, { h: "N° parte", w: 15 },
     { h: "Centro", w: 8 }, { h: "Nombre técnico", w: 42 }, { h: "Crit.", w: 6 },
@@ -4350,6 +4399,7 @@ function construirLibroReporte(materiales, opciones = {}) {
     { h: "Ya solicitado", w: 12 }, { h: "Con orden de compra", w: 13 },
     { h: "Días sin gestión", w: 12 }, { h: "SOLPED / OC", w: 24 },
     { h: "Acción", w: 24 },
+    { h: "Ubicación en bodega", w: 30 },
   ]);
   pedirOrd.forEach((m, i) => {
     const r = F + 1 + i;
@@ -4386,6 +4436,7 @@ function construirLibroReporte(materiales, opciones = {}) {
       enTramite > 0 ? diasSinOC : null,
       refDocs,
       repAccion(m, tr, faltante),
+      (repUbic(m)?.ubicaciones) || "",
     );
     vals.forEach((v, j) => {
       const c = wsPed.getCell(r, j + 1);
@@ -4469,9 +4520,11 @@ function construirLibroReporte(materiales, opciones = {}) {
       wsPed.getCell(r, 20).font = repFuente(10, true, REP_C.rojo);
       wsPed.getCell(r, 20).fill = repRelleno(REP_C.fRojo);
     }
+    wsPed.getCell(r, 23).alignment = REP_IZQ;
+    wsPed.getCell(r, 23).font = repFuente(9);
   });
   if (pedirOrd.length) {
-    wsPed.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPedir, column: 22 } };
+    wsPed.autoFilter = { from: { row: F, column: 1 }, to: { row: ultPedir, column: 23 } };
     wsPed.addConditionalFormatting({
       ref: `J${F + 1}:J${ultPedir}`,
       rules: [{
@@ -4920,6 +4973,7 @@ function construirLibroReporte(materiales, opciones = {}) {
     ["Días sin gestión", "Días transcurridos desde la solicitud más antigua sin convertirse en orden de compra. Se resalta en rojo cuando supera el plazo de vigencia."],
     ["Plazo de vigencia", "Lead time del material, con un piso de 120 días. Superado ese plazo la solicitud pierde vigencia práctica: aun reactivándola, la disponibilidad se proyecta más allá de lo que tardaría una solicitud nueva."],
     ["Acción", "Qué corresponde hacer con la línea. NUEVA SOLICITUD: sin trámite previo. AMPLIAR CANTIDAD: existe solicitud pero por menos de lo requerido. YA SOLICITADO · NO PEDIR: el trámite abierto cubre la necesidad. SEGUIMIENTO OC: ya hay orden de compra, corresponde seguimiento y no una nueva solicitud. REEMPLAZAR SOLICITUD: la solicitud superó el plazo sin orden de compra."],
+    ["Ubicación en bodega", "Storage bin donde está físicamente el material, con la cantidad en cada uno. Un material puede estar repartido en varias ubicaciones. Cuando tiene equivalencias registradas, la cantidad reportada es la del grupo y los bins se identifican con el código SAP al que pertenece cada saldo."],
     ["", ""],
     ["Limitación conocida", "El plazo de vigencia no distingue la causa del retraso. Una solicitud puede llevar meses detenida por falta de presupuesto, ausencia de fuente de aprovisionamiento o un dato maestro incompleto; en esos casos emitir una nueva solicitud se detiene en el mismo punto y lo que corresponde es resolver el bloqueo. La causa la aporta el área de compras, no este reporte."],
     ["Sin valorización", "Este reporte no incluye el costo de la reposición: la plataforma deriva el precio unitario del valor del stock, que es cero justamente en los materiales sin existencia."],
@@ -5080,6 +5134,7 @@ async function descargarReporteInventario() {
          y aqui solo se consultan por clave. */
       consumo: mapaConsumo,
       tramites: mapaTramites,
+      ubicaciones: mapaUbicaciones,
     });
 
     const sufijoCentro = centros.length === centrosConocidos.length
