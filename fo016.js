@@ -639,14 +639,99 @@ ${firmas()}
 
   /* ------------------------------ impresión ------------------------------- */
 
+  /* Se imprime desde un iframe oculto del mismo documento y no desde una
+     ventana nueva. En Chrome de Android window.open('', '_blank') queda
+     bloqueada o a medio construir, y el print() termina disparándose sobre la
+     página visible: el resultado era el formulario de Programación impreso en
+     veinticuatro hojas. El iframe no depende del bloqueador de ventanas
+     emergentes y el navegador imprime únicamente su contenido, así que la
+     interfaz de la aplicación queda fuera sin necesidad de reglas @media.
+
+     El iframe queda de 1px y transparente en vez de display:none, porque
+     varios navegadores se niegan a imprimir un marco oculto por completo. */
   function imprimir(ot) {
-    const w = window.open('', '_blank');
-    w.document.write(`<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
 <title>&nbsp;</title><style>${PAGE_CSS} html,body{margin:0;padding:0}</style>
-</head><body>${render(ot)}</body></html>`);
-    w.document.close();
-    w.focus();
-    setTimeout(() => w.print(), 400);
+</head><body>${render(ot)}</body></html>`;
+
+    const anterior = document.getElementById('fo016-marco-impresion');
+    if (anterior) anterior.remove();
+
+    const marco = document.createElement('iframe');
+    marco.id = 'fo016-marco-impresion';
+    marco.setAttribute('aria-hidden', 'true');
+    marco.setAttribute('tabindex', '-1');
+    marco.style.cssText =
+      'position:fixed;right:0;bottom:0;width:1px;height:1px;' +
+      'opacity:0;border:0;pointer-events:none;z-index:-1';
+    document.body.appendChild(marco);
+
+    let lanzado = false;
+    let limpieza = null;
+
+    /* El logo viaja como data-URL, pero el navegador igual lo decodifica de
+       forma asíncrona. Imprimir antes de que termine deja el encabezado en
+       blanco, así que se espera a las imágenes con un tope de tiempo. */
+    function esperarImagenes(doc) {
+      const imgs = Array.from(doc.images || []);
+      const faltan = imgs.filter(i => !i.complete);
+      if (!faltan.length) return Promise.resolve();
+      return Promise.race([
+        Promise.all(faltan.map(i => new Promise(ok => {
+          i.addEventListener('load', ok, { once: true });
+          i.addEventListener('error', ok, { once: true });
+        }))),
+        new Promise(ok => setTimeout(ok, 3000)),
+      ]);
+    }
+
+    function retirar() {
+      if (limpieza) { clearTimeout(limpieza); limpieza = null; }
+      const m = document.getElementById('fo016-marco-impresion');
+      if (m) m.remove();
+    }
+
+    function lanzar() {
+      if (lanzado) return;
+      lanzado = true;
+      const v = marco.contentWindow;
+      esperarImagenes(v.document).then(() => {
+        /* Retirar el iframe mientras el diálogo sigue abierto cancela la
+           impresión en Android. Se espera al evento y, si el navegador no lo
+           emite, a un tiempo largo. */
+        try { v.addEventListener('afterprint', () => setTimeout(retirar, 500), { once: true }); }
+        catch (_) {}
+        limpieza = setTimeout(retirar, 120000);
+        try {
+          v.focus();
+          v.print();
+        } catch (e) {
+          /* Último recurso: ventana nueva. Si el navegador también la bloquea
+             queda la exportación a Word, que no depende de la impresión. */
+          retirar();
+          const w = window.open('', '_blank');
+          if (!w) {
+            alert('El navegador bloqueó la impresión. Use "Descargar en Word" '
+                + 'o habilite las ventanas emergentes para este sitio.');
+            return;
+          }
+          w.document.write(html);
+          w.document.close();
+          w.focus();
+          setTimeout(() => w.print(), 400);
+        }
+      });
+    }
+
+    marco.addEventListener('load', lanzar, { once: true });
+
+    const doc = marco.contentWindow.document;
+    doc.open();
+    doc.write(html);
+    doc.close();
+
+    /* document.write no siempre dispara load en móviles: respaldo por tiempo. */
+    setTimeout(lanzar, 600);
   }
 
   /* --------------------------- exportación Word --------------------------- */
