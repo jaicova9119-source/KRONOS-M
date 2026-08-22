@@ -10913,62 +10913,76 @@ async function otImprimir() {
   const ok = await otGuardar({ silencioso: true });
   if (!ok) { toast("Corrige lo marcado antes de imprimir"); return; }
 
-  const doc = document.getElementById("ot-doc");
-  doc.innerHTML = otConstruirDocumento();
+  /* El documento se imprime desde un iframe propio y no desde esta página.
+     El enfoque anterior lo insertaba aquí y escondía la aplicación con
+     @media print; funciona en escritorio, pero en Chrome de Android la
+     interfaz salía impresa igual, en decenas de hojas.
 
-  const ancla = document.createComment("ot-doc");
-  doc.parentNode.insertBefore(ancla, doc);
-  const root = document.createElement("div");
-  root.id = "print-root";
-  root.appendChild(doc);
-  document.body.appendChild(root);
-  document.body.classList.add("imprimiendo");
-  otReglaPagina(true);
+     Funciona porque el FO-016 lleva todos sus estilos en línea: se construyó
+     así para que Word lo respete, y de paso lo vuelve autónomo. No necesita
+     nada del CSS de la aplicación, así que impreso por separado sale idéntico
+     y no hay nada que ocultar. */
+  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
+    + '<title>' + otEsc(otNombreArchivo()) + '</title>'
+    + '<style>' + FO016.PAGE_CSS + ' html,body{margin:0;padding:0}</style>'
+    + '</head><body>' + otConstruirDocumento() + '</body></html>';
 
-  /* Chrome y Edge proponen el titulo de la pagina como nombre del archivo al
-     "Guardar como PDF": sin esto todos los reportes salen llamados Kronos-M.
-     Se cambia solo mientras dura la impresion y se restaura despues. */
-  const tituloPrevio = document.title;
-  document.title = otNombreArchivo();
+  const previo = document.getElementById("ot-marco-impresion");
+  if (previo) previo.remove();
 
-  let restaurado = false;
-  const restaurar = () => {
-    if (restaurado) return;
-    restaurado = true;
-    document.title = tituloPrevio;
-    if (ancla.parentNode) ancla.parentNode.insertBefore(doc, ancla);
-    ancla.remove();
-    root.remove();
-    document.body.classList.remove("imprimiendo");
-    otReglaPagina(false);
-    window.removeEventListener("afterprint", restaurar);
+  /* 1px y transparente en vez de display:none: varios navegadores se niegan
+     a imprimir un marco oculto por completo. */
+  const marco = document.createElement("iframe");
+  marco.id = "ot-marco-impresion";
+  marco.setAttribute("aria-hidden", "true");
+  marco.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;"
+                      + "opacity:0;border:0;pointer-events:none;z-index:-1";
+  document.body.appendChild(marco);
+
+  let lanzado = false;
+  const retirar = () => {
+    const m = document.getElementById("ot-marco-impresion");
+    if (m) m.remove();
   };
-  window.addEventListener("afterprint", restaurar);
-  /* window.print() bloquea en escritorio hasta que se cierra el dialogo, pero
-     en Chrome de Android retorna de inmediato y el preview se arma despues.
-     Restaurar el DOM en ese instante retira #print-root y la clase
-     "imprimiendo" antes de que el navegador capture la pagina, y lo que sale
-     impreso es la aplicacion completa con el panel lateral y los botones.
-     Por eso ya no se restaura al vuelo: se espera al evento afterprint y,
-     para los navegadores moviles que no lo emiten, a que el usuario regrese
-     a la pestana. El respaldo por tiempo evita que la interfaz quede oculta
-     si no ocurre ninguna de las dos cosas. */
-  const finImpresion = () => {
-    clearTimeout(respaldoImpresion);
-    window.removeEventListener("focus", finImpresion);
-    document.removeEventListener("visibilitychange", alVolverDeImprimir);
-    restaurar();
+
+  const lanzar = () => {
+    if (lanzado) return;
+    lanzado = true;
+    const v = marco.contentWindow;
+
+    /* El logo va como data-URL pero el navegador lo decodifica aparte.
+       Imprimir antes deja el encabezado en blanco. */
+    const imgs = Array.from(v.document.images || []).filter(i => !i.complete);
+    const listas = imgs.length
+      ? Promise.race([
+          Promise.all(imgs.map(i => new Promise(ok => {
+            i.addEventListener("load", ok, { once: true });
+            i.addEventListener("error", ok, { once: true });
+          }))),
+          new Promise(ok => setTimeout(ok, 3000)),
+        ])
+      : Promise.resolve();
+
+    listas.then(() => {
+      try {
+        /* Retirar el marco con el diálogo abierto cancela la impresión en
+           Android: se espera al evento y, si no llega, a un tiempo largo. */
+        v.addEventListener("afterprint", () => setTimeout(retirar, 500), { once: true });
+        setTimeout(retirar, 120000);
+        v.focus();
+        v.print();
+      } catch (e) {
+        retirar();
+        toast("El navegador no permitió imprimir. Use Descargar en Word.");
+      }
+    });
   };
-  const alVolverDeImprimir = () => { if (!document.hidden) finImpresion(); };
-  const respaldoImpresion = setTimeout(finImpresion, 120000);
-  window.addEventListener("afterprint", finImpresion, { once: true });
-  /* La espera evita que el foco que devuelve el propio dialogo al abrirse
-     dispare la restauracion antes de tiempo. */
-  setTimeout(() => {
-    window.addEventListener("focus", finImpresion);
-    document.addEventListener("visibilitychange", alVolverDeImprimir);
-  }, 1500);
-  try { window.print(); } catch (e) { finImpresion(); }
+
+  marco.addEventListener("load", lanzar, { once: true });
+  const d = marco.contentWindow.document;
+  d.open(); d.write(html); d.close();
+  /* document.write no siempre dispara load en móviles: respaldo por tiempo. */
+  setTimeout(lanzar, 600);
 }
 
 const ASIS_MODULOS = {
