@@ -104,11 +104,26 @@
     <span class="punto" id="chip"><i></i><span id="chip-txt">En linea</span></span>
     <span id="espejo-info" style="opacity:.75"></span>
     <span class="pend oculto" id="pend" onclick="sincronizar()"></span>
+    <span class="pend oculto" id="sesion" onclick="cerrarSesion()"></span>
   </div>
 </header>
 
 <main>
-  <section id="paso-buscar">
+  <section id="paso-login" class="oculto">
+    <div class="unidad">
+      <h2 style="font-size:18px">Iniciar sesion</h2>
+      <div class="meta">Se necesita una vez con señal. Despues la app abre en campo sin conexion.</div>
+    </div>
+    <label for="lg-email">Correo</label>
+    <input id="lg-email" class="campo" type="email" inputmode="email"
+           autocapitalize="off" autocomplete="username">
+    <label for="lg-clave">Contraseña</label>
+    <input id="lg-clave" class="campo" type="password" autocomplete="current-password">
+    <div id="lg-msg"></div>
+    <button class="b pri ancho" id="lg-entrar" style="margin-top:16px">Entrar</button>
+  </section>
+
+  <section id="paso-buscar" class="oculto">
     <div id="aviso-inicio"></div>
     <label for="q">Buscar unidad por nombre, campo o pad</label>
     <input id="q" class="campo" type="search" placeholder="CYC-01, Put Norte, PAD CHB…" autocomplete="off">
@@ -121,6 +136,7 @@
       <div class="meta" id="u-meta"></div>
       <span class="chip" id="u-sistema"></span>
     </div>
+    <div id="estado-box"></div>
     <div id="msg"></div>
     <h3 class="sec">Equipos de la unidad</h3>
     <div id="equipos"></div>
@@ -202,6 +218,21 @@
   <button class="cerrar" data-cerrar>Cancelar</button>
 </div></dialog>
 
+<dialog id="hoja-estado"><div class="hoja">
+  <h4 id="est-titulo">Estado de monitoreo</h4>
+  <p class="sub" id="est-unidad"></p>
+  <div class="aviso" id="est-aviso"></div>
+  <div id="est-sacar">
+    <label for="e-motivo">Motivo</label>
+    <select id="e-motivo" class="campo"><option value="">Seleccionar…</option></select>
+    <label for="e-nota">Nota (opcional)</label>
+    <input id="e-nota" class="campo" placeholder="Detalle del caso" autocomplete="off">
+  </div>
+  <div id="est-msg"></div>
+  <button class="b pri ancho" id="est-guardar" style="margin-top:16px">Aplicar</button>
+  <button class="cerrar" data-cerrar>Cancelar</button>
+</div></dialog>
+
 <!-- Mismo CDN que precachea el service worker. No cambiar por otro:
      si la URL no coincide con la de LIBRERIAS, sin señal no carga. -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -212,10 +243,8 @@
 var SUPABASE_URL      = 'https://cxprmbnjnnldqyzaqsvf.supabase.co';
 var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4cHJtYm5qbm5sZHF5emFxc3ZmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQwNTA3OTQsImV4cCI6MjA5OTYyNjc5NH0.UVvo1JxPI0YBeDKyS2lv2egUNdEPu_sa3RX7Cnw5mrg';
 
-var sb = null;
-try { sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY); } catch(e){}
-
-/* Almacenamiento tolerante: algunos navegadores lo bloquean. */
+/* Almacenamiento tolerante: algunos navegadores lo bloquean.
+   Se define ANTES del cliente porque la sesion se guarda aqui. */
 var almacen = (function(){
   try { localStorage.setItem('__t','1'); localStorage.removeItem('__t'); return localStorage; }
   catch(e){
@@ -226,14 +255,145 @@ var almacen = (function(){
   }
 })();
 
-var CLAVE_COLA   = 'dp_pendientes';        /* la misma que usa index.html */
-var CLAVE_ESPEJO = 'dp_espejo_unidades';
+/* El lock por defecto usa navigator.locks y se cuelga indefinidamente
+   cuando la prevencion de rastreo bloquea el almacenamiento. Se anula,
+   igual que en index.html. */
+var sb = null;
+try {
+  sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    auth: {
+      storage: almacen,
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      lock: function(nombre, espera, fn){ return fn(); }
+    }
+  });
+} catch(e){}
+
+var CLAVE_COLA    = 'dp_pendientes';        /* la misma que usa index.html */
+var CLAVE_ESPEJO  = 'dp_espejo_unidades';
+var CLAVE_ADMIN   = 'dp_es_admin';          /* cache: sin señal no se puede consultar */
+var CLAVE_MOTIVOS = 'dp_motivos_exclusion';
 
 var $ = function(id){ return document.getElementById(id); };
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,
   function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function aviso(cont, texto, clase){
   cont.innerHTML = texto ? '<div class="aviso '+(clase||'')+'">'+esc(texto)+'</div>' : '';
+}
+
+/* ===================== SESION ========================================
+   Login obligatorio. La sesion queda guardada en el almacenamiento
+   local, asi que despues del primer ingreso con señal la app abre en
+   campo sin conexion. getSession() lee de disco y no llama a la red;
+   no usar getUser() para decidir si hay sesion, porque esa si consulta
+   al servidor y sin señal responde error.
+   ===================================================================== */
+var SESION = null, ES_ADMIN = false, MOTIVOS = [];
+
+function pintarSesion(){
+  var e = $('sesion');
+  if(SESION && SESION.user){
+    e.textContent = (SESION.user.email || 'sesion') + ' · salir';
+    e.classList.remove('oculto');
+  } else {
+    e.classList.add('oculto');
+  }
+}
+
+function mostrarLogin(texto, clase){
+  $('paso-login').classList.remove('oculto');
+  $('paso-buscar').classList.add('oculto');
+  $('paso-unidad').classList.add('oculto');
+  aviso($('lg-msg'), texto || '', clase || '');
+  pintarSesion();
+}
+
+function mostrarApp(){
+  $('paso-login').classList.add('oculto');
+  $('paso-buscar').classList.remove('oculto');
+  pintarSesion();
+  cargarPermisos();
+  arrancarDatos();
+  sincronizar();
+}
+
+function arrancarSesion(){
+  if(!sb){
+    mostrarLogin('No se pudo iniciar el cliente. Recarga la pagina.', 'err');
+    return;
+  }
+  sb.auth.getSession().then(function(r){
+    SESION = (r && r.data && r.data.session) || null;
+    if(SESION) mostrarApp();
+    else if(navigator.onLine) mostrarLogin('');
+    else mostrarLogin('Sin conexion y sin sesion guardada. Entra una vez con señal '
+                    + 'para poder usar la app en campo.', 'err');
+  }).catch(function(){
+    mostrarLogin('No se pudo leer la sesion guardada. Vuelve a entrar.', 'err');
+  });
+}
+
+$('lg-entrar').onclick = function(){
+  var b = this;
+  var correo = $('lg-email').value.trim(), clave = $('lg-clave').value;
+  if(!correo || !clave){ aviso($('lg-msg'), 'Faltan el correo o la contraseña.', 'err'); return; }
+  if(!navigator.onLine){
+    aviso($('lg-msg'), 'Sin conexion. El primer ingreso necesita señal.', 'err'); return;
+  }
+  b.disabled = true; b.textContent = 'Entrando…';
+  sb.auth.signInWithPassword({ email: correo, password: clave }).then(function(r){
+    b.disabled = false; b.textContent = 'Entrar';
+    if(r.error || !r.data || !r.data.session){
+      aviso($('lg-msg'), 'Correo o contraseña incorrectos.', 'err'); return;
+    }
+    SESION = r.data.session;
+    $('lg-clave').value = '';
+    mostrarApp();
+  }).catch(function(){
+    b.disabled = false; b.textContent = 'Entrar';
+    aviso($('lg-msg'), 'No se pudo entrar. Revisa la señal.', 'err');
+  });
+};
+
+/* No se cierra sesion con cambios sin enviar: la cola se sincroniza con
+   el token del usuario y perderla es perder trabajo de campo. */
+function cerrarSesion(){
+  var n = leerCola().length;
+  if(n){
+    var caja = $('paso-unidad').classList.contains('oculto') ? $('aviso-inicio') : $('msg');
+    aviso(caja, 'Hay ' + n + ' cambio(s) sin enviar. Sincroniza antes de cerrar sesion.', 'err');
+    sincronizar();
+    return;
+  }
+  if(!confirm('Cerrar sesion en este dispositivo?')) return;
+  sb.auth.signOut().catch(function(){}).then(function(){
+    SESION = null; ES_ADMIN = false;
+    almacen.removeItem(CLAVE_ADMIN);
+    mostrarLogin('Sesion cerrada.', '');
+  });
+}
+
+/* El permiso real lo verifica la base en cada RPC. Este cache es solo
+   para saber si se dibuja el control cuando no hay señal. */
+function cargarPermisos(){
+  try { ES_ADMIN = almacen.getItem(CLAVE_ADMIN) === '1'; } catch(e){}
+  try { MOTIVOS = JSON.parse(almacen.getItem(CLAVE_MOTIVOS) || '[]'); } catch(e){ MOTIVOS = []; }
+  if(!navigator.onLine || !sb) return;
+
+  sb.rpc('dp_es_admin').then(function(r){
+    if(r.error) return;
+    ES_ADMIN = (r.data === true);
+    almacen.setItem(CLAVE_ADMIN, ES_ADMIN ? '1' : '0');
+    if(unidad) pintarEstado();
+  }).catch(function(){});
+
+  sb.rpc('dp_motivos_exclusion').then(function(r){
+    if(r.error || !r.data) return;
+    MOTIVOS = r.data;
+    try { almacen.setItem(CLAVE_MOTIVOS, JSON.stringify(MOTIVOS)); } catch(e){}
+  }).catch(function(){});
 }
 
 /* ===================== COLA (compartida con index.html) ============== */
@@ -251,7 +411,7 @@ function pintarPendientes(){
 }
 function sincronizar(){
   var cola = leerCola();
-  if(!cola.length || !sb || !navigator.onLine) return;
+  if(!cola.length || !sb || !navigator.onLine || !SESION) return;
   (function paso(i, fallidos){
     if(i >= cola.length){
       guardarCola(fallidos);
@@ -273,9 +433,10 @@ function leerEspejo(){ try { return JSON.parse(almacen.getItem(CLAVE_ESPEJO)||'n
 function guardarEspejo(obj){ try { almacen.setItem(CLAVE_ESPEJO, JSON.stringify(obj)); } catch(e){} }
 
 function descargarEspejo(){
-  if(!navigator.onLine || !sb) return Promise.resolve(false);
+  if(!navigator.onLine || !sb || !SESION) return Promise.resolve(false);
   return sb.rpc('dp_snapshot_unidades').then(function(r){
-    if(r.error || !r.data) return false;
+    /* Una respuesta vacia no se guarda: borraria el espejo bueno. */
+    if(r.error || !r.data || !r.data.length) return false;
     guardarEspejo({ ts:new Date().toISOString(), unidades:r.data });
     pintarEspejo();
     return true;
@@ -355,7 +516,10 @@ function abrirUnidad(u){
   $('u-meta').textContent    = (u.campo||'—') + ' · ' + (u.pad||'—');
   $('u-sistema').textContent = u.sistema || 'SIN SISTEMA';
   aviso($('msg'), '');
+  ESTADO = null;
+  pintarEstado();                      /* dibujo inmediato con el espejo */
   pintarEquipos();
+  cargarEstado().then(pintarEstado);   /* refresco con el dato de la base */
   cargarPlaca().then(pintarEquipos);   /* repinta con el estado de placa */
 }
 
@@ -749,6 +913,110 @@ $('pl-guardar').onclick = function(ev){
     $('hoja-placa'), $('pl-msg'), ev.currentTarget, 'Guardar placa');
 };
 
+/* ===================== ESTADO DE MONITOREO ===========================
+   Un pozo fuera de monitoreo no entra al batch nocturno ni alimenta
+   calculos. Cambiarlo es decision de admin: la base lo verifica en el
+   RPC, aqui solo se decide si se dibuja el boton.
+   ===================================================================== */
+var ESTADO = null;
+
+function cargarEstado(){
+  ESTADO = null;
+  if(!navigator.onLine || !sb) return Promise.resolve();
+  return sb.rpc('dp_estado_pozo', { p: { pozo_id: unidad.id } }).then(function(r){
+    if(!r.error && r.data && r.data.ok) ESTADO = r.data;
+  }).catch(function(){});
+}
+
+function pintarEstado(){
+  var box = $('estado-box');
+  if(!box || !unidad) return;
+
+  /* Sin señal manda lo que traiga el espejo; con señal, el dato fresco. */
+  var activo = ESTADO ? !!ESTADO.activo : !!unidad.activo;
+  var motivo = ESTADO ? (ESTADO.motivo_desc || ESTADO.motivo_cod || '') : '';
+  var nota   = ESTADO ? (ESTADO.nota || '') : '';
+
+  var txt = activo
+    ? 'En monitoreo. Entra al batch nocturno.'
+    : 'Fuera de monitoreo' + (motivo ? ' \u00b7 ' + motivo : '')
+      + '. No se descargan datos ni se calculan indicadores.'
+      + (nota ? '<br><span style="opacity:.8">' + esc(nota) + '</span>' : '');
+
+  box.innerHTML = '<div class="aviso ' + (activo ? 'ok' : 'warn') + '">' + txt
+    + (ES_ADMIN
+        ? '<div style="margin-top:10px"><button class="b sec" id="btn-estado">'
+          + (activo ? 'Sacar del monitoreo' : 'Reactivar monitoreo') + '</button></div>'
+        : '')
+    + '</div>';
+
+  var b = $('btn-estado');
+  if(b) b.onclick = function(){ abrirEstado(activo); };
+}
+
+function abrirEstado(activoAhora){
+  $('est-unidad').textContent = unidad.nombre;
+  $('est-titulo').textContent = activoAhora ? 'Sacar del monitoreo' : 'Reactivar monitoreo';
+  $('est-guardar').textContent = activoAhora ? 'Sacar del monitoreo' : 'Reactivar monitoreo';
+  $('hoja-estado').setAttribute('data-activo', activoAhora ? '1' : '');
+  $('est-sacar').classList.toggle('oculto', !activoAhora);
+  aviso($('est-msg'), '');
+
+  if(activoAhora){
+    aviso($('est-aviso'), 'Deja de descargarse data y de calcularse condicion para esta '
+      + 'unidad hasta que se reactive. Queda registrado quien lo hizo y cuando.');
+    var sel = $('e-motivo');
+    sel.innerHTML = '<option value="">Seleccionar…</option>'
+      + MOTIVOS.map(function(m){
+          return '<option value="' + esc(m.codigo) + '">' + esc(m.descripcion) + '</option>';
+        }).join('');
+    $('e-nota').value = '';
+    if(!MOTIVOS.length){
+      aviso($('est-msg'), 'No hay catalogo de motivos descargado. Conectate una vez '
+        + 'para poder sacar unidades del monitoreo.', 'err');
+    }
+  } else {
+    /* Recordatorio, no bloqueo: en campo se reactiva primero. */
+    aviso($('est-aviso'), 'Si la unidad vuelve despues de una intervencion de fondo, '
+      + 'verifica que quede cerrada la corrida anterior, actualizados los datos de placa '
+      + 'del equipo nuevo y registrado el aislamiento de arranque. Si no, la condicion se '
+      + 'calcula contra la linea base del equipo que salio.');
+  }
+  $('hoja-estado').showModal();
+}
+
+$('est-guardar').onclick = function(ev){
+  var activoAhora = !!$('hoja-estado').getAttribute('data-activo');
+  var nuevo = !activoAhora;
+  var motivo = activoAhora ? $('e-motivo').value : null;
+  var nota   = activoAhora ? $('e-nota').value.trim() : '';
+
+  if(activoAhora && !motivo){
+    aviso($('est-msg'), 'Selecciona el motivo.', 'err'); return;
+  }
+
+  enviarOEncolar(
+    'dp_set_estado_pozo',
+    { pozo_id: unidad.id, activo: nuevo, motivo: motivo, nota: nota },
+    (nuevo ? 'Reactivar ' : 'Sacar de monitoreo ') + unidad.nombre,
+    function(pendiente, resp){
+      unidad.activo = nuevo;
+      ESTADO = {
+        ok: true, activo: nuevo,
+        motivo_cod:  nuevo ? null : motivo,
+        motivo_desc: nuevo ? null : (resp && resp.motivo_desc) || nombreMotivo(motivo),
+        nota:        nuevo ? null : (nota || null)
+      };
+    },
+    $('hoja-estado'), $('est-msg'), ev.currentTarget,
+    activoAhora ? 'Sacar del monitoreo' : 'Reactivar monitoreo');
+};
+
+function nombreMotivo(cod){
+  var m = MOTIVOS.filter(function(x){ return x.codigo === cod; })[0];
+  return m ? m.descripcion : cod;
+}
+
 /* ===================== ENVIAR O ENCOLAR ============================== */
 function enviarOEncolar(rpc, payload, etiqueta, aplicarLocal, hoja, cajaMsg, boton, textoBoton){
   boton.disabled = true; boton.textContent = 'Guardando…';
@@ -757,7 +1025,7 @@ function enviarOEncolar(rpc, payload, etiqueta, aplicarLocal, hoja, cajaMsg, bot
     aplicarLocal(pendiente, resp || null);
     reflejarEnEspejo();
     boton.disabled = false; boton.textContent = textoBoton;
-    hoja.close(); pintarEquipos();
+    hoja.close(); pintarEquipos(); pintarEstado();
     aviso($('msg'), texto, clase);
   }
 
@@ -857,7 +1125,9 @@ pintarConexion();
 pintarPendientes();
 pintarEspejo();
 
-(function(){
+/* Se llama solo cuando ya hay sesion: sin token, dp_snapshot_unidades
+   responde vacio y el espejo quedaria sobrescrito con nada. */
+function arrancarDatos(){
   var esp = leerEspejo();
   if(!esp){
     if(navigator.onLine){
@@ -873,9 +1143,9 @@ pintarEspejo();
   } else {
     descargarEspejo();  /* refresco silencioso en segundo plano */
   }
-})();
+}
 
-sincronizar();
+arrancarSesion();
 </script>
 </body>
 </html>
