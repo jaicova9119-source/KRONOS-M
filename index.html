@@ -483,6 +483,27 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 .mat-desc{font-size:14.5px;font-weight:500;margin:2px 0 3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .mat-meta{font-size:12.5px;color:var(--text-1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .mat-stock{font-size:11.5px;color:var(--text-2);margin-top:2px;font-family:var(--mono);}
+
+/* Propagacion de descripcion tecnica entre equipos de igual marca y modelo */
+.prop-box{
+  border:1px solid var(--warn);background:var(--warn-bg);
+  border-radius:8px;padding:10px 12px;margin-top:8px;font-size:12.5px;
+}
+.prop-box.neutral{border-color:var(--line);background:var(--bg-2);}
+.prop-titulo{font-weight:600;margin-bottom:6px;}
+.prop-opcion{display:flex;align-items:flex-start;gap:8px;margin-top:7px;line-height:1.35;}
+.prop-opcion input[type=radio]{margin-top:2px;flex-shrink:0;width:auto;}
+.prop-opcion label{font-size:12.5px;cursor:pointer;}
+.prop-opcion .prop-sub{display:block;color:var(--text-2);font-size:11.5px;}
+.prop-lista{
+  margin-top:8px;max-height:130px;overflow:auto;
+  font-family:var(--mono);font-size:11px;color:var(--text-2);
+}
+.prop-lista div{padding:1px 0;}
+.btn-mini{
+  background:var(--bg-2);border:1px solid var(--line);border-radius:6px;
+  padding:5px 10px;font-size:12px;cursor:pointer;margin-top:6px;
+}
 .mat-side{display:flex;flex-direction:column;align-items:flex-end;gap:5px;flex-shrink:0;}
 
 .estado-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 8px;flex-shrink:0;}
@@ -1032,6 +1053,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <textarea id="e-desctec" rows="3"
         placeholder="Ej. Motor eléctrico 200 HP, 460 V, 180 A, jaula de ardilla, 1780 rpm, marco 445T, IP55"></textarea>
       <div class="mat-stock">Campo propio de Kronos-M: no existe en SAP y no genera pendiente de actualización. Sirve para buscar por características.</div>
+      <div id="prop-box" class="prop-box" style="display:none"></div>
     </div>
     <div class="field">
       <label>Tipo</label>
@@ -3111,11 +3133,26 @@ async function ejecutarOperacion(tipo, payload) {
     const { data: eq } = await sb.from("equipos").select("id").eq("id_interno", payload.equipo.id_interno).single();
     if (eq) await sb.from("solicitudes_alta").insert({ equipo_id: eq.id, estado_solicitud: "pendiente" });
   } else if (tipo === "editar_datos") {
-    const { error: e1 } = await sb.from("equipos").update(payload.cambios).eq("id", payload.equipoId);
-    if (e1) throw e1;
+    if (payload.cambios && Object.keys(payload.cambios).length) {
+      const { error: e1 } = await sb.from("equipos").update(payload.cambios).eq("id", payload.equipoId);
+      if (e1) throw e1;
+    }
     if (payload.registrosPendientes && payload.registrosPendientes.length) {
       const { error: e2 } = await sb.from("campos_pendientes").insert(payload.registrosPendientes);
       if (e2) throw e2;
+    }
+    /* Propagacion a los equipos de igual marca y modelo. En lotes porque
+       PostgREST manda los ids en la cadena de consulta y con 200 UUID el
+       servidor rechaza la peticion por longitud de URL. */
+    if (payload.propagacion && payload.propagacion.ids && payload.propagacion.ids.length) {
+      const ids = payload.propagacion.ids;
+      for (let i = 0; i < ids.length; i += 80) {
+        const lote = ids.slice(i, i + 80);
+        const { error: e3 } = await sb.from("equipos")
+          .update({ descripcion_tecnica: payload.propagacion.descripcion_tecnica })
+          .in("id", lote);
+        if (e3) throw e3;
+      }
     }
   }
 }
@@ -3139,6 +3176,193 @@ async function intentarOEncolar(tipo, payload, aplicarLocal) {
 setInterval(() => { if (navigator.onLine) sincronizarColaOffline(); }, 30000);
 
 /* ============================================================
+   PROPAGACION DE LA DESCRIPCION TECNICA POR MARCA + MODELO
+
+   La descripcion tecnica describe la MAQUINA (placa caracteristica), no el
+   activo individual: dos variadores Baker Hughes 8900-4-GCS-12FPWM tienen
+   exactamente la misma placa. Escribirla equipo por equipo en 6, 12 o 40
+   unidades identicas no solo es trabajo repetido: garantiza que con el
+   tiempo queden versiones distintas del mismo texto y que corregir una
+   errata obligue a recordar en cuantos sitios se escribio.
+
+   Reglas de diseno, y el porque de cada una:
+
+   · Exige marca Y modelo. Propagar solo por marca alcanzaria a cientos de
+     equipos sin relacion (todos los "WEG" del maestro). El modelo es lo
+     que identifica la maquina.
+   · Compara normalizando mayusculas y espacios. Sin eso "Baker Hughes",
+     "BAKER HUGHES" y "Baker  Hughes" serian tres familias distintas y la
+     propagacion no encontraria a los hermanos reales.
+   · Nunca actua en silencio. Muestra a cuantos equipos alcanza y separa
+     los que estan vacios de los que ya tienen un texto distinto, porque
+     sobrescribir un texto que alguien redacto a proposito no es lo mismo
+     que llenar un campo en blanco.
+   · Por defecto no propaga. La opcion se elige cada vez.
+   ============================================================ */
+
+const propNorm = s => String(s == null ? "" : s)
+  .trim().toUpperCase().replace(/\s+/g, " ");
+
+let propHermanosCache = null;
+
+/* Clasifica los equipos que comparten marca y modelo con el que se edita.
+   Devuelve null cuando no hay familia identificable. */
+function propCalcularHermanos(marca, modelo, excluirId) {
+  const m = propNorm(marca), mo = propNorm(modelo);
+  if (!m || !mo) return null;
+
+  const hermanos = equipos.filter(e =>
+    e.id !== excluirId && propNorm(e.marca) === m && propNorm(e.modelo) === mo
+  );
+  if (!hermanos.length) return null;
+
+  return {
+    marca: marca.trim(),
+    modelo: modelo.trim(),
+    todos: hermanos,
+    vacios: hermanos.filter(e => !String(e.descripcion_tecnica || "").trim()),
+    conTexto: hermanos.filter(e => String(e.descripcion_tecnica || "").trim()),
+  };
+}
+
+/* Texto mas frecuente entre los hermanos que ya tienen descripcion.
+   Sirve para ofrecer "usar la que ya existe" en vez de volver a teclearla. */
+function propTextoDominante(hermanos) {
+  const conteo = new Map();
+  hermanos.conTexto.forEach(e => {
+    const t = String(e.descripcion_tecnica).trim();
+    conteo.set(t, (conteo.get(t) || 0) + 1);
+  });
+  let mejor = null, mejorN = 0;
+  conteo.forEach((n, t) => { if (n > mejorN) { mejor = t; mejorN = n; } });
+  return mejor ? { texto: mejor, n: mejorN, variantes: conteo.size } : null;
+}
+
+function propRender() {
+  const box = document.getElementById("prop-box");
+  if (!equipoSeleccionado) { box.style.display = "none"; return; }
+
+  const marca  = document.getElementById("e-marca").value;
+  const modelo = document.getElementById("e-modelo").value;
+  const texto  = document.getElementById("e-desctec").value.trim();
+
+  const h = propCalcularHermanos(marca, modelo, equipoSeleccionado.id);
+  propHermanosCache = h;
+
+  if (!h) {
+    box.style.display = "none";
+    return;
+  }
+
+  /* Campo vacio: en vez de proponer propagar la nada, se ofrece heredar lo
+     que los hermanos ya tienen escrito. */
+  if (!texto) {
+    const dom = propTextoDominante(h);
+    if (!dom) { box.style.display = "none"; return; }
+    box.className = "prop-box neutral";
+    box.style.display = "";
+    box.innerHTML =
+      '<div class="prop-titulo">Hay ' + h.todos.length + ' equipo' +
+        (h.todos.length === 1 ? "" : "s") + ' más con esta marca y modelo</div>' +
+      '<div style="color:var(--text-2)">' + h.marca + " · " + h.modelo + '</div>' +
+      (dom.variantes > 1
+        ? '<div class="mat-stock" style="margin-top:6px">Atención: entre ellos hay ' +
+          dom.variantes + ' redacciones distintas. La que se ofrece es la más usada (' +
+          dom.n + ').</div>'
+        : "") +
+      '<div class="prop-lista" style="white-space:pre-wrap">' + escaparHtml(dom.texto) + '</div>' +
+      '<button type="button" class="btn-mini" onclick="propUsarTextoHermanos()">Usar esta descripción</button>';
+    return;
+  }
+
+  /* Hay texto escrito: se ofrece llevarlo al resto de la familia. */
+  const distintos = h.conTexto.filter(e =>
+    String(e.descripcion_tecnica).trim() !== texto
+  );
+  const nVacios = h.vacios.length, nDistintos = distintos.length;
+
+  if (!nVacios && !nDistintos) {
+    box.className = "prop-box neutral";
+    box.style.display = "";
+    box.innerHTML =
+      '<div class="prop-titulo">Los ' + h.todos.length + ' equipos con ' +
+      h.marca + " · " + h.modelo + ' ya tienen esta misma descripción.</div>';
+    return;
+  }
+
+  const previa = h.todos.slice(0, 12).map(e =>
+    "<div>" + escaparHtml(e.codigo_sap || e.id_interno || "—") + " · " +
+    escaparHtml(String(e.descripcion || "").slice(0, 46)) + "</div>"
+  ).join("") + (h.todos.length > 12
+    ? '<div>… y ' + (h.todos.length - 12) + ' más</div>' : "");
+
+  box.className = "prop-box";
+  box.style.display = "";
+  box.innerHTML =
+    '<div class="prop-titulo">Aplicar también a los equipos iguales</div>' +
+    '<div style="color:var(--text-2)">' + escaparHtml(h.marca) + " · " +
+      escaparHtml(h.modelo) + " — " + h.todos.length + " equipo" +
+      (h.todos.length === 1 ? "" : "s") + '</div>' +
+
+    '<div class="prop-opcion">' +
+      '<input type="radio" name="prop-alcance" id="prop-no" value="ninguno" checked>' +
+      '<label for="prop-no">Solo este equipo' +
+        '<span class="prop-sub">No toca a los demás.</span></label></div>' +
+
+    (nVacios
+      ? '<div class="prop-opcion">' +
+        '<input type="radio" name="prop-alcance" id="prop-vacios" value="vacios">' +
+        '<label for="prop-vacios">Llenar los ' + nVacios + ' que están sin descripción' +
+          '<span class="prop-sub">No sobrescribe nada que ya esté escrito.</span></label></div>'
+      : "") +
+
+    (nDistintos
+      ? '<div class="prop-opcion">' +
+        '<input type="radio" name="prop-alcance" id="prop-todos" value="todos">' +
+        '<label for="prop-todos">Unificar los ' + h.todos.length + ' equipos' +
+          '<span class="prop-sub">Sobrescribe ' + nDistintos +
+          ' que hoy tienen un texto distinto. Es la opción para corregir una errata.</span>' +
+        '</label></div>'
+      : "") +
+
+    '<div class="prop-lista">' + previa + '</div>';
+}
+
+function propUsarTextoHermanos() {
+  if (!propHermanosCache) return;
+  const dom = propTextoDominante(propHermanosCache);
+  if (!dom) return;
+  document.getElementById("e-desctec").value = dom.texto;
+  propRender();
+}
+
+/* Ids a los que se llevara el texto, segun la opcion elegida. */
+function propIdsDestino(textoActual) {
+  const h = propHermanosCache;
+  if (!h) return [];
+  const sel = document.querySelector('input[name="prop-alcance"]:checked');
+  const alcance = sel ? sel.value : "ninguno";
+  if (alcance === "vacios") return h.vacios.map(e => e.id);
+  if (alcance === "todos") {
+    return h.todos
+      .filter(e => String(e.descripcion_tecnica || "").trim() !== textoActual)
+      .map(e => e.id);
+  }
+  return [];
+}
+
+function escaparHtml(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+["e-marca", "e-modelo", "e-desctec"].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener("input", propRender);
+});
+
+/* ============================================================
    REGISTRAR CAMBIO
    ============================================================ */
 document.getElementById("btn-editar-datos").onclick = () => {
@@ -3150,6 +3374,7 @@ document.getElementById("btn-editar-datos").onclick = () => {
   document.getElementById("e-serie").value = equipoSeleccionado.numero_serie || "";
   document.getElementById("e-ubicaciontecnica").value = equipoSeleccionado.ubicacion_tecnica_sap || "";
   document.getElementById("e-desctec").value = equipoSeleccionado.descripcion_tecnica || "";
+  propRender();
   abrirPanel("panel-editar");
 };
 
@@ -3196,7 +3421,13 @@ document.getElementById("btn-guardar-editar").onclick = async () => {
     }
   });
 
-  if (!Object.keys(cambios).length) {
+  /* La propagacion se resuelve aqui y no dentro del bucle de cambios porque
+     es independiente de si la descripcion tecnica de ESTE equipo cambio:
+     puede estar ya correcta y lo que falta es llevarla a los hermanos. */
+  const textoTecnico = nuevos.descripcion_tecnica || "";
+  const idsPropagar = textoTecnico ? propIdsDestino(textoTecnico) : [];
+
+  if (!Object.keys(cambios).length && !idsPropagar.length) {
     toast("No hay cambios para guardar");
     btn.disabled = false; btn.textContent = "Guardar datos";
     return;
@@ -3209,17 +3440,40 @@ document.getElementById("btn-guardar-editar").onclick = async () => {
     }
     const guardadoDirecto = await intentarOEncolar(
       "editar_datos",
-      { cambios, registrosPendientes, equipoId: equipoSeleccionado.id },
+      {
+        cambios,
+        registrosPendientes,
+        equipoId: equipoSeleccionado.id,
+        propagacion: idsPropagar.length
+          ? { ids: idsPropagar, descripcion_tecnica: textoTecnico }
+          : null,
+      },
       () => {
         Object.assign(equipoSeleccionado, cambios);
         const idx = equipos.findIndex(e => e.id === equipoSeleccionado.id);
         if (idx >= 0) Object.assign(equipos[idx], cambios);
         // Sin esto la busqueda seguiria encontrando el equipo por su dato viejo
         _buscables.delete(equipoSeleccionado.id);
+
+        /* El espejo local tambien tiene que reflejar la propagacion, o al
+           volver a la lista los hermanos seguirian mostrando el texto viejo
+           hasta la siguiente recarga completa. */
+        if (idsPropagar.length) {
+          const set = new Set(idsPropagar);
+          equipos.forEach(e => {
+            if (set.has(e.id)) {
+              e.descripcion_tecnica = textoTecnico;
+              _buscables.delete(e.id);
+            }
+          });
+        }
         localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
       }
     );
-    toast(guardadoDirecto ? "Datos actualizados" : "Sin conexión: guardado en el dispositivo, se sincronizará solo");
+    toast(
+      (guardadoDirecto ? "Datos actualizados" : "Sin conexión: guardado en el dispositivo, se sincronizará solo") +
+      (idsPropagar.length ? " · " + idsPropagar.length + " equipos iguales actualizados" : "")
+    );
     cerrarPanel("panel-editar");
     cerrarPanel("panel-ficha");
     if (guardadoDirecto) await cargarEquipos(); else renderLista();
