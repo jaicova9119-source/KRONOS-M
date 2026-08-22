@@ -726,7 +726,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM y UBH
-      &middot; <span id="dp-build">v13</span>
+      &middot; <span id="dp-build">v14</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -1137,10 +1137,54 @@ function medGruposDesdeCatalogo(catalogo){
 
 function poblarSelects(){
   var idsSelect = ['med-pozo-select','evt-pozo','setup-pozo-select','ais-pozo'];
+
+  /* Orden de los grupos. Lo que no este aqui va despues, alfabetico,
+     y los activos sin sistema conocido quedan de ultimo. */
+  var ORDEN_SISTEMA = ['BES','HPUM','UBH'];
+
+  function agrupar(listaPozos){
+    var grupos = {}, conSistema = 0;
+    listaPozos.forEach(function(p){
+      var s = MED_SISTEMA_POR_ACTIVO[p] || '';
+      if (s) conSistema++;
+      var k = s || '__SIN__';
+      (grupos[k] = grupos[k] || []).push(p);
+    });
+    /* Sin ningun sistema conocido no tiene sentido agrupar: pasa con la
+       lista fija de respaldo, antes de que llegue dp_pozos_lista. */
+    if (!conSistema) return null;
+
+    var claves = Object.keys(grupos).sort(function(a,b){
+      if (a === '__SIN__') return 1;
+      if (b === '__SIN__') return -1;
+      var ia = ORDEN_SISTEMA.indexOf(a), ib = ORDEN_SISTEMA.indexOf(b);
+      if (ia < 0) ia = 99; if (ib < 0) ib = 99;
+      return ia !== ib ? ia - ib : a.localeCompare(b);
+    });
+    return claves.map(function(k){
+      return { titulo: k === '__SIN__' ? 'Sin sistema definido' : k,
+               pozos:  grupos[k].slice().sort() };
+    });
+  }
+
   function llenar(listaPozos){
+    var grupos = agrupar(listaPozos);
+    var cuerpo = grupos
+      ? grupos.map(function(g){
+          return '<optgroup label="' + g.titulo + '">'
+               + g.pozos.map(function(p){ return '<option>' + p + '</option>'; }).join('')
+               + '</optgroup>';
+        }).join('')
+      : listaPozos.map(function(p){ return '<option>' + p + '</option>'; }).join('');
+
     idsSelect.forEach(function(id){
       var sel = document.getElementById(id);
-      sel.innerHTML = '<option value="">Selecciona...</option>' + listaPozos.map(function(p){ return '<option>' + p + '</option>'; }).join('');
+      if(!sel) return;
+      /* La lista se repinta hasta tres veces (respaldo, cache, red).
+         Sin esto, la seleccion del tecnico se pierde a mitad de camino. */
+      var elegido = sel.value;
+      sel.innerHTML = '<option value="">Selecciona...</option>' + cuerpo;
+      if (elegido) sel.value = elegido;
     });
     var datalist = document.getElementById('lista-pozos-existentes');
     if(datalist) datalist.innerHTML = listaPozos.map(function(p){ return '<option value="' + p + '">'; }).join('');
@@ -1154,19 +1198,22 @@ function poblarSelects(){
     try { localStorage.setItem('dp_sistemas_cache', JSON.stringify(MED_SISTEMA_POR_ACTIVO)); } catch(e){}
   }
 
-  llenar(POZOS); // respaldo inmediato mientras llega el real
-  sb.rpc('dp_pozos_lista').then(function(r){
-    if (r.error || !r.data || !r.data.length) return;
-    var nombres = r.data.map(function(x){ return x.nombre; });
-    llenar(nombres);
-    guardarSistemas(r.data);
-    try { localStorage.setItem('dp_pozos_cache', JSON.stringify(nombres)); } catch(e){}
-  }).catch(function(){});
-
+  /* El mapa de sistemas se lee antes que nada: sin el, la primera
+     pintada saldria sin agrupar. */
   try {
     var sc = JSON.parse(localStorage.getItem('dp_sistemas_cache') || 'null');
     if (sc) MED_SISTEMA_POR_ACTIVO = sc;
   } catch(e){}
+
+  llenar(POZOS); // respaldo inmediato mientras llega el real
+  sb.rpc('dp_pozos_lista').then(function(r){
+    if (r.error || !r.data || !r.data.length) return;
+    var nombres = r.data.map(function(x){ return x.nombre; });
+    guardarSistemas(r.data);   /* primero el sistema, o se pinta sin agrupar */
+    llenar(nombres);
+    try { localStorage.setItem('dp_pozos_cache', JSON.stringify(nombres)); } catch(e){}
+  }).catch(function(){});
+
   /* En campo puede no haber senal al abrir. Se usa el ultimo listado
      conocido en lugar de la lista fija de 13 pozos del codigo. */
   try {
