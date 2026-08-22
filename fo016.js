@@ -598,17 +598,17 @@ ${tbN(W.total, W.rext)}
        corre el resto de la hoja. Por eso lo que ocupa el nombre del líder se
        descuenta del espacio que lo antecede, y lo que ocupan los nombres de
        apoyo, del espacio que sigue. Así la paginación no se mueve. */
-    const ALTO_LINEA = 0.36;                       // cm por renglón a 8.5pt
+    const ALTO_LINEA = 0.42;                       // cm por renglón a 10pt
     const arriba = Math.max(0, 2.40 - (lider ? ALTO_LINEA : 0));
     const abajo  = Math.max(0.60, 2.35 - apoyo.length * ALTO_LINEA);
 
     const celdaLider = lider
-      ? `<div style="${ARIAL};font-size:8.5pt;padding:0 0 1px 6px;` +
+      ? `<div style="${ARIAL};font-size:10pt;padding:0 0 1px 6px;` +
         `white-space:nowrap;overflow:hidden">${esc(lider)}</div>`
       : '';
 
     const celdaApoyo = apoyo.length
-      ? apoyo.map(x => `<div style="${ARIAL};font-size:8.5pt;font-weight:normal;` +
+      ? apoyo.map(x => `<div style="${ARIAL};font-size:10pt;font-weight:normal;` +
                        `padding:1px 0 0 6px">${esc(x)}</div>`).join('')
       : '';
 
