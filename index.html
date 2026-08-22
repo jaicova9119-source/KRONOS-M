@@ -2032,6 +2032,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <input type="checkbox" id="ot-rec-equipo" style="width:auto"/> Equipo en orden y aseo</label>
     <div class="field"><label>Observaciones de la entrega</label>
       <textarea id="ot-rec-obs" rows="3"></textarea></div>
+    <div class="field"><label>Nombre de quien recibe</label>
+      <input id="ot-rec-nombre" placeholder="Ej. Yonatan Perea"/></div>
+    <div class="field"><label>&#193;rea de quien recibe</label>
+      <input id="ot-rec-area-txt" placeholder="Ej. Operaciones"/></div>
 
     <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()">Guardar</button>
     <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir o guardar como PDF</button>
@@ -10233,6 +10237,8 @@ function otRender() {
   document.getElementById("ot-rec-area").checked = o.recepcion_area !== false;
   document.getElementById("ot-rec-equipo").checked = o.recepcion_equipo !== false;
   document.getElementById("ot-rec-obs").value = o.recepcion_observaciones || OT_ENTREGA;
+  document.getElementById("ot-rec-nombre").value = o.recepcion_nombre || "";
+  document.getElementById("ot-rec-area-txt").value = o.recepcion_area_texto || "";
 
   document.getElementById("ot-ejecutores").value = o.ejecutores || a.personal || "";
   document.getElementById("ot-ejec-blanco").checked = !!o.ejecutores_en_blanco;
@@ -10653,6 +10659,8 @@ async function otGuardar(opciones) {
       recepcion_area: document.getElementById("ot-rec-area").checked,
       recepcion_equipo: document.getElementById("ot-rec-equipo").checked,
       recepcion_observaciones: otVal("ot-rec-obs"),
+      recepcion_nombre: otVal("ot-rec-nombre"),
+      recepcion_area_texto: otVal("ot-rec-area-txt"),
     },
   });
 
@@ -10794,6 +10802,12 @@ function otMapear() {
       area:          o.recepcion_area !== false,
       equipo:        o.recepcion_equipo !== false,
       observaciones: o.recepcion_observaciones || "",
+      /* Nombre y área de quien recibe. Se leen del formulario para que valgan
+         aunque se ajusten justo antes de imprimir sin guardar. */
+      nombre_recibe: (document.getElementById("ot-rec-nombre")?.value || "").trim()
+                     || o.recepcion_nombre || "",
+      area_recibe:   (document.getElementById("ot-rec-area-txt")?.value || "").trim()
+                     || o.recepcion_area_texto || "",
     },
   };
 }

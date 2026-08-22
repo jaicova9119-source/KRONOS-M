@@ -514,6 +514,17 @@ ${tbN(W.total, W.estad)}
 
   function recepcion(ot) {
     const r  = ot.recepcion || {};
+
+    /* Nombre y área de quien recibe. Van sobre su raya, igual que el líder en
+       el bloque de firmas. La firma queda siempre en blanco: es la rúbrica
+       manuscrita de quien recibe en campo.
+       Lo que ocupa el renglón se descuenta del espacio que lo antecede para
+       no correr la paginación. */
+    const recTexto = v => v
+      ? `<div style="${ARIAL};font-size:10pt;padding:0 0 1px 4px;` +
+        `white-space:nowrap;overflow:hidden">${esc(v)}</div>`
+      : '';
+    const recAlto = (r.nombre_recibe || r.area_recibe) ? 0.72 : 1.14;
     const mr = `border:none;text-align:right;vertical-align:middle;${MONO};font-size:10pt;padding-right:0.18cm`;
     const vb = 'border:none;padding:0 0 2px;vertical-align:bottom';
     const preg = (txt, v) => `<tr>
@@ -547,8 +558,14 @@ ${tbN(W.rint, [3.55, 12.85])}
 ${tbN(W.rint, [0.51, 15.89])}
 ${obs.slice(1).map(l => lineaObs(escT(l))).join('')}
 </table>
-${SPACER(1.14)}
+${SPACER(recAlto)}
 ${tbN(W.rint, W.nfa)}
+  <tr><td style="border:none"></td>
+      <td style="border:none;padding:0;vertical-align:bottom">${recTexto(r.nombre_recibe)}</td>
+      <td style="border:none"></td><td style="border:none;padding:0"></td>
+      <td style="border:none"></td>
+      <td style="border:none;padding:0;vertical-align:bottom">${recTexto(r.area_recibe)}</td>
+      <td style="border:none"></td></tr>
   <tr><td style="border:none"></td><td style="border:none;padding:0">${raya(W.nfa[1])}</td>
       <td style="border:none"></td><td style="border:none;padding:0">${raya(W.nfa[3])}</td>
       <td style="border:none"></td><td style="border:none;padding:0">${raya(W.nfa[5])}</td>
