@@ -2005,11 +2005,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
     <div class="section-label" style="margin-top:18px">TIEMPOS DE PARADA E INTERVENCI&#211;N</div>
     <div class="field"><label>Inicio de parada</label>
-      <input id="ot-fi-parada" type="date"/><input id="ot-hi-parada" type="time" style="margin-top:6px"/></div>
+      <input id="ot-fi-parada" type="date"/><input id="ot-hi-parada" type="time" lang="en-GB" style="margin-top:6px"/></div>
     <div class="field"><label>Inicio de intervenci&#243;n</label>
-      <input id="ot-fi-interv" type="date"/><input id="ot-hi-interv" type="time" style="margin-top:6px"/></div>
+      <input id="ot-fi-interv" type="date"/><input id="ot-hi-interv" type="time" lang="en-GB" style="margin-top:6px"/></div>
     <div class="field"><label>Fin de parada</label>
-      <input id="ot-ff-parada" type="date"/><input id="ot-hf-parada" type="time" style="margin-top:6px"/></div>
+      <input id="ot-ff-parada" type="date"/><input id="ot-hf-parada" type="time" lang="en-GB" style="margin-top:6px"/></div>
 
     <div class="field"><label>Estado de la orden</label>
       <select id="ot-estado-orden"><option>EN PROCESO</option><option>FINALIZADA</option></select>
@@ -10390,8 +10390,8 @@ function otRenderOperaciones() {
     '<div class="field" style="border-left:3px solid var(--line);padding-left:10px">' +
     '<input value="' + otEsc(op.descripcion) + '" oninput="otOpCampo(' + i + ',\'descripcion\',this.value)" placeholder="Descripción de la operación"/>' +
     '<div style="display:flex;gap:6px;margin-top:6px">' +
-      '<input type="time" value="' + (op.hora_inicio || "") + '" oninput="otOpCampo(' + i + ',\'hora_inicio\',this.value)" style="flex:1"/>' +
-      '<input type="time" value="' + (op.hora_final || "") + '" oninput="otOpCampo(' + i + ',\'hora_final\',this.value)" style="flex:1"/>' +
+      '<input type="time" lang="en-GB" value="' + (op.hora_inicio || "") + '" oninput="otOpCampo(' + i + ',\'hora_inicio\',this.value)" style="flex:1"/>' +
+      '<input type="time" lang="en-GB" value="' + (op.hora_final || "") + '" oninput="otOpCampo(' + i + ',\'hora_final\',this.value)" style="flex:1"/>' +
     "</div>" +
     '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
       '<input type="number" min="1" step="1" id="ot-cant-' + i + '" value="' + (op.cantidad != null ? op.cantidad : "") + '" ' +
