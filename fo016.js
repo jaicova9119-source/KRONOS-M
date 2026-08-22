@@ -516,15 +516,29 @@ ${tbN(W.total, W.estad)}
     const r  = ot.recepcion || {};
 
     /* Nombre y área de quien recibe. Van sobre su raya, igual que el líder en
-       el bloque de firmas. La firma queda siempre en blanco: es la rúbrica
-       manuscrita de quien recibe en campo.
+       el bloque de firmas.
+       La firma manuscrita capturada en pantalla, si existe, ocupa la columna
+       del medio. Se recorta contra un alto fijo para que no descuadre la hoja
+       por más grande que venga la imagen.
        Lo que ocupa el renglón se descuenta del espacio que lo antecede para
        no correr la paginación. */
     const recTexto = v => v
       ? `<div style="${ARIAL};font-size:10pt;padding:0 0 1px 4px;` +
         `white-space:nowrap;overflow:hidden">${esc(v)}</div>`
       : '';
-    const recAlto = (r.nombre_recibe || r.area_recibe) ? 0.72 : 1.14;
+
+    const FIRMA_ALTO = 1.05;                       // cm
+    const recFirma = r.firma
+      ? `<div style="height:${FIRMA_ALTO}cm;text-align:center;overflow:hidden">` +
+        `<img src="${r.firma}" alt="" ` +
+        `style="max-height:${FIRMA_ALTO}cm;max-width:${W.nfa[3] - 0.2}cm;` +
+        `width:auto;height:auto;display:inline-block"></div>`
+      : '';
+
+    /* El alto del renglón lo fija el elemento más alto que lleve. */
+    const recBloque = r.firma ? FIRMA_ALTO
+                     : ((r.nombre_recibe || r.area_recibe) ? 0.42 : 0);
+    const recAlto = Math.max(0.10, 1.14 - recBloque);
     const mr = `border:none;text-align:right;vertical-align:middle;${MONO};font-size:10pt;padding-right:0.18cm`;
     const vb = 'border:none;padding:0 0 2px;vertical-align:bottom';
     const preg = (txt, v) => `<tr>
@@ -562,7 +576,8 @@ ${SPACER(recAlto)}
 ${tbN(W.rint, W.nfa)}
   <tr><td style="border:none"></td>
       <td style="border:none;padding:0;vertical-align:bottom">${recTexto(r.nombre_recibe)}</td>
-      <td style="border:none"></td><td style="border:none;padding:0"></td>
+      <td style="border:none"></td>
+      <td style="border:none;padding:0;vertical-align:bottom">${recFirma}</td>
       <td style="border:none"></td>
       <td style="border:none;padding:0;vertical-align:bottom">${recTexto(r.area_recibe)}</td>
       <td style="border:none"></td></tr>

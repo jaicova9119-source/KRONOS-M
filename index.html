@@ -2034,6 +2034,13 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <input id="ot-rec-nombre" placeholder="Ej. Yonatan Perea"/></div>
     <div class="field"><label>&#193;rea de quien recibe</label>
       <input id="ot-rec-area-txt" placeholder="Ej. Operaciones"/></div>
+    <div class="field"><label>Firma de quien recibe</label>
+      <div id="ot-firma-vista" style="margin-bottom:6px"></div>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn-secondary" style="flex:1" onclick="firmaAbrir()">Firmar en pantalla</button>
+        <button type="button" class="btn-secondary" id="ot-firma-borrar" style="flex:0 0 auto;display:none" onclick="firmaQuitar()">Quitar</button>
+      </div>
+    </div>
 
     <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()">Guardar</button>
     <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir o guardar como PDF</button>
@@ -10272,6 +10279,8 @@ function otRender() {
   document.getElementById("ot-rec-obs").value = o.recepcion_observaciones || OT_ENTREGA;
   document.getElementById("ot-rec-nombre").value = o.recepcion_nombre || "";
   document.getElementById("ot-rec-area-txt").value = o.recepcion_area_texto || "";
+  otFirmaDato = o.recepcion_firma || "";
+  firmaPintarVista();
 
   document.getElementById("ot-ejecutores").value = o.ejecutores || a.personal || "";
   document.getElementById("ot-ejec-blanco").checked = !!o.ejecutores_en_blanco;
@@ -10748,6 +10757,7 @@ async function otGuardar(opciones) {
       recepcion_observaciones: otVal("ot-rec-obs"),
       recepcion_nombre: otVal("ot-rec-nombre"),
       recepcion_area_texto: otVal("ot-rec-area-txt"),
+      recepcion_firma: otFirmaDato || null,
     },
   });
 
@@ -10895,6 +10905,9 @@ function otMapear() {
                      || o.recepcion_nombre || "",
       area_recibe:   (document.getElementById("ot-rec-area-txt")?.value || "").trim()
                      || o.recepcion_area_texto || "",
+      /* La firma se toma del estado en memoria: es lo que el operador
+         acaba de trazar, aunque todavía no se haya guardado. */
+      firma:         otFirmaDato || o.recepcion_firma || "",
     },
   };
 }
@@ -11476,7 +11489,195 @@ async function dpGuardar() {
     dpResponder(false, { error: err.message || String(err) });
   }
 }
+/* =====================================================================
+   Firma en pantalla
+   =====================================================================
+   El operador que recibe el trabajo está presente en campo: se le pasa el
+   celular y firma con el dedo. Eso evita imprimir la orden solo para una
+   rúbrica.
 
+   La firma se guarda como PNG recortado al trazo. El recorte importa: sin
+   él la imagen arrastra el lienzo completo en blanco y en el documento la
+   firma sale diminuta en una esquina.
+
+   El lienzo se abre a pantalla completa y en horizontal, porque una firma
+   hecha en un recuadro pequeño sale deforme. */
+
+let firmaCtx = null, firmaTrazando = false, firmaHayTrazo = false;
+let firmaLimites = null;   // caja del trazo, para recortar al guardar
+
+function firmaAbrir() {
+  const cap = document.getElementById("ot-firma-modal");
+  cap.style.display = "flex";
+  /* Se bloquea el scroll de fondo: sin esto el gesto de firmar arrastra la
+     página en vez de dibujar. */
+  document.body.style.overflow = "hidden";
+
+  const cv = document.getElementById("ot-firma-canvas");
+  /* El lienzo se dimensiona en píxeles reales del dispositivo. Si se deja al
+     tamaño CSS, el trazo sale pixelado en pantallas de alta densidad. */
+  const r = cv.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  cv.width  = Math.round(r.width  * dpr);
+  cv.height = Math.round(r.height * dpr);
+
+  firmaCtx = cv.getContext("2d");
+  firmaCtx.scale(dpr, dpr);
+  firmaCtx.lineWidth = 2.4;
+  firmaCtx.lineCap = "round";
+  firmaCtx.lineJoin = "round";
+  firmaCtx.strokeStyle = "#111";
+  firmaCtx.clearRect(0, 0, r.width, r.height);
+
+  firmaHayTrazo = false;
+  firmaLimites = null;
+  document.getElementById("ot-firma-guardar").disabled = true;
+}
+
+function firmaCerrar() {
+  document.getElementById("ot-firma-modal").style.display = "none";
+  document.body.style.overflow = "";
+}
+
+function firmaPunto(e) {
+  const cv = document.getElementById("ot-firma-canvas");
+  const r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function firmaAnotar(p) {
+  if (!firmaLimites) firmaLimites = { x1: p.x, y1: p.y, x2: p.x, y2: p.y };
+  else {
+    firmaLimites.x1 = Math.min(firmaLimites.x1, p.x);
+    firmaLimites.y1 = Math.min(firmaLimites.y1, p.y);
+    firmaLimites.x2 = Math.max(firmaLimites.x2, p.x);
+    firmaLimites.y2 = Math.max(firmaLimites.y2, p.y);
+  }
+}
+
+function firmaInicio(e) {
+  e.preventDefault();
+  firmaTrazando = true;
+  const p = firmaPunto(e);
+  firmaAnotar(p);
+  firmaCtx.beginPath();
+  firmaCtx.moveTo(p.x, p.y);
+  /* Un toque sin arrastre debe dejar punto, no nada. */
+  firmaCtx.lineTo(p.x + 0.1, p.y);
+  firmaCtx.stroke();
+  firmaHayTrazo = true;
+  document.getElementById("ot-firma-guardar").disabled = false;
+  e.target.setPointerCapture && e.target.setPointerCapture(e.pointerId);
+}
+
+function firmaMover(e) {
+  if (!firmaTrazando) return;
+  e.preventDefault();
+  const p = firmaPunto(e);
+  firmaAnotar(p);
+  firmaCtx.lineTo(p.x, p.y);
+  firmaCtx.stroke();
+}
+
+function firmaFin(e) {
+  if (!firmaTrazando) return;
+  firmaTrazando = false;
+  firmaCtx.closePath();
+}
+
+function firmaLimpiar() {
+  const cv = document.getElementById("ot-firma-canvas");
+  const dpr = window.devicePixelRatio || 1;
+  firmaCtx.clearRect(0, 0, cv.width / dpr, cv.height / dpr);
+  firmaHayTrazo = false;
+  firmaLimites = null;
+  document.getElementById("ot-firma-guardar").disabled = true;
+}
+
+/* Recorta al trazo y reduce a un ancho razonable. Guardar el lienzo entero
+   dispararía el tamaño del dato y dejaría la firma perdida en el documento. */
+function firmaAceptar() {
+  if (!firmaHayTrazo || !firmaLimites) { toast("No hay firma"); return; }
+  const cv = document.getElementById("ot-firma-canvas");
+  const dpr = window.devicePixelRatio || 1;
+
+  const m = 8;   // margen alrededor del trazo
+  const x = Math.max(0, (firmaLimites.x1 - m)) * dpr;
+  const y = Math.max(0, (firmaLimites.y1 - m)) * dpr;
+  const w = Math.min(cv.width  - x, (firmaLimites.x2 - firmaLimites.x1 + m * 2) * dpr);
+  const h = Math.min(cv.height - y, (firmaLimites.y2 - firmaLimites.y1 + m * 2) * dpr);
+
+  if (w < 8 || h < 4) { toast("La firma es muy pequeña"); return; }
+
+  /* Se reescala a un ancho máximo: el documento la muestra en poco más de
+     4 cm, así que más resolución solo abulta el dato guardado. */
+  const MAX_ANCHO = 700;
+  const escala = Math.min(1, MAX_ANCHO / w);
+  const out = document.createElement("canvas");
+  out.width  = Math.round(w * escala);
+  out.height = Math.round(h * escala);
+  out.getContext("2d").drawImage(cv, x, y, w, h, 0, 0, out.width, out.height);
+
+  otFirmaDato = out.toDataURL("image/png");
+  firmaPintarVista();
+  firmaCerrar();
+  toast("Firma registrada. Recuerde guardar la orden.");
+}
+
+let otFirmaDato = "";
+
+function firmaQuitar() {
+  otFirmaDato = "";
+  firmaPintarVista();
+}
+
+function firmaPintarVista() {
+  const cont = document.getElementById("ot-firma-vista");
+  const btn = document.getElementById("ot-firma-borrar");
+  if (!cont) return;
+  if (otFirmaDato) {
+    cont.innerHTML = '<img src="' + otFirmaDato + '" alt="Firma" ' +
+      'style="max-height:70px;max-width:100%;background:#fff;' +
+      'border:1px solid var(--line);border-radius:6px;padding:4px">';
+    if (btn) btn.style.display = "";
+  } else {
+    cont.innerHTML = '<span class="mat-stock">Sin firma. El documento sale con la raya en blanco.</span>';
+    if (btn) btn.style.display = "none";
+  }
+}
+
+</script>
+
+<!-- Lienzo de firma. Fuera de los paneles para que cubra toda la pantalla. -->
+<div id="ot-firma-modal" style="display:none;position:fixed;inset:0;z-index:9999;
+     background:rgba(10,25,35,.92);flex-direction:column;padding:12px;gap:10px">
+  <div style="color:#fff;font-size:14px;text-align:center">
+    Firme con el dedo dentro del recuadro
+  </div>
+  <canvas id="ot-firma-canvas"
+          style="flex:1;width:100%;background:#fff;border-radius:8px;
+                 touch-action:none;display:block"></canvas>
+  <div style="display:flex;gap:8px">
+    <button type="button" class="btn-secondary" style="flex:1" onclick="firmaCerrar()">Cancelar</button>
+    <button type="button" class="btn-secondary" style="flex:1" onclick="firmaLimpiar()">Limpiar</button>
+    <button type="button" class="btn-primary" id="ot-firma-guardar" style="flex:1.4" onclick="firmaAceptar()">Usar firma</button>
+  </div>
+</div>
+
+<script>
+/* Los eventos del lienzo se enlazan aquí porque el elemento vive fuera del
+   bloque anterior. Se usa pointer para cubrir dedo, lápiz y ratón con un
+   solo camino; touch-action:none en el CSS evita que el navegador
+   interprete el trazo como desplazamiento. */
+(function () {
+  const cv = document.getElementById("ot-firma-canvas");
+  if (!cv) return;
+  cv.addEventListener("pointerdown", firmaInicio);
+  cv.addEventListener("pointermove", firmaMover);
+  cv.addEventListener("pointerup", firmaFin);
+  cv.addEventListener("pointercancel", firmaFin);
+  cv.addEventListener("pointerleave", firmaFin);
+})();
 </script>
 </body>
 </html>
