@@ -573,14 +573,55 @@ ${tbN(W.total, W.rext)}
   /* ------------------------------- firmas ---------------------------------
      Los rótulos van alineados a la izquierda bajo cada raya, no centrados. */
 
-  function firmas() {
+  function firmas(ot) {
     const lb = `border:none;font-weight:bold;padding:2px 0 0 6px;${ARIAL};font-size:8.5pt`;
     const n = 'border:none';
     const p = 'border:none;padding:0';
     const F = W.firma;
+
+    /* Ejecutores. La casilla "dejar en blanco" manda: si está marcada el
+       espacio sale limpio para escribir a mano, que es como se firma en campo
+       cuando el personal cambia respecto a lo programado.
+
+       Cuando no está marcada, el primero de la lista es el líder y va sobre la
+       raya, en el lugar donde firma. Los demás quedan bajo el rótulo, uno por
+       renglón. Se acepta separar con "/" o con coma. */
+    const nombres = (ot && ot.ejecutores_en_blanco)
+      ? []
+      : String((ot && ot.ejecutores) || '')
+          .split(/[\/,;]+/).map(s => s.trim()).filter(Boolean);
+
+    const lider = nombres[0] || '';
+    const apoyo = nombres.slice(1);
+
+    /* El formato es un clon a medida del impreso SAP: cada línea que se agrega
+       corre el resto de la hoja. Por eso lo que ocupa el nombre del líder se
+       descuenta del espacio que lo antecede, y lo que ocupan los nombres de
+       apoyo, del espacio que sigue. Así la paginación no se mueve. */
+    const ALTO_LINEA = 0.36;                       // cm por renglón a 8.5pt
+    const arriba = Math.max(0, 2.40 - (lider ? ALTO_LINEA : 0));
+    const abajo  = Math.max(0.60, 2.35 - apoyo.length * ALTO_LINEA);
+
+    const celdaLider = lider
+      ? `<div style="${ARIAL};font-size:8.5pt;padding:0 0 1px 6px;` +
+        `white-space:nowrap;overflow:hidden">${esc(lider)}</div>`
+      : '';
+
+    const celdaApoyo = apoyo.length
+      ? apoyo.map(x => `<div style="${ARIAL};font-size:8.5pt;font-weight:normal;` +
+                       `padding:1px 0 0 6px">${esc(x)}</div>`).join('')
+      : '';
+
     return `
-${SPACER(2.40)}
+${SPACER(arriba)}
 ${tbN(W.total, F)}
+  <tr>
+    <td style="${n}"></td><td style="${p};vertical-align:bottom">${celdaLider}</td>
+    <td style="${n}"></td><td style="${p}"></td>
+    <td style="${n}"></td><td style="${p}"></td>
+    <td style="${n}"></td><td style="${p}"></td>
+    <td style="${n}"></td>
+  </tr>
   <tr>
     <td style="${n}"></td><td style="${p}">${raya(F[1])}</td>
     <td style="${n}"></td><td style="${p}">${raya(F[3])}</td>
@@ -589,13 +630,13 @@ ${tbN(W.total, F)}
     <td style="${n}"></td>
   </tr>
   <tr>
-    <td style="${n}"></td><td style="${lb}">EJECUTOR DE MTTO</td>
+    <td style="${n}"></td><td style="${lb}">EJECUTOR DE MTTO${celdaApoyo}</td>
     <td style="${n}"></td><td style="${lb}">SUPERVISOR O&amp;M</td>
     <td style="${n}"></td><td style="${lb}">SENIOR / PLANEADOR DE<br>MTTO GTEC</td>
     <td style="${n}"></td><td style="${lb}">DOCUMENTADOR O&amp;M</td><td style="${n}"></td>
   </tr>
 </table>
-${SPACER(2.35)}
+${SPACER(abajo)}
 ${tbN(W.total, W.clerk)}
   <tr><td style="${n}"></td><td style="${p}">${raya(W.clerk[1])}</td><td style="${n}"></td></tr>
   <tr><td style="${n}"></td>
@@ -631,7 +672,7 @@ ${recepcion(ot)}
 
     const p3 = `<div class="fo016-pag fo016-fin">
 ${cabecera(ot, 3)}
-${firmas()}
+${firmas(ot)}
 </div>`;
 
     return `<style>${CSS}</style><div class="fo016">${p1}${p2}${p3}</div>`;
