@@ -10745,6 +10745,15 @@ function otMapear() {
     componente_falla:   o.componente_falla,
     no_inventario:      o.numero_inventario,
 
+    /* Ejecutores para el bloque de firmas. Se leen del formulario y no de
+       otDatos porque el usuario puede ajustarlos justo antes de imprimir sin
+       haber guardado. Si el campo está vacío se cae al personal registrado en
+       la actividad, que es de donde se precarga. */
+    ejecutores: (document.getElementById("ot-ejecutores")?.value || "").trim()
+                || o.ejecutores || a.personal || "",
+    ejecutores_en_blanco: document.getElementById("ot-ejec-blanco")?.checked
+                          ?? !!o.ejecutores_en_blanco,
+
     operaciones: (d.operaciones || []).map(x => ({
       oper:        x.oper || null,
       puesto:      x.puesto,
