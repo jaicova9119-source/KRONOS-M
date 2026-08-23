@@ -1716,7 +1716,16 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="ee-eval" class="hint-box"></div>
 
     <div class="field" style="margin-top:12px"><label>Observaciones</label><textarea id="ee-e-obs" rows="3"></textarea></div>
-    <button class="btn-primary" id="ee-btn-guardar-ens" style="margin-top:8px">Guardar ensayo</button>
+
+    <div class="section-label">Firma</div>
+    <p class="hint-box">Opcional. Si firmas aquí, la firma sale impresa en el informe. Si prefieres firmar en papel, déjalo vacío y el informe saldrá con la línea en blanco.</p>
+    <div id="ee-firma-ejec-vista" style="margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn-secondary" type="button" id="ee-btn-firmar-ejec">Firmar</button>
+      <button class="btn-secondary" type="button" id="ee-btn-borrar-firma-ejec" style="display:none">Quitar firma</button>
+    </div>
+
+    <button class="btn-primary" id="ee-btn-guardar-ens" style="margin-top:12px">Guardar ensayo</button>
   </div>
 </div>
 
@@ -5726,10 +5735,27 @@ function eeBadgeEstado(e) {
    quien firma y cuando, y deja el ensayo cerrado. El navegador no
    escribe esos campos directamente. */
 async function eeFirmar(id) {
-  if (!confirm("Al firmar, el ensayo queda cerrado y no admite más cambios. ¿Continuar?")) return;
+  const ensayo = eeEnsayos.find(x => x.id === id);
+  if (!ensayo) return;
+
+  const conTrazo = confirm(
+    "¿Quieres dibujar tu firma en pantalla?\n\n"
+    + "Aceptar: se abre el lienzo y la firma sale impresa en el informe.\n"
+    + "Cancelar: se firma solo con tu nombre y la fecha, y el informe queda "
+    + "con la raya en blanco por si prefieres firmarlo en papel."
+  );
+
+  if (!conTrazo) { eeEnviarFirma(id, null); return; }
+
+  const quien = (usuarioActual && usuarioActual.nombre) || "";
+  firmaAbrir(img => eeEnviarFirma(id, img),
+             quien ? "Firma de " + quien : "Firma del revisor");
+}
+
+async function eeEnviarFirma(id, imagen) {
   const nota = prompt("Observación de la revisión (opcional):", "") || null;
   try {
-    const { data, error } = await sb.rpc("ee_firmar", { p_id: id, p_firma: null, p_nota: nota });
+    const { data, error } = await sb.rpc("ee_firmar", { p_id: id, p_firma: imagen, p_nota: nota });
     if (error) throw error;
     if (!data || !data.ok) { toast(data?.error || "No se pudo firmar"); return; }
     toast("Ensayo firmado");
@@ -5906,6 +5932,38 @@ function eeGruposDeMaquina(m) {
    otro. El servidor lo vuelve a sellar en el trigger de insercion, de
    modo que esto es solo para que se vea a quien va a quedar atribuido.
    Al editar se muestra el ejecutante original, no quien esta revisando. */
+/* Firma del ejecutante. Es opcional a proposito: si el ensayo se va a
+   firmar en papel, dejarla vacia hace que el informe salga con la raya
+   en blanco lista para la firma manuscrita. */
+let eeFirmaEjec = "";
+
+function eeFirmaPintarVista() {
+  const cont = document.getElementById("ee-firma-ejec-vista");
+  const btnQuitar = document.getElementById("ee-btn-borrar-firma-ejec");
+  const btnFirmar = document.getElementById("ee-btn-firmar-ejec");
+  if (!cont) return;
+  if (eeFirmaEjec) {
+    cont.innerHTML = '<img src="' + eeFirmaEjec + '" alt="Firma" '
+      + 'style="max-height:70px;max-width:100%;background:#fff;'
+      + 'border:1px solid var(--line);border-radius:6px;padding:4px">';
+    if (btnQuitar) btnQuitar.style.display = "";
+    if (btnFirmar) btnFirmar.textContent = "Volver a firmar";
+  } else {
+    cont.innerHTML = '<span class="mat-stock">Sin firma. El informe sale con la raya en blanco para firmar a mano.</span>';
+    if (btnQuitar) btnQuitar.style.display = "none";
+    if (btnFirmar) btnFirmar.textContent = "Firmar";
+  }
+}
+
+function eeFirmarEjecutante() {
+  const quien = (usuarioActual && usuarioActual.nombre) || "";
+  firmaAbrir(img => {
+    eeFirmaEjec = img;
+    eeFirmaPintarVista();
+    toast("Firma registrada. Recuerda guardar el ensayo.");
+  }, quien ? "Firma de " + quien : "Firma del ejecutante");
+}
+
 function eeSellarTecnico(ensayo) {
   const inp = document.getElementById("ee-e-tecnico");
   if (!inp) return;
@@ -5942,6 +6000,8 @@ function nuevoEnsayo() {
   // Despues del borrador: si quedo un nombre guardado de otra sesion, se pisa.
   eeSellarTecnico(null);
   eeBloquearSiFirmado(null);
+  eeFirmaEjec = "";
+  eeFirmaPintarVista();
   eeRecalcular();
 }
 
@@ -6112,6 +6172,7 @@ async function guardarEnsayo() {
       megger_calibracion: g("cal") || null, marcacion: m.marcacion, n_bobinas: m.n_bobinas,
       temp_medicion_bobinas: num("trdev"), instrumento_bobinas: g("micro") || null,
       observaciones: g("obs") || null,
+      firma_ejecutante: eeFirmaEjec || null,
     };
 
     let ensayoId = eeEnsayoEditando;
@@ -6195,6 +6256,8 @@ function editarEnsayo(id) {
   });
   eeSellarTecnico(e);
   eeBloquearSiFirmado(e);
+  eeFirmaEjec = e.firma_ejecutante || "";
+  eeFirmaPintarVista();
   eeRecalcular();
 }
 
@@ -6217,6 +6280,11 @@ function eeBloquearSiFirmado(ensayo) {
     btn.disabled = bloquear;
     btn.textContent = bloquear ? "Ensayo firmado" : "Guardar ensayo";
   }
+  // Un ensayo cerrado tampoco admite cambiar la firma del ejecutante.
+  ["ee-btn-firmar-ejec", "ee-btn-borrar-firma-ejec"].forEach(bid => {
+    const b = document.getElementById(bid);
+    if (b) b.disabled = bloquear;
+  });
 
   let aviso = document.getElementById("ee-aviso-estado");
   if (!aviso) {
@@ -6257,6 +6325,11 @@ document.getElementById("ee-buscar").addEventListener("input", renderMaquinas);
 document.getElementById("ee-f-tipo").addEventListener("change", eeToggleGenerador);
 document.getElementById("ee-btn-guardar-maq").onclick = guardarMaquina;
 document.getElementById("ee-btn-guardar-ens").onclick = guardarEnsayo;
+document.getElementById("ee-btn-firmar-ejec").onclick = eeFirmarEjecutante;
+document.getElementById("ee-btn-borrar-firma-ejec").onclick = () => {
+  eeFirmaEjec = "";
+  eeFirmaPintarVista();
+};
 document.getElementById("ee-btn-nueva").onclick = nuevaMaquina;
 
 /* ============================================================
@@ -6602,7 +6675,6 @@ function eeBloqueFirmas(e) {
 
   const celdaRevision = firmado
     ? `${trazo(e.firma_revisor)}${linea}<br>${e.revisor_nombre || ""}`
-      + `${e.revisor_rol ? `<br><span style="font-size:9px">${e.revisor_rol}</span>` : ""}`
       + `${e.revisado_en ? `<br><span style="font-size:9px">${fmt(e.revisado_en)}</span>` : ""}`
     : `<div class="inf-espacio"></div>${linea}<br>&nbsp;`;
 
@@ -11951,7 +12023,15 @@ async function dpGuardar() {
 let firmaCtx = null, firmaTrazando = false, firmaHayTrazo = false;
 let firmaLimites = null;   // caja del trazo, para recortar al guardar
 
-function firmaAbrir() {
+/* El lienzo lo comparten el módulo de órdenes y el de ensayos. Quien lo
+   abre entrega una función que recibe la imagen; si no se entrega
+   ninguna, se mantiene el destino original de la orden de trabajo. */
+let firmaDestino = null;
+
+function firmaAbrir(destino, titulo) {
+  firmaDestino = typeof destino === "function" ? destino : null;
+  const rot = document.getElementById("ot-firma-rotulo");
+  if (rot) rot.textContent = titulo || "Firme con el dedo dentro del recuadro";
   const cap = document.getElementById("ot-firma-modal");
   cap.style.display = "flex";
   /* Se bloquea el scroll de fondo: sin esto el gesto de firmar arrastra la
@@ -11980,6 +12060,7 @@ function firmaAbrir() {
 }
 
 function firmaCerrar() {
+  firmaDestino = null;
   document.getElementById("ot-firma-modal").style.display = "none";
   document.body.style.overflow = "";
 }
@@ -12063,7 +12144,15 @@ function firmaAceptar() {
   out.height = Math.round(h * escala);
   out.getContext("2d").drawImage(cv, x, y, w, h, 0, 0, out.width, out.height);
 
-  otFirmaDato = out.toDataURL("image/png");
+  const imagen = out.toDataURL("image/png");
+  if (firmaDestino) {
+    const cb = firmaDestino;
+    firmaDestino = null;
+    firmaCerrar();
+    cb(imagen);
+    return;
+  }
+  otFirmaDato = imagen;
   firmaPintarVista();
   firmaCerrar();
   toast("Firma registrada. Recuerde guardar la orden.");
@@ -12096,7 +12185,7 @@ function firmaPintarVista() {
 <!-- Lienzo de firma. Fuera de los paneles para que cubra toda la pantalla. -->
 <div id="ot-firma-modal" style="display:none;position:fixed;inset:0;z-index:9999;
      background:rgba(10,25,35,.92);flex-direction:column;padding:12px;gap:10px">
-  <div style="color:#fff;font-size:14px;text-align:center">
+  <div id="ot-firma-rotulo" style="color:#fff;font-size:14px;text-align:center">
     Firme con el dedo dentro del recuadro
   </div>
   <canvas id="ot-firma-canvas"
