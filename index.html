@@ -11170,11 +11170,27 @@ function otConstruirDocumento() {
   return FO016.render(otMapear());
 }
 
-/* Nombre del archivo, igual para el PDF impreso y para el .doc exportado. */
+/* Nombre del archivo, igual para el PDF impreso y para el .doc exportado.
+   Formato: FO-016_<OT>_<fecha> <descripción de la actividad>
+   Ej.: FO-016_100032900_2026-08-19 MTTO PV 1A VSD BBA CARG #1 */
 function otNombreArchivo() {
-  const ot = (otDatos && otDatos.actividad.numero_ot ? otDatos.actividad.numero_ot : "sinOT")
-    .toString().replace(/[^\w-]/g, "");
-  return "FO-016_" + ot + "_" + otFecha;
+  const a = (otDatos && otDatos.actividad) ? otDatos.actividad : {};
+  const ot = (a.numero_ot ? a.numero_ot : "sinOT").toString().replace(/[^\w-]/g, "");
+
+  /* Los espacios, los guiones y el # sí son válidos en un nombre de archivo y
+     se conservan. Se retiran solo los caracteres que Windows y Android
+     rechazan: al encontrar uno, el navegador descarta el nombre completo y
+     vuelve a proponer el genérico, que es justo lo que se quiere evitar.
+     El recorte a 60 caracteres deja el nombre manejable en el celular. */
+  const desc = (a.descripcion || "")
+    .toString()
+    .replace(/[\\/:*?"<>|\r\n\t]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 60)
+    .trim();
+
+  return "FO-016_" + ot + "_" + otFecha + (desc ? " " + desc : "");
 }
 
 /* La exportación la resuelve fo016.js: mismo documento que se imprime,
@@ -11222,10 +11238,19 @@ async function otImprimir() {
      así para que Word lo respete, y de paso lo vuelve autónomo. No necesita
      nada del CSS de la aplicación, así que impreso por separado sale idéntico
      y no hay nada que ocultar. */
+  const nombre = otNombreArchivo();
+
   const html = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
-    + '<title>' + otEsc(otNombreArchivo()) + '</title>'
+    + '<title>' + otEsc(nombre) + '</title>'
     + '<style>' + FO016.PAGE_CSS + ' html,body{margin:0;padding:0}</style>'
     + '</head><body>' + otConstruirDocumento() + '</body></html>';
+
+  /* El título del iframe no basta. Al guardar como PDF, Chrome propone el
+     título de la página contenedora —"Kronos-M"— aunque lo que se imprima sea
+     el marco. Se cambia mientras dura la impresión y se restaura después,
+     incluso si se cancela el diálogo. */
+  const tituloPrevio = document.title;
+  document.title = nombre;
 
   const previo = document.getElementById("ot-marco-impresion");
   if (previo) previo.remove();
@@ -11241,6 +11266,7 @@ async function otImprimir() {
 
   let lanzado = false;
   const retirar = () => {
+    document.title = tituloPrevio;
     const m = document.getElementById("ot-marco-impresion");
     if (m) m.remove();
   };
