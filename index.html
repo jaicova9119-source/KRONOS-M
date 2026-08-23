@@ -5681,9 +5681,13 @@ function eeTarjetaEnsayo(e, m) {
   return `
     <div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
-        <b>${e.fecha}</b>
-        <span class="mat-stock">${e.motivo || ""} · ${e.tecnico || ""}</span>
+        <b>${e.fecha} ${eeBadgeEstado(e)}</b>
+        <span class="mat-stock">${e.motivo || ""} · ${e.ejecutante_nombre || e.tecnico || ""}</span>
       </div>
+      ${e.estado === "rechazado" && e.nota_revision
+        ? `<div class="mat-stock" style="color:var(--danger)">Devuelto: ${e.nota_revision}</div>` : ""}
+      ${e.estado === "firmado" && e.revisor_nombre
+        ? `<div class="mat-stock">Firmado por ${e.revisor_nombre}${e.revisado_en ? " · " + String(e.revisado_en).slice(0, 10) : ""}</div>` : ""}
       <div class="mat-stock">${e.temp_devanado != null ? e.temp_devanado + " °C devanado" : "sin temperatura"}
         · ${e.v_prueba || "?"} VDC · ${e.megger || ""}</div>
       <table class="tabla-ficha" style="margin-top:8px">
@@ -5693,10 +5697,63 @@ function eeTarjetaEnsayo(e, m) {
       ${e.observaciones ? `<div class="mat-stock" style="margin-top:6px">${e.observaciones}</div>` : ""}
       <div style="display:flex;gap:8px;margin-top:8px">
         <button class="btn-primary" onclick="verInforme('${e.id}')">Informe</button>
-        <button class="btn-secondary" onclick="editarEnsayo('${e.id}')">Editar</button>
-        <button class="btn-secondary" onclick="borrarEnsayo('${e.id}')">Eliminar</button>
+        <button class="btn-secondary" onclick="editarEnsayo('${e.id}')">${e.estado === "firmado" ? "Ver" : "Editar"}</button>
+        ${eeEsRevisor() && e.estado !== "firmado" ? `
+          <button class="btn-secondary" onclick="eeFirmar('${e.id}')">Firmar</button>
+          <button class="btn-secondary" onclick="eeDevolver('${e.id}')">Devolver</button>` : ""}
+        ${e.estado !== "firmado" ? `<button class="btn-secondary" onclick="borrarEnsayo('${e.id}')">Eliminar</button>` : ""}
       </div>
     </div>`;
+}
+
+function eeEsRevisor() {
+  return !!usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+}
+
+function eeBadgeEstado(e) {
+  const est = e.estado || "pendiente_firma";
+  const mapa = {
+    firmado:         ["Firmado", "var(--ok, #1a7f4b)"],
+    rechazado:       ["Devuelto", "var(--danger, #b3261e)"],
+    pendiente_firma: ["Pendiente de firma", "var(--warn, #8a6100)"],
+  };
+  const [txt, color] = mapa[est] || mapa.pendiente_firma;
+  return `<span style="font-weight:600;font-size:11px;color:${color};border:1px solid ${color};`
+       + `border-radius:10px;padding:1px 7px;margin-left:6px;white-space:nowrap">${txt}</span>`;
+}
+
+/* La firma la ejecuta una funcion en el servidor: valida el rol, sella
+   quien firma y cuando, y deja el ensayo cerrado. El navegador no
+   escribe esos campos directamente. */
+async function eeFirmar(id) {
+  if (!confirm("Al firmar, el ensayo queda cerrado y no admite más cambios. ¿Continuar?")) return;
+  const nota = prompt("Observación de la revisión (opcional):", "") || null;
+  try {
+    const { data, error } = await sb.rpc("ee_firmar", { p_id: id, p_firma: null, p_nota: nota });
+    if (error) throw error;
+    if (!data || !data.ok) { toast(data?.error || "No se pudo firmar"); return; }
+    toast("Ensayo firmado");
+    abrirMaquina(eeMaquinaActual.id);
+  } catch (err) {
+    console.error(err);
+    toast("No se pudo firmar: " + err.message);
+  }
+}
+
+async function eeDevolver(id) {
+  const nota = prompt("Motivo por el que se devuelve al técnico:", "");
+  if (nota === null) return;
+  if (!nota.trim()) { toast("Debes indicar el motivo"); return; }
+  try {
+    const { data, error } = await sb.rpc("ee_rechazar", { p_id: id, p_nota: nota.trim() });
+    if (error) throw error;
+    if (!data || !data.ok) { toast(data?.error || "No se pudo devolver"); return; }
+    toast("Ensayo devuelto al técnico");
+    abrirMaquina(eeMaquinaActual.id);
+  } catch (err) {
+    console.error(err);
+    toast("No se pudo devolver: " + err.message);
+  }
 }
 
 /* ============================================================
@@ -5844,6 +5901,26 @@ function eeGruposDeMaquina(m) {
   return g;
 }
 
+/* El ejecutante de un ensayo es siempre el usuario que inicio sesion, no
+   un texto que alguien escriba: asi no se puede registrar a nombre de
+   otro. El servidor lo vuelve a sellar en el trigger de insercion, de
+   modo que esto es solo para que se vea a quien va a quedar atribuido.
+   Al editar se muestra el ejecutante original, no quien esta revisando. */
+function eeSellarTecnico(ensayo) {
+  const inp = document.getElementById("ee-e-tecnico");
+  if (!inp) return;
+  inp.value = ensayo
+    ? (ensayo.ejecutante_nombre || ensayo.tecnico || "")
+    : ((usuarioActual && usuarioActual.nombre) || "");
+  // readOnly y no disabled: un campo deshabilitado no se envia.
+  inp.readOnly = true;
+  inp.tabIndex = -1;
+  inp.style.background = "var(--bg-2, #eef1f4)";
+  inp.style.color = "var(--text-2, #5b6b7a)";
+  inp.style.cursor = "not-allowed";
+  inp.title = "Se toma de tu sesión y no es editable.";
+}
+
 function nuevoEnsayo() {
   if (!eeMaquinaActual) { toast("Elige primero una máquina"); return; }
   eeEnsayoEditando = null;
@@ -5862,6 +5939,9 @@ function nuevoEnsayo() {
   eePintarTablas();
   eeAvisoCampo();
   eeRestaurarBorrador();
+  // Despues del borrador: si quedo un nombre guardado de otra sesion, se pisa.
+  eeSellarTecnico(null);
+  eeBloquearSiFirmado(null);
   eeRecalcular();
 }
 
@@ -5985,7 +6065,9 @@ function eeGuardarBorrador() {
   if (!eeMaquinaActual || eeEnsayoEditando) return;
   const campos = {};
   document.querySelectorAll("#panel-ee-ensayo input, #panel-ee-ensayo select, #panel-ee-ensayo textarea")
-    .forEach(el => { if (el.id) campos[el.id] = el.value; });
+    // El ejecutante no se guarda en el borrador: si el celular lo usa otro
+    // tecnico, el nombre viejo no debe reaparecer.
+    .forEach(el => { if (el.id && el.id !== "ee-e-tecnico") campos[el.id] = el.value; });
   try {
     localStorage.setItem(EE_BORRADOR, JSON.stringify({ maquina: eeMaquinaActual.id, campos, ts: Date.now() }));
   } catch (e) { /* almacenamiento lleno: no es critico */ }
@@ -6021,7 +6103,9 @@ async function guardarEnsayo() {
   try {
     const cab = {
       maquina_id: m.id, fecha: g("fecha") || new Date().toISOString().slice(0, 10),
-      tecnico: g("tecnico") || null, motivo: document.getElementById("ee-e-motivo").value,
+      // El servidor lo sella igual; se envia por coherencia y para el modo offline.
+      tecnico: (usuarioActual && usuarioActual.nombre) || g("tecnico") || null,
+      motivo: document.getElementById("ee-e-motivo").value,
       temp_devanado: num("tdev"), temp_ambiente: num("tamb"), humedad: num("hum"),
       horas_paro: num("paro"), condicion: document.getElementById("ee-e-cond").value,
       v_prueba: num("vprueba"), megger: g("megger") || null, megger_serie: g("meggerserie") || null,
@@ -6032,6 +6116,9 @@ async function guardarEnsayo() {
 
     let ensayoId = eeEnsayoEditando;
     if (ensayoId) {
+      // Al editar no se toca el ejecutante: si un supervisor corrige el
+      // ensayo de un tecnico, el credito sigue siendo del que lo hizo.
+      delete cab.tecnico;
       const { error } = await sb.from("ensayos_electricos").update(cab).eq("id", ensayoId);
       if (error) throw error;
       await sb.from("ensayo_devanados").delete().eq("ensayo_id", ensayoId);
@@ -6085,7 +6172,7 @@ function editarEnsayo(id) {
   eePintarTablas();
   eeAvisoCampo();
   const v = (k, val) => { const el = document.getElementById("ee-e-" + k); if (el) el.value = val ?? ""; };
-  v("fecha", e.fecha); v("tecnico", e.tecnico); v("tdev", e.temp_devanado); v("tamb", e.temp_ambiente);
+  v("fecha", e.fecha); v("tdev", e.temp_devanado); v("tamb", e.temp_ambiente);
   v("hum", e.humedad); v("paro", e.horas_paro); v("vprueba", e.v_prueba); v("megger", e.megger);
   v("meggerserie", e.megger_serie); v("cal", e.megger_calibracion); v("trdev", e.temp_medicion_bobinas);
   v("micro", e.instrumento_bobinas); v("obs", e.observaciones);
@@ -6106,7 +6193,51 @@ function editarEnsayo(id) {
       const es = document.getElementById("ee-bobe-" + i); if (es && b.estado) es.value = b.estado;
     }
   });
+  eeSellarTecnico(e);
+  eeBloquearSiFirmado(e);
   eeRecalcular();
+}
+
+/* Un ensayo firmado es un documento cerrado. El servidor lo rechaza de
+   todos modos, pero dejar el formulario abierto invita a digitar datos
+   que se van a perder al guardar. */
+function eeBloquearSiFirmado(ensayo) {
+  const panel = document.getElementById("panel-ee-ensayo");
+  const btn = document.getElementById("ee-btn-guardar-ens");
+  const firmado = !!ensayo && ensayo.estado === "firmado";
+  const esAdmin = usuarioActual && usuarioActual.rol === "admin";
+  const bloquear = firmado && !esAdmin;
+
+  panel.querySelectorAll("input, select, textarea").forEach(el => {
+    if (el.id === "ee-e-tecnico") return;      // ya quedo sellado aparte
+    el.readOnly = bloquear && el.tagName !== "SELECT";
+    if (el.tagName === "SELECT") el.disabled = bloquear;
+  });
+  if (btn) {
+    btn.disabled = bloquear;
+    btn.textContent = bloquear ? "Ensayo firmado" : "Guardar ensayo";
+  }
+
+  let aviso = document.getElementById("ee-aviso-estado");
+  if (!aviso) {
+    aviso = document.createElement("div");
+    aviso.id = "ee-aviso-estado";
+    aviso.className = "hint-box";
+    const ancla = document.getElementById("ee-aviso-campo");
+    ancla.parentNode.insertBefore(aviso, ancla.nextSibling);
+  }
+  if (!ensayo) { aviso.style.display = "none"; return; }
+  aviso.style.display = "";
+  if (firmado) {
+    aviso.innerHTML = `&#10003; <b>Firmado</b> por ${ensayo.revisor_nombre || "—"}`
+      + (ensayo.revisado_en ? ` el ${String(ensayo.revisado_en).slice(0, 10)}` : "")
+      + (esAdmin ? ". Como administrador puedes corregirlo; queda registrado." : ". No admite modificaciones.");
+  } else if (ensayo.estado === "rechazado") {
+    aviso.innerHTML = `&#9888;&#65039; <b>Devuelto para corrección.</b> ${ensayo.nota_revision || ""}`
+      + " Al guardar vuelve a quedar pendiente de firma.";
+  } else {
+    aviso.innerHTML = "&#8987; <b>Pendiente de firma</b> por un supervisor o administrador.";
+  }
 }
 
 async function borrarEnsayo(id) {
@@ -6445,15 +6576,49 @@ async function verInforme(ensayoId) {
         El dictamen es un apoyo al diagnóstico generado a partir de los datos registrados y no reemplaza el criterio del ingeniero responsable.
         Informe generado el ${new Date().toLocaleDateString("es-CO")} desde Kronos-M.
       </div>
-      <table class="inf-firmas">
-        <tr><td>Realizó<div class="inf-espacio"></div>______________________<br>${e.tecnico || ""}</td>
-            <td>Revisó<div class="inf-espacio"></div>______________________<br>&nbsp;</td></tr>
-      </table>
+      ${eeBloqueFirmas(e)}
     </div>`;
 
   document.getElementById("ee-logo-estado").innerHTML = logo
     ? '<button class="btn-secondary" onclick="eeQuitarLogo()">Quitar logo</button>'
     : '<span class="mat-stock">Sin logo. El informe sale sin imagen.</span>';
+}
+
+/* Bloque de firmas del informe. El ejecutante y el revisor salen del
+   sello que puso el servidor, no de texto escrito a mano. Si el ensayo
+   todavia no esta firmado, la casilla de revision queda en blanco y el
+   informe se marca como borrador: un documento sin firmar no debe
+   circular como si estuviera avalado. */
+function eeBloqueFirmas(e) {
+  const fmt = t => t ? new Date(t).toLocaleDateString("es-CO") : "";
+  const linea = "______________________";
+  const trazo = img => img
+    ? `<img src="${img}" alt="" style="max-height:38px;max-width:190px;display:block;margin:0 auto 2px"/>`
+    : `<div class="inf-espacio"></div>`;
+
+  const ejecNombre = e.ejecutante_nombre || e.tecnico || "";
+  const ejecFecha = fmt(e.ejecutado_en) || e.fecha || "";
+  const firmado = e.estado === "firmado";
+
+  const celdaRevision = firmado
+    ? `${trazo(e.firma_revisor)}${linea}<br>${e.revisor_nombre || ""}`
+      + `${e.revisor_rol ? `<br><span style="font-size:9px">${e.revisor_rol}</span>` : ""}`
+      + `${e.revisado_en ? `<br><span style="font-size:9px">${fmt(e.revisado_en)}</span>` : ""}`
+    : `<div class="inf-espacio"></div>${linea}<br>&nbsp;`;
+
+  const marca = firmado ? "" : `
+    <div class="inf-nota" style="margin-top:6px;font-style:italic">
+      Documento sin firma de revisión. No válido como registro cerrado.
+    </div>`;
+
+  return `
+    <table class="inf-firmas">
+      <tr>
+        <td>Realizó${trazo(e.firma_ejecutante)}${linea}<br>${ejecNombre}
+          ${ejecFecha ? `<br><span style="font-size:9px">${ejecFecha}</span>` : ""}</td>
+        <td>Revisó${celdaRevision}</td>
+      </tr>
+    </table>${marca}`;
 }
 
 function eeImprimirInforme() {
