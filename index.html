@@ -2557,7 +2557,18 @@ async function hubContar() {
     ensayos:        () => contar("ensayos_electricos"),
     porFirmar:      () => contar("ensayos_electricos", q => q.eq("estado", "pendiente_firma")),
     devueltos:      () => contar("ensayos_electricos", q => q.eq("estado", "rechazado")),
-    altasPend:      () => contar("solicitudes_alta", q => q.eq("estado", "pendiente")),
+
+    /* Aprobaciones del módulo de activos: son las mismas tres colas que
+       muestra la pestaña Pendientes, para no tener que entrar a mirarlas. */
+    movsPend:       () => contar("movimientos", q => q.eq("estado_conciliacion", "pendiente")),
+    altasPend:      () => contar("solicitudes_alta", q => q.eq("estado_solicitud", "pendiente")),
+    compsPend:      () => contar("campos_pendientes", q => q.eq("estado", "pendiente")),
+
+    /* Cambios registrados en Kronos que todavía no se han llevado a SAP. */
+    sinSap:         () => contar("equipos", q => q.eq("estado_sincronizacion", "pendiente_actualizar_sap")),
+
+    /* Usuarios registrados esperando que un administrador los active. */
+    usuariosPend:   () => contar("usuarios", q => q.eq("activo", false)),
   };
 
   const claves = Object.keys(tareas);
@@ -2575,6 +2586,11 @@ function hubPintar(c) {
   /* La franja de atencion solo muestra lo que de verdad requiere accion:
      un cero no se pinta. Un tablero lleno de ceros deja de mirarse. */
   const alertas = [];
+  const irAPendientes = () => {
+    aplicarModulo("activos");
+    setTimeout(() => document.querySelector('[data-tab="pendientes"]').click(), 60);
+  };
+
   if (esRevisor && c.porFirmar) {
     alertas.push({ n: c.porFirmar, t: "ensayos por firmar", clase: "avisa",
                    ir: () => aplicarModulo("ensayos") });
@@ -2583,15 +2599,29 @@ function hubPintar(c) {
     alertas.push({ n: c.devueltos, t: "ensayos devueltos", clase: "urgente",
                    ir: () => aplicarModulo("ensayos") });
   }
-  if (c.altasPend) {
-    alertas.push({ n: c.altasPend, t: "altas por aprobar", clase: "avisa",
+  if (esRevisor && c.usuariosPend) {
+    alertas.push({ n: c.usuariosPend, t: "usuarios por activar", clase: "urgente",
                    ir: () => aplicarModulo("activos") });
+  }
+  if (esRevisor && c.movsPend) {
+    alertas.push({ n: c.movsPend, t: "movimientos por aprobar", clase: "avisa", ir: irAPendientes });
+  }
+  if (esRevisor && c.altasPend) {
+    alertas.push({ n: c.altasPend, t: "altas por aprobar", clase: "avisa", ir: irAPendientes });
+  }
+  if (esRevisor && c.compsPend) {
+    alertas.push({ n: c.compsPend, t: "datos por completar", clase: "avisa", ir: irAPendientes });
+  }
+  if (c.sinSap) {
+    alertas.push({ n: c.sinSap, t: "equipos por actualizar en SAP", clase: "avisa",
+                   ir: irAPendientes });
   }
 
   const cont = document.getElementById("hub-atencion");
   if (!alertas.length) {
     cont.className = "";
-    cont.innerHTML = '<div class="hint-box" style="margin:0">Nada pendiente por ahora.</div>';
+    cont.innerHTML = '<div class="hint-box" style="margin:0">&#10003; Nada pendiente: '
+      + 'sin ensayos por firmar, sin aprobaciones en cola y sin cambios por llevar a SAP.</div>';
   } else {
     cont.className = "hub-grid-atencion";
     cont.innerHTML = alertas.map((a, i) =>
