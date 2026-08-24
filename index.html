@@ -62,25 +62,48 @@
 }
 .hub-alerta{
   background:var(--bg-0);border:1px solid var(--line);border-left:3px solid var(--accent);
-  padding:11px 13px;cursor:pointer;transition:border-color .15s;
+  padding:11px 13px;cursor:pointer;
+  transition:border-color .15s,background .15s,box-shadow .15s,transform .12s;
 }
-.hub-alerta:hover{border-color:var(--accent);}
+.hub-alerta:hover{
+  border-color:var(--accent);background:var(--accent-bg);
+  transform:translateY(-2px);box-shadow:0 4px 14px rgba(19,75,112,.13);
+}
+.hub-alerta:active{transform:translateY(0);box-shadow:none;}
 .hub-alerta.urgente{border-left-color:var(--danger);}
+.hub-alerta.urgente:hover{border-color:var(--danger);background:var(--danger-bg);}
 .hub-alerta.avisa{border-left-color:var(--warn);}
+.hub-alerta.avisa:hover{border-color:var(--warn);background:var(--warn-bg);}
 .hub-alerta .n{font-size:23px;font-weight:600;color:var(--text-0);line-height:1.15;}
 .hub-alerta .t{font-size:12px;color:var(--text-1);}
 .hub-mod{
   background:var(--bg-0);border:1px solid var(--line);border-radius:11px;padding:13px 14px;
-  cursor:pointer;transition:border-color .15s,transform .12s;text-align:left;width:100%;
-  font-family:inherit;
+  cursor:pointer;text-align:left;width:100%;font-family:inherit;
+  transition:border-color .15s,background .15s,box-shadow .15s,transform .12s;
 }
-.hub-mod:hover{border-color:var(--accent);transform:translateY(-1px);}
+.hub-mod:hover{
+  border-color:var(--accent);background:var(--accent-bg);
+  transform:translateY(-2px);box-shadow:0 6px 18px rgba(19,75,112,.15);
+}
+.hub-mod:hover .cab b{color:var(--accent);}
+.hub-mod:hover .est{color:var(--text-1);}
+.hub-mod:active{transform:translateY(0);box-shadow:none;}
+/* En pantalla tactil no hay puntero: el realce se muestra solo al tocar. */
+@media (hover:none){
+  .hub-mod:hover,.hub-alerta:hover{
+    transform:none;box-shadow:none;background:var(--bg-0);border-color:var(--line);
+  }
+  .hub-mod:active,.hub-alerta:active{background:var(--accent-bg);border-color:var(--accent);}
+}
 .hub-mod .cab{display:flex;align-items:center;gap:9px;margin-bottom:5px;}
 .hub-mod .cab svg{width:19px;height:19px;color:var(--accent);flex-shrink:0;}
-.hub-mod .cab b{font-size:14px;color:var(--text-0);font-weight:600;}
-.hub-mod .est{font-size:12px;color:var(--text-2);}
+.hub-mod .cab b{font-size:14px;color:var(--text-0);font-weight:600;transition:color .15s;}
+.hub-mod .est{font-size:12px;color:var(--text-2);transition:color .15s;}
 .hub-mod.proximo{border-style:dashed;cursor:default;background:transparent;}
-.hub-mod.proximo:hover{border-color:var(--line);transform:none;}
+.hub-mod.proximo:hover{
+  border-color:var(--line);transform:none;box-shadow:none;background:transparent;
+}
+.hub-mod.proximo:hover .cab b{color:var(--text-2);}
 .hub-mod.proximo .cab svg,.hub-mod.proximo .cab b{color:var(--text-2);font-weight:500;}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;margin:0;}
@@ -951,7 +974,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 </div>
 
 <div class="navbar modulo-activos" id="navbar-principal">
-  <button class="nav-item" data-tab="hub" onclick="aplicarModulo('hub')">
+  <button class="nav-item" data-tab="hub">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
     Inicio
   </button>
@@ -3837,6 +3860,10 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     const app = document.getElementById("app");
     if (btn.dataset.tab === "inicio") app.classList.remove("modulo-completo");
     else app.classList.add("modulo-completo");
+
+    /* El hub es un modulo, no una pestaña: se delega en aplicarModulo para
+       que la barra superior y la navbar queden en el mismo estado. */
+    if (btn.dataset.tab === "hub") { aplicarModulo("hub"); return; }
 
     if (btn.dataset.tab === "pendientes") {
       abrirPanel("panel-pendientes");
