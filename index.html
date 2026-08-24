@@ -12002,7 +12002,18 @@ async function otImprimir() {
     + (estilosApp ? '<style>' + estilosApp + '</style>' : "")
     + '<style>' + FO016.PAGE_CSS + ' html,body{margin:0;padding:0}'
     + '.ee-anexo-pag{break-before:page;page-break-before:always;'
-    + 'padding:1.2cm;background:#fff}</style>'
+    + 'padding:1.2cm;background:#fff}'
+    /* El informe hereda la tipografía del body de la aplicación; aquí no hay
+       aplicación, así que se fija. Sin esto sale en serif. */
+    + '.ee-informe{font-family:Arial,Helvetica,sans-serif;padding:0;border-radius:0}'
+    /* Bloques que no deben partirse entre hojas. El de firmas es el crítico:
+       partido, deja los rótulos en una página y los nombres en la siguiente. */
+    + '.ee-informe .inf-cierre,.ee-informe .inf-firmas,'
+    + '.ee-informe .inf-dictamen,.ee-informe .inf-cab'
+    + '{break-inside:avoid;page-break-inside:avoid}'
+    + '.ee-informe tr,.ee-informe h3{break-inside:avoid;page-break-inside:avoid}'
+    + '.ee-informe h3{break-after:avoid;page-break-after:avoid}'
+    + '</style>'
     + '</head><body>'
     + otConstruirDocumento() + anexos + '</body></html>';
 
