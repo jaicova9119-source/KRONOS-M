@@ -3191,7 +3191,56 @@ function descripcionFiltroActual() {
   return partes.join("  ·  ");
 }
 
-document.getElementById("btn-exportar").onclick = () => {
+/* Último cambio de estado de cada equipo, para llevarlo al Excel. El
+   comentario que se escribe al registrar el cambio es lo que explica por
+   qué un equipo quedó no disponible, y es lo que sirve para planificar.
+
+   Dos caminos según el tamaño: con pocos equipos se piden por lote (más
+   dirigido), y con muchos se recorre la tabla de movimientos y se filtra
+   en memoria, porque una URL con miles de identificadores no pasa. */
+async function ultimoCambioEstadoPorEquipo(ids) {
+  const mapa = new Map();
+  if (!ids.length) return mapa;
+
+  const guardar = m => {
+    // Vienen ordenados de más reciente a más antiguo: el primero manda.
+    if (!mapa.has(m.equipo_id)) mapa.set(m.equipo_id, m);
+  };
+
+  const columnas = "equipo_id, fecha_registro, estado_anterior, estado_nuevo, motivo, usuarios(nombre)";
+
+  if (ids.length <= 400) {
+    const lotes = [];
+    for (let i = 0; i < ids.length; i += 80) lotes.push(ids.slice(i, i + 80));
+    for (const lote of lotes) {
+      const { data, error } = await sb.from("movimientos")
+        .select(columnas)
+        .eq("tipo_movimiento", "cambio_estado")
+        .in("equipo_id", lote)
+        .order("fecha_registro", { ascending: false });
+      if (error) throw error;
+      (data || []).forEach(guardar);
+    }
+    return mapa;
+  }
+
+  const pedidos = new Set(ids);
+  const PAGINA = 1000;
+  for (let p = 0; p < 30; p++) {
+    const { data, error } = await sb.from("movimientos")
+      .select(columnas)
+      .eq("tipo_movimiento", "cambio_estado")
+      .order("fecha_registro", { ascending: false })
+      .range(p * PAGINA, p * PAGINA + PAGINA - 1);
+    if (error) throw error;
+    if (!data || !data.length) break;
+    data.forEach(m => { if (pedidos.has(m.equipo_id)) guardar(m); });
+    if (data.length < PAGINA) break;
+  }
+  return mapa;
+}
+
+document.getElementById("btn-exportar").onclick = async () => {
   const filtrados = obtenerFiltrados();
   if (!filtrados.length) { toast("No hay equipos que coincidan con el filtro actual"); return; }
 
@@ -3245,6 +3294,15 @@ document.getElementById("btn-exportar").onclick = () => {
   const wsResumen = XLSX.utils.aoa_to_sheet(filasResumen);
   wsResumen["!cols"] = [{ wch: 38 }, { wch: 16 }, { wch: 12 }, { wch: 26 }];
 
+  let ultimos = new Map();
+  try {
+    toast("Consultando el último cambio de estado...");
+    ultimos = await ultimoCambioEstadoPorEquipo(filtrados.map(e => e.id).filter(Boolean));
+  } catch (err) {
+    console.error(err);
+    toast("No se pudo traer el historial; se exporta sin comentarios");
+  }
+
   const columnasDetalle = [
     ["codigo_sap", "Código SAP"],
     ["id_interno", "ID interno"],
@@ -3260,12 +3318,30 @@ document.getElementById("btn-exportar").onclick = () => {
     ["estado_sincronizacion", "Estado de sincronización"],
     ["equipo_superior_sap", "Equipo superior SAP"],
   ];
-  const filasDetalle = [columnasDetalle.map(([, etiqueta]) => etiqueta)];
+
+  /* Columnas calculadas: no salen del registro del equipo sino de su
+     último movimiento de estado. */
+  const columnasHistorial = [
+    ["Fecha último cambio de estado", m => (m.fecha_registro || "").toString().slice(0, 10)],
+    ["Cambio registrado", m => `${m.estado_anterior || "—"} → ${m.estado_nuevo || "—"}`],
+    ["Comentario del cambio", m => m.motivo || ""],
+    ["Registrado por", m => (m.usuarios && m.usuarios.nombre) || ""],
+  ];
+
+  const filasDetalle = [
+    columnasDetalle.map(([, etiqueta]) => etiqueta)
+      .concat(columnasHistorial.map(([etiqueta]) => etiqueta)),
+  ];
   filtrados.forEach(e => {
-    filasDetalle.push(columnasDetalle.map(([campo]) => e[campo] ?? ""));
+    const m = ultimos.get(e.id);
+    filasDetalle.push(
+      columnasDetalle.map(([campo]) => e[campo] ?? "")
+        .concat(columnasHistorial.map(([, fn]) => (m ? fn(m) : "")))
+    );
   });
   const wsDetalle = XLSX.utils.aoa_to_sheet(filasDetalle);
-  wsDetalle["!cols"] = columnasDetalle.map(() => ({ wch: 20 }));
+  wsDetalle["!cols"] = columnasDetalle.map(() => ({ wch: 20 }))
+    .concat([{ wch: 16 }, { wch: 26 }, { wch: 60 }, { wch: 20 }]);
 
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, wsResumen, "Resumen");
