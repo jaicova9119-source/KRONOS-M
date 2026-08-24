@@ -50,6 +50,38 @@
   --mono:'SF Mono',Consolas,'Roboto Mono',monospace;
   --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
 }
+
+/* Hub de inicio. Una sola regla resuelve celular, tablet, portatil y
+   monitor grande: auto-fill decide cuantas columnas caben y el minmax
+   fija el ancho minimo legible de una tarjeta. Sin media queries. */
+.hub-grid-atencion{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;
+}
+.hub-grid-modulos{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px;
+}
+.hub-alerta{
+  background:var(--bg-0);border:1px solid var(--line);border-left:3px solid var(--accent);
+  padding:11px 13px;cursor:pointer;transition:border-color .15s;
+}
+.hub-alerta:hover{border-color:var(--accent);}
+.hub-alerta.urgente{border-left-color:var(--danger);}
+.hub-alerta.avisa{border-left-color:var(--warn);}
+.hub-alerta .n{font-size:23px;font-weight:600;color:var(--text-0);line-height:1.15;}
+.hub-alerta .t{font-size:12px;color:var(--text-1);}
+.hub-mod{
+  background:var(--bg-0);border:1px solid var(--line);border-radius:11px;padding:13px 14px;
+  cursor:pointer;transition:border-color .15s,transform .12s;text-align:left;width:100%;
+  font-family:inherit;
+}
+.hub-mod:hover{border-color:var(--accent);transform:translateY(-1px);}
+.hub-mod .cab{display:flex;align-items:center;gap:9px;margin-bottom:5px;}
+.hub-mod .cab svg{width:19px;height:19px;color:var(--accent);flex-shrink:0;}
+.hub-mod .cab b{font-size:14px;color:var(--text-0);font-weight:600;}
+.hub-mod .est{font-size:12px;color:var(--text-2);}
+.hub-mod.proximo{border-style:dashed;cursor:default;background:transparent;}
+.hub-mod.proximo:hover{border-color:var(--line);transform:none;}
+.hub-mod.proximo .cab svg,.hub-mod.proximo .cab b{color:var(--text-2);font-weight:500;}
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
 html,body{height:100%;margin:0;}
 
@@ -837,6 +869,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <div id="kronos-topbar">
   <div class="kronos-brand">KRONOS<span class="kronos-dot">·</span>M</div>
   <select id="selector-modulo">
+    <option value="hub">Inicio</option>
     <option value="activos">Gestión de Activos</option>
     <option value="materiales">Gestión de Materiales</option>
     <option value="documental">Gestión Documental</option>
@@ -918,6 +951,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 </div>
 
 <div class="navbar modulo-activos" id="navbar-principal">
+  <button class="nav-item" data-tab="hub" onclick="aplicarModulo('hub')">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    Inicio
+  </button>
   <button class="nav-item active" data-tab="inicio" data-modulo="activos">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>
     Inicio
@@ -1300,6 +1337,22 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <button class="btn-primary" id="csap-btn-aplicar" style="margin-top:16px" onclick="aplicarCargaSap()">Aplicar carga</button>
       <button class="btn-secondary" style="margin-top:10px" onclick="reiniciarCargaSap()">Cargar otro archivo</button>
     </div>
+  </div>
+</div>
+
+<!-- ===== Panel: Inicio (hub de módulos) ===== -->
+<div class="panel" id="panel-hub">
+  <div class="panel-body" style="padding:18px 16px 28px">
+    <div id="hub-saludo" style="font-size:20px;font-weight:600;color:var(--text-0);margin-bottom:2px"></div>
+    <div id="hub-fecha" class="mat-stock" style="margin-bottom:20px"></div>
+
+    <div class="section-label">Requiere tu atención</div>
+    <div id="hub-atencion" class="hub-grid-atencion"></div>
+
+    <div class="section-label" style="margin-top:22px">Módulos</div>
+    <div id="hub-modulos" class="hub-grid-modulos"></div>
+
+    <div id="hub-pie" class="mat-stock" style="margin-top:24px;text-align:center;opacity:.75"></div>
   </div>
 </div>
 
@@ -2371,6 +2424,147 @@ let carritoSolped = JSON.parse(localStorage.getItem(CARRITO_KEY) || "[]");
 const MODULO_KEY = "kronos_modulo_activo";
 let moduloActivo = localStorage.getItem(MODULO_KEY) || "activos";
 
+/* ---------- Hub de inicio ---------- */
+/* Los conteos se piden en paralelo y cada uno falla por su cuenta: si una
+   consulta no responde, esa tarjeta se queda sin cifra pero el resto del
+   tablero se pinta igual. En campo con señal intermitente eso es la
+   diferencia entre una pantalla util y una pantalla en blanco. */
+
+const HUB_ICONOS = {
+  activos:      '<path d="M3 9l9-5 9 5-9 5-9-5z"/><path d="M3 9v6l9 5 9-5V9"/>',
+  materiales:   '<path d="M6 6h15l-1.5 9h-12z"/><circle cx="9" cy="20" r="1.4"/><circle cx="17" cy="20" r="1.4"/>',
+  ensayos:      '<path d="M13 2L3 14h9l-1 8 10-12h-9z"/>',
+  predictivo:   '<path d="M3 12h4l3 8 4-16 3 8h4"/>',
+  programacion: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/>',
+  documental:   '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>',
+  vfd:          '<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>',
+  proximo:      '<path d="M12 5v14M5 12h14"/>',
+};
+
+function hubIcono(clave) {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">'
+       + (HUB_ICONOS[clave] || HUB_ICONOS.proximo) + '</svg>';
+}
+
+function hubSaludo() {
+  const h = new Date().getHours();
+  return h < 12 ? "Buenos días" : (h < 19 ? "Buenas tardes" : "Buenas noches");
+}
+
+async function abrirHub() {
+  const nombre = (usuarioActual && usuarioActual.nombre) || "";
+  const corto = nombre.split(" ")[0] || "";
+  document.getElementById("hub-saludo").textContent =
+    hubSaludo() + (corto ? ", " + corto : "");
+  document.getElementById("hub-fecha").textContent =
+    new Date().toLocaleDateString("es-CO", {
+      weekday: "long", day: "numeric", month: "long", year: "numeric"
+    });
+  document.getElementById("hub-pie").textContent = "Kronos-M · JAC Engineering";
+
+  hubPintar({});                 // estructura inmediata, cifras despues
+  const cifras = await hubContar();
+  hubPintar(cifras);
+}
+
+/* Cada entrada devuelve un numero o null. allSettled evita que una
+   consulta caida arrastre a las demas. */
+async function hubContar() {
+  const contar = async (tabla, filtro) => {
+    let q = sb.from(tabla).select("*", { count: "exact", head: true });
+    if (filtro) q = filtro(q);
+    const { count, error } = await q;
+    if (error) throw error;
+    return count;
+  };
+
+  const tareas = {
+    equipos:        () => contar("equipos"),
+    materiales:     () => contar("materiales"),
+    maquinas:       () => contar("maquinas_electricas"),
+    documentos:     () => contar("documentos"),
+    ensayos:        () => contar("ensayos_electricos"),
+    porFirmar:      () => contar("ensayos_electricos", q => q.eq("estado", "pendiente_firma")),
+    devueltos:      () => contar("ensayos_electricos", q => q.eq("estado", "rechazado")),
+    altasPend:      () => contar("solicitudes_alta", q => q.eq("estado", "pendiente")),
+  };
+
+  const claves = Object.keys(tareas);
+  const res = await Promise.allSettled(claves.map(k => tareas[k]()));
+  const out = {};
+  claves.forEach((k, i) => { out[k] = res[i].status === "fulfilled" ? res[i].value : null; });
+  return out;
+}
+
+function hubPintar(c) {
+  const n = v => (v == null ? "—" : Number(v).toLocaleString("es-CO"));
+  const esRevisor = usuarioActual
+    && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+
+  /* La franja de atencion solo muestra lo que de verdad requiere accion:
+     un cero no se pinta. Un tablero lleno de ceros deja de mirarse. */
+  const alertas = [];
+  if (esRevisor && c.porFirmar) {
+    alertas.push({ n: c.porFirmar, t: "ensayos por firmar", clase: "avisa",
+                   ir: () => aplicarModulo("ensayos") });
+  }
+  if (c.devueltos) {
+    alertas.push({ n: c.devueltos, t: "ensayos devueltos", clase: "urgente",
+                   ir: () => aplicarModulo("ensayos") });
+  }
+  if (c.altasPend) {
+    alertas.push({ n: c.altasPend, t: "altas por aprobar", clase: "avisa",
+                   ir: () => aplicarModulo("activos") });
+  }
+
+  const cont = document.getElementById("hub-atencion");
+  if (!alertas.length) {
+    cont.className = "";
+    cont.innerHTML = '<div class="hint-box" style="margin:0">Nada pendiente por ahora.</div>';
+  } else {
+    cont.className = "hub-grid-atencion";
+    cont.innerHTML = alertas.map((a, i) =>
+      `<div class="hub-alerta ${a.clase}" data-hub-alerta="${i}">
+         <div class="n">${n(a.n)}</div><div class="t">${a.t}</div>
+       </div>`).join("");
+    cont.querySelectorAll("[data-hub-alerta]").forEach(el => {
+      el.onclick = () => alertas[+el.dataset.hubAlerta].ir();
+    });
+  }
+
+  const mods = [
+    { k: "activos",      t: "Gestión de activos",
+      e: c.equipos != null ? `${n(c.equipos)} equipos registrados` : "Maestro de equipos" },
+    { k: "materiales",   t: "Materiales",
+      e: c.materiales != null ? `${n(c.materiales)} ítems · control mín-máx` : "Control de inventario" },
+    { k: "ensayos",      t: "Ensayos eléctricos",
+      e: c.maquinas != null ? `${n(c.maquinas)} máquinas · IEEE 43` : "Aislamiento y resistencia" },
+    { k: "predictivo",   t: "Monitoreo de condición",
+      e: "Pozos BES, HPUM y UBH" },
+    { k: "programacion", t: "Programación",
+      e: "Actividades y órdenes del día" },
+    { k: "documental",   t: "Gestión documental",
+      e: c.documentos != null ? `${n(c.documentos)} documentos controlados` : "Instructivos y planes" },
+    { k: "vfd",          t: "Analizador de data",
+      e: "Descargas de variador" },
+  ];
+
+  document.getElementById("hub-modulos").innerHTML =
+    mods.map(m =>
+      `<button class="hub-mod" data-hub-mod="${m.k}">
+         <div class="cab">${hubIcono(m.k)}<b>${m.t}</b></div>
+         <div class="est">${m.e}</div>
+       </button>`).join("")
+    + `<div class="hub-mod proximo">
+         <div class="cab">${hubIcono("proximo")}<b>Órdenes de trabajo</b></div>
+         <div class="est">En construcción</div>
+       </div>`;
+
+  document.querySelectorAll("[data-hub-mod]").forEach(el => {
+    el.onclick = () => aplicarModulo(el.dataset.hubMod);
+  });
+}
+
 function aplicarModulo(modulo, irVistaDefault = true) {
   moduloActivo = modulo;
   localStorage.setItem(MODULO_KEY, modulo);
@@ -2378,7 +2572,7 @@ function aplicarModulo(modulo, irVistaDefault = true) {
   const navbar = document.getElementById("navbar-principal");
   navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental",
                           "modulo-ensayos", "modulo-programacion", "modulo-vfd",
-                          "modulo-predictivo");
+                          "modulo-predictivo", "modulo-hub");
   navbar.classList.add("modulo-" + modulo);
   document.getElementById("selector-modulo").value = modulo;
 
@@ -2391,7 +2585,12 @@ function aplicarModulo(modulo, irVistaDefault = true) {
   const app = document.getElementById("app");
   app.classList.toggle("modulo-vfd", modulo === "vfd");
   app.classList.toggle("modulo-predictivo", modulo === "predictivo");
-  if (modulo === "activos") {
+  if (modulo === "hub") {
+    app.classList.add("modulo-completo");
+    document.querySelector('[data-tab="hub"]').classList.add("active");
+    abrirPanel("panel-hub");
+    abrirHub();
+  } else if (modulo === "activos") {
     app.classList.remove("modulo-completo");
     document.querySelector('[data-tab="inicio"]').classList.add("active");
   } else if (modulo === "materiales") {
@@ -8636,7 +8835,10 @@ async function inicializarApp() {
   await sincronizarColaOffline();
   actualizarBadgeCarrito();
   renderCarrito();
-  aplicarModulo(moduloActivo);
+  /* Cada sesion empieza en el tablero de inicio, no en el ultimo modulo
+     que se dejo abierto: lo primero que debe verse al entrar es que hay
+     pendiente hoy. El modulo recordado sigue guardado para la navegacion. */
+  aplicarModulo("hub");
 }
 
 /* ============================================================
