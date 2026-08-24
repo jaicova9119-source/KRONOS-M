@@ -8897,15 +8897,19 @@ function renderResumen() {
    ============================================================ */
 async function inicializarApp() {
   actualizarEstadoConexion();
+
+  /* El tablero se pinta ANTES de traer los datos pesados. Cargar primero
+     los 10.000+ equipos dejaba varios segundos a la vista el panel de
+     activos vacio, que es el primero del documento y lo que se ve cuando
+     todavia no se ha elegido pantalla. */
+  aplicarModulo("hub");
+  actualizarBadgeCarrito();
+  renderCarrito();
+
   await cargarCampos();
   await cargarEquipos();
   await sincronizarColaOffline();
-  actualizarBadgeCarrito();
   renderCarrito();
-  /* Cada sesion empieza en el tablero de inicio, no en el ultimo modulo
-     que se dejo abierto: lo primero que debe verse al entrar es que hay
-     pendiente hoy. El modulo recordado sigue guardado para la navegacion. */
-  aplicarModulo("hub");
 }
 
 /* ============================================================
