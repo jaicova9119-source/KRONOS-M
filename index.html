@@ -116,6 +116,31 @@ html,body{height:100%;margin:0;}
 }
 .kronos-brand{color:#fff;font-weight:700;font-size:14.5px;letter-spacing:.03em;}
 .kronos-brand .kronos-dot{color:var(--accent);}
+.kronos-derecha{display:flex;align-items:center;gap:10px;min-width:0;}
+.kronos-derecha .sync-badge{
+  background:rgba(255,255,255,.14);color:#dff3ee;border-color:rgba(255,255,255,.18);
+  font-size:11.5px;padding:4px 9px;
+}
+.kronos-derecha .sync-badge.offline{background:rgba(214,59,59,.28);color:#ffd9d9;}
+.kronos-derecha .sync-badge.pending{background:rgba(184,121,12,.32);color:#ffe6b8;}
+.kronos-usuario{
+  background:none;border:none;color:#fff;font-size:12px;opacity:.9;padding:4px 6px;
+  display:flex;align-items:center;gap:5px;cursor:pointer;border-radius:7px;
+  max-width:150px;font-family:inherit;
+}
+.kronos-usuario:hover{background:rgba(255,255,255,.12);opacity:1;}
+.kronos-usuario svg{width:15px;height:15px;flex-shrink:0;}
+.kronos-usuario span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* En pantalla angosta el nombre estorba: queda solo el icono. */
+@media (max-width:560px){
+  .kronos-usuario span{display:none;}
+  .kronos-derecha .sync-badge span:not(.dot){display:none;}
+  .kronos-derecha .sync-badge{padding:5px;}
+}
+/* Franja del filtro de campo, en lugar de la antigua cabecera azul. */
+.tira-campo{
+  flex-shrink:0;padding:9px 16px 0;font-size:12px;color:var(--text-2);
+}
 #selector-modulo{
   background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);
   border-radius:8px;padding:6px 10px;font-size:12.5px;font-weight:500;
@@ -128,6 +153,8 @@ html,body{height:100%;margin:0;}
 .navbar.modulo-activos .nav-item[data-modulo="activos"]{display:flex;}
 .navbar.modulo-materiales .nav-item[data-modulo="materiales"]{display:flex;}
 .navbar.modulo-documental .nav-item[data-modulo="documental"]{display:flex;}
+/* Gana sobre cualquier regla de modulo: si el rol no alcanza, no se ve. */
+.navbar .nav-item.sin-permiso{display:none !important;}
 .navbar.modulo-ensayos .nav-item[data-modulo="ensayos"]{display:flex;}
 .navbar.modulo-programacion .nav-item[data-modulo="programacion"]{display:flex;}
 .navbar.modulo-vfd .nav-item[data-modulo="vfd"]{display:flex;}
@@ -891,32 +918,33 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
 <div id="kronos-topbar">
   <div class="kronos-brand">KRONOS<span class="kronos-dot">·</span>M</div>
-  <select id="selector-modulo">
-    <option value="hub">Inicio</option>
-    <option value="activos">Gestión de Activos</option>
+  <div class="kronos-derecha">
+    <div class="sync-badge" id="sync-badge"><span class="dot"></span><span id="sync-text">Conectado</span></div>
+    <button id="btn-usuario-topbar" class="kronos-usuario">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.4 3.2-5.2 7-5.2s7 1.8 7 5.2"/></svg>
+      <span id="usuario-topbar-texto">Sin identificar</span>
+    </button>
+    <select id="selector-modulo">
+      <option value="hub">Inicio</option>
+      <option value="activos">Gestión de Activos</option>
     <option value="materiales">Gestión de Materiales</option>
     <option value="documental">Gestión Documental</option>
     <option value="ensayos">Ensayos Eléctricos</option>
     <option value="programacion">Programación</option>
     <option value="vfd">Analizador de DATA</option>
     <option value="predictivo">Monitoreo de Condición</option>
-  </select>
+    </select>
+  </div>
 </div>
 
 <div id="app" class="oculto">
 <div class="pane-list">
 
-  <div class="topbar">
-    <div class="brand">
-      <b>Gestión de Activos</b>
-      <span id="campo-actual">Todos los campos</span>
-    </div>
-    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-      <div class="sync-badge" id="sync-badge"><span class="dot"></span><span id="sync-text">Conectado</span></div>
-      <button id="btn-usuario-topbar" style="background:none;border:none;color:#fff;font-size:11px;opacity:.85;padding:0;display:flex;align-items:center;gap:3px">
-        &#128100; <span id="usuario-topbar-texto">Sin identificar</span>
-      </button>
-    </div>
+  <!-- El nombre del módulo ya lo dice el selector de arriba, y el estado de
+       conexión y el usuario viven ahora en la barra Kronos. Solo queda el
+       filtro de campo, que sí cambia según lo que el usuario elige. -->
+  <div class="tira-campo">
+    <span id="campo-actual">Todos los campos</span>
   </div>
 
   <div class="search-row">
@@ -979,8 +1007,8 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     Inicio
   </button>
   <button class="nav-item active" data-tab="inicio" data-modulo="activos">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12l9-9 9 9M5 10v10h14V10"/></svg>
-    Inicio
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-5 9 5-9 5-9-5z"/><path d="M3 9v6l9 5 9-5V9"/></svg>
+    Equipos
   </button>
   <button class="nav-item" data-tab="resumen" data-modulo="activos">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
@@ -7855,9 +7883,13 @@ async function cargarDocumentos() {
     const tiposUnicos = [...new Set(documentosData.map(d => d.tipo_equipo).filter(Boolean))].sort();
     dl.innerHTML = tiposUnicos.map(t => `<option value="${t}">`).join("");
 
+    /* Un style.display en linea gana sobre la hoja de estilos, y eso hacia
+       que este boton siguiera visible en todos los modulos una vez cargado
+       el modulo documental. Con una clase, la regla que filtra por modulo
+       sigue mandando. */
     const puedeCargar = usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
     const tabCargar = document.querySelector('[data-tab="documentos-cargar"]');
-    if (tabCargar) tabCargar.style.display = puedeCargar ? "flex" : "none";
+    if (tabCargar) tabCargar.classList.toggle("sin-permiso", !puedeCargar);
 
     renderListaDocumentos();
   } catch (e) {
