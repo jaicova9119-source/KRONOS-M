@@ -2549,6 +2549,10 @@ async function hubContar() {
     return count;
   };
 
+  const esRevisor = usuarioActual
+    && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+  const miAuth = usuarioActual && usuarioActual.auth_user_id;
+
   const tareas = {
     equipos:        () => contar("equipos"),
     materiales:     () => contar("materiales"),
@@ -2556,7 +2560,13 @@ async function hubContar() {
     documentos:     () => contar("documentos"),
     ensayos:        () => contar("ensayos_electricos"),
     porFirmar:      () => contar("ensayos_electricos", q => q.eq("estado", "pendiente_firma")),
-    devueltos:      () => contar("ensayos_electricos", q => q.eq("estado", "rechazado")),
+
+    /* Un técnico solo cuenta los ensayos devueltos que él ejecutó: pedirle
+       atención sobre el trabajo de otro es ruido, no información. */
+    devueltos:      () => contar("ensayos_electricos", q => {
+                       q = q.eq("estado", "rechazado");
+                       return esRevisor || !miAuth ? q : q.eq("usuario_id", miAuth);
+                     }),
 
     /* Aprobaciones del módulo de activos: son las mismas tres colas que
        muestra la pestaña Pendientes, para no tener que entrar a mirarlas. */
@@ -2564,7 +2574,9 @@ async function hubContar() {
     altasPend:      () => contar("solicitudes_alta", q => q.eq("estado_solicitud", "pendiente")),
     compsPend:      () => contar("campos_pendientes", q => q.eq("estado", "pendiente")),
 
-    /* Cambios registrados en Kronos que todavía no se han llevado a SAP. */
+    /* Cambios registrados en Kronos que todavía no se han llevado a SAP.
+       No es una tarea del día sino deuda acumulada: se muestra como dato
+       del módulo de activos, no como alerta. */
     sinSap:         () => contar("equipos", q => q.eq("estado_sincronizacion", "pendiente_actualizar_sap")),
 
     /* Usuarios registrados esperando que un administrador los active. */
@@ -2596,8 +2608,8 @@ function hubPintar(c) {
                    ir: () => aplicarModulo("ensayos") });
   }
   if (c.devueltos) {
-    alertas.push({ n: c.devueltos, t: "ensayos devueltos", clase: "urgente",
-                   ir: () => aplicarModulo("ensayos") });
+    alertas.push({ n: c.devueltos, t: esRevisor ? "ensayos devueltos" : "ensayos tuyos devueltos",
+                   clase: "urgente", ir: () => aplicarModulo("ensayos") });
   }
   if (esRevisor && c.usuariosPend) {
     alertas.push({ n: c.usuariosPend, t: "usuarios por activar", clase: "urgente",
@@ -2612,16 +2624,15 @@ function hubPintar(c) {
   if (esRevisor && c.compsPend) {
     alertas.push({ n: c.compsPend, t: "datos por completar", clase: "avisa", ir: irAPendientes });
   }
-  if (c.sinSap) {
-    alertas.push({ n: c.sinSap, t: "equipos por actualizar en SAP", clase: "avisa",
-                   ir: irAPendientes });
-  }
 
   const cont = document.getElementById("hub-atencion");
   if (!alertas.length) {
     cont.className = "";
-    cont.innerHTML = '<div class="hint-box" style="margin:0">&#10003; Nada pendiente: '
-      + 'sin ensayos por firmar, sin aprobaciones en cola y sin cambios por llevar a SAP.</div>';
+    cont.innerHTML = '<div class="hint-box" style="margin:0">&#10003; '
+      + (esRevisor
+          ? "Nada pendiente: sin ensayos por firmar y sin aprobaciones en cola."
+          : "Nada pendiente: no tienes ensayos devueltos para corregir.")
+      + '</div>';
   } else {
     cont.className = "hub-grid-atencion";
     cont.innerHTML = alertas.map((a, i) =>
@@ -2635,7 +2646,9 @@ function hubPintar(c) {
 
   const mods = [
     { k: "activos",      t: "Gestión de activos",
-      e: c.equipos != null ? `${n(c.equipos)} equipos registrados` : "Maestro de equipos" },
+      e: c.equipos != null
+           ? `${n(c.equipos)} equipos` + (c.sinSap ? ` · ${n(c.sinSap)} por actualizar en SAP` : "")
+           : "Maestro de equipos" },
     { k: "materiales",   t: "Materiales",
       e: c.materiales != null ? `${n(c.materiales)} ítems · control mín-máx` : "Control de inventario" },
     { k: "ensayos",      t: "Ensayos eléctricos",
