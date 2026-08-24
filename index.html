@@ -2178,7 +2178,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       </div>
     </div>
 
-    <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()">Guardar</button>
+    <div class="section-label" style="margin-top:18px">ANEXOS</div>
+    <div class="hint-box">&#8505;&#65039; Los ensayos que adjuntes salen impresos detr&#225;s del formato, en el mismo PDF. Quedan guardados en esta jornada: al reimprimir sale el mismo documento.</div>
+    <div id="ot-anexos-lista" style="margin-bottom:8px"></div>
+    <button type="button" class="btn-secondary" id="ot-btn-anexar" onclick="otAbrirSelectorEnsayo()">Adjuntar ensayo el&#233;ctrico</button>
+
+    <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()" style="margin-top:18px">Guardar</button>
     <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir o guardar como PDF</button>
     <button class="btn-secondary" style="margin-top:8px" onclick="otDescargarWord()">Descargar en Word</button>
     <!-- El logo viene por defecto en fo016-logo.js, asi que ya no se pide
@@ -2186,6 +2191,19 @@ input,select,textarea{font-family:inherit;font-size:15px;}
          media pantalla en el movil para una indicacion que solo aplica la
          primera vez. Quien la necesite la tiene en la hoja de Metodologia. -->
   </div>
+</div>
+
+<div id="ot-anexo-modal" style="display:none;position:fixed;inset:0;z-index:9998;
+     background:rgba(10,25,35,.86);flex-direction:column;padding:14px;gap:10px">
+  <div style="color:#fff;font-size:14px;display:flex;justify-content:space-between;align-items:center">
+    <span>Elige el ensayo a adjuntar</span>
+    <button type="button" class="btn-secondary" style="padding:5px 12px" onclick="otCerrarSelectorEnsayo()">Cerrar</button>
+  </div>
+  <input id="ot-anexo-buscar" placeholder="Filtrar por equipo, SAP o fecha" autocomplete="off"
+         oninput="otPintarSelectorEnsayo()"
+         style="padding:10px;border-radius:8px;border:1px solid var(--line);font-size:14px"/>
+  <div id="ot-anexo-lista" style="flex:1;overflow:auto;background:var(--bg-0);
+       border-radius:10px;padding:6px"></div>
 </div>
 
 <div id="ot-doc"></div>
@@ -6818,8 +6836,20 @@ async function verInforme(ensayoId) {
   eeInformeActual = ensayoId;
   abrirPanel("panel-ee-informe");
 
+  document.getElementById("ee-informe").innerHTML = eeInformeHTML(e, m, eeEnsayos);
+
+  const hayLogo = localStorage.getItem(EE_LOGO);
+  document.getElementById("ee-logo-estado").innerHTML = hayLogo
+    ? '<button class="btn-secondary" onclick="eeQuitarLogo()">Quitar logo</button>'
+    : '<span class="mat-stock">Sin logo. El informe sale sin imagen.</span>';
+}
+
+/* Arma el informe y lo devuelve como texto, sin tocar la pantalla. Se
+   separo de verInforme para poder anexarlo al FO-016 de una orden sin
+   abrir el panel del informe. El contenido es exactamente el mismo. */
+function eeInformeHTML(e, m, historia) {
   // El dictamen mira toda la historia hasta este ensayo, no solo este
-  const hasta = eeEnsayos.slice().sort((a, b) => a.fecha.localeCompare(b.fecha))
+  const hasta = (historia || []).slice().sort((a, b) => a.fecha.localeCompare(b.fecha))
     .filter(x => x.fecha <= e.fecha);
   const dic = eeDictamen(hasta, m);
   const logo = localStorage.getItem(EE_LOGO);
@@ -6862,7 +6892,7 @@ async function verInforme(ensayoId) {
     ["Vence calibración", e.megger_calibracion],
   ].filter(([, v]) => v);
 
-  document.getElementById("ee-informe").innerHTML = `
+  return `
     <table class="inf-cab"><tbody><tr>
       ${logo ? `<td class="inf-cab-logo">${imgLogo}</td>` : ""}
       <td>
@@ -6913,10 +6943,6 @@ async function verInforme(ensayoId) {
       </div>
       ${eeBloqueFirmas(e)}
     </div>`;
-
-  document.getElementById("ee-logo-estado").innerHTML = logo
-    ? '<button class="btn-secondary" onclick="eeQuitarLogo()">Quitar logo</button>'
-    : '<span class="mat-stock">Sin logo. El informe sale sin imagen.</span>';
 }
 
 /* Bloque de firmas del informe. El ejecutante y el revisor salen del
@@ -10960,6 +10986,7 @@ async function otAbrir(fecha) {
 
   otRender();
   abrirPanel("panel-prog-ot");
+  otCargarAnexos();
 }
 
 function otRender() {
@@ -11732,6 +11759,218 @@ function otReglaPagina(activar) {
   document.head.appendChild(st);
 }
 
+/* ---------- Anexos: ensayos eléctricos dentro del FO-016 ---------- */
+/* Se guarda la relación, no una copia del informe. El informe se vuelve a
+   armar al imprimir, así que si el ensayo se corrige o se firma, el PDF
+   siguiente ya sale actualizado. */
+
+let otAnexos = [];        // filas de programa_ot_anexos de esta jornada
+let otAnexoCandidatos = []; // ensayos disponibles para elegir
+
+function otClaveJornada() {
+  if (!otDatos || !otDatos.actividad) return null;
+  return { actividad_id: otDatos.actividad.id, fecha: otFecha };
+}
+
+async function otCargarAnexos() {
+  const k = otClaveJornada();
+  const cont = document.getElementById("ot-anexos-lista");
+  if (!k || !cont) return;
+  try {
+    const { data, error } = await sb.from("programa_ot_anexos")
+      .select("id, ensayo_id, orden")
+      .eq("actividad_id", k.actividad_id).eq("fecha", k.fecha)
+      .order("orden");
+    if (error) throw error;
+    otAnexos = data || [];
+
+    if (!otAnexos.length) { otPintarAnexos([]); return; }
+
+    /* Se traen los datos del ensayo aparte: la relación vive en el módulo
+       de programación y los ensayos en el suyo, sin acoplar los dos. */
+    const ids = otAnexos.map(a => a.ensayo_id);
+    const r = await sb.from("ensayos_electricos")
+      .select("id, fecha, motivo, estado, ejecutante_nombre, tecnico, maquina_id")
+      .in("id", ids);
+    if (r.error) throw r.error;
+    const porId = new Map((r.data || []).map(x => [x.id, x]));
+    otPintarAnexos(otAnexos.map(a => ({ ...a, ensayo: porId.get(a.ensayo_id) })));
+  } catch (e) {
+    cont.innerHTML = '<div class="mat-stock">No se pudieron cargar los anexos: ' + e.message + '</div>';
+  }
+}
+
+function otPintarAnexos(filas) {
+  const cont = document.getElementById("ot-anexos-lista");
+  if (!cont) return;
+  if (!filas.length) {
+    cont.innerHTML = '<div class="mat-stock">Sin anexos. El PDF sale solo con el formato.</div>';
+    return;
+  }
+  cont.innerHTML = filas.map(f => {
+    const e = f.ensayo;
+    const nombre = otNombreMaquina(e && e.maquina_id);
+    const sinFirma = e && e.estado !== "firmado";
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;
+                 border:1px solid var(--line);border-radius:9px;padding:9px 11px;margin-bottom:6px">
+        <div style="min-width:0">
+          <div style="font-size:13px;color:var(--text-0);font-weight:600;overflow:hidden;
+                      text-overflow:ellipsis;white-space:nowrap">${nombre}</div>
+          <div class="mat-stock">Ensayo del ${e ? e.fecha : "?"}${e && e.motivo ? " · " + e.motivo : ""}
+            ${sinFirma ? '<span style="color:var(--warn)"> · sin firmar</span>' : ""}</div>
+        </div>
+        <button type="button" class="btn-secondary" style="flex:0 0 auto;padding:6px 10px"
+                onclick="otQuitarAnexo('${f.id}')">Quitar</button>
+      </div>`;
+  }).join("");
+}
+
+function otNombreMaquina(maquinaId) {
+  if (!maquinaId) return "Ensayo eléctrico";
+  const m = (eeMaquinas || []).find(x => x.id === maquinaId);
+  return m ? (m.nombre_efectivo || "Máquina") : "Máquina eléctrica";
+}
+
+async function otAbrirSelectorEnsayo() {
+  const k = otClaveJornada();
+  if (!k) { toast("Abre primero el reporte"); return; }
+
+  /* Las máquinas eléctricas se cargan si aún no están: el técnico puede
+     entrar directo a programación sin haber pasado por ensayos. */
+  if (!eeMaquinas || !eeMaquinas.length) {
+    try { await cargarMaquinas(); } catch (e) { /* se sigue sin nombres */ }
+  }
+
+  try {
+    const { data, error } = await sb.from("ensayos_electricos")
+      .select("id, fecha, motivo, estado, ejecutante_nombre, tecnico, maquina_id")
+      .order("fecha", { ascending: false }).limit(150);
+    if (error) throw error;
+    otAnexoCandidatos = data || [];
+  } catch (e) {
+    toast("No se pudieron cargar los ensayos: " + e.message);
+    return;
+  }
+
+  /* El equipo de la actividad se propone como filtro inicial: casi siempre
+     el ensayo que se quiere adjuntar es el de esa misma máquina. */
+  const sap = (otDatos.actividad && otDatos.actividad.codigo_equipo) || "";
+  const maq = (eeMaquinas || []).find(m => String(m.sap_efectivo || "") === String(sap));
+  document.getElementById("ot-anexo-buscar").value = maq ? (maq.nombre_efectivo || "") : "";
+
+  document.getElementById("ot-anexo-modal").style.display = "flex";
+  document.body.style.overflow = "hidden";
+  otPintarSelectorEnsayo();
+}
+
+function otCerrarSelectorEnsayo() {
+  document.getElementById("ot-anexo-modal").style.display = "none";
+  document.body.style.overflow = "";
+}
+
+function otPintarSelectorEnsayo() {
+  const q = (document.getElementById("ot-anexo-buscar").value || "").trim().toLowerCase();
+  const yaPuestos = new Set(otAnexos.map(a => a.ensayo_id));
+  const cont = document.getElementById("ot-anexo-lista");
+
+  const filas = otAnexoCandidatos.filter(e => {
+    if (yaPuestos.has(e.id)) return false;
+    if (!q) return true;
+    const m = (eeMaquinas || []).find(x => x.id === e.maquina_id) || {};
+    const texto = [m.nombre_efectivo, m.sap_efectivo, e.fecha, e.motivo,
+                   e.ejecutante_nombre || e.tecnico].filter(Boolean).join(" ").toLowerCase();
+    return texto.includes(q);
+  }).slice(0, 60);
+
+  if (!filas.length) {
+    cont.innerHTML = '<div class="empty">No hay ensayos que coincidan.</div>';
+    return;
+  }
+
+  cont.innerHTML = filas.map(e => {
+    const sinFirma = e.estado !== "firmado";
+    return `<button type="button" class="btn-secondary"
+              style="display:block;width:100%;text-align:left;margin-bottom:6px;padding:10px 12px"
+              onclick="otAnexarEnsayo('${e.id}')">
+        <div style="font-size:13px;font-weight:600;color:var(--text-0)">${otNombreMaquina(e.maquina_id)}</div>
+        <div class="mat-stock">${e.fecha}${e.motivo ? " · " + e.motivo : ""}
+          · ${e.ejecutante_nombre || e.tecnico || ""}
+          ${sinFirma ? '<span style="color:var(--warn)"> · sin firmar</span>' : ""}</div>
+      </button>`;
+  }).join("");
+}
+
+async function otAnexarEnsayo(ensayoId) {
+  const k = otClaveJornada();
+  if (!k) return;
+  try {
+    const orden = (otAnexos.length ? Math.max(...otAnexos.map(a => a.orden || 1)) : 0) + 1;
+    const { error } = await sb.from("programa_ot_anexos").insert({
+      actividad_id: k.actividad_id, fecha: k.fecha, ensayo_id: ensayoId, orden,
+    });
+    if (error) throw error;
+    otCerrarSelectorEnsayo();
+    await otCargarAnexos();
+    toast("Ensayo adjuntado");
+  } catch (e) {
+    toast("No se pudo adjuntar: " + e.message);
+  }
+}
+
+async function otQuitarAnexo(id) {
+  try {
+    const { error } = await sb.from("programa_ot_anexos").delete().eq("id", id);
+    if (error) throw error;
+    await otCargarAnexos();
+  } catch (e) {
+    toast("No se pudo quitar: " + e.message);
+  }
+}
+
+/* Arma el informe de cada anexo para pegarlo detrás del formato. Cada
+   ensayo necesita su máquina y el historial de esa máquina, porque el
+   dictamen compara contra los ensayos anteriores. */
+async function otHtmlDeAnexos() {
+  if (!otAnexos.length) return "";
+  const partes = [];
+
+  for (const a of otAnexos) {
+    try {
+      const r = await sb.from("ensayos_electricos")
+        .select("*, ensayo_devanados(*), ensayo_bobinas(*)")
+        .eq("id", a.ensayo_id).single();
+      if (r.error || !r.data) continue;
+      const e = r.data;
+
+      const m = (eeMaquinas || []).find(x => x.id === e.maquina_id);
+      if (!m) continue;
+
+      const h = await sb.from("ensayos_electricos")
+        .select("*, ensayo_devanados(*), ensayo_bobinas(*)")
+        .eq("maquina_id", e.maquina_id).order("fecha", { ascending: false });
+
+      partes.push('<div class="ee-anexo-pag">'
+        + '<div class="ee-informe">' + eeInformeHTML(e, m, h.data || [e]) + "</div></div>");
+    } catch (err) {
+      console.error("Anexo no incluido:", err);
+    }
+  }
+  return partes.join("");
+}
+
+/* Toma del CSS de la aplicación solo las reglas del informe de ensayo y
+   cambia el selector de id por clase. Dos motivos: en un PDF con varios
+   anexos no puede repetirse el mismo id, y arrastrar la hoja de estilos
+   completa metería reglas de la interfaz en un documento impreso. */
+function otCssDelInforme() {
+  const todo = Array.from(document.querySelectorAll("style"))
+    .map(e => e.textContent).join("\n");
+  return todo.split("\n")
+    .filter(l => l.includes("#ee-informe"))
+    .join("\n")
+    .replace(/#ee-informe/g, ".ee-informe");
+}
+
 async function otImprimir() {
   if (!otDatos) return;
   // Guardar primero: el documento se arma con lo que hay en la base, no
@@ -11750,10 +11989,22 @@ async function otImprimir() {
      y no hay nada que ocultar. */
   const nombre = otNombreArchivo();
 
+  /* Los anexos van detrás del formato, cada uno en página nueva. El FO-016
+     lleva sus estilos en línea y es autónomo; el informe de ensayo depende
+     del CSS de la aplicación, así que cuando hay anexos se copian también
+     las hojas de estilo de la página. El orden importa: PAGE_CSS al final
+     para que su @page mande sobre el tamaño de hoja. */
+  const anexos = await otHtmlDeAnexos();
+  const estilosApp = anexos ? otCssDelInforme() : "";
+
   const html = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
     + '<title>' + otEsc(nombre) + '</title>'
-    + '<style>' + FO016.PAGE_CSS + ' html,body{margin:0;padding:0}</style>'
-    + '</head><body>' + otConstruirDocumento() + '</body></html>';
+    + (estilosApp ? '<style>' + estilosApp + '</style>' : "")
+    + '<style>' + FO016.PAGE_CSS + ' html,body{margin:0;padding:0}'
+    + '.ee-anexo-pag{break-before:page;page-break-before:always;'
+    + 'padding:1.2cm;background:#fff}</style>'
+    + '</head><body>'
+    + otConstruirDocumento() + anexos + '</body></html>';
 
   /* El título del iframe no basta. Al guardar como PDF, Chrome propone el
      título de la página contenedora —"Kronos-M"— aunque lo que se imprima sea
