@@ -144,6 +144,7 @@ html,body{height:100%;margin:0;}
 #selector-modulo{
   background:rgba(255,255,255,.12);color:#fff;border:1px solid rgba(255,255,255,.25);
   border-radius:8px;padding:6px 10px;font-size:12.5px;font-weight:500;
+  max-width:min(46vw,230px);text-overflow:ellipsis;
 }
 #selector-modulo option{color:var(--text-0);}
 
@@ -930,7 +931,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <option value="materiales">Gestión de Materiales</option>
     <option value="documental">Gestión Documental</option>
     <option value="ensayos">Ensayos Eléctricos</option>
-    <option value="programacion">Programación</option>
+    <option value="programacion">Programación de Actividades</option>
     <option value="vfd">Analizador de DATA</option>
     <option value="predictivo">Monitoreo de Condición</option>
     </select>
@@ -1247,7 +1248,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <!-- ===== Panel: Perfil / sesion ===== -->
 <div class="panel" id="panel-perfil">
   <div class="panel-header">
-    <button class="icon-btn" onclick="cerrarPanel('panel-perfil')">&#8592;</button>
+    <button class="icon-btn" onclick="volverAlModulo()">&#8592;</button>
     <h2>Perfil</h2>
   </div>
   <div class="panel-body">
@@ -1310,7 +1311,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <!-- ===== Panel: Carga de inventario de Materiales (SAP) ===== -->
 <div class="panel" id="panel-carga-materiales">
   <div class="panel-header">
-    <button class="icon-btn" onclick="cerrarPanel('panel-carga-materiales');reiniciarCargaMateriales();">&#8592;</button>
+    <button class="icon-btn" onclick="reiniciarCargaMateriales();volverAlModulo();">&#8592;</button>
     <h2>Actualizar inventario (SAP)</h2>
   </div>
   <div class="panel-body">
@@ -1912,7 +1913,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <!-- ===== Programación: registro de una actividad ===== -->
 <div class="panel" id="panel-prog-actividad">
   <div class="panel-header">
-    <button class="icon-btn" onclick="cerrarPanel('panel-prog-actividad')">&#8592;</button>
+    <button class="icon-btn" onclick="volverAlModulo()">&#8592;</button>
     <h2 id="prog-act-titulo">Actividad</h2>
   </div>
   <div class="panel-body">
@@ -2044,7 +2045,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <!-- ===== Programación: reporte FO-016 ===== -->
 <div class="panel" id="panel-prog-ot">
   <div class="panel-header">
-    <button class="icon-btn" onclick="cerrarPanel('panel-prog-ot')">&#8592;</button>
+    <button class="icon-btn" onclick="volverAlModulo()">&#8592;</button>
     <h2 id="ot-titulo">Reporte FO-016</h2>
   </div>
   <div class="panel-body">
@@ -2207,7 +2208,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <!-- ===== Programación: reporte del día ===== -->
 <div class="panel" id="panel-prog-reporte">
   <div class="panel-header">
-    <button class="icon-btn" onclick="cerrarPanel('panel-prog-reporte')">&#8592;</button>
+    <button class="icon-btn" onclick="volverAlModulo()">&#8592;</button>
     <h2>Reporte del día</h2>
   </div>
   <div class="panel-body">
@@ -2592,8 +2593,8 @@ function hubPintar(c) {
       e: c.maquinas != null ? `${n(c.maquinas)} máquinas · IEEE 43` : "Aislamiento y resistencia" },
     { k: "predictivo",   t: "Monitoreo de condición",
       e: "Pozos BES, HPUM y UBH" },
-    { k: "programacion", t: "Programación",
-      e: "Actividades y órdenes del día" },
+    { k: "programacion", t: "Programación de actividades",
+      e: "Plan diario, avances y órdenes" },
     { k: "documental",   t: "Gestión documental",
       e: c.documentos != null ? `${n(c.documentos)} documentos controlados` : "Instructivos y planes" },
     { k: "vfd",          t: "Analizador de data",
@@ -2614,6 +2615,13 @@ function hubPintar(c) {
   document.querySelectorAll("[data-hub-mod]").forEach(el => {
     el.onclick = () => aplicarModulo(el.dataset.hubMod);
   });
+}
+
+/* Cerrar un panel de detalle solo lo oculta: si detras no hay nada abierto
+   queda a la vista el fondo del modulo de activos, que es el primero del
+   documento. Esta funcion devuelve al listado del modulo en curso. */
+function volverAlModulo() {
+  aplicarModulo(moduloActivo);
 }
 
 function aplicarModulo(modulo, irVistaDefault = true) {
