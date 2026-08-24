@@ -224,6 +224,7 @@ html,body{height:100%;margin:0;}
 #ee-informe .inf-firmas{width:100%;margin-top:12px;font-size:12px}
 #ee-informe .inf-firmas td{width:50%;padding-top:6px;vertical-align:bottom}
 #ee-informe .inf-espacio{height:34px}
+#ee-informe .inf-generado{font-size:9px;color:#888;margin-top:14px;text-align:center}
 /* Contenedor temporal: eeImprimirInforme() mueve aqui el informe justo antes
    de llamar a window.print() y lo devuelve al terminar. Es la unica forma de
    sacarlo de .panel-body (overflow:auto) y de .panel (max-width:520px), que
@@ -6939,9 +6940,9 @@ function eeInformeHTML(e, m, historia) {
       <div class="inf-idpag">${(m.nombre_efectivo || "").toString()} · SAP ${m.sap_efectivo || "—"} · Ensayo del ${e.fecha}</div>
       <div class="inf-pie">
         El dictamen es un apoyo al diagnóstico generado a partir de los datos registrados y no reemplaza el criterio del ingeniero responsable.
-        Informe generado el ${new Date().toLocaleDateString("es-CO")} desde Kronos-M.
       </div>
       ${eeBloqueFirmas(e)}
+      <div class="inf-generado">Informe generado el ${new Date().toLocaleDateString("es-CO")} desde Kronos-M.</div>
     </div>`;
 }
 
@@ -12019,6 +12020,7 @@ async function otImprimir() {
     + '.ee-informe .inf-cierre{margin-top:9px;padding-top:4px}'
     + '.ee-informe .inf-firmas{margin-top:7px;font-size:11px}'
     + '.ee-informe .inf-espacio{height:22px}'
+    + '.ee-informe .inf-generado{margin-top:10px;font-size:8.5px}'
     + '.ee-informe .inf-cab{margin-bottom:8px}'
     /* Solo las firmas y las filas de datos se protegen del corte. Proteger
        todo el cierre era lo que empujaba el bloque a una hoja nueva. */
