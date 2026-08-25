@@ -514,7 +514,11 @@ function abrirUnidad(u){
   $('paso-unidad').classList.remove('oculto');
   $('u-nombre').textContent  = u.nombre;
   $('u-meta').textContent    = (u.campo||'—') + ' · ' + (u.pad||'—');
-  $('u-sistema').textContent = u.sistema || 'SIN SISTEMA';
+  /* Se muestra la topologia, no el sistema: al tecnico frente al equipo
+     le sirve mas saber que esta ante una MV1000 que ante "HPUM". Once
+     unidades de inyeccion son HPUM y responden a tres topologias. */
+  $('u-sistema').textContent = u.plantilla_nombre || u.plantilla
+                            || u.sistema || 'SIN SISTEMA';
   aviso($('msg'), '');
   ESTADO = null;
   pintarEstado();                      /* dibujo inmediato con el espejo */
