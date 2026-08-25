@@ -1301,6 +1301,21 @@ function iniciarMedicion(){
     '<div class="field"><label>Fecha</label><input type="date" id="med-fecha" value="' + ahora.toISOString().slice(0,10) + '"></div>' +
     '<div class="field"><label>Hora</label><input type="time" id="med-hora" value="' + ahora.toTimeString().slice(0,5) + '"></div>' +
     '</div>' +
+    /* Frecuencia y limites. Estos cuatro campos ya se enviaban en el
+       payload y se rellenaban al abrir un borrador, pero NUNCA se
+       dibujaban: valNum('med-frecop') sobre un elemento inexistente
+       devuelve null, asi que las cuatro columnas de mediciones_campo
+       se guardaban vacias siempre, sin error visible. */
+    '<div class="grid-fields g3">' +
+    '<div class="field"><label>Frecuencia de operacion</label>' +
+      '<div class="unit-input"><input class="mono-input" type="number" step="0.1" min="0" max="120" id="med-frecop"><span class="unit">Hz</span></div></div>' +
+    '<div class="field"><label>Setpoint de frecuencia</label>' +
+      '<div class="unit-input"><input class="mono-input" type="number" step="0.1" min="0" max="120" id="med-frecset"><span class="unit">Hz</span></div></div>' +
+    '<div class="field"><label>HSC &middot; frecuencia maxima</label>' +
+      '<div class="unit-input"><input class="mono-input" type="number" step="0.1" min="0" max="120" id="med-hsc"><span class="unit">Hz</span></div></div>' +
+    '<div class="field"><label>LSC &middot; frecuencia minima</label>' +
+      '<div class="unit-input"><input class="mono-input" type="number" step="0.1" min="0" max="120" id="med-lsc"><span class="unit">Hz</span></div></div>' +
+    '</div>' +
     '<div class="field"><label>Control mode</label><select id="med-modo"><option>Freq Set</option><option>PID</option><option>Gas Control</option></select></div>' +
     /* Condicion del pozo al momento de medir. Es obligatoria en la
        base y cambia el sentido de los numeros: una medicion con el
