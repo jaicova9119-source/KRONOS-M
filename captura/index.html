@@ -975,10 +975,14 @@ function postJSON(url, datos){
 
 function campoNumero(id, label, unidad, opciones){
   opciones = opciones || {};
-  /* Los angulos se piden con un decimal. Con grado entero el piso de ruido de
-     la secuencia cero calculada queda cerca de 0.5 %, y cualquier umbral por
-     debajo de 1.5 % seria ruido en lugar de hallazgo. */
-  var paso = (opciones.decimales === 1) ? '0.1' : 'any';
+  /* Los decimales los manda el catalogo (puntos_medida.decimales). Antes
+     solo se distinguia 1 o libre, y eso no alcanza: los angulos van con
+     un decimal porque con grado entero el piso de ruido de la secuencia
+     cero queda cerca de 0.5 % y cualquier umbral por debajo de 1.5 %
+     seria ruido en vez de hallazgo; pero las vibraciones en in/s van de
+     0,028 a 0,092 y con dos decimales se pierde media escala. */
+  var PASOS = { 1:'0.1', 2:'0.01', 3:'0.001', 4:'0.0001' };
+  var paso = PASOS[opciones.decimales] || 'any';
   var attrs = ' step="' + paso + '"';
   if (opciones.rango_min !== null && opciones.rango_min !== undefined) attrs += ' min="' + opciones.rango_min + '"';
   if (opciones.rango_max !== null && opciones.rango_max !== undefined) attrs += ' max="' + opciones.rango_max + '"';
@@ -1017,6 +1021,22 @@ var ETAPA_INFO = {
   BUS_DC:        {titulo:'Bus DC',        svg:ICONO_BUS,           bg:'#F5EDE4', color:'var(--ubh)',    cols:2},
   BUS_AC:        {titulo:'Bus AC',        svg:ICONO_BUS,           bg:'#F5EDE4', color:'var(--ubh)',    cols:2},
   SUT_SALIDA:    {titulo:'SUT Salida',    svg:ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)', cols:3},
+
+  /* Topologias distintas a la de doble convertidor. En la MV1000 el SUT
+     esta AGUAS ARRIBA del variador: lo que se mide en SUT_ENTRADA es la
+     acometida de 480 V y en SUT_A_VFD la salida de 4160 V que alimenta
+     al equipo. Reusar SUT_SALIDA para eso induciria al error que se
+     esta tratando de eliminar. */
+  SUT_ENTRADA:      {titulo:'SUT Entrada',        svg:ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)', cols:3},
+  SUT_A_VFD:        {titulo:'SUT a VFD',          svg:ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)', cols:3},
+  FILTRO_MATRIX_IN: {titulo:'Filtro matricial entrada', svg:ICONO_ONDA,    bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
+  FILTRO_MATRIX_OUT:{titulo:'Filtro matricial salida',  svg:ICONO_ONDA,    bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
+  CAPPANEL_IN:      {titulo:'Cappanel entrada',   svg:ICONO_ONDA,          bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
+  CAPPANEL_OUT:     {titulo:'Cappanel salida',    svg:ICONO_ONDA,          bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
+  CELDAS_MV:        {titulo:'Celdas de potencia', svg:ICONO_BUS,           bg:'#F5EDE4', color:'var(--ubh)',    cols:3},
+  MONITOR_QUANTUM:  {titulo:'Monitor Quantum',    svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)',   cols:2},
+  MONITOR_JVOP:     {titulo:'Monitores JVOP-180', svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)',   cols:2},
+
   PRESIONES:     {titulo:'Presiones',     svg:ICONO_PRESION,       bg:'#E9F0F9', color:'var(--navy)',   cols:3},
   VIBRACIONES:   {titulo:'Vibraciones',   svg:ICONO_VIBRACION,     bg:'#F5EDE4', color:'var(--ubh)',    cols:3},
   TEMPERATURAS:  {titulo:'Temperaturas',  svg:ICONO_TERMOMETRO,    bg:'#FDEDEA', color:'var(--danger)', cols:3},
@@ -1047,10 +1067,15 @@ function renderGrupo(titulo, campos, cols, info){
    habia que agregarlo en los dos sitios, y con cuatro sistemas
    distintos eso no escala.
 
-   Ahora el formulario se arma desde dp_catalogo_puntos, que devuelve
-   los puntos que aplican al sistema del activo. El id del campo se
+   Ahora el formulario se arma desde dp_puntos_unidad, que devuelve los
+   puntos que aplican a la TOPOLOGIA del activo. El id del campo se
    deriva del codigo del punto, asi que no hay traduccion que
    mantener: se elimino MED_MAPA por completo.
+
+   Antes se pedia por sistema de levantamiento (dp_catalogo_puntos), y
+   eso no alcanza: las once unidades de inyeccion son HPUM pero
+   responden a tres topologias distintas. A una MV1000 se le pedian
+   convertidor 1, convertidor 2 y filtro PWM, que ese equipo no tiene.
 
    Efecto secundario que importa: el angfasvi retirado dejo de
    enviarse solo. dp_guardar_medicion valida contra puntos_medida con
@@ -1058,13 +1083,23 @@ function renderGrupo(titulo, campos, cols, info){
    ignorados y se perdia en silencio.
    ============================================================ */
 
-/* Catalogo del sistema que se esta capturando. Se llena antes de
+/* Catalogo del activo que se esta capturando. Se llena antes de
    dibujar el formulario. */
 var MED_CATALOGO = [];
 
-/* Sistema de cada activo, tomado de dp_pozos_lista. Sin esto no se
-   sabe que puntos pedir. */
+/* Plantilla resuelta del activo abierto. Sirve para nombrar la clave de
+   cache y para mostrarla en el resumen. */
+var MED_PLANTILLA = '';
+
+/* Sistema de levantamiento de cada activo (BES / HPUM / UBH). Solo se
+   usa para agrupar el selector de pozos. NO decide que puntos pedir. */
 var MED_SISTEMA_POR_ACTIVO = {};
+
+/* Plantilla de medicion de cada activo: la topologia electrica real.
+   Once unidades pueden ser HPUM y responder a tres topologias
+   distintas, asi que el catalogo se resuelve por aqui y no por el
+   sistema. Viene de dp_pozos_lista. */
+var MED_PLANTILLA_POR_ACTIVO = {};
 
 /* El id del campo se deriva del codigo del punto. Los guiones bajos
    pasan a guiones para no romper la convencion de ids del resto del
@@ -1074,33 +1109,51 @@ function medIdCampo(codigo){
   return 'med-' + String(codigo).replace(/_/g, '-');
 }
 
-function medClaveCache(sistema){ return 'dp_catalogo_' + sistema; }
+/* La cache se guarda POR PLANTILLA, no por activo: son tres o cuatro
+   claves en lugar de una por cada uno de los 53 pozos, y un activo que
+   se abre por primera vez en campo ya tiene su catalogo descargado si
+   comparte topologia con otro. */
+function medClaveCache(plantilla){ return 'dp_catalogo_' + plantilla; }
 
-/* Devuelve una promesa con el catalogo del sistema. Usa la copia
-   guardada cuando no hay senal, que es la situacion normal en campo. */
-function cargarCatalogoPuntos(sistema){
-  var clave = medClaveCache(sistema);
+/* Devuelve {plantilla, puntos} del activo. La plantilla la resuelve la
+   base (dp_puntos_unidad), no el navegador: antes la app caia al
+   sistema elegido en la pantalla de inicio cuando el cache local no
+   tenia el pozo, y armaba el formulario de otra topologia sin avisar. */
+function cargarCatalogoUnidad(pozo){
+  var plantillaConocida = MED_PLANTILLA_POR_ACTIVO[pozo] || '';
 
   function desdeCache(){
+    if (!plantillaConocida) return null;
     try {
-      var c = JSON.parse(localStorage.getItem(clave) || 'null');
-      return (c && c.length) ? c : null;
+      var c = JSON.parse(localStorage.getItem(medClaveCache(plantillaConocida)) || 'null');
+      return (c && c.length) ? { plantilla: plantillaConocida, puntos: c } : null;
     } catch(e){ return null; }
   }
 
   if (!sb || !navigator.onLine){
     var c = desdeCache();
-    return c ? Promise.resolve(c)
-             : Promise.reject(new Error('Sin senal y sin catalogo guardado para ' + sistema
-                 + '. Abre la aplicacion una vez con conexion para descargarlo.'));
+    if (c) return Promise.resolve(c);
+    return Promise.reject(new Error(
+      plantillaConocida
+        ? 'Sin senal y sin catalogo guardado para la topologia ' + plantillaConocida
+          + '. Abre la aplicacion una vez con conexion para descargarlo.'
+        : 'Sin senal y sin saber la topologia de ' + pozo
+          + '. Abre la aplicacion una vez con conexion para descargar el listado de activos.'));
   }
 
-  return sb.rpc('dp_catalogo_puntos', { p_sistema: sistema }).then(function(r){
+  return sb.rpc('dp_puntos_unidad', { p_pozo: pozo }).then(function(r){
     if (r.error) throw new Error(r.error.message || 'No se pudo leer el catalogo');
-    var datos = r.data || [];
-    if (!datos.length) throw new Error('El catalogo de ' + sistema + ' vino vacio.');
-    try { localStorage.setItem(clave, JSON.stringify(datos)); } catch(e){}
-    return datos;
+    var b = r.data || {};
+    if (!b.ok) throw new Error(b.error || 'El catalogo no se pudo resolver.');
+    var puntos = b.puntos || [];
+    if (!puntos.length)
+      throw new Error('La topologia ' + (b.plantilla || '?') + ' no tiene puntos definidos.');
+    MED_PLANTILLA_POR_ACTIVO[pozo] = b.plantilla;
+    try {
+      localStorage.setItem(medClaveCache(b.plantilla), JSON.stringify(puntos));
+      localStorage.setItem('dp_plantillas_cache', JSON.stringify(MED_PLANTILLA_POR_ACTIVO));
+    } catch(e){}
+    return { plantilla: b.plantilla, plantilla_nombre: b.plantilla_nombre, puntos: puntos };
   }).catch(function(e){
     var c = desdeCache();
     if (c) return c;
@@ -1193,9 +1246,18 @@ function poblarSelects(){
      saber que puntos pedir: BES y HPUM no miden lo mismo. */
   function guardarSistemas(filas){
     filas.forEach(function(x){
-      if (x && x.nombre && x.sistema) MED_SISTEMA_POR_ACTIVO[x.nombre] = x.sistema;
+      if (!x || !x.nombre) return;
+      if (x.sistema)   MED_SISTEMA_POR_ACTIVO[x.nombre]   = x.sistema;
+      /* Si la base todavia no manda plantilla, se cae al sistema: es lo
+         que hace tambien dp_puntos_unidad, asi que los dos lados
+         coinciden durante el despliegue. */
+      if (x.plantilla || x.sistema)
+        MED_PLANTILLA_POR_ACTIVO[x.nombre] = x.plantilla || x.sistema;
     });
-    try { localStorage.setItem('dp_sistemas_cache', JSON.stringify(MED_SISTEMA_POR_ACTIVO)); } catch(e){}
+    try {
+      localStorage.setItem('dp_sistemas_cache',   JSON.stringify(MED_SISTEMA_POR_ACTIVO));
+      localStorage.setItem('dp_plantillas_cache', JSON.stringify(MED_PLANTILLA_POR_ACTIVO));
+    } catch(e){}
   }
 
   /* El mapa de sistemas se lee antes que nada: sin el, la primera
@@ -1203,6 +1265,10 @@ function poblarSelects(){
   try {
     var sc = JSON.parse(localStorage.getItem('dp_sistemas_cache') || 'null');
     if (sc) MED_SISTEMA_POR_ACTIVO = sc;
+  } catch(e){}
+  try {
+    var pc = JSON.parse(localStorage.getItem('dp_plantillas_cache') || 'null');
+    if (pc) MED_PLANTILLA_POR_ACTIVO = pc;
   } catch(e){}
 
   llenar(POZOS); // respaldo inmediato mientras llega el real
@@ -1252,51 +1318,51 @@ function iniciarMedicion(){
     '</select></div>' +
     '</div></fieldset>';
 
-  /* Los campos numericos ya no salen de una lista fija: dependen del
-     sistema del activo. Se resuelve el sistema, se trae el catalogo y
-     recien entonces se dibuja. */
-  /* Primero el sistema real del activo. El sistema elegido en la pantalla
-     de inicio solo sirve de respaldo: si el tecnico entro por HPUM pero
-     selecciono un pozo BES, manda lo que dice la base. */
-  var sistema = MED_SISTEMA_POR_ACTIVO[pozo] || sistemaActual || '';
-  var caja = document.getElementById('form-medicion');
+  /* Los campos numericos no salen de una lista fija ni del sistema
+     elegido en la pantalla de inicio: dependen de la TOPOLOGIA del
+     activo, que resuelve la base.
 
-  if (!sistema){
-    caja.innerHTML = cabecera +
-      '<fieldset><legend>Sin catalogo</legend><div class="group-card">' +
-      '<p style="margin:0;font-size:14px;">No se pudo determinar el sistema de <b>' + pozo + '</b>, ' +
-      'asi que no se sabe que puntos pedir. Abre la aplicacion una vez con conexion para ' +
-      'actualizar el listado de activos.</p></div></fieldset>';
-    ir('medicion-form');
-    return;
-  }
+     Aqui vivia "MED_SISTEMA_POR_ACTIVO[pozo] || sistemaActual". Ese
+     segundo termino era el sistema que el tecnico habia tocado en el
+     inicio, asi que con el cache desactualizado la app armaba el
+     formulario de otra topologia sin decir nada: en una MV1000 pedia
+     convertidor 1, convertidor 2 y filtro PWM, que no existen en ese
+     equipo. Ahora, si no se puede resolver, no se adivina: se avisa. */
+  var caja = document.getElementById('form-medicion');
 
   caja.innerHTML = cabecera +
     '<fieldset><legend>Cargando</legend><div class="group-card">' +
-    '<p style="margin:0;font-size:14px;">Preparando los puntos de ' + sistema + '...</p>' +
+    '<p style="margin:0;font-size:14px;">Preparando los puntos de ' + pozo + '...</p>' +
     '</div></fieldset>';
   ir('medicion-form');
 
-  cargarCatalogoPuntos(sistema).then(function(catalogo){
-    MED_CATALOGO = catalogo;
-    var grupos = medGruposDesdeCatalogo(catalogo);
+  cargarCatalogoUnidad(pozo).then(function(res){
+    MED_CATALOGO  = res.puntos;
+    MED_PLANTILLA = res.plantilla || '';
+
+    var grupos = medGruposDesdeCatalogo(MED_CATALOGO);
     var html = grupos.map(function(g){
       return renderGrupo(g.titulo, g.campos, g.cols, g.info);
     }).join('');
-    var nObl = catalogo.filter(function(p){ return p.obligatorio; }).length;
+    var nObl = MED_CATALOGO.filter(function(p){ return p.obligatorio; }).length;
     var resumen = '<div class="group-card" style="margin-bottom:14px;font-size:13px;color:var(--ink-soft);">' +
-      'Sistema <b style="color:var(--ink);">' + sistema + '</b> &middot; ' +
-      catalogo.length + ' puntos, ' + nObl + ' obligatorios. ' +
+      (res.plantilla_nombre
+        ? '<b style="color:var(--ink);">' + res.plantilla_nombre + '</b>'
+        : 'Topologia <b style="color:var(--ink);">' + MED_PLANTILLA + '</b>') +
+      ' &middot; ' + MED_CATALOGO.length + ' puntos, ' + nObl + ' obligatorios. ' +
       'Los marcados con <span style="color:var(--danger);font-weight:700;">*</span> se piden para dar la ronda por completa.' +
       '</div>';
     caja.innerHTML = cabecera + resumen + html;
     var etq = document.querySelector('#screen-medicion-form .s');
-    if (etq) etq.textContent = catalogo.length + ' puntos de medida';
+    if (etq) etq.textContent = MED_CATALOGO.length + ' puntos de medida';
   }).catch(function(e){
-    MED_CATALOGO = [];
+    MED_CATALOGO = []; MED_PLANTILLA = '';
     caja.innerHTML = cabecera +
       '<fieldset><legend>Catalogo no disponible</legend><div class="group-card">' +
       '<p style="margin:0 0 8px;font-size:14px;">' + (e && e.message ? e.message : 'No se pudo cargar el catalogo.') + '</p>' +
+      '<p style="margin:0 0 8px;font-size:13px;color:var(--ink-soft);">' +
+      'No se arma el formulario a medias: capturar con los puntos de otra topologia ' +
+      'ensucia la serie del activo.</p>' +
       '<button class="btn-primary" onclick="iniciarMedicion()">Reintentar</button>' +
       '</div></fieldset>';
   });
@@ -1715,6 +1781,25 @@ function dpAbrirBorrador(id){
     });
     if (huerfanos.length){
       console.warn('Valores del borrador sin campo en el formulario:', huerfanos);
+      /* En campo se prueba en Android sin consola, asi que un warn es
+         invisible: el borrador se ve incompleto y parece que no se
+         habia guardado. Pasa de verdad cuando cambia el catalogo de la
+         topologia con borradores abiertos, que es justo lo que ocurre
+         al migrar las plantillas. */
+      var caja = document.getElementById('form-medicion');
+      if (caja){
+        var av = document.createElement('div');
+        av.className = 'group-card';
+        av.style.cssText = 'margin-bottom:14px;border-left:3px solid var(--danger);font-size:13px;';
+        av.innerHTML = '<b>' + huerfanos.length + ' valor' +
+          (huerfanos.length === 1 ? '' : 'es') + ' de este borrador no tiene' +
+          (huerfanos.length === 1 ? '' : 'n') + ' campo en el formulario</b><br>' +
+          '<span style="color:var(--ink-soft);">El catalogo de puntos de este activo cambio ' +
+          'despues de guardarlo. Esos valores siguen en la base, pero no se ven aqui: ' +
+          huerfanos.slice(0, 8).join(', ') +
+          (huerfanos.length > 8 ? ' y ' + (huerfanos.length - 8) + ' mas' : '') + '.</span>';
+        caja.insertBefore(av, caja.firstChild);
+      }
     }
     if (n === 0) alert('El borrador se abrio, pero no tenia valores guardados.');
   }).catch(function(e){
