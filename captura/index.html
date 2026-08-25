@@ -1628,8 +1628,14 @@ function guardarMedicion(estado){
      para guardar y para volver a cargar un borrador. Tenerlo
      duplicado era garantia de que las dos listas se separaran. */
   var valores = {};
+  var unidades = {};
   MED_CATALOGO.forEach(function(pt){
     valores[pt.codigo] = valNum(medIdCampo(pt.codigo));
+    /* La unidad viaja con el valor. En INY-09..11 el panel entrega las
+       temperaturas en F: sin esto, dp_guardar_medicion asumiria la
+       canonica y un 157 leido en F quedaria guardado como 157 C.
+       La conversion la hace trg_normalizar_unidad en la base. */
+    if (pt.unidad != null) unidades[pt.codigo] = pt.unidad;
   });
 
   /* Los campos vacios no se envian: null y "no medido" son lo mismo
@@ -1684,7 +1690,8 @@ function guardarMedicion(estado){
     hsc: valNum('med-hsc'),
     lsc: valNum('med-lsc'),
     creado_por: tecnicoActual,
-    valores: valores
+    valores: valores,
+    unidades: unidades
   };
 
   var boton = event.target.closest('button');
