@@ -7073,19 +7073,47 @@ function eeInformeHTML(e, m, historia) {
    circular como si estuviera avalado. */
 function eeBloqueFirmas(e) {
   const fmt = t => t ? new Date(t).toLocaleDateString("es-CO") : "";
-  const linea = "______________________";
-  const trazo = img => img
-    ? `<img src="${img}" alt="" style="max-height:38px;max-width:190px;display:block;margin:0 auto 2px"/>`
-    : `<div class="inf-espacio"></div>`;
 
-  const ejecNombre = e.ejecutante_nombre || e.tecnico || "";
-  const ejecFecha = fmt(e.ejecutado_en) || e.fecha || "";
+  /* Cada casilla se arma como una columna de ancho fijo: rótulo, ranura de
+     trazo, raya y nombre. La ranura tiene alto fijo con line-height igual y
+     la imagen va inline con vertical-align:bottom, de modo que el trazo se
+     apoya en la raya sea la firma ancha o angosta —recortada al trazo, cada
+     PNG llega con proporción distinta y por eso antes quedaban a alturas
+     diferentes. La raya es un borde real del mismo ancho de la columna, no
+     una fila de guiones bajos: los guiones son texto inline y se alineaban a
+     la izquierda mientras la imagen iba centrada, de ahí el descuadre.
+
+     Todo va en estilo embebido a propósito. Word ignora los selectores
+     descendentes y colapsa las clases, así que la misma función sirve para
+     pantalla, impresión y exportación a .doc sin mantener tres hojas. Por lo
+     mismo la raya declara los cuatro lados del borde: Word descarta las
+     declaraciones parciales. */
+  const ANCHO = 200;   // px de la columna de firma
+  const RANURA = 42;   // px de alto reservado al trazo
+
+  const ranura = img => `<div style="height:${RANURA}px;line-height:${RANURA}px;`
+    + `text-align:center;overflow:hidden">`
+    + (img
+        ? `<img src="${img}" alt="" style="max-height:${RANURA - 4}px;`
+          + `max-width:${ANCHO - 16}px;vertical-align:bottom">`
+        : "&nbsp;")
+    + `</div>`;
+
+  const raya = `<table style="width:100%;border-collapse:collapse;margin:0"><tr>`
+    + `<td style="border-top:1px solid #000;border-right:0 none;border-bottom:0 none;`
+    + `border-left:0 none;padding:0;height:1px;font-size:1px;line-height:1px">&nbsp;</td>`
+    + `</tr></table>`;
+
+  const casilla = (rotulo, img, nombre, fecha) => `
+    <div style="width:${ANCHO}px;max-width:100%">
+      <div style="padding-bottom:1px">${rotulo}</div>
+      ${ranura(img)}
+      ${raya}
+      <div style="padding-top:2px">${nombre || "&nbsp;"}</div>
+      ${fecha ? `<div style="font-size:9px;color:#555">${fecha}</div>` : ""}
+    </div>`;
+
   const firmado = e.estado === "firmado";
-
-  const celdaRevision = firmado
-    ? `${trazo(e.firma_revisor)}${linea}<br>${e.revisor_nombre || ""}`
-      + `${e.revisado_en ? `<br><span style="font-size:9px">${fmt(e.revisado_en)}</span>` : ""}`
-    : `<div class="inf-espacio"></div>${linea}<br>&nbsp;`;
 
   const marca = firmado ? "" : `
     <div class="inf-nota" style="margin-top:6px;font-style:italic">
@@ -7095,9 +7123,13 @@ function eeBloqueFirmas(e) {
   return `
     <table class="inf-firmas">
       <tr>
-        <td>Realizó${trazo(e.firma_ejecutante)}${linea}<br>${ejecNombre}
-          ${ejecFecha ? `<br><span style="font-size:9px">${ejecFecha}</span>` : ""}</td>
-        <td>Revisó${celdaRevision}</td>
+        <td>${casilla("Realizó", e.firma_ejecutante,
+              e.ejecutante_nombre || e.tecnico || "",
+              fmt(e.ejecutado_en) || e.fecha || "")}</td>
+        <td>${casilla("Revisó",
+              firmado ? e.firma_revisor : "",
+              firmado ? (e.revisor_nombre || "") : "",
+              firmado ? fmt(e.revisado_en) : "")}</td>
       </tr>
     </table>${marca}`;
 }
@@ -7126,10 +7158,21 @@ function eeImprimirInforme() {
     + '<style>' + estilos + '</style>'
     + '<style>@page{size:21.0cm 29.7cm;margin:1.2cm}'
     + 'html,body{margin:0;padding:0;background:#fff}'
-    + '#print-root #ee-informe{min-height:calc(297mm - 2.4cm);'
-    + 'display:flex;flex-direction:column}'
-    + '#print-root .inf-piepag{margin-top:auto}'
-    + '#print-root .inf-firmas{break-inside:avoid;page-break-inside:avoid}</style>'
+    /* Antes el informe se estiraba a min-height:273mm en columna flex y el
+       pie se clavaba abajo con margin-top:auto. Esos 273mm son el área útil
+       solo si el navegador no imprime su propia banda de encabezado y pie;
+       cuando la imprime —y Chrome lo hace por omisión— la caja desborda, el
+       bloque de firmas no alcanza a caber y con break-inside:avoid salta
+       completo a la hoja siguiente dejando el hueco en blanco. Se deja que
+       el cierre fluya detrás del contenido: en un informe corto el pie queda
+       a media hoja, pero nunca se genera una hoja huérfana. */
+    + '#print-root #ee-informe{min-height:0;display:block}'
+    + '#print-root .inf-piepag{margin-top:14pt}'
+    /* Firmas y pie viajan juntos: separarlos deja un pie sin respaldo. */
+    + '#print-root .inf-cierre,#print-root .inf-piepag,'
+    + '#print-root .inf-firmas,#print-root .inf-firmas tr{'
+    + 'break-inside:avoid;page-break-inside:avoid}'
+    + '#print-root .inf-cierre{break-after:avoid;page-break-after:avoid}</style>'
     + '</head><body class="imprimiendo">'
     + '<div id="print-root">' + inf.outerHTML + '</div>'
     + '</body></html>';
