@@ -1007,42 +1007,23 @@ var ICONO_GAUGE = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 15a8 8 0 1 1
 var ICONO_PRESION = '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="13" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M12 13l3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 3v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 var ICONO_VIBRACION = '<svg viewBox="0 0 24 24" fill="none"><path d="M3 12h2l2-5 2 10 2-13 2 16 2-10 2 5h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-/* Titulo, icono y ancho de columna por CODIGO de etapa. Antes esto estaba
-   indexado por el titulo del grupo, que era un texto escrito a mano en el
-   arreglo del formulario. Ahora la etapa la manda el catalogo, asi que la
-   llave es el codigo. Una etapa que no este aqui se dibuja igual, con el
-   codigo como titulo: preferible a que desaparezcan campos. */
-var ETAPA_INFO = {
-  PST_ENTRADA:   {titulo:'PST Entrada',   svg:ICONO_TRANSFORMADOR, bg:'#E8F5EE', color:'var(--bes)',    cols:3},
-  CONVERTIDOR_1: {titulo:'Convertidor 1', svg:ICONO_RECTIFICADOR,  bg:'#E9F0F9', color:'var(--hpum)',   cols:3},
-  CONVERTIDOR_2: {titulo:'Convertidor 2', svg:ICONO_RECTIFICADOR,  bg:'#E9F0F9', color:'var(--hpum)',   cols:3},
-  VFD_ENTRADA:      {titulo:'VFD Entrada',       svg:ICONO_RECTIFICADOR,  bg:'#E9F0F9', color:'var(--hpum)',   cols:3},
-  VFD_SALIDA:    {titulo:'VFD Salida',    svg:ICONO_ONDA,          bg:'#FDEDEA', color:'var(--danger)', cols:3},
-  FILTRO_PWM:    {titulo:'Filtro PWM',    svg:ICONO_ONDA,          bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
-  BUS_DC:        {titulo:'Bus DC',        svg:ICONO_BUS,           bg:'#F5EDE4', color:'var(--ubh)',    cols:2},
-  BUS_AC:        {titulo:'Bus AC',        svg:ICONO_BUS,           bg:'#F5EDE4', color:'var(--ubh)',    cols:2},
-  SUT_SALIDA:    {titulo:'SUT Salida',    svg:ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)', cols:3},
+/* Estilo de cada seccion, indexado por NOMBRE LOGICO de icono. El
+   titulo, el icono y el ancho de grilla ya no viven aqui: los manda
+   dp_puntos_unidad desde la tabla etapas. Lo unico que queda en el
+   front es el dibujo, que es donde pertenece. Agregar una etapa nueva
+   es un insert en la base, no un despliegue.
 
-  /* Topologias distintas a la de doble convertidor. En la MV1000 el SUT
-     esta AGUAS ARRIBA del variador: lo que se mide en SUT_ENTRADA es la
-     acometida de 480 V y en SUT_A_VFD la salida de 4160 V que alimenta
-     al equipo. Reusar SUT_SALIDA para eso induciria al error que se
-     esta tratando de eliminar. */
-  SUT_ENTRADA:      {titulo:'SUT Entrada',        svg:ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)', cols:3},
-  SUT_A_VFD:        {titulo:'SUT a VFD',          svg:ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)', cols:3},
-  FILTRO_MATRIX_IN: {titulo:'Filtro Matrix entrada', svg:ICONO_ONDA,    bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
-  FILTRO_MATRIX_OUT:{titulo:'Filtro Matrix salida',  svg:ICONO_ONDA,    bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
-  CAPPANEL_IN:      {titulo:'Cappanel entrada',   svg:ICONO_ONDA,          bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
-  CAPPANEL_OUT:     {titulo:'Cappanel salida',    svg:ICONO_ONDA,          bg:'#E2F3F5', color:'var(--hpum)',   cols:3},
-  CELDAS_MV:        {titulo:'Celdas de potencia', svg:ICONO_BUS,           bg:'#F5EDE4', color:'var(--ubh)',    cols:3},
-  MONITOR_QUANTUM:  {titulo:'Monitor Quantum',    svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)',   cols:2},
-  MONITOR_JVOP:     {titulo:'Monitores JVOP-180', svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)',   cols:2},
-
-  PRESIONES:     {titulo:'Presiones',     svg:ICONO_PRESION,       bg:'#E9F0F9', color:'var(--navy)',   cols:3},
-  VIBRACIONES:   {titulo:'Vibraciones',   svg:ICONO_VIBRACION,     bg:'#F5EDE4', color:'var(--ubh)',    cols:3},
-  TEMPERATURAS:  {titulo:'Temperaturas',  svg:ICONO_TERMOMETRO,    bg:'#FDEDEA', color:'var(--danger)', cols:3},
-  AISLAMIENTO:   {titulo:'Aislamiento',   svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)',   cols:3},
-  OTRO:          {titulo:'Otros',         svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)',   cols:3}
+   Si una etapa trae un icono que este mapa no conoce, se dibuja con
+   GAUGE: preferible a que desaparezcan campos. */
+var ICONO_ESTILO = {
+  TRANSFORMADOR: {svg:ICONO_TRANSFORMADOR, bg:'#FFF3EA', color:'var(--orange)'},
+  RECTIFICADOR:  {svg:ICONO_RECTIFICADOR,  bg:'#E9F0F9', color:'var(--hpum)'},
+  ONDA:          {svg:ICONO_ONDA,          bg:'#E2F3F5', color:'var(--hpum)'},
+  BUS:           {svg:ICONO_BUS,           bg:'#F5EDE4', color:'var(--ubh)'},
+  TERMOMETRO:    {svg:ICONO_TERMOMETRO,    bg:'#FDEDEA', color:'var(--danger)'},
+  PRESION:       {svg:ICONO_PRESION,       bg:'#E9F0F9', color:'var(--navy)'},
+  VIBRACION:     {svg:ICONO_VIBRACION,     bg:'#F5EDE4', color:'var(--ubh)'},
+  GAUGE:         {svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)'}
 };
 
 
@@ -1051,7 +1032,7 @@ function renderGrupo(titulo, campos, cols, info){
   var html = campos.map(function(c){
     return campoNumero(c.id, c.label, c.unidad, c);
   }).join('');
-  var ic = info || ETAPA_INFO[titulo];
+  var ic = info || ICONO_ESTILO.GAUGE;
   var icHtml = ic ? '<span class="sec-ic" style="background:' + ic.bg + ';color:' + ic.color + ';">' + ic.svg + '</span>' : '';
   var nObl = campos.filter(function(c){ return c.obligatorio; }).length;
   var cuenta = campos.length + ' campos' + (nObl ? ' &middot; ' + nObl + ' obligatorios' : '');
@@ -1114,7 +1095,10 @@ function medIdCampo(codigo){
    claves en lugar de una por cada uno de los 53 pozos, y un activo que
    se abre por primera vez en campo ya tiene su catalogo descargado si
    comparte topologia con otro. */
-function medClaveCache(plantilla){ return 'dp_catalogo_' + plantilla; }
+/* Prefijo v2: los catalogos guardados antes del 31 no traen la
+   presentacion de la etapa. Cambiar la clave los descarta en vez de
+   dejarlos servir titulos en crudo. */
+function medClaveCache(plantilla){ return 'dp_catalogo2_' + plantilla; }
 
 /* Devuelve {plantilla, puntos} del activo. La plantilla la resuelve la
    base (dp_puntos_unidad), no el navegador: antes la app caia al
@@ -1167,9 +1151,17 @@ function cargarCatalogoUnidad(pozo){
 function medGruposDesdeCatalogo(catalogo){
   var orden = [];
   var porEtapa = {};
+  var meta = {};          /* presentacion de cada etapa, tal como llega */
   catalogo.forEach(function(p){
     var et = p.etapa || 'OTRO';
-    if (!porEtapa[et]){ porEtapa[et] = []; orden.push(et); }
+    if (!porEtapa[et]){
+      porEtapa[et] = []; orden.push(et);
+      /* Un catalogo guardado antes del 31 no trae estos campos: se cae
+         al codigo de la etapa hasta el proximo refresco con senal. */
+      meta[et] = { titulo: p.etapa_titulo || et,
+                   icono:  p.etapa_icono  || 'GAUGE',
+                   cols:   p.etapa_cols   || 3 };
+    }
     porEtapa[et].push({
       id:          medIdCampo(p.codigo),
       codigo:      p.codigo,
@@ -1183,8 +1175,10 @@ function medGruposDesdeCatalogo(catalogo){
     });
   });
   return orden.map(function(et){
-    var info = ETAPA_INFO[et] || {titulo:et, svg:ICONO_GAUGE, bg:'#EFF1F4', color:'var(--navy)', cols:3};
-    return { etapa:et, titulo:info.titulo, cols:info.cols, info:info, campos:porEtapa[et] };
+    var m  = meta[et];
+    var es = ICONO_ESTILO[m.icono] || ICONO_ESTILO.GAUGE;
+    return { etapa:et, titulo:m.titulo, cols:m.cols,
+             info:{svg:es.svg, bg:es.bg, color:es.color}, campos:porEtapa[et] };
   });
 }
 
