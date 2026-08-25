@@ -357,7 +357,7 @@
 
       <div class="home-aviso" id="home-aviso" style="display:none;">
         Para <strong id="home-aviso-sis">este sistema</strong> esta disponible el catalogo de equipos.
-        Las mediciones y el setup todavia usan el formulario de BES, por eso quedan bloqueados.
+        Las mediciones y el setup ya se resuelven por la topologia del activo.
       </div>
 
       <div class="home-grid">
@@ -394,7 +394,7 @@
       <div>
         <div class="section-label"><span class="bar"></span>Operacion y novedades</div>
 
-        <div class="action-card card-setup" data-sistemas="BES" onclick="ir('setup-pozo')">
+        <div class="action-card card-setup" data-sistemas="BES,HPUM,UBH" onclick="ir('setup-pozo')">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5c.1-.5.1-1 0-1.5l1.6-1.2-1.5-2.6-1.9.6a5.6 5.6 0 0 0-1.3-.8L16 6h-3l-.3 2c-.5.2-.9.5-1.3.8l-1.9-.6-1.5 2.6L9.6 12c-.1.5-.1 1 0 1.5L8 14.7l1.5 2.6 1.9-.6c.4.3.8.6 1.3.8l.3 2h3l.3-2c.5-.2.9-.5 1.3-.8l1.9.6 1.5-2.6-1.6-1.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Configuracion VFD (Setup)</div><div class="sub">Ver ajustes actuales, editar solo lo habitual</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -1378,65 +1378,9 @@ function iniciarMedicion(){
   });
 }
 
-function datosSetupSimulados(pozo){
-  return {
-    marca:'Baker Hughes ADV', fecha_ajuste:'2026-06-14', realizo:'Anderson Lopez',
-    frec_min:30, frec_max:54, frec_operacion:52, rampa_acel:30, rampa_desacel:30,
-    modo_control:'Freq Set', modo_operacion:'Manual',
-    overload:900, ol_bypass:3, ol_shutdown:2, ol_active:'True',
-    underload:632, ul_bypass:180, ul_shutdown:3600, ul_active:'True',
-    cu_setting:25, cu_bypass:4, cu_shutdown:4, cu_active:'True',
-    ov_setting:530, ov_bypass:4, ov_shutdown:4, ov_active:'True',
-    uv_setting:300, uv_bypass:30, uv_shutdown:30, uv_active:'True',
-    vu_setting:7, vu_bypass:4, vu_shutdown:4, vu_active:'True',
-    lsc_setting:30, lsc_bypass:30, lsc_shutdown:30, lsc_active:'True',
-    at_setting:330, at_bypass:3, at_shutdown:3, at_active:'True',
-    cable_length:7200, cable_type:2, rated_mtr_volt:3940, recommended_tap:3741, tap_configured:'G3-F3'
-  };
-}
-
-var SETUP_CAMPOS = [
-  { titulo:'General', campos:[
-    ['marca','Marca',''], ['fecha_ajuste','Fecha de ajuste',''], ['realizo','Realizo','']
-  ]},
-  { titulo:'Frecuencia y rampas', campos:[
-    ['frec_min','Frecuencia Min','Hz'], ['frec_max','Frecuencia Max','Hz'], ['frec_operacion','Frecuencia Operacion','Hz'],
-    ['rampa_acel','Rampa aceleracion','s'], ['rampa_desacel','Rampa desaceleracion','s'],
-    ['modo_control','Modo de control',''], ['modo_operacion','Modo de operacion','']
-  ]},
-  { titulo:'Proteccion Overload / Underload', campos:[
-    ['overload','Overload','A'], ['ol_bypass','OL Bypass delay','s'], ['ol_shutdown','OL Shutdown delay','s'], ['ol_active','OL Active','bool'],
-    ['underload','Underload','A'], ['ul_bypass','UL Bypass delay','s'], ['ul_shutdown','UL Shutdown delay','s'], ['ul_active','UL Active','bool']
-  ]},
-  { titulo:'Proteccion electrica (CU / OV / UV / VU / LSC)', campos:[
-    ['cu_setting','CU Setting',''], ['cu_bypass','CU Bypass delay','s'], ['cu_shutdown','CU Shutdown delay','s'], ['cu_active','CU Active','bool'],
-    ['ov_setting','OV Setting','V'], ['ov_bypass','OV Bypass delay','s'], ['ov_shutdown','OV Shutdown delay','s'], ['ov_active','OV Active','bool'],
-    ['uv_setting','UV Setting','V'], ['uv_bypass','UV Bypass delay','s'], ['uv_shutdown','UV Shutdown','s'], ['uv_active','UV Active','bool'],
-    ['vu_setting','VU Setting','%'], ['vu_bypass','VU Bypass delay','s'], ['vu_shutdown','VU Shutdown delay','s'], ['vu_active','VU Active','bool'],
-    ['lsc_setting','LSC Setting',''], ['lsc_bypass','LSC Bypass delay','s'], ['lsc_shutdown','LSC Shutdown delay','s'], ['lsc_active','LSC Active','bool']
-  ]},
-  { titulo:'AT Motor y cable', campos:[
-    ['at_setting','AT Mtr Setting',''], ['at_bypass','AT Mtr Bypass delay','s'], ['at_shutdown','AT Mtr Shutdown delay','s'], ['at_active','AT Mtr Active','bool'],
-    ['cable_length','cable length','ft'], ['cable_type','cable type','']
-  ]},
-  { titulo:'TAP', campos:[
-    ['rated_mtr_volt','RATED MTR VOLT','V'], ['recommended_tap','RECOMMENDED TAP','V'], ['tap_configured','TAP CONFIGURED','']
-  ]}
-];
-
-var setupActual = {};
-var setupPozoActivo = '';
-
-function normalizarClave(s){ return String(s).toLowerCase().replace(/[^a-z0-9]/g,''); }
-
-function buscarValorReal(camposReales, label){
-  var norm = normalizarClave(label);
-  for(var k in camposReales){
-    if(normalizarClave(k) === norm) return {key:k, valor:camposReales[k]};
-  }
-  return null;
-}
-
+/* Utilidades compartidas con el modulo de pozo nuevo. Vivian dentro del
+   bloque de setup de SharePoint; se conservan porque ese modulo todavia
+   las usa. */
 function _fechaSolo(valor){
   if(valor === undefined || valor === null) return '';
   var m = String(valor).match(/^(\d{4}-\d{2}-\d{2})/);
@@ -1460,157 +1404,242 @@ function normalizarYVerificarPozo(){
   verificarPozoExistente();
 }
 
-var setupItemId = null;
-var setupCamposReales = {};
-var setupColumnasEsquema = {};   // {internal_name: internal_name}, usado solo en modo creacion
-var setupModoCreacion = false;
-var setupCambiosPendientes = {}; // {realKey: nuevoValor}
+/* ============================================================
+   CONFIGURACION VFD
+   ------------------------------------------------------------
+   Antes esto hablaba con /campo/api/setup/<pozo>, un endpoint de
+   SharePoint que ya no existe, y estaba bloqueado con un alert para
+   que nadie capturara datos que se perderian. Debajo vivian una lista
+   SETUP_CAMPOS con las ocho protecciones escritas a mano -- treinta y
+   dos campos cableados -- y unos datos simulados de ejemplo.
+
+   Ahora: dp_setup_pozo para leer y dp_guardar_setup para escribir. Las
+   protecciones salen de catalogo_protecciones, asi que un variador con
+   protecciones distintas a las del Electrospeed encaja con un insert.
+
+   setup_vfd guarda historial: cada ajuste es un registro nuevo y el
+   anterior conserva su vigencia en false. Un cambio de setpoint que
+   precede a una falla es justo el dato que uno quiere mirar despues.
+   ============================================================ */
+
+var setupPozoActivo = '';
+var SETUP_DATOS     = null;   /* respuesta de dp_setup_pozo */
+
+/* Campos de cabecera: [id, etiqueta, unidad, tipo]. Estos si son
+   columnas fijas de setup_vfd, no catalogo. */
+var SETUP_CABECERA = [
+  { titulo:'General', campos:[
+    ['marca_texto','Marca y modelo del variador','','texto'],
+    ['ajustado_el','Fecha del ajuste','','fecha'],
+    ['realizado_por','Realizo','','texto']
+  ]},
+  { titulo:'Frecuencia y rampas', campos:[
+    ['frec_min_hz','Frecuencia minima','Hz','num'],
+    ['frec_max_hz','Frecuencia maxima','Hz','num'],
+    ['frec_operacion_hz','Frecuencia de operacion','Hz','num'],
+    ['rampa_acel_s','Rampa de aceleracion','s','num'],
+    ['rampa_desacel_s','Rampa de desaceleracion','s','num'],
+    ['modo_control','Modo de control','','texto'],
+    ['modo_operacion','Modo de operacion','','texto']
+  ]},
+  { titulo:'Cable y TAP', campos:[
+    ['cable_longitud','Longitud de cable','ft','num'],
+    ['cable_tipo','Tipo de cable','','texto'],
+    ['motor_v_nominal','Tension nominal del motor','V','num'],
+    ['tap_recomendado','TAP recomendado','V','num'],
+    ['tap_configurado','TAP configurado','','texto']
+  ]}
+];
+
+function setupClaveCache(pozo){ return 'dp_setup_' + pozo; }
 
 function cargarSetup(){
-  alert('Este formulario todavia no esta conectado a Kronos-M.\n\nNo guardes datos aqui: se perderian. Por ahora usa Medicion, Aislamiento y Bitacora, que si estan conectados.');
-  return;
-
   var pozo = document.getElementById('setup-pozo-select').value;
   if(!pozo){ alert('Selecciona un pozo primero.'); return; }
   setupPozoActivo = pozo;
+  document.getElementById('setup-pozo-label').textContent = pozo;
 
-  fetch('/campo/api/setup/' + encodeURIComponent(pozo)).then(function(r){ return r.json(); }).then(function(j){
-    if(!j.ok){ alert('No se pudo cargar la configuracion: ' + j.error); return; }
-    setupItemId = j.item_id;
-    setupModoCreacion = !j.existe;
-    setupCamposReales = j.campos || {};
-    setupColumnasEsquema = {};
-    (j.columnas || []).forEach(function(c){ setupColumnasEsquema[c] = c; });
-    setupCambiosPendientes = {};
-    document.getElementById('setup-pozo-label').textContent = pozo;
+  var caja = document.getElementById('form-setup');
+  caja.innerHTML = '<fieldset><legend>Cargando</legend><div class="group-card">'
+    + '<p style="margin:0;font-size:14px;">Leyendo la configuracion de ' + pozo + '...</p>'
+    + '</div></fieldset>';
+  ir('setup-form');
 
-    var html;
-    if(setupModoCreacion){
-      html = '<div class="readonly-note" style="background:#FFF3E0;color:#E65100;">' +
-        '<svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>' +
-        'No hay configuracion registrada para ' + pozo + '. Completa los valores iniciales.</div>';
-    } else {
-      html = '<div class="readonly-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>' +
-        'Configuracion cargada. Los campos resaltados son editables.</div>';
-    }
+  function desdeCache(){
+    try { return JSON.parse(localStorage.getItem(setupClaveCache(pozo)) || 'null'); }
+    catch(e){ return null; }
+  }
 
-    SETUP_CAMPOS.forEach(function(grupo){
-      html += '<fieldset><legend>' + grupo.titulo + '</legend><div class="group-card"><div class="grid-fields">';
-      grupo.campos.forEach(function(arr){
-        var idInterno = arr[0], label = arr[1], unidad = arr[2];
-        // Primero se busca el VALOR real (registro actual). Si ese campo
-        // especifico viene vacio en el registro (aunque el registro exista),
-        // se cae de vuelta al ESQUEMA solo para obtener el data-realkey
-        // correcto y dejar el campo EDITABLE y vacio - antes quedaba
-        // deshabilitado con 'No disponible' incluso en modo edicion, lo cual
-        // impedia diligenciar un dato que nunca se habia registrado.
-        var encontrado = buscarValorReal(setupCamposReales, label);
-        var esDesdeEsquema = false;
-        if(!encontrado){
-          encontrado = buscarValorReal(setupColumnasEsquema, label);
-          esDesdeEsquema = true;
-        }
+  function pintar(j){
+    SETUP_DATOS = j;
+    try { localStorage.setItem(setupClaveCache(pozo), JSON.stringify(j)); } catch(e){}
+    setupPintarFormulario(j);
+  }
 
-        if(!encontrado){
-          html += '<div class="field readonly"><label>' + label + '</label><input value="No disponible" disabled></div>';
-          return;
-        }
-        var valor = (setupModoCreacion || esDesdeEsquema) ? '' : encontrado.valor;
-        var realKey = encontrado.key;
-        var inputHtml;
+  if(!sb || !navigator.onLine){
+    var c = desdeCache();
+    if(c){ pintar(c); return; }
+    caja.innerHTML = '<fieldset><legend>Sin datos</legend><div class="group-card">'
+      + '<p style="margin:0 0 8px;font-size:14px;">Sin senal y sin configuracion guardada de '
+      + pozo + '. Abre este pozo una vez con conexion para poder trabajarlo en campo.</p>'
+      + '<button class="btn-primary" onclick="cargarSetup()">Reintentar</button>'
+      + '</div></fieldset>';
+    return;
+  }
 
-        if(idInterno === 'realizo'){
-          // Siempre refleja quien inicio sesion con su PIN - no editable,
-          // para que el registro no pueda quedar a nombre de otra persona.
-          inputHtml = '<input data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + tecnicoActual + '" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;">';
-        } else if(idInterno === 'fecha_ajuste'){
-          // Convertir ISO (ej '2026-07-06T00:00:00Z') a YYYY-MM-DD para el
-          // input de fecha nativo; si no matchea ese formato, se deja tal
-          // cual (por si ya viene en otro formato o vacio).
-          var fechaSolo = valor;
-          var m = String(valor).match(/^(\d{4}-\d{2}-\d{2})/);
-          if(m) fechaSolo = m[1];
-          inputHtml = '<input type="date" data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + fechaSolo + '" onchange="marcarCambioSetup(this)">';
-        } else if(idInterno === 'modo_control'){
-          inputHtml = '<select data-realkey="' + realKey + '" id="su-' + idInterno + '" onchange="marcarCambioSetup(this)">' +
-            '<option' + (valor==='Freq Set'?' selected':'') + '>Freq Set</option>' +
-            '<option' + (valor==='PID'?' selected':'') + '>PID</option>' +
-            '<option' + (valor==='Gas Control'?' selected':'') + '>Gas Control</option></select>';
-        } else if(idInterno === 'modo_operacion'){
-          inputHtml = '<select data-realkey="' + realKey + '" id="su-' + idInterno + '" onchange="marcarCambioSetup(this)">' +
-            '<option' + (valor==='Manual'?' selected':'') + '>Manual</option>' +
-            '<option' + (valor==='Auto'?' selected':'') + '>Auto</option></select>';
-        } else if(unidad === 'bool'){
-          var esTrue = String(valor).toLowerCase() === 'true';
-          inputHtml = '<select data-realkey="' + realKey + '" id="su-' + idInterno + '" onchange="marcarCambioSetup(this)">' +
-            '<option' + (esTrue?' selected':'') + '>True</option>' +
-            '<option' + (!esTrue?' selected':'') + '>False</option></select>';
-        } else if(unidad && unidad !== ''){
-          inputHtml = '<div class="unit-input"><input class="mono-input" data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + valor + '" onchange="marcarCambioSetup(this)">' +
-            '<span class="unit">' + unidad + '</span></div>';
-        } else {
-          inputHtml = '<input data-realkey="' + realKey + '" id="su-' + idInterno + '" value="' + valor + '" onchange="marcarCambioSetup(this)">';
-        }
-        html += '<div class="field editable"><label>' + label + '</label>' + inputHtml + '</div>';
-      });
-      html += '</div></fieldset>';
-    });
-
-    var notaAnterior = buscarValorReal(setupCamposReales, 'Observaciones');
-    var notaAnteriorHtml = '';
-    if(notaAnterior && notaAnterior.valor){
-      notaAnteriorHtml = '<div class="nota-anterior-box">' +
-        '<div class="lbl-anterior">Última nota registrada (' + (setupCamposReales['Fechadeajuste'] ? String(setupCamposReales['Fechadeajuste']).slice(0,10) : 'fecha desconocida') + ')</div>' +
-        '<div class="txt-anterior">' + notaAnterior.valor + '</div></div>';
-    }
-
-    html += notaAnteriorHtml +
-      '<div class="change-note-box"><div class="lbl">Nota de cambio (historico)</div>' +
-      '<textarea id="su-nota" rows="2" placeholder="Ej: se sube frecuencia de 52 a 54 Hz por optimizacion de produccion..."></textarea></div>';
-
-    document.getElementById('form-setup').innerHTML = html;
-    var campoRealizo = document.getElementById('su-realizo');
-    if(campoRealizo){ setupCambiosPendientes[campoRealizo.dataset.realkey] = campoRealizo.value; }
-    ir('setup-form');
+  sb.rpc('dp_setup_pozo', { p_pozo: pozo }).then(function(r){
+    if(r.error) throw new Error(r.error.message || 'No se pudo leer la configuracion');
+    var j = r.data || {};
+    if(!j.ok) throw new Error(j.error || 'No se pudo leer la configuracion');
+    pintar(j);
   }).catch(function(e){
-    alert('Error de conexion con el servidor local: ' + e + '\nVerifica que pwa_backend.py este corriendo.');
+    var c = desdeCache();
+    if(c){ pintar(c); return; }
+    caja.innerHTML = '<fieldset><legend>No disponible</legend><div class="group-card">'
+      + '<p style="margin:0 0 8px;font-size:14px;">' + (e && e.message ? e.message : 'Error') + '</p>'
+      + '<button class="btn-primary" onclick="cargarSetup()">Reintentar</button>'
+      + '</div></fieldset>';
   });
 }
 
-function marcarCambioSetup(input){
-  setupCambiosPendientes[input.dataset.realkey] = input.value;
+function setupCampo(id, label, unidad, tipo, valor){
+  var v = (valor === null || valor === undefined) ? '' : String(valor);
+  var attr = 'id="su-' + id + '" data-campo="' + id + '"';
+  var input;
+  if(tipo === 'num'){
+    input = '<div class="unit-input"><input class="mono-input" type="number" step="any" '
+          + attr + ' value="' + v + '">'
+          + (unidad ? '<span class="unit">' + unidad + '</span>' : '') + '</div>';
+  } else if(tipo === 'fecha'){
+    input = '<input type="date" ' + attr + ' value="' + v.slice(0,10) + '">';
+  } else {
+    input = '<input type="text" ' + attr + ' value="' + v.replace(/"/g,'&quot;') + '">';
+  }
+  return '<div class="field"><label for="su-' + id + '">' + label + '</label>' + input + '</div>';
+}
+
+function setupPintarFormulario(j){
+  var s = j.setup || {};
+  var html = '';
+
+  if(!j.existe){
+    html += '<div class="readonly-note" style="background:#FFF3E0;color:#E65100;">'
+      + '<svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>'
+      + 'No hay configuracion registrada para ' + setupPozoActivo + '. Este sera el primer ajuste.</div>';
+  } else {
+    var f = s.ajustado_el ? String(s.ajustado_el).slice(0,10) : 'fecha desconocida';
+    html += '<div class="readonly-note">'
+      + '<svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>'
+      + 'Configuracion vigente desde el ' + f
+      + (s.realizado_por ? ', ajustada por ' + s.realizado_por : '')
+      + '. Al guardar se registra un ajuste nuevo y este queda en el historico.</div>';
+  }
+
+  /* La fecha arranca en hoy: se esta registrando el ajuste de ahora,
+     no reeditando el anterior. */
+  var hoy = new Date().toISOString().slice(0,10);
+
+  SETUP_CABECERA.forEach(function(g){
+    html += '<fieldset><legend>' + g.titulo + '</legend><div class="group-card"><div class="grid-fields g3">';
+    g.campos.forEach(function(c){
+      var val = s[c[0]];
+      if(c[0] === 'ajustado_el')    val = hoy;
+      if(c[0] === 'realizado_por')  val = tecnicoActual;
+      if(c[0] === 'marca_texto' && !val) val = j.marca_variador || '';
+      html += setupCampo(c[0], c[1], c[2], c[3], val);
+    });
+    html += '</div></div></fieldset>';
+  });
+
+  /* Protecciones: una tarjeta por fila del catalogo. */
+  var prot = j.protecciones || [];
+  html += '<fieldset><legend>Protecciones<span class="count">' + prot.length + ' del catalogo</span></legend>';
+  prot.forEach(function(p){
+    html += '<div class="group-card" style="margin-bottom:10px;" data-prot="' + p.codigo + '">'
+      + '<div style="font-weight:700;font-size:14px;margin-bottom:8px;">'
+      + p.codigo + ' &middot; ' + (p.nombre || '') + '</div>'
+      + '<div class="grid-fields g3">'
+      + setupCampo('p-' + p.codigo + '-ajuste',   'Ajuste',           '',  'num',  p.ajuste)
+      + setupCampo('p-' + p.codigo + '-bypass',   'Bypass delay',     's', 'num',  p.bypass_delay)
+      + setupCampo('p-' + p.codigo + '-shutdown', 'Shutdown delay',   's', 'num',  p.shutdown_delay)
+      + '</div>'
+      + '<div class="grid-fields">'
+      + '<div class="field"><label for="su-p-' + p.codigo + '-activa">Activa</label>'
+      + '<select id="su-p-' + p.codigo + '-activa"><option value="">Sin definir</option>'
+      + '<option value="true"' + (p.activa === true ? ' selected' : '') + '>Si</option>'
+      + '<option value="false"' + (p.activa === false ? ' selected' : '') + '>No</option>'
+      + '</select></div>'
+      + setupCampo('p-' + p.codigo + '-nota', 'Nota', '', 'texto', p.ajuste_nota)
+      + '</div></div>';
+  });
+  html += '</fieldset>';
+
+  /* Historial: hace visible que esto no sobrescribe. */
+  var h = j.historial || [];
+  if(h.length > 1){
+    html += '<fieldset><legend>Ajustes anteriores<span class="count">' + (h.length - 1) + '</span></legend>'
+      + '<div class="group-card" style="font-size:13px;">';
+    h.slice(1).forEach(function(x){
+      html += '<div style="padding:8px 0;border-top:1px solid var(--line);">'
+        + '<b>' + (x.ajustado_el ? String(x.ajustado_el).slice(0,10) : 'sin fecha') + '</b>'
+        + (x.realizado_por ? ' &middot; ' + x.realizado_por : '')
+        + (x.observaciones ? '<div style="color:var(--ink-soft);margin-top:2px;">' + x.observaciones + '</div>' : '')
+        + '</div>';
+    });
+    html += '</div></fieldset>';
+  }
+
+  html += '<fieldset><legend>Nota del ajuste</legend><div class="group-card">'
+    + '<div class="field"><label for="su-nota">Que se cambio y por que</label>'
+    + '<input type="text" id="su-nota" placeholder="Ej: se bajo la frecuencia a 50 Hz por alta temperatura de motor"></div>'
+    + '<p style="margin:8px 0 0;font-size:12.5px;color:var(--ink-soft);">'
+    + 'Es obligatoria. Es lo que permite entender despues por que cambio la configuracion.</p>'
+    + '</div></fieldset>';
+
+  document.getElementById('form-setup').innerHTML = html;
+}
+
+function suVal(id){
+  var el = document.getElementById('su-' + id);
+  if(!el) return null;
+  var v = String(el.value).trim();
+  return v === '' ? null : v;
 }
 
 function guardarSetup(){
-  alert('Este formulario todavia no esta conectado a Kronos-M.\n\nNo guardes datos aqui: se perderian. Por ahora usa Medicion, Aislamiento y Bitacora, que si estan conectados.');
-  return;
+  if(!SETUP_DATOS){ alert('Carga primero la configuracion del pozo.'); return; }
 
-  var claves = Object.keys(setupCambiosPendientes);
-  var nota = document.getElementById('su-nota').value.trim();
-
-  if(claves.length === 0){
-    alert(setupModoCreacion
-      ? 'Ingresa al menos un valor para registrar la configuracion inicial.'
-      : 'No hay cambios respecto a la configuracion actual. Nada que guardar.');
-    return;
-  }
+  var nota = suVal('nota');
   if(!nota){
-    alert(setupModoCreacion
-      ? 'Agrega una nota (ej: quien realizo el ajuste inicial) antes de guardar.'
-      : 'Detecte cambios en la configuracion. Agrega una nota de cambio para el historico antes de guardar.');
+    alert('Agrega la nota del ajuste antes de guardar.\n\nEs lo que permite entender despues por que cambio la configuracion.');
     return;
   }
+
+  var payload = { id: dpNuevoId(), pozo: setupPozoActivo, observaciones: nota };
+  SETUP_CABECERA.forEach(function(g){
+    g.campos.forEach(function(c){ payload[c[0]] = suVal(c[0]); });
+  });
+
+  var prots = {};
+  (SETUP_DATOS.protecciones || []).forEach(function(p){
+    var o = {
+      ajuste:         suVal('p-' + p.codigo + '-ajuste'),
+      bypass_delay:   suVal('p-' + p.codigo + '-bypass'),
+      shutdown_delay: suVal('p-' + p.codigo + '-shutdown'),
+      activa:         suVal('p-' + p.codigo + '-activa'),
+      ajuste_nota:    suVal('p-' + p.codigo + '-nota')
+    };
+    /* Una proteccion sin un solo dato no se manda: la base tambien la
+       descarta, pero asi el payload no se llena de vacios. */
+    if(o.ajuste || o.bypass_delay || o.shutdown_delay || o.activa) prots[p.codigo] = o;
+  });
+  payload.protecciones = prots;
 
   var boton = event.target.closest('button');
-  guardarOEncolar(
-    '/campo/api/setup/' + encodeURIComponent(setupPozoActivo),
-    { item_id: setupItemId, cambios: setupCambiosPendientes, nota: nota },
-    boton,
-    setupModoCreacion
-      ? 'Configuracion inicial registrada para ' + setupPozoActivo + '.'
-      : 'Configuracion actualizada para ' + setupPozoActivo + ', con nota en la bitacora.',
-    'Setup ' + setupPozoActivo
-  );
+  guardarOEncolar('dp_guardar_setup', payload, boton,
+    'Configuracion registrada para ' + setupPozoActivo
+    + '. El ajuste anterior queda en el historico.',
+    'Setup ' + setupPozoActivo);
 }
 
 /* ===================== GUARDADO REAL: MEDICION ===================== */
