@@ -1431,7 +1431,7 @@ var SETUP_CABECERA = [
   { titulo:'General', campos:[
     ['marca_texto','Marca y modelo del variador','','texto'],
     ['ajustado_el','Fecha del ajuste','','fecha'],
-    ['realizado_por','Realizo','','texto']
+    ['realizado_por','Realizo','','ro']
   ]},
   { titulo:'Frecuencia y rampas', campos:[
     ['frec_min_hz','Frecuencia minima','Hz','num'],
@@ -1512,6 +1512,12 @@ function setupCampo(id, label, unidad, tipo, valor){
           + (unidad ? '<span class="unit">' + unidad + '</span>' : '') + '</div>';
   } else if(tipo === 'fecha'){
     input = '<input type="date" ' + attr + ' value="' + v.slice(0,10) + '">';
+  } else if(tipo === 'ro'){
+    /* Quien realizo el ajuste no se escribe: es quien tiene la sesion
+       abierta. La base tambien lo sella, asi que editarlo aqui no
+       cambiaria nada de todos modos. */
+    input = '<input type="text" ' + attr + ' value="' + v.replace(/"/g,'&quot;') + '" readonly '
+          + 'style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;">';
   } else {
     input = '<input type="text" ' + attr + ' value="' + v.replace(/"/g,'&quot;') + '">';
   }
