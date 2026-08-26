@@ -103,6 +103,7 @@
   <div class="barra">
     <span class="punto" id="chip"><i></i><span id="chip-txt">En linea</span></span>
     <span id="espejo-info" style="opacity:.75"></span>
+    <span class="pend" id="prep" onclick="prepararCampo()" style="cursor:pointer">preparar</span>
     <span class="pend oculto" id="pend" onclick="sincronizar()"></span>
     <span class="pend oculto" id="sesion" onclick="cerrarSesion()"></span>
   </div>
@@ -419,12 +420,15 @@ function sincronizar(){
       return;
     }
     var it = cola[i];
+    /* Lo que resta MAS lo ya marcado. Con cola.slice(i) a secas se
+       perdian los rechazados por datos de esta misma pasada. */
+    var reencolar = function(){ guardarCola(fallidos.concat(cola.slice(i))); };
     sb.rpc(it.rpc, { p: it.payload }).then(function(r){
-      if(r.error){ guardarCola(cola.slice(i)); return; }    /* red: sigue en cola */
+      if(r.error){ reencolar(); return; }                    /* red: sigue en cola */
       var b = r.data || {};
       if(!b.ok){ it.error = b.error; fallidos.push(it); }    /* dato: marcado */
       paso(i+1, fallidos);
-    }).catch(function(){ guardarCola(cola.slice(i)); });
+    }).catch(reencolar);
   })(0, []);
 }
 
@@ -441,6 +445,41 @@ function descargarEspejo(){
     pintarEspejo();
     return true;
   }).catch(function(){ return false; });
+}
+
+/* Descarga deliberada de todo lo que hace falta en campo: el espejo de
+   unidades y la placa de cada una. El cache por uso no alcanza, porque
+   la unidad que se va a intervenir suele ser la que nunca se abrio. */
+function prepararCampo(){
+  if(!sb || !SESION){ aviso($('aviso-inicio'), 'Entra con tu usuario antes de descargar.', 'err'); return; }
+  if(!navigator.onLine){
+    aviso($('aviso-inicio'), 'Necesitas señal para descargar. Esto se hace antes de salir a campo.', 'err');
+    return;
+  }
+  var chip = $('prep');
+  chip.textContent = 'descargando…';
+  var caja = $('paso-unidad').classList.contains('oculto') ? $('aviso-inicio') : $('msg');
+  aviso(caja, 'Descargando unidades…');
+
+  descargarEspejo().then(function(ok){
+    if(!ok) throw new Error('No se pudo descargar la lista de unidades.');
+    return descargarPlacas(function(hechas, total){
+      chip.textContent = 'placas ' + hechas + '/' + total;
+      aviso(caja, 'Descargando placas: ' + hechas + ' de ' + total + '…');
+    });
+  }).then(function(res){
+    chip.textContent = 'preparar';
+    try { almacen.setItem('dp_preparado_unidad', new Date().toISOString()); } catch(e){}
+    pintarEspejo();
+    aviso(caja, res.fallos
+      ? 'Descarga incompleta: ' + res.ok + ' placas guardadas, ' + res.fallos
+        + ' sin descargar. Esas unidades no se van a poder editar sin señal.'
+      : 'Listo. ' + res.ok + ' placas guardadas en este dispositivo.',
+      res.fallos ? 'warn' : '');
+  }).catch(function(e){
+    chip.textContent = 'preparar';
+    aviso(caja, (e && e.message ? e.message : 'La descarga fallo') + ' Lo que alcanzo a bajar quedo guardado.', 'err');
+  });
 }
 
 function pintarEspejo(){
@@ -624,6 +663,7 @@ function abrirReemplazo(hayAnterior){
    la base y no un despliegue.
    ===================================================================== */
 var PLACA = null;   /* { valores, campos, fuente, ... } de la unidad activa */
+var PLACA_TS = null; /* cuando se leyo: la del cache puede tener dias */
 
 function kpFaltaPlaca(rol){
   if(!PLACA || !PLACA.campos) return false;
@@ -633,13 +673,66 @@ function kpFaltaPlaca(rol){
   return cs.some(function(c){ return v[c.columna] == null || v[c.columna] === ''; });
 }
 
+/* La placa se cachea por unidad. Sin esto, en campo PLACA quedaba en
+   null, el aviso decia "no se pudo leer" y el boton de guardar salia
+   deshabilitado: la captura de placa era imposible sin señal, que es
+   justo donde se necesita. El cache guarda la definicion de campos y
+   los valores en servicio; lo que el tecnico escriba encima va a la
+   cola como cualquier otro cambio. */
+function clavePlaca(id){ return 'dp_placa_' + id; }
+
+function placaDesdeCache(id){
+  try { return JSON.parse(almacen.getItem(clavePlaca(id)) || 'null'); }
+  catch(e){ return null; }
+}
+
 async function cargarPlaca(){
   PLACA = null;
+  if(!unidad) return;
+  var guardada = placaDesdeCache(unidad.id);
+  if(guardada){ PLACA = guardada.datos; PLACA_TS = guardada.ts; }
+
   if(!navigator.onLine || !sb) return;
   try {
     var r = await sb.rpc('dp_placa_unidad', { p_pozo_id: unidad.id });
-    if(!r.error && r.data) PLACA = r.data;
+    if(!r.error && r.data){
+      PLACA = r.data;
+      PLACA_TS = new Date().toISOString();
+      try { almacen.setItem(clavePlaca(unidad.id), JSON.stringify({ ts: PLACA_TS, datos: r.data })); } catch(e){}
+    }
   } catch(e){}
+}
+
+/* Descarga la placa de TODAS las unidades del espejo. Se llama al
+   preparar el equipo antes de salir, porque el cache por unidad solo
+   se llena con las que ya se abrieron con señal. */
+function descargarPlacas(alAvanzar){
+  var e = leerEspejo();
+  if(!e || !e.unidades || !sb || !navigator.onLine || !SESION)
+    return Promise.resolve({ ok:0, fallos:0 });
+
+  var lista = e.unidades.slice(), i = 0, ok = 0, fallos = 0;
+  return new Promise(function(listo){
+    function lote(){
+      if(i >= lista.length){ listo({ ok:ok, fallos:fallos }); return; }
+      var grupo = lista.slice(i, i+4);
+      i += grupo.length;
+      Promise.all(grupo.map(function(u){
+        return sb.rpc('dp_placa_unidad', { p_pozo_id: u.id }).then(function(r){
+          if(r.error || !r.data){ fallos++; return; }
+          try {
+            almacen.setItem(clavePlaca(u.id),
+              JSON.stringify({ ts:new Date().toISOString(), datos:r.data }));
+            ok++;
+          } catch(err){ fallos++; }
+        }).catch(function(){ fallos++; });
+      })).then(function(){
+        if(alAvanzar) alAvanzar(Math.min(i, lista.length), lista.length);
+        lote();
+      });
+    }
+    lote();
+  });
 }
 
 function abrirPlaca(){
@@ -648,15 +741,28 @@ function abrirPlaca(){
 
   if(!PLACA){
     aviso($('pl-aviso'),
-      'No se pudo leer la placa guardada. Con senal se cargan los valores actuales.', 'warn');
+      'Esta unidad no tiene placa descargada en este dispositivo. Abrela una vez con '
+      + 'señal, o usa "Descargar datos para campo" antes de salir.', 'warn');
     $('pl-campos').innerHTML = '';
     $('pl-guardar').disabled = true;
     $('hoja-placa').showModal();
     return;
   }
 
-  aviso($('pl-aviso'), 'Valores en servicio del equipo. Alimentan el calculo de la '
-    + 'cadena energetica.' + (PLACA.fuente ? ' Origen actual: ' + esc(PLACA.fuente) : ''));
+  /* Si los valores vienen del cache se dice desde cuando. El tecnico
+     tiene que poder juzgar si estan vigentes: puede haber habido un
+     cambio de equipo despues de la ultima descarga. */
+  var desdeCache = !navigator.onLine && PLACA_TS;
+  var nota = 'Valores en servicio del equipo. Alimentan el calculo de la cadena energetica.'
+    + (PLACA.fuente ? ' Origen actual: ' + esc(PLACA.fuente) : '');
+  if(desdeCache){
+    var d = new Date(PLACA_TS);
+    nota = 'Sin señal: valores descargados el '
+      + d.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}) + ' '
+      + d.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})
+      + '. Lo que guardes queda en cola y se envia al recuperar la conexion.';
+  }
+  aviso($('pl-aviso'), nota, desdeCache ? 'warn' : '');
 
   var campos = (PLACA.campos || []).filter(function(c){ return c.rol === rol; });
   if(!campos.length){

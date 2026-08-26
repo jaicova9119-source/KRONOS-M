@@ -255,7 +255,7 @@
     <div class="tech-strip">
       <div class="who">Tecnico: <b id="tech-name">Sin iniciar sesion</b> &middot; <button class="chg-tech" onclick="ir('login')">cambiar</button></div>
       <div style="display:flex; align-items:center; gap:10px;">
-        <button id="pendientes-badge" class="chg-tech hidden" style="color:#FFB37A; font-weight:600;" onclick="intentarSincronizarTodo()"></button>
+        <button id="pendientes-badge" class="chg-tech hidden" style="color:#FFB37A; font-weight:600;" onclick="dpAbrirOffline()"></button>
         <div class="chip-online" id="chip-conexion"><span class="dot"></span><span id="chip-conexion-txt">En linea</span></div>
       </div>
     </div>
@@ -400,12 +400,51 @@
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
+        <div class="action-card card-nuevo" data-sistemas="BES,HPUM,UBH" onclick="dpAbrirOffline()">
+          <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></div>
+          <div class="body"><div class="ttl">Trabajo sin senal</div><div class="sub"><span id="home-off-sub">Descargar datos para campo y ver pendientes</span></div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+
         <div class="action-card card-bitacora" data-sistemas="BES,HPUM,UBH" onclick="document.getElementById('evt-realizo').value=tecnicoActual; ir('bitacora-form')">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6l1 3H8l1-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 6h12v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6Z" stroke="currentColor" stroke-width="1.8"/><path d="M9 11h6M9 15h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
           <div class="body"><div class="ttl">Evento / Bitacora</div><div class="sub">Novedades, mantenimiento, hallazgos</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
       </div>
+      </div>
+    </section>
+
+    <!-- ============ DATOS SIN SENAL ============ -->
+    <section id="screen-offline" class="hidden">
+      <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
+      <div class="screen-title">
+        <h1>Trabajo sin senal</h1>
+        <p>Descarga los datos antes de salir y revisa lo que quedo pendiente de enviar.</p>
+      </div>
+
+      <div class="card" style="margin-bottom:14px;">
+        <div class="section-label" style="margin-top:0;"><span class="bar"></span>Preparar salida a campo</div>
+        <p style="font-size:14px;margin:0 0 10px;color:var(--ink-soft);">
+          Descarga el listado de activos, el catalogo de puntos de cada topologia y la
+          configuracion de todos los pozos. Hazlo con senal antes de salir: sin esto, un
+          pozo que nunca se abrio con conexion no se puede capturar en campo.
+        </p>
+        <div id="prep-estado" style="font-size:13px;margin-bottom:10px;"></div>
+        <div id="prep-barra-caja" class="hidden" style="height:8px;background:var(--bg);border-radius:99px;overflow:hidden;margin-bottom:10px;">
+          <div id="prep-barra" style="height:100%;width:0;background:var(--navy);transition:width .2s;"></div>
+        </div>
+        <button id="prep-btn" class="btn-primary" onclick="dpPrepararCampo()">Descargar datos para campo</button>
+        <div id="prep-detalle" style="font-size:12px;color:var(--ink-soft);margin-top:10px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-label" style="margin-top:0;"><span class="bar"></span>Registros pendientes de enviar</div>
+        <div id="pend-lista"></div>
+        <div id="pend-acciones" class="hidden" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+          <button class="btn-primary" style="width:auto;margin:0;padding:10px 16px;" onclick="dpSincronizarManual()">Sincronizar ahora</button>
+          <button class="btn-secondary" style="width:auto;margin:0;padding:10px 16px;" onclick="dpExportarPendientes()">Exportar respaldo</button>
+        </div>
       </div>
     </section>
 
@@ -784,6 +823,25 @@ var dpAlmacen = {
   }
 };
 
+/* dpAlmacen.setItem silencia el fallo a proposito: en medio de una
+   captura, no poder cachear no debe interrumpir al tecnico. Pero la
+   precarga SI necesita saberlo, porque su unico trabajo es dejar los
+   datos guardados. Si vuelve false, hay que decirselo. */
+function dpGuardar(k, v){
+  try { localStorage.setItem(k, v); return true; }
+  catch(e){ dpMemoria[k] = v; return DP_LOCAL_OK ? false : true; }
+}
+
+/* Lectura JSON tolerante desde el mismo almacen. */
+function dpLeerJSON(k, porDefecto){
+  try {
+    var s = dpAlmacen.getItem(k);
+    if (!s) return porDefecto;
+    var j = JSON.parse(s);
+    return (j === null || j === undefined) ? porDefecto : j;
+  } catch(e){ return porDefecto; }
+}
+
 var sb = null, dpErrorInicio = null;
 try {
   if (!DP.SUPABASE_URL || DP.SUPABASE_URL.indexOf('PEGAR_AQUI') === 0)
@@ -861,11 +919,15 @@ function actualizarBadgePendientes(){
   var cola = leerCola();
   var badge = document.getElementById('pendientes-badge');
   if(cola.length > 0){
-    badge.textContent = cola.length + (cola.length===1 ? ' registro pendiente (tocar para sincronizar)' : ' registros pendientes (tocar para sincronizar)');
+    badge.textContent = cola.length + (cola.length===1 ? ' registro pendiente (tocar para revisar)' : ' registros pendientes (tocar para revisar)');
     badge.classList.remove('hidden');
   } else {
     badge.classList.add('hidden');
   }
+  /* Si la pantalla de pendientes esta abierta, se repinta: el
+     reintento automatico corre cada 30 s y dejaria la lista mintiendo. */
+  var pantalla = document.getElementById('screen-offline');
+  if (pantalla && !pantalla.classList.contains('hidden')) dpPintarPendientes();
 }
 
 function intentarSincronizarTodo(){
@@ -881,12 +943,19 @@ function intentarSincronizarTodo(){
       return;
     }
     var item = cola[i];
+    /* Al cortar por red hay que devolver a la cola lo que resta MAS lo
+       que ya venia marcado como rechazado. Guardar solo cola.slice(i)
+       borraba del dispositivo los registros rechazados por datos que
+       se habian revisado antes en esta misma pasada: trabajo de campo
+       perdido sin aviso. */
+    var reencolar = function(){ guardarCola(fallidosDeVerdad.concat(cola.slice(i))); };
+
     sb.rpc(item.rpc, { p: item.payload })
       .then(function(r){
         if (r.error) {
           /* Falla de red o de autenticacion: se corta aqui y todo lo
              que resta se queda en la cola para el siguiente intento. */
-          guardarCola(cola.slice(i));
+          reencolar();
           return;
         }
         var body = r.data || {};
@@ -898,9 +967,7 @@ function intentarSincronizarTodo(){
         }
         procesar(i+1, fallidosDeVerdad);
       })
-      .catch(function(){
-        guardarCola(cola.slice(i));
-      });
+      .catch(reencolar);
   }
   procesar(0, []);
 }
@@ -963,6 +1030,256 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta){
       alert('Sin conexion. El registro (' + etiqueta + ') quedo guardado en este dispositivo.');
       ir('home');
     });
+}
+
+/* ============================================================
+   PREPARAR SALIDA A CAMPO
+   ============================================================
+   El cache de catalogos y de setup se llenaba solo por uso: quedaba
+   guardado lo que el tecnico hubiera abierto con senal alguna vez. En
+   campo eso falla justo donde importa, porque el pozo que se va a
+   revisar suele ser el que nunca se abrio. Aqui la descarga se hace a
+   proposito y completa, antes de salir.
+
+   La plantilla la resuelve la base pozo por pozo. No se agrupa por el
+   mapa local porque ese mapa puede traer el sistema como respaldo
+   (BES, HPUM, UBH) en vez de la topologia real, y entonces un solo
+   pozo consultado dejaria a los demas apuntando a un catalogo que no
+   es el suyo. El catalogo se guarda por plantilla, asi que consultar
+   53 pozos no ocupa 53 veces el espacio.                          */
+
+var CLAVE_PREP = 'dp_preparado';
+
+function dpAbrirOffline(){
+  ir('offline');
+  dpPintarPreparacion();
+  dpPintarPendientes();
+}
+
+function dpPintarPreparacion(){
+  var caja = document.getElementById('prep-estado');
+  var p = dpLeerJSON(CLAVE_PREP, null);
+  if (!p){
+    caja.innerHTML = '<span style="color:#C62828;font-weight:600;">Nunca se ha preparado este dispositivo.</span>'
+      + '<br><span style="color:var(--ink-soft);">Sin descargar, en campo solo funcionan los pozos que ya se abrieron con senal.</span>';
+  } else {
+    var d = new Date(p.ts);
+    var dias = Math.floor((Date.now() - d.getTime()) / 86400000);
+    var color = dias >= 7 ? '#C62828' : (dias >= 3 ? '#B26A00' : '#1B7F4B');
+    caja.innerHTML = '<span style="color:' + color + ';font-weight:600;">Ultima descarga: '
+      + d.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}) + ' '
+      + d.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})
+      + (dias > 0 ? ' (hace ' + dias + (dias===1?' dia':' dias') + ')' : '') + '</span>'
+      + '<br><span style="color:var(--ink-soft);">' + p.pozos + ' pozos &middot; '
+      + p.topologias + ' topologias' + (p.fallos ? ' &middot; ' + p.fallos + ' sin descargar' : '') + '</span>';
+  }
+  var sub = document.getElementById('home-off-sub');
+  if (sub) sub.textContent = p
+    ? 'Datos descargados' + (leerCola().length ? ' \u00b7 ' + leerCola().length + ' pendientes' : '')
+    : 'Sin descargar \u2014 preparar antes de salir';
+}
+
+function dpPrepararCampo(){
+  if (!sb){ alert(dpErrorInicio || 'La app no pudo iniciar.'); return; }
+  if (!navigator.onLine){
+    alert('Necesitas senal para descargar. Esta pantalla es para preparar el equipo ANTES de salir a campo.');
+    return;
+  }
+
+  var btn = document.getElementById('prep-btn');
+  var barraCaja = document.getElementById('prep-barra-caja');
+  var barra = document.getElementById('prep-barra');
+  var detalle = document.getElementById('prep-detalle');
+  btn.disabled = true; btn.textContent = 'Descargando...';
+  barraCaja.classList.remove('hidden');
+  detalle.textContent = 'Leyendo el listado de activos...';
+
+  var fallos = [], sinEspacio = false, topologias = {};
+
+  function avanzar(hechos, total, texto){
+    barra.style.width = Math.round(hechos * 100 / Math.max(total,1)) + '%';
+    detalle.textContent = texto;
+  }
+
+  /* Lotes pequenos en paralelo: secuencial son casi dos minutos con
+     53 pozos y dos llamadas cada uno; todo de golpe satura la red del
+     movil y empiezan a caer por timeout. */
+  function porLotes(lista, tamano, tarea, alAvanzar){
+    var i = 0, hechos = 0;
+    return new Promise(function(listo){
+      function siguiente(){
+        if (i >= lista.length){ if (hechos >= lista.length) listo(); return; }
+        var lote = lista.slice(i, i + tamano);
+        i += lote.length;
+        Promise.all(lote.map(function(x){
+          return tarea(x).catch(function(){}).then(function(){
+            hechos++; alAvanzar(hechos);
+          });
+        })).then(function(){
+          if (i < lista.length) siguiente(); else listo();
+        });
+      }
+      siguiente();
+    });
+  }
+
+  sb.rpc('dp_pozos_lista').then(function(r){
+    if (r.error || !r.data || !r.data.length)
+      throw new Error('No se pudo leer el listado de activos.');
+
+    var filas = r.data;
+    var nombres = filas.map(function(x){ return x.nombre; });
+
+    filas.forEach(function(x){
+      if (!x || !x.nombre) return;
+      if (x.sistema) MED_SISTEMA_POR_ACTIVO[x.nombre] = x.sistema;
+      if (x.plantilla || x.sistema)
+        MED_PLANTILLA_POR_ACTIVO[x.nombre] = x.plantilla || x.sistema;
+    });
+    if (!dpGuardar('dp_pozos_cache', JSON.stringify(nombres))) sinEspacio = true;
+    dpGuardar('dp_sistemas_cache', JSON.stringify(MED_SISTEMA_POR_ACTIVO));
+
+    var total = nombres.length * 2;
+
+    /* 1. Catalogo de puntos por pozo (se guarda por topologia) */
+    return porLotes(nombres, 4, function(pozo){
+      return sb.rpc('dp_puntos_unidad', { p_pozo: pozo }).then(function(rr){
+        var b = (rr && rr.data) || {};
+        if (rr.error || !b.ok || !b.puntos || !b.puntos.length){
+          fallos.push(pozo + ' (catalogo)');
+          return;
+        }
+        MED_PLANTILLA_POR_ACTIVO[pozo] = b.plantilla;
+        topologias[b.plantilla] = true;
+        if (!dpGuardar(medClaveCache(b.plantilla), JSON.stringify(b.puntos))) sinEspacio = true;
+      }).catch(function(){ fallos.push(pozo + ' (catalogo)'); });
+    }, function(hechos){
+      avanzar(hechos, total, 'Catalogos de medicion: ' + hechos + ' de ' + nombres.length);
+    })
+
+    /* 2. Configuracion VFD por pozo */
+    .then(function(){
+      dpGuardar('dp_plantillas_cache', JSON.stringify(MED_PLANTILLA_POR_ACTIVO));
+      return porLotes(nombres, 4, function(pozo){
+        return sb.rpc('dp_setup_pozo', { p_pozo: pozo }).then(function(rr){
+          var j = (rr && rr.data) || {};
+          if (rr.error || !j.ok){ fallos.push(pozo + ' (setup)'); return; }
+          if (!dpGuardar(setupClaveCache(pozo), JSON.stringify(j))) sinEspacio = true;
+        }).catch(function(){ fallos.push(pozo + ' (setup)'); });
+      }, function(hechos){
+        avanzar(nombres.length + hechos, total, 'Configuracion VFD: ' + hechos + ' de ' + nombres.length);
+      });
+    })
+    .then(function(){
+      return { pozos: nombres.length, topologias: Object.keys(topologias).length };
+    });
+  }).then(function(res){
+    dpGuardar(CLAVE_PREP, JSON.stringify({
+      ts: new Date().toISOString(),
+      pozos: res.pozos,
+      topologias: res.topologias,
+      fallos: fallos.length
+    }));
+    btn.disabled = false; btn.textContent = 'Volver a descargar';
+    barra.style.width = '100%';
+    dpPintarPreparacion();
+
+    var msg = 'Listo. ' + res.pozos + ' pozos y ' + res.topologias + ' topologias guardadas en este dispositivo.';
+    if (sinEspacio)
+      msg += '\n\nAVISO: el almacenamiento del navegador se lleno y parte de los datos no quedo '
+           + 'guardada. Libera espacio (borrar datos de otros sitios) y vuelve a descargar.';
+    if (fallos.length)
+      msg += '\n\nNo se pudo descargar: ' + fallos.slice(0,12).join(', ')
+           + (fallos.length > 12 ? ' y ' + (fallos.length-12) + ' mas.' : '')
+           + '\n\nEsos pozos no van a poder capturarse sin senal.';
+    detalle.textContent = fallos.length
+      ? fallos.length + ' elementos sin descargar. Revisa el aviso.'
+      : 'Descarga completa.';
+    alert(msg);
+  }).catch(function(e){
+    btn.disabled = false; btn.textContent = 'Reintentar descarga';
+    detalle.textContent = '';
+    alert('La descarga no se completo.\n\n' + (e && e.message ? e.message : 'Error de red')
+      + '\n\nLo que ya se alcanzo a descargar quedo guardado.');
+    dpPintarPreparacion();
+  });
+}
+
+/* ============================================================
+   PENDIENTES: VER, REINTENTAR, RESPALDAR
+   ============================================================
+   El badge decia cuantos hay pero no que son. Un registro rechazado
+   por datos se queda en la cola indefinidamente y sin esta pantalla
+   nadie se enteraba de por que.                                   */
+
+function dpPintarPendientes(){
+  var caja = document.getElementById('pend-lista');
+  var acciones = document.getElementById('pend-acciones');
+  var cola = leerCola();
+
+  if (!cola.length){
+    caja.innerHTML = '<p style="font-size:14px;color:var(--ink-soft);margin:0;">'
+      + 'Nada pendiente. Todo lo capturado esta enviado.</p>';
+    acciones.classList.add('hidden');
+    return;
+  }
+
+  acciones.classList.remove('hidden');
+  caja.innerHTML = cola.map(function(it, i){
+    var f = String(it.ts || '').slice(0,16).replace('T',' ');
+    var err = it.error
+      ? '<div style="font-size:12px;color:#C62828;margin-top:3px;">Rechazado: ' + it.error
+        + '. No se arregla reintentando; hay que revisarlo.</div>'
+      : '';
+    return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;'
+      + 'padding:10px 0;border-top:1px solid var(--line);">'
+      + '<div style="min-width:0;"><div style="font-weight:700;">' + (it.etiqueta || it.rpc) + '</div>'
+      + '<div style="font-size:12px;color:var(--ink-soft);">' + f + '</div>' + err + '</div>'
+      + '<button class="btn-secondary" style="width:auto;margin:0;padding:8px 12px;font-size:13px;'
+      + 'flex:0 0 auto;" onclick="dpBorrarPendiente(' + i + ')">Descartar</button>'
+      + '</div>';
+  }).join('');
+}
+
+function dpSincronizarManual(){
+  if (!navigator.onLine){ alert('Sin senal. Se reintenta solo cuando vuelva la conexion.'); return; }
+  var antes = leerCola().length;
+  intentarSincronizarTodo();
+  /* La sincronizacion es en cadena y asincrona; se revisa el resultado
+     un momento despues en vez de suponer que ya termino. */
+  setTimeout(function(){
+    var ahora = leerCola().length;
+    dpPintarPendientes();
+    dpPintarPreparacion();
+    if (ahora === 0) alert('Todo sincronizado. ' + antes + ' registros enviados.');
+    else if (ahora < antes) alert((antes - ahora) + ' enviados. Quedan ' + ahora + '.');
+    else alert('No se pudo enviar nada todavia. Los registros siguen guardados aqui.');
+  }, 2500);
+}
+
+function dpExportarPendientes(){
+  var cola = leerCola();
+  if (!cola.length) return;
+  /* Respaldo por si el tecnico tiene que borrar datos del navegador o
+     cambiar de equipo con la cola llena. */
+  var texto = JSON.stringify({ dispositivo_ts: new Date().toISOString(), tecnico: tecnicoActual, cola: cola }, null, 2);
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([texto], { type: 'application/json' }));
+  a.download = 'pendientes_' + new Date().toISOString().slice(0,10) + '.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+}
+
+function dpBorrarPendiente(i){
+  var cola = leerCola();
+  var it = cola[i];
+  if (!it) return;
+  if (!confirm('Descartar "' + (it.etiqueta || it.rpc) + '"?\n\nEse registro se pierde y no se '
+    + 'va a poder recuperar. Si no estas seguro, exporta el respaldo primero.')) return;
+  cola.splice(i,1);
+  guardarCola(cola);
+  dpPintarPendientes();
+  dpPintarPreparacion();
 }
 
 function postJSON(url, datos){
@@ -1110,7 +1427,7 @@ function cargarCatalogoUnidad(pozo){
   function desdeCache(){
     if (!plantillaConocida) return null;
     try {
-      var c = JSON.parse(localStorage.getItem(medClaveCache(plantillaConocida)) || 'null');
+      var c = dpLeerJSON(medClaveCache(plantillaConocida), null);
       return (c && c.length) ? { plantilla: plantillaConocida, puntos: c } : null;
     } catch(e){ return null; }
   }
@@ -1135,8 +1452,8 @@ function cargarCatalogoUnidad(pozo){
       throw new Error('La topologia ' + (b.plantilla || '?') + ' no tiene puntos definidos.');
     MED_PLANTILLA_POR_ACTIVO[pozo] = b.plantilla;
     try {
-      localStorage.setItem(medClaveCache(b.plantilla), JSON.stringify(puntos));
-      localStorage.setItem('dp_plantillas_cache', JSON.stringify(MED_PLANTILLA_POR_ACTIVO));
+      dpAlmacen.setItem(medClaveCache(b.plantilla), JSON.stringify(puntos));
+      dpAlmacen.setItem('dp_plantillas_cache', JSON.stringify(MED_PLANTILLA_POR_ACTIVO));
     } catch(e){}
     return { plantilla: b.plantilla, plantilla_nombre: b.plantilla_nombre, puntos: puntos };
   }).catch(function(e){
@@ -1250,19 +1567,19 @@ function poblarSelects(){
         MED_PLANTILLA_POR_ACTIVO[x.nombre] = x.plantilla || x.sistema;
     });
     try {
-      localStorage.setItem('dp_sistemas_cache',   JSON.stringify(MED_SISTEMA_POR_ACTIVO));
-      localStorage.setItem('dp_plantillas_cache', JSON.stringify(MED_PLANTILLA_POR_ACTIVO));
+      dpAlmacen.setItem('dp_sistemas_cache',   JSON.stringify(MED_SISTEMA_POR_ACTIVO));
+      dpAlmacen.setItem('dp_plantillas_cache', JSON.stringify(MED_PLANTILLA_POR_ACTIVO));
     } catch(e){}
   }
 
   /* El mapa de sistemas se lee antes que nada: sin el, la primera
      pintada saldria sin agrupar. */
   try {
-    var sc = JSON.parse(localStorage.getItem('dp_sistemas_cache') || 'null');
+    var sc = dpLeerJSON('dp_sistemas_cache', null);
     if (sc) MED_SISTEMA_POR_ACTIVO = sc;
   } catch(e){}
   try {
-    var pc = JSON.parse(localStorage.getItem('dp_plantillas_cache') || 'null');
+    var pc = dpLeerJSON('dp_plantillas_cache', null);
     if (pc) MED_PLANTILLA_POR_ACTIVO = pc;
   } catch(e){}
 
@@ -1272,13 +1589,13 @@ function poblarSelects(){
     var nombres = r.data.map(function(x){ return x.nombre; });
     guardarSistemas(r.data);   /* primero el sistema, o se pinta sin agrupar */
     llenar(nombres);
-    try { localStorage.setItem('dp_pozos_cache', JSON.stringify(nombres)); } catch(e){}
+    dpAlmacen.setItem('dp_pozos_cache', JSON.stringify(nombres));
   }).catch(function(){});
 
   /* En campo puede no haber senal al abrir. Se usa el ultimo listado
      conocido en lugar de la lista fija de 13 pozos del codigo. */
   try {
-    var cache = JSON.parse(localStorage.getItem('dp_pozos_cache') || 'null');
+    var cache = dpLeerJSON('dp_pozos_cache', null);
     if (cache && cache.length) llenar(cache);
   } catch(e){}
 }
@@ -1466,13 +1783,12 @@ function cargarSetup(){
   ir('setup-form');
 
   function desdeCache(){
-    try { return JSON.parse(localStorage.getItem(setupClaveCache(pozo)) || 'null'); }
-    catch(e){ return null; }
+    return dpLeerJSON(setupClaveCache(pozo), null);
   }
 
   function pintar(j){
     SETUP_DATOS = j;
-    try { localStorage.setItem(setupClaveCache(pozo), JSON.stringify(j)); } catch(e){}
+    dpAlmacen.setItem(setupClaveCache(pozo), JSON.stringify(j));
     setupPintarFormulario(j);
   }
 
@@ -2230,6 +2546,25 @@ function dpEntrar(user){
 
   poblarSelects();
   intentarSincronizarTodo();
+  dpRevisarPreparacion();
+}
+
+/* El aviso va al entrar CON senal, que es el unico momento en que se
+   puede hacer algo al respecto. Descubrirlo ya en el pozo no sirve. */
+function dpRevisarPreparacion(){
+  if (!navigator.onLine) return;
+  var p = dpLeerJSON(CLAVE_PREP, null);
+  var dias = p ? Math.floor((Date.now() - new Date(p.ts).getTime()) / 86400000) : null;
+  if (p && dias < 7) return;
+  setTimeout(function(){
+    var texto = p
+      ? 'Los datos para trabajar sin senal se descargaron hace ' + dias + ' dias.\n\n'
+        + 'Conviene actualizarlos antes de salir a campo.'
+      : 'Este dispositivo no tiene datos descargados para trabajar sin senal.\n\n'
+        + 'En campo solo van a funcionar los pozos que ya se hayan abierto con conexion. '
+        + 'Descargalos ahora, mientras hay senal.';
+    if (confirm(texto + '\n\nAbrir la pantalla de descarga?')) dpAbrirOffline();
+  }, 900);
 }
 
 /* Supabase v2 pone un candado en localStorage para que dos
@@ -2354,7 +2689,7 @@ var sistemaActual = 'BES';
 
 function seleccionarSistema(cod){
   sistemaActual = SISTEMAS[cod] ? cod : 'BES';
-  try { localStorage.setItem('dp_sistema', sistemaActual); } catch(e){}
+  dpAlmacen.setItem('dp_sistema', sistemaActual);
   adaptarHome();
   ir('home');
 }
@@ -2391,7 +2726,7 @@ function abrirActualizarUnidad(){
 /* restaurar el sistema elegido en la visita anterior */
 (function(){
   try {
-    var g = localStorage.getItem('dp_sistema');
+    var g = dpAlmacen.getItem('dp_sistema');
     if(g && SISTEMAS[g]) sistemaActual = g;
   } catch(e){}
 })();
