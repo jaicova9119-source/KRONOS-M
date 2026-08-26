@@ -378,7 +378,7 @@
 
         <div class="section-label"><span class="bar"></span>Mediciones y pruebas</div>
 
-        <div class="action-card card-medicion" data-sistemas="BES,HPUM" onclick="ir('medicion-pozo'); medLocalPintarLista(); dpListarBorradores();">
+        <div class="action-card card-medicion" data-sistemas="BES,HPUM" onclick="ir('medicion-pozo'); medLocalPintarLista(); dpListarBorradores(); dpListarCompletables();">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Medicion predictiva</div><div class="sub">Lectura electrica completa segun el sistema del activo</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -460,6 +460,7 @@
       </div>
       <div id="med-locales"></div>
       <div id="med-borradores"></div>
+      <div id="med-completables"></div>
       <div class="submit-bar" style="position:static;">
         <button class="btn-primary" onclick="iniciarMedicion()">Iniciar captura
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -477,11 +478,18 @@
       <div class="submit-bar">
         <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Se guarda en Kronos-M. Sin señal queda en este dispositivo y se sincroniza solo al recuperarla.</div>
         <div id="med-autosave" class="hidden" style="font-size:12px;color:#1B7F4B;font-weight:600;margin:0 0 8px;"></div>
-        <button class="btn-secondary" style="width:100%;margin:0 0 8px;padding:13px 18px;"
-                onclick="guardarMedicion('BORRADOR')">Guardar borrador</button>
-        <button class="btn-primary" onclick="guardarMedicion('CONFIRMADA')">Confirmar medicion
-          <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        </button>
+        <div id="med-botones-normal">
+          <button class="btn-secondary" style="width:100%;margin:0 0 8px;padding:13px 18px;"
+                  onclick="guardarMedicion('BORRADOR')">Guardar borrador</button>
+          <button class="btn-primary" onclick="guardarMedicion('CONFIRMADA')">Confirmar medicion
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
+        <div id="med-botones-completar" class="hidden">
+          <button class="btn-primary" onclick="guardarCompletado()">Guardar cambios
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+        </div>
       </div>
     </section>
 
@@ -1615,6 +1623,7 @@ function iniciarMedicion(){
   /* Captura nueva: se suelta el borrador que estuviera abierto, o
      terminaria sobreescribiendolo. */
   medBorradorId = null;
+  medSalirModoCompletar();
   var pozo = document.getElementById('med-pozo-select').value;
   if(!pozo){ alert('Selecciona un pozo primero.'); return; }
   document.getElementById('med-pozo-label').textContent = pozo;
@@ -2188,9 +2197,11 @@ function dpAbrirBorrador(id){
           (huerfanos.length === 1 ? '' : 'es') + ' de este borrador no tiene' +
           (huerfanos.length === 1 ? '' : 'n') + ' campo en el formulario</b><br>' +
           '<span style="color:var(--ink-soft);">El catalogo de puntos de este activo cambio ' +
-          'despues de guardarlo. Esos valores siguen en la base, pero no se ven aqui: ' +
-          huerfanos.slice(0, 8).join(', ') +
-          (huerfanos.length > 8 ? ' y ' + (huerfanos.length - 8) + ' mas' : '') + '.</span>';
+          'despues de guardarlo: ' + huerfanos.slice(0, 8).join(', ') +
+          (huerfanos.length > 8 ? ' y ' + (huerfanos.length - 8) + ' mas' : '') + '. ' +
+          '<b>Si vuelves a guardar este borrador, esos valores se borran de la base</b>, porque ' +
+          'el guardado reemplaza la lista completa de puntos por la que viaja en el formulario. ' +
+          'Antes de guardar, avisa a quien administra Kronos-M.</span>';
         caja.insertBefore(av, caja.firstChild);
       }
     }
@@ -2245,6 +2256,7 @@ function medLocalRecoger(){
     if (e && e.value !== ''){ valores[pt.codigo] = e.value; n++; }
   });
   return { pozo: medLocalPozo, plantilla: MED_PLANTILLA, borrador_id: medBorradorId,
+           completar_id: medCompletarId, original: MED_ORIGINAL,
            cabecera: cab, valores: valores, n: n, ts: new Date().toISOString() };
 }
 
@@ -2253,7 +2265,7 @@ function medLocalGuardar(){
   if (!d) return;
   /* Un formulario recien abierto y vacio no se guarda: crearia una
      "captura en curso" fantasma en la lista de recuperacion. */
-  if (d.n === 0 && !medBorradorId) return;
+  if (d.n === 0 && !medBorradorId && !medCompletarId) return;
   dpAlmacen.setItem(medLocalClave(d.pozo), JSON.stringify(d));
   medLocalPintarSello(d);
 }
@@ -2366,6 +2378,10 @@ function medLocalRestaurar(pozo){
        venia de uno, se reengancha para que la base actualice en vez
        de crear un registro nuevo. */
     medBorradorId = d.borrador_id || null;
+    if (d.completar_id){
+      medEntrarModoCompletar(d.completar_id);
+      MED_ORIGINAL = d.original || {};
+    }
 
     Object.keys(d.cabecera || {}).forEach(function(id){
       var e = document.getElementById(id);
@@ -2411,6 +2427,219 @@ document.addEventListener('visibilitychange', function(){
   if (document.hidden) medLocalGuardar();
 });
 window.addEventListener('pagehide', medLocalGuardar);
+
+/* ============================================================
+   COMPLETAR UNA MEDICION YA CONFIRMADA
+   ============================================================
+   Se confirma la ronda y despues aparece que falto una etapa entera
+   (el caso reportado: el SUT). Antes no habia camino: al reenviar,
+   dp_guardar_medicion respondia ok:true con duplicado:true y no
+   modificaba nada, y las confirmadas no salian en ninguna lista.
+
+   Reglas, que las hace cumplir la base y no el navegador:
+     - 48 horas desde la fecha de medicion
+     - solo su autor o un admin
+     - todo cambio queda con su valor anterior en mediciones_ediciones
+
+   Modo completar: los puntos que ya tienen valor se marcan y se
+   dejan editables, pero solo viaja lo que cambio. No se reenvia el
+   formulario entero, porque enviar de vuelta un valor identico
+   ensuciaria la traza con correcciones que no ocurrieron.        */
+
+var medCompletarId = null;
+var MED_ORIGINAL = {};
+
+function dpListarCompletables(){
+  var caja = document.getElementById('med-completables');
+  if (!caja || !sb) return;
+  caja.innerHTML = '';
+  if (!navigator.onLine) return;   /* sin senal no se puede traer nada */
+
+  sb.rpc('dp_completables').then(function(r){
+    if (r.error || !r.data || !r.data.length) return;
+    var h = '<div class="card" style="margin-bottom:14px;">'
+          + '<div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;'
+          + 'color:var(--ink-soft);margin-bottom:4px;">Confirmadas de las ultimas 48 horas</div>'
+          + '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:6px;">'
+          + 'Se pueden completar o corregir hasta 48 h despues de la medicion. '
+          + 'Todo cambio queda registrado.</div>';
+    r.data.forEach(function(m){
+      var f = String(m.medido_en || '').slice(0,16).replace('T',' ');
+      h += '<div style="display:flex;justify-content:space-between;align-items:center;'
+        +  'gap:10px;padding:10px 0;border-top:1px solid var(--line);">'
+        +  '<div style="min-width:0;"><div style="font-weight:700;">' + m.pozo
+        +  (m.editada ? ' <span style="font-weight:400;font-size:12px;color:var(--ink-soft);">(ya editada)</span>' : '')
+        +  '</div>'
+        +  '<div style="font-size:12px;color:var(--ink-soft);">' + f
+        +  ' &middot; ' + m.valores + ' valores &middot; hace ' + m.horas + ' h</div></div>'
+        +  '<button class="btn-secondary" style="width:auto;margin:0;padding:8px 14px;'
+        +  'font-size:13px;flex:0 0 auto;" onclick="dpAbrirCompletar(\'' + m.id + '\')">Completar</button>'
+        +  '</div>';
+    });
+    caja.innerHTML = h + '</div>';
+  }).catch(function(){});
+}
+
+function medSalirModoCompletar(){
+  medCompletarId = null;
+  MED_ORIGINAL = {};
+  var n = document.getElementById('med-botones-normal');
+  var c = document.getElementById('med-botones-completar');
+  if (n) n.classList.remove('hidden');
+  if (c) c.classList.add('hidden');
+}
+
+function medEntrarModoCompletar(id){
+  medCompletarId = id;
+  var n = document.getElementById('med-botones-normal');
+  var c = document.getElementById('med-botones-completar');
+  if (n) n.classList.add('hidden');
+  if (c) c.classList.remove('hidden');
+}
+
+function dpAbrirCompletar(id){
+  if (!navigator.onLine){
+    alert('Completar una medicion confirmada necesita senal: hay que traer lo que ya esta '
+        + 'guardado para no sobreescribirlo.');
+    return;
+  }
+  sb.rpc('dp_medicion', { p_id: id }).then(function(r){
+    if (r.error) throw new Error(r.error.message);
+    var j = r.data || {};
+    if (!j.ok) throw new Error(j.error || 'No se pudo abrir la medicion.');
+    var m = j.medicion || {}, v = j.valores || {};
+
+    if (!j.editable){
+      alert('Esta medicion ya no se puede editar.\n\nEstado: ' + m.estado
+          + '. Han pasado ' + j.horas_transcurridas + ' horas y el plazo es de 48.');
+      return;
+    }
+
+    var sel = document.getElementById('med-pozo-select');
+    var existe = false;
+    for (var i = 0; i < sel.options.length; i++){
+      if (sel.options[i].value === m.pozo){ existe = true; break; }
+    }
+    if (!existe){
+      var op = document.createElement('option');
+      op.value = m.pozo; op.textContent = m.pozo;
+      sel.appendChild(op);
+    }
+    sel.value = m.pozo;
+
+    return iniciarMedicion().then(function(){
+      medEntrarModoCompletar(id);
+      MED_ORIGINAL = {};
+
+      var poner = function(idc, val){
+        var e = document.getElementById(idc);
+        if (e && val !== null && val !== undefined && val !== '') e.value = val;
+      };
+      if (m.medido_en){
+        poner('med-fecha', String(m.medido_en).slice(0,10));
+        poner('med-hora',  String(m.medido_en).slice(11,16));
+      }
+      poner('med-modo',      m.control_mode);
+      poner('med-condicion', m.condicion);
+      poner('med-frecop',    m.frecuencia_operacion_hz);
+      poner('med-frecset',   m.frec_setpoint_hz);
+      poner('med-hsc',       m.hsc);
+      poner('med-lsc',       m.lsc);
+
+      /* La cabecera se muestra pero no se envia: cambiar la condicion
+         o la frecuencia despues de confirmar cambia el sentido de toda
+         la serie, y eso es una anulacion, no un olvido. */
+      MEDLOCAL_CABECERA.forEach(function(idc){
+        var e = document.getElementById(idc);
+        if (e){ e.disabled = true; e.style.background = 'var(--bg)'; e.style.color = 'var(--ink-soft)'; }
+      });
+
+      var conValor = 0;
+      Object.keys(v).forEach(function(cod){
+        var e = document.getElementById(medIdCampo(cod));
+        if (!e) return;
+        e.value = v[cod];
+        MED_ORIGINAL[cod] = String(v[cod]);
+        /* Marca visual: lo que ya esta guardado se distingue de lo que
+           esta por llenar, que es justo lo que el tecnico viene a ver. */
+        e.style.background = '#F2F6F2';
+        e.title = 'Ya guardado el ' + String(m.medido_en).slice(0,16).replace('T',' ');
+        conValor++;
+      });
+
+      var vacios = MED_CATALOGO.length - conValor;
+      var av = document.createElement('div');
+      av.className = 'group-card';
+      av.style.cssText = 'margin-bottom:14px;border-left:3px solid var(--navy);font-size:13px;';
+      av.innerHTML = '<b>Completando una medicion confirmada</b><br>'
+        + '<span style="color:var(--ink-soft);">' + conValor + ' puntos ya guardados (fondo verde) y '
+        + vacios + ' sin llenar. Solo se envia lo que cambies. '
+        + 'Quedan ' + Math.max(0, Math.round((48 - j.horas_transcurridas) * 10) / 10)
+        + ' h de plazo. Cada cambio se registra con su valor anterior.</span>';
+      var caja = document.getElementById('form-medicion');
+      if (caja) caja.insertBefore(av, caja.firstChild);
+
+      medLocalGuardar();
+    });
+  }).catch(function(e){
+    alert('No se pudo abrir la medicion.\n\n' + (e && e.message ? e.message : 'error desconocido'));
+  });
+}
+
+function guardarCompletado(){
+  if (!medCompletarId){ alert('No hay ninguna medicion abierta para completar.'); return; }
+
+  /* Solo lo que cambio de verdad. Reenviar un valor identico crearia
+     una correccion falsa en la traza. */
+  var valores = {}, unidades = {}, nuevos = 0, cambiados = [];
+  MED_CATALOGO.forEach(function(pt){
+    var e = document.getElementById(medIdCampo(pt.codigo));
+    if (!e) return;
+    var txt = String(e.value).trim();
+    if (txt === '') return;
+    var antes = MED_ORIGINAL[pt.codigo];
+    if (antes !== undefined && Number(antes) === Number(txt)) return;
+    valores[pt.codigo] = Number(txt);
+    if (pt.unidad != null) unidades[pt.codigo] = pt.unidad;
+    if (antes === undefined) nuevos++;
+    else cambiados.push((pt.etiqueta || pt.codigo) + ': ' + antes + ' \u2192 ' + txt);
+  });
+
+  if (Object.keys(valores).length === 0){
+    alert('No hay nada nuevo ni distinto. Si querias agregar el SUT u otra etapa, '
+        + 'llena esos campos antes de guardar.');
+    return;
+  }
+
+  if (cambiados.length){
+    if (!confirm('Vas a CORREGIR ' + cambiados.length + ' valor'
+      + (cambiados.length === 1 ? '' : 'es') + ' ya guardado'
+      + (cambiados.length === 1 ? '' : 's') + ':\n\n'
+      + cambiados.slice(0,10).join('\n')
+      + (cambiados.length > 10 ? '\n... y ' + (cambiados.length-10) + ' mas' : '')
+      + (nuevos ? '\n\nY agregar ' + nuevos + ' punto' + (nuevos===1?'':'s') + ' nuevo' + (nuevos===1?'':'s') + '.' : '')
+      + '\n\nQueda registrado quien lo cambio y cual era el valor anterior.\n\nContinuar?')) return;
+  }
+
+  var pozoRespaldo = medPozoActual || document.getElementById('med-pozo-label').textContent;
+  var payload = {
+    id: medCompletarId,
+    valores: valores,
+    unidades: unidades,
+    nota: nuevos && !cambiados.length
+      ? 'Se completaron ' + nuevos + ' puntos que quedaron sin registrar.'
+      : null
+  };
+
+  var boton = event.target.closest('button');
+  guardarOEncolar('dp_completar_medicion', payload, boton,
+    'Medicion actualizada.', 'Completar medicion ' + pozoRespaldo,
+    function(){
+      medLocalBorrar(pozoRespaldo);
+      medLocalPintarLista();
+      medSalirModoCompletar();
+    });
+}
 
 /* ===================== GUARDADO REAL: BITACORA ===================== */
 function guardarBitacora(){
