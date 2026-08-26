@@ -17,7 +17,7 @@
 
 /* Al subir este numero, el navegador descarta el cache anterior y
    vuelve a bajar todo. Es la palanca para forzar actualizacion. */
-const CACHE_NAME = "captura-v3";
+const CACHE_NAME = "captura-v4";
 
 /* Sin estos archivos la app no abre sin señal. Van con addAll, que
    es todo o nada: solo deben ir rutas que existan con certeza. Una

@@ -378,7 +378,7 @@
 
         <div class="section-label"><span class="bar"></span>Mediciones y pruebas</div>
 
-        <div class="action-card card-medicion" data-sistemas="BES,HPUM" onclick="ir('medicion-pozo'); dpListarBorradores();">
+        <div class="action-card card-medicion" data-sistemas="BES,HPUM" onclick="ir('medicion-pozo'); medLocalPintarLista(); dpListarBorradores();">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Medicion predictiva</div><div class="sub">Lectura electrica completa segun el sistema del activo</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -458,6 +458,7 @@
         <label for="med-pozo-select">Pozo</label>
         <select id="med-pozo-select"></select>
       </div>
+      <div id="med-locales"></div>
       <div id="med-borradores"></div>
       <div class="submit-bar" style="position:static;">
         <button class="btn-primary" onclick="iniciarMedicion()">Iniciar captura
@@ -475,6 +476,7 @@
       <form id="form-medicion"></form>
       <div class="submit-bar">
         <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Se guarda en Kronos-M. Sin señal queda en este dispositivo y se sincroniza solo al recuperarla.</div>
+        <div id="med-autosave" class="hidden" style="font-size:12px;color:#1B7F4B;font-weight:600;margin:0 0 8px;"></div>
         <button class="btn-secondary" style="width:100%;margin:0 0 8px;padding:13px 18px;"
                 onclick="guardarMedicion('BORRADOR')">Guardar borrador</button>
         <button class="btn-primary" onclick="guardarMedicion('CONFIRMADA')">Confirmar medicion
@@ -991,7 +993,13 @@ setInterval(intentarSincronizarTodo, 30000); // reintento periodico por si el ev
 /* Guarda un registro: intenta la red primero; si falla (sin conexion o
    backend inalcanzable), lo encola localmente y avisa al tecnico que
    quedo guardado en el dispositivo, sin perder el trabajo. */
-function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta){
+function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta, alAsegurar){
+  /* alAsegurar corre cuando el registro quedo guardado en la base O
+     encolado en el dispositivo. En los dos casos ya no depende del
+     formulario, asi que el respaldo local puede soltarse. No corre si
+     la base lo rechazo por datos: ahi el trabajo sigue en pantalla y
+     borrar el respaldo seria perderlo. */
+  var asegurado = function(){ if (typeof alAsegurar === 'function') alAsegurar(); };
   mostrarGuardando(boton, true);
   sb.rpc(rpc, { p: payload })
     .then(function(r){
@@ -1000,6 +1008,7 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta){
         /* Sin red, o la sesion caduco. En ambos casos el trabajo del
            tecnico no se pierde: queda en el dispositivo. */
         encolarPendiente(rpc, payload, etiqueta);
+        asegurado();
         alert('No se pudo enviar ahora. El registro (' + etiqueta + ') quedo guardado en este '
             + 'dispositivo y se sincronizara solo cuando vuelva la conexion.');
         ir('home');
@@ -1014,6 +1023,7 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta){
         alert('Error al guardar: ' + (body.error || 'desconocido'));
         return;
       }
+      asegurado();
       var extra = '';
       if (body.duplicado) extra = '\n\nEste registro ya estaba guardado; no se duplico.';
       else if (body.guardados != null) {
@@ -1026,6 +1036,7 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta){
     })
     .catch(function(){
       encolarPendiente(rpc, payload, etiqueta);
+      asegurado();
       mostrarGuardando(boton, false);
       alert('Sin conexion. El registro (' + etiqueta + ') quedo guardado en este dispositivo.');
       ir('home');
@@ -1663,7 +1674,14 @@ function iniciarMedicion(){
     '</div></fieldset>';
   ir('medicion-form');
 
-  cargarCatalogoUnidad(pozo).then(function(res){
+  medLocalPozo = pozo;
+
+  /* Devuelve la promesa. Antes no lo hacia, y quien llamaba a esta
+     funcion para despues rellenar campos (abrir un borrador) escribia
+     sobre el formulario de "Cargando": los puntos todavia no existian,
+     asi que todos los valores se contaban como huerfanos, y acto
+     seguido el innerHTML final borraba tambien la cabecera. */
+  return cargarCatalogoUnidad(pozo).then(function(res){
     MED_CATALOGO  = res.puntos;
     MED_PLANTILLA = res.plantilla || '';
 
@@ -2056,11 +2074,16 @@ function guardarMedicion(estado){
 
   var boton = event.target.closest('button');
   medBorradorId = (estado === 'BORRADOR') ? payload.id : null;
+  var pozoRespaldo = medPozoActual;
   guardarOEncolar('dp_guardar_medicion', payload, boton,
     (estado === 'BORRADOR')
       ? 'Borrador guardado. Puedes continuarlo despues desde la pantalla de medicion.'
       : 'Medicion confirmada.',
-    'Medicion ' + medPozoActual);
+    'Medicion ' + medPozoActual,
+    function(){
+      medLocalBorrar(pozoRespaldo);
+      medLocalPintarLista();
+    });
 }
 
 /* ============================================================
@@ -2118,7 +2141,9 @@ function dpAbrirBorrador(id){
     }
     sel.value = m.pozo;
 
-    iniciarMedicion();
+    /* Se espera a que el formulario este armado. Rellenarlo antes
+       equivale a no rellenarlo. */
+    return iniciarMedicion().then(function(){
     /* iniciarMedicion limpia el borrador abierto, por eso se
        reasigna despues y no antes. */
     medBorradorId = id;
@@ -2170,6 +2195,8 @@ function dpAbrirBorrador(id){
       }
     }
     if (n === 0) alert('El borrador se abrio, pero no tenia valores guardados.');
+    medLocalGuardar();   /* deja copia local de lo recuperado */
+    });
   }).catch(function(e){
     /* Se reporta el error real. Atribuirlo a falta de senal manda a
        buscar el problema donde no esta. */
@@ -2177,6 +2204,213 @@ function dpAbrirBorrador(id){
         + (e && e.message ? e.message : 'causa desconocida'));
   });
 }
+
+/* ============================================================
+   AUTOGUARDADO LOCAL DE LA CAPTURA EN CURSO
+   ============================================================
+   Guardar borrador y confirmar son acciones deliberadas: mandan el
+   registro a la base o a la cola. Entre una y otra el trabajo vivia
+   solo en los inputs del formulario, asi que un reinicio del movil,
+   un cierre del navegador por memoria o un toque en atras se llevaban
+   la ronda completa.
+
+   Aqui se escribe una copia en el dispositivo cada vez que el tecnico
+   toca un campo. No pasa por la cola ni por la base: es un respaldo
+   del formulario, no un registro. Se borra cuando el registro queda
+   guardado o encolado de verdad.
+
+   Se guarda el texto crudo del input, no el numero: un valor a medio
+   escribir sigue siendo lo que el tecnico tenia en pantalla, y
+   convertirlo antes de tiempo lo perderia.                        */
+
+var MEDLOCAL_PREFIJO = 'dp_medlocal_';
+var medLocalPozo = '';
+var medLocalTimer = null;
+
+var MEDLOCAL_CABECERA = ['med-fecha','med-hora','med-modo','med-condicion',
+                         'med-frecop','med-frecset','med-hsc','med-lsc'];
+
+function medLocalClave(pozo){ return MEDLOCAL_PREFIJO + pozo; }
+
+function medLocalRecoger(){
+  if (!medLocalPozo) return null;
+  var cab = {};
+  MEDLOCAL_CABECERA.forEach(function(id){
+    var e = document.getElementById(id);
+    if (e) cab[id] = e.value;
+  });
+  var valores = {}, n = 0;
+  MED_CATALOGO.forEach(function(pt){
+    var e = document.getElementById(medIdCampo(pt.codigo));
+    if (e && e.value !== ''){ valores[pt.codigo] = e.value; n++; }
+  });
+  return { pozo: medLocalPozo, plantilla: MED_PLANTILLA, borrador_id: medBorradorId,
+           cabecera: cab, valores: valores, n: n, ts: new Date().toISOString() };
+}
+
+function medLocalGuardar(){
+  var d = medLocalRecoger();
+  if (!d) return;
+  /* Un formulario recien abierto y vacio no se guarda: crearia una
+     "captura en curso" fantasma en la lista de recuperacion. */
+  if (d.n === 0 && !medBorradorId) return;
+  dpAlmacen.setItem(medLocalClave(d.pozo), JSON.stringify(d));
+  medLocalPintarSello(d);
+}
+
+function medLocalProgramar(){
+  if (medLocalTimer) clearTimeout(medLocalTimer);
+  /* Escribir en cada tecla pega el hilo en moviles viejos con 60+
+     campos. Tres cuartos de segundo despues de dejar de escribir es
+     imperceptible y no pierde nada practico. */
+  medLocalTimer = setTimeout(medLocalGuardar, 750);
+}
+
+function medLocalPintarSello(d){
+  var e = document.getElementById('med-autosave');
+  if (!e) return;
+  var t = new Date(d ? d.ts : Date.now());
+  e.textContent = 'Copia en este dispositivo \u00b7 ' + (d ? d.n : 0) + ' valores \u00b7 '
+    + t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  e.classList.remove('hidden');
+}
+
+function medLocalBorrar(pozo){
+  if (!pozo) return;
+  dpAlmacen.removeItem(medLocalClave(pozo));
+  if (medLocalTimer){ clearTimeout(medLocalTimer); medLocalTimer = null; }
+  var e = document.getElementById('med-autosave');
+  if (e) e.classList.add('hidden');
+}
+
+/* Recorre el almacen buscando capturas en curso. Se recorre en vez de
+   llevar un indice aparte porque un indice y los datos pueden quedar
+   desfasados, y aqui lo que importa es no perder nada. */
+function medLocalListar(){
+  var out = [];
+  if (DP_LOCAL_OK){
+    try {
+      for (var i = 0; i < localStorage.length; i++){
+        var k = localStorage.key(i);
+        if (!k || k.indexOf(MEDLOCAL_PREFIJO) !== 0) continue;
+        var d = dpLeerJSON(k, null);
+        if (d && d.pozo) out.push(d);
+      }
+    } catch(e){}
+  } else {
+    Object.keys(dpMemoria).forEach(function(k){
+      if (k.indexOf(MEDLOCAL_PREFIJO) !== 0) return;
+      var d = dpLeerJSON(k, null);
+      if (d && d.pozo) out.push(d);
+    });
+  }
+  out.sort(function(a,b){ return (b.ts||'').localeCompare(a.ts||''); });
+  return out;
+}
+
+function medLocalPintarLista(){
+  var caja = document.getElementById('med-locales');
+  if (!caja) return;
+  var lista = medLocalListar();
+  if (!lista.length){ caja.innerHTML = ''; return; }
+
+  caja.innerHTML = '<div class="card" style="margin-bottom:14px;border-left:3px solid var(--danger);">'
+    + '<div style="font-size:12px;letter-spacing:.08em;text-transform:uppercase;'
+    + 'color:var(--ink-soft);margin-bottom:4px;">Capturas sin terminar en este dispositivo</div>'
+    + '<div style="font-size:13px;color:var(--ink-soft);margin-bottom:6px;">'
+    + 'Quedaron a medias y todavia no se han enviado. Continualas o descartalas.</div>'
+    + lista.map(function(d){
+        var t = new Date(d.ts);
+        return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;'
+          + 'padding:10px 0;border-top:1px solid var(--line);">'
+          + '<div style="min-width:0;"><div style="font-weight:700;">' + d.pozo + '</div>'
+          + '<div style="font-size:12px;color:var(--ink-soft);">' + d.n + ' valores &middot; '
+          + t.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}) + ' '
+          + t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) + '</div></div>'
+          + '<div style="display:flex;gap:6px;flex:0 0 auto;">'
+          + '<button class="btn-primary" style="width:auto;margin:0;padding:8px 12px;font-size:13px;" '
+          + 'onclick="medLocalRestaurar(\'' + d.pozo.replace(/'/g,"\\'") + '\')">Continuar</button>'
+          + '<button class="btn-secondary" style="width:auto;margin:0;padding:8px 12px;font-size:13px;" '
+          + 'onclick="medLocalDescartar(\'' + d.pozo.replace(/'/g,"\\'") + '\')">Descartar</button>'
+          + '</div></div>';
+      }).join('')
+    + '</div>';
+}
+
+function medLocalDescartar(pozo){
+  var d = dpLeerJSON(medLocalClave(pozo), null);
+  if (!confirm('Descartar la captura de ' + pozo + '?\n\n'
+    + (d ? d.n + ' valores' : 'Los valores') + ' se pierden y no hay como recuperarlos.')) return;
+  medLocalBorrar(pozo);
+  medLocalPintarLista();
+}
+
+function medLocalRestaurar(pozo){
+  var d = dpLeerJSON(medLocalClave(pozo), null);
+  if (!d){ alert('Esa captura ya no esta en el dispositivo.'); return; }
+
+  var sel = document.getElementById('med-pozo-select');
+  var existe = false;
+  for (var i = 0; i < sel.options.length; i++){
+    if (sel.options[i].value === pozo){ existe = true; break; }
+  }
+  if (!existe){
+    var op = document.createElement('option');
+    op.value = pozo; op.textContent = pozo;
+    sel.appendChild(op);
+  }
+  sel.value = pozo;
+
+  iniciarMedicion().then(function(){
+    /* iniciarMedicion suelta el borrador abierto; si esta captura
+       venia de uno, se reengancha para que la base actualice en vez
+       de crear un registro nuevo. */
+    medBorradorId = d.borrador_id || null;
+
+    Object.keys(d.cabecera || {}).forEach(function(id){
+      var e = document.getElementById(id);
+      if (e && d.cabecera[id] !== '' && d.cabecera[id] != null) e.value = d.cabecera[id];
+    });
+
+    var puestos = 0, sinCampo = [];
+    Object.keys(d.valores || {}).forEach(function(cod){
+      var e = document.getElementById(medIdCampo(cod));
+      if (e){ e.value = d.valores[cod]; puestos++; }
+      else sinCampo.push(cod);
+    });
+
+    medLocalPintarSello(d);
+
+    if (sinCampo.length){
+      alert('Se recuperaron ' + puestos + ' valores.\n\n'
+        + sinCampo.length + ' no tienen campo en el formulario actual, porque el catalogo '
+        + 'de puntos de este activo cambio: ' + sinCampo.slice(0,8).join(', ')
+        + (sinCampo.length > 8 ? ' y ' + (sinCampo.length-8) + ' mas' : '') + '.');
+    } else {
+      alert('Se recuperaron ' + puestos + ' valores. Revisa la cabecera y continua.');
+    }
+  }).catch(function(e){
+    alert('No se pudo abrir el formulario de ' + pozo + '.\n\n'
+      + (e && e.message ? e.message : 'error') + '\n\nLa captura sigue guardada en el dispositivo.');
+  });
+}
+
+/* Delegacion en el <form>, que sobrevive a los innerHTML: enganchar
+   campo por campo se perderia en cada rearmado del formulario. */
+(function(){
+  var f = document.getElementById('form-medicion');
+  if (!f) return;
+  f.addEventListener('input',  medLocalProgramar);
+  f.addEventListener('change', medLocalProgramar);
+})();
+
+/* En Android, cerrar la app o matarla desde recientes no dispara
+   beforeunload. visibilitychange y pagehide si, y son el ultimo
+   momento en que se puede escribir. */
+document.addEventListener('visibilitychange', function(){
+  if (document.hidden) medLocalGuardar();
+});
+window.addEventListener('pagehide', medLocalGuardar);
 
 /* ===================== GUARDADO REAL: BITACORA ===================== */
 function guardarBitacora(){
@@ -2547,6 +2781,26 @@ function dpEntrar(user){
   poblarSelects();
   intentarSincronizarTodo();
   dpRevisarPreparacion();
+  dpRevisarCapturasLocales();
+}
+
+/* Si el movil se reinicio a mitad de una ronda, el tecnico vuelve a
+   entrar creyendo que perdio todo. Se le dice de una, sin que tenga
+   que ir a buscarlo. */
+function dpRevisarCapturasLocales(){
+  var lista = medLocalListar();
+  if (!lista.length) return;
+  setTimeout(function(){
+    var det = lista.slice(0,5).map(function(d){ return '\u2022 ' + d.pozo + ' \u2014 ' + d.n + ' valores'; }).join('\n');
+    if (confirm('Hay ' + lista.length + ' captura' + (lista.length===1?'':'s')
+      + ' sin terminar guardada' + (lista.length===1?'':'s') + ' en este dispositivo:\n\n' + det
+      + (lista.length > 5 ? '\n\u2022 ... y ' + (lista.length-5) + ' mas' : '')
+      + '\n\nNo se han enviado. Abrir para continuar?')){
+      ir('medicion-pozo');
+      medLocalPintarLista();
+      dpListarBorradores();
+    }
+  }, 1400);
 }
 
 /* El aviso va al entrar CON senal, que es el unico momento en que se
