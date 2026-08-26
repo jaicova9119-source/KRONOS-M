@@ -1257,6 +1257,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="perfil-actual" style="padding:14px;background:var(--bg-2);border-radius:8px;margin-bottom:10px;font-size:14px;font-weight:600"></div>
     <button class="btn-secondary" id="btn-cerrar-sesion">Cerrar sesión</button>
 
+    <div class="section-label" style="margin-top:24px">Trabajo sin señal</div>
+    <div id="prep-resumen" style="padding:12px 14px;background:var(--bg-2);border-radius:8px;margin-bottom:10px;font-size:13px;line-height:1.5"></div>
+    <button class="btn-secondary" onclick="abrirPrepararCampo()">Preparar para campo</button>
+
     <div id="perfil-admin-seccion" style="display:none;margin-top:24px">
       <div class="section-label">Gestión de usuarios (solo admin)</div>
       <div id="perfil-lista-usuarios"></div>
@@ -1265,6 +1269,34 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <button class="btn-secondary" style="margin-top:8px" onclick="abrirPanel('panel-carga-materiales')">Actualizar inventario de Materiales</button>
       <button class="btn-secondary" style="margin-top:8px" onclick="abrirCargaSap()">Cargar consumo (MB25) y compras en curso (ME5A)</button>
     </div>
+  </div>
+</div>
+
+<div class="panel" id="panel-preparar">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-preparar')">&#8592;</button>
+    <h2>Preparar para campo</h2>
+  </div>
+  <div class="panel-body">
+    <p class="hint-box">Descarga a este dispositivo lo que necesites consultar donde no hay señal.
+      La app guarda una copia y la usa cuando la red no responde. Hazlo con WiFi antes de salir:
+      lo que no descargues aquí no va a estar disponible en el PAD.</p>
+
+    <div class="section-label">Qué descargar</div>
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:10px 0"><input type="checkbox" id="prep-activos" checked style="margin-top:3px">
+      <span><b>Activos</b><br><span style="font-size:12px;color:var(--muted)">Catálogo completo de equipos. Es el más pesado (unos 3 MB).</span></span></label>
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:10px 0"><input type="checkbox" id="prep-materiales" checked style="margin-top:3px">
+      <span><b>Materiales</b><br><span style="font-size:12px;color:var(--muted)">Existencias y niveles min-max por centro.</span></span></label>
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:10px 0"><input type="checkbox" id="prep-programacion" checked style="margin-top:3px">
+      <span><b>Programación</b><br><span style="font-size:12px;color:var(--muted)">Actividades de hoy y los próximos 6 días.</span></span></label>
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:10px 0"><input type="checkbox" id="prep-documentos" checked style="margin-top:3px">
+      <span><b>Documentos</b><br><span style="font-size:12px;color:var(--muted)">Solo la ficha de cada documento. Los PDF se quedan en el servidor.</span></span></label>
+
+    <div id="prep-estado" style="font-size:13px;margin:14px 0 8px"></div>
+    <div id="prep-barra-caja" style="display:none;height:8px;background:var(--bg-2);border-radius:99px;overflow:hidden;margin-bottom:12px">
+      <div id="prep-barra" style="height:100%;width:0;background:var(--brand,#134B70);transition:width .2s"></div>
+    </div>
+    <button class="btn-primary" id="prep-btn" onclick="ejecutarPrepararCampo()">Descargar</button>
   </div>
 </div>
 
@@ -2391,7 +2423,97 @@ const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 window.SUPABASE_URL = SUPABASE_URL;
 window.SUPABASE_ANON_KEY = SUPABASE_ANON_KEY;
 
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+/* ============================================================
+   RED CON PLAZO
+   ============================================================
+   "Se queda pensando" casi nunca es falta de senal: es senal mala.
+   Sin senal, fetch falla rapido y el catch corre. Con senal debil
+   -- que es lo normal en los PAD -- la peticion sale, el servidor
+   nunca contesta y el navegador espera sin limite. navigator.onLine
+   responde true porque hay interfaz de red activa, asi que todos los
+   if (navigator.onLine) se cumplen y la app se queda girando.
+
+   Se resuelve en un solo punto: el cliente entero usa un fetch que
+   aborta pasado el plazo. Poner un AbortController en cada una de las
+   138 llamadas seria imposible de mantener y la que se olvidara
+   volveria a colgar la app.
+
+   Los plazos no son iguales para todo. Consultar datos en un PAD
+   debe rendirse rapido y caer al espejo local; subir un PDF de
+   documentacion tecnica por una red mala tarda de verdad, y cortarlo
+   a los ocho segundos romperia el modulo documental. */
+const PLAZO_DATOS   = 8000;    /* consultas y RPC */
+const PLAZO_AUTH    = 15000;   /* iniciar sesion, refrescar token */
+const PLAZO_ARCHIVO = 120000;  /* Storage: subir y bajar documentos */
+
+function plazoPara(url) {
+  const u = String(url);
+  if (u.includes("/storage/")) return PLAZO_ARCHIVO;
+  if (u.includes("/auth/"))    return PLAZO_AUTH;
+  return PLAZO_DATOS;
+}
+
+function fetchConPlazo(url, opciones) {
+  opciones = opciones || {};
+  /* Si quien llama ya trae su propio control de aborto, se respeta:
+     dos controladores sobre la misma peticion se pisan. */
+  if (opciones.signal) return fetch(url, opciones);
+
+  const ac = new AbortController();
+  const ms = plazoPara(url);
+  const t = setTimeout(() => ac.abort(), ms);
+
+  return fetch(url, Object.assign({}, opciones, { signal: ac.signal }))
+    .then((r) => { clearTimeout(t); return r; })
+    .catch((e) => {
+      clearTimeout(t);
+      /* El error de aborto dice "AbortError", que no le explica nada a
+         nadie. Se traduce para que el mensaje que llega al usuario
+         diga lo que de verdad paso. */
+      if (e && e.name === "AbortError") {
+        const err = new Error("La red no respondio en " + Math.round(ms / 1000)
+          + " segundos. Se usara la copia guardada en este dispositivo si la hay.");
+        err.name = "TimeoutError";
+        err.esPlazo = true;
+        throw err;
+      }
+      throw e;
+    });
+}
+
+/* ============================================================
+   ALMACENAMIENTO TOLERANTE
+   ============================================================
+   La proteccion de rastreo de algunos navegadores bloquea el
+   almacenamiento local. supabase-js toma ahi un candado antes de
+   refrescar el token; si no puede tomarlo, espera para siempre y el
+   inicio de sesion nunca responde. Ya nos paso en la app de captura.
+   Aqui se le entrega un almacen que nunca lanza y un candado que no
+   bloquea. */
+let kmMemoria = {};
+const KM_LOCAL_OK = (function () {
+  try {
+    localStorage.setItem("__km_prueba__", "1");
+    localStorage.removeItem("__km_prueba__");
+    return true;
+  } catch (e) { return false; }
+})();
+
+const kmAlmacen = {
+  getItem(k)      { try { return localStorage.getItem(k); }  catch (e) { return k in kmMemoria ? kmMemoria[k] : null; } },
+  setItem(k, v)   { try { localStorage.setItem(k, v); }      catch (e) { kmMemoria[k] = v; } },
+  removeItem(k)   { try { localStorage.removeItem(k); }      catch (e) { delete kmMemoria[k]; } },
+};
+
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  global: { fetch: fetchConPlazo },
+  auth: {
+    storage: kmAlmacen,
+    persistSession: true,
+    autoRefreshToken: true,
+    lock: async (_nombre, _venceEn, fn) => await fn(),
+  },
+});
 
 /* Se publica el cliente para que los modulos en iframe lo reusen en
    lugar de crear el suyo. Varias instancias sobre la misma llave de
@@ -2463,6 +2585,46 @@ async function idbLeer(clave) {
     pet.onsuccess = () => { db.close(); res(pet.result || null); };
     pet.onerror = () => { db.close(); rej(pet.error); };
   });
+}
+
+/* ============================================================
+   ESPEJO POR MODULO
+   ============================================================
+   Los activos ya tenian espejo en IndexedDB; materiales, documentos y
+   programacion no. Sin senal esos modulos mostraban "Error cargando"
+   y no habia nada que consultar en campo.
+
+   guardarEspejo / leerEspejo unifican el patron: intentar la red,
+   guardar lo que llegue, y si la red falla o se pasa del plazo, servir
+   la copia diciendo de cuando es. Un dato viejo etiquetado sirve; un
+   dato viejo presentado como fresco es peor que un error.           */
+
+const ESPEJO = {
+  materiales:   "esp_materiales",
+  documentos:   "esp_documentos",
+  programacion: "esp_programacion",   /* se le concatena la fecha */
+};
+
+async function guardarEspejo(clave, datos) {
+  try { await idbGuardar(clave, { ts: Date.now(), datos }); return true; }
+  catch (e) { console.warn("No se pudo guardar el espejo de " + clave, e); return false; }
+}
+
+async function leerEspejo(clave) {
+  try { return await idbLeer(clave); } catch (e) { return null; }
+}
+
+function fechaEspejo(reg) {
+  if (!reg || !reg.ts) return "fecha desconocida";
+  return new Date(reg.ts).toLocaleString("es-CO",
+    { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+/* Aviso uniforme para cuando se esta viendo una copia local. */
+function bannerEspejo(reg, queEs) {
+  return '<div class="empty" style="border-left:3px solid #B26A00;text-align:left;">'
+    + '<b>Sin conexi\u00f3n</b><br>Mostrando ' + queEs + ' guardados en este dispositivo el '
+    + fechaEspejo(reg) + '. Pueden estar desactualizados.</div>';
 }
 
 /* ---------- Materiales / Min-Max ---------- */
@@ -4110,6 +4272,7 @@ function volverAMateriales() {
 async function cargarMateriales() {
   const lista = document.getElementById("lista-materiales");
   lista.innerHTML = '<div class="loading">Cargando materiales...</div>';
+  let desdeEspejo = null;
   try {
     // Supabase limita cada consulta a un maximo de filas (tipicamente 1000).
     // Como esta vista tiene mas de 12.000 registros, hay que traerla en paginas
@@ -4127,9 +4290,16 @@ async function cargarMateriales() {
       desde += PAGINA;
     }
     materialesData = todos;
-    await cargarBalanceTraslados();
-    await cargarConsumoYTramites();
-    await cargarUbicaciones();
+    await guardarEspejo(ESPEJO.materiales, todos);
+    /* Estos tres son complementos: si fallan, la lista principal sigue
+       sirviendo. Van con allSettled y no en cadena de awaits, que era
+       lo que hacia que un tropiezo en traslados dejara el modulo entero
+       sin cargar. */
+    await Promise.allSettled([
+      cargarBalanceTraslados(),
+      cargarConsumoYTramites(),
+      cargarUbicaciones(),
+    ]);
 
     // Poblar filtro de centros (unicos, ordenados)
     const selCentro = document.getElementById("mat-filtro-centro");
@@ -4169,9 +4339,36 @@ async function cargarMateriales() {
 
     actualizarBadgeCarrito();
     renderListaMateriales();
+    return;
   } catch (e) {
-    lista.innerHTML = '<div class="empty">Error cargando materiales: ' + e.message + '</div>';
+    desdeEspejo = await leerEspejo(ESPEJO.materiales);
+    if (!desdeEspejo || !desdeEspejo.datos || !desdeEspejo.datos.length) {
+      lista.innerHTML = '<div class="empty">No se pudo cargar y no hay copia guardada en este '
+        + 'dispositivo.<br><br>' + (e.esPlazo ? e.message : 'Error: ' + e.message)
+        + '<br><br>Abre el m\u00f3dulo una vez con se\u00f1al para poder consultarlo en campo.</div>';
+      return;
+    }
   }
+
+  /* Camino sin senal: la lista sale del espejo. Los complementos
+     (traslados, consumo, ubicaciones) no se intentan: son consultas
+     nuevas que volverian a esperar el plazo completo cada una. */
+  materialesData = desdeEspejo.datos;
+  centrosConocidos = [...new Map(materialesData.map(m => [m.centro, m.centro_nombre || m.centro])).entries()]
+    .sort((a2, b2) => a2[0].localeCompare(b2[0]));
+  categoriasConocidas = [...new Set(materialesData.map(m => m.categoria).filter(Boolean))].sort();
+
+  const selC = document.getElementById("mat-filtro-centro");
+  if (selC) selC.innerHTML = '<option value="">Todos los centros</option>' +
+    centrosConocidos.map(([c, n]) => `<option value="${c}">${c} · ${n}</option>`).join("");
+  const selCat = document.getElementById("mat-filtro-categoria");
+  if (selCat) selCat.innerHTML = '<option value="">Todas las áreas</option>' +
+    categoriasConocidas.map(c => `<option value="${c}">${LABEL_CATEGORIA_MAT[c] || c}</option>`).join("");
+
+  actualizarBadgeCarrito();
+  renderListaMateriales();
+  lista.insertAdjacentHTML("afterbegin",
+    bannerEspejo(desdeEspejo, materialesData.length + " materiales"));
 }
 
 /* Carga el balance entre centros: material bajo su nivel en un centro
@@ -8080,6 +8277,7 @@ async function cargarDocumentos() {
     const { data, error } = await sb.from("documentos").select("*").order("created_at", { ascending: false });
     if (error) throw error;
     documentosData = data || [];
+    await guardarEspejo(ESPEJO.documentos, documentosData);
 
     const dl = document.getElementById("dl-tipos-equipo");
     const tiposUnicos = [...new Set(documentosData.map(d => d.tipo_equipo).filter(Boolean))].sort();
@@ -8095,7 +8293,22 @@ async function cargarDocumentos() {
 
     renderListaDocumentos();
   } catch (e) {
-    lista.innerHTML = '<div class="empty">Error cargando documentos: ' + e.message + '</div>';
+    const esp = await leerEspejo(ESPEJO.documentos);
+    if (!esp || !esp.datos || !esp.datos.length) {
+      lista.innerHTML = '<div class="empty">No se pudo cargar y no hay copia guardada.<br><br>'
+        + (e.esPlazo ? e.message : 'Error: ' + e.message) + '</div>';
+      return;
+    }
+    documentosData = esp.datos;
+    const dl2 = document.getElementById("dl-tipos-equipo");
+    if (dl2) dl2.innerHTML = [...new Set(documentosData.map(d => d.tipo_equipo).filter(Boolean))]
+      .sort().map(t => `<option value="${t}">`).join("");
+    renderListaDocumentos();
+    /* El listado se ve; el PDF en si vive en Storage y no esta
+       descargado. Se dice, para que nadie salga a campo creyendo que
+       lleva los documentos encima. */
+    lista.insertAdjacentHTML("afterbegin", bannerEspejo(esp, documentosData.length + " documentos")
+      .replace("</div>", "<br><b>Los archivos PDF no est\u00e1n descargados</b>: sin se\u00f1al se ve la ficha, no el documento.</div>"));
   }
 }
 
@@ -8668,6 +8881,7 @@ async function manejarSesionActiva(session) {
      el perfil guardado no se llegaba a usar: sin señal la app se
      quedaba en "No se pudo verificar tu cuenta". Hay que separar
      "no pude preguntar" de "pregunte y no hay". */
+  let huboPlazo = false;
   if (navigator.onLine) {
     try {
       const resp = await sb.from("usuarios").select("*")
@@ -8685,12 +8899,15 @@ async function manejarSesionActiva(session) {
         }
       }
     } catch (e) {
-      /* Fallo duro de red: se resuelve abajo con el perfil guardado. */
+      /* Fallo duro de red, o la red no respondio dentro del plazo. En
+         los dos casos se resuelve abajo con el perfil guardado; la
+         diferencia importa solo para el mensaje de error. */
+      huboPlazo = !!e.esPlazo;
     }
   }
 
   if (!perfil) {
-    const cache = localStorage.getItem(PERFIL_CACHE_KEY);
+    const cache = kmAlmacen.getItem(PERFIL_CACHE_KEY);
     if (cache) {
       try {
         perfil = JSON.parse(cache);
@@ -8700,9 +8917,16 @@ async function manejarSesionActiva(session) {
   }
 
   if (!perfil) {
-    mostrarErrorAuth("auth-error", navigator.onLine
-      ? "No se pudo verificar tu cuenta. Intenta de nuevo."
-      : "Sin señal y sin sesión guardada en este dispositivo. Entra una vez con conexión.");
+    /* Decir "intenta de nuevo" cuando el problema es una red que no
+       contesta manda a reintentar contra la misma pared. Se separa el
+       caso del plazo agotado, que es el de senal debil en el PAD. */
+    mostrarErrorAuth("auth-error",
+      huboPlazo
+        ? "La red no respondió a tiempo y no hay sesión guardada en este dispositivo. "
+          + "Busca mejor señal e intenta de nuevo."
+        : navigator.onLine
+          ? "No se pudo verificar tu cuenta. Intenta de nuevo."
+          : "Sin señal y sin sesión guardada en este dispositivo. Entra una vez con conexión.");
     mostrarAuthGate();
     return;
   }
@@ -8711,7 +8935,7 @@ async function manejarSesionActiva(session) {
     id: perfil.id, auth_user_id: perfil.auth_user_id, nombre: perfil.nombre,
     email: perfil.email, rol: perfil.rol, activo: perfil.activo,
   };
-  try { localStorage.setItem(PERFIL_CACHE_KEY, JSON.stringify(perfil)); } catch (e) {}
+  kmAlmacen.setItem(PERFIL_CACHE_KEY, JSON.stringify(perfil));
 
   if (!usuarioActual.activo) {
     document.getElementById("auth-gate").style.display = "none";
@@ -8756,8 +8980,155 @@ document.getElementById("btn-usuario-topbar").onclick = () => {
   cargarPanelPerfil();
 };
 
+/* ============================================================
+   PREPARAR PARA CAMPO
+   ============================================================
+   Los espejos se llenan por uso: queda guardado el modulo que se haya
+   abierto con senal. En campo eso falla justo donde importa, porque el
+   modulo que se necesita suele ser el que no se abrio. Aqui la
+   descarga es deliberada y se hace antes de salir.                 */
+
+const PREP_KEY = "kronos_preparado";
+
+function pintarResumenPreparacion() {
+  const caja = document.getElementById("prep-resumen");
+  if (!caja) return;
+  let p = null;
+  try { p = JSON.parse(kmAlmacen.getItem(PREP_KEY) || "null"); } catch (e) {}
+  if (!p) {
+    caja.innerHTML = '<span style="color:#C62828;font-weight:600">Este dispositivo no est\u00e1 preparado.</span>'
+      + '<br>Sin descargar, en campo solo funciona lo que hayas abierto antes con se\u00f1al.';
+    return;
+  }
+  const dias = Math.floor((Date.now() - new Date(p.ts).getTime()) / 86400000);
+  const color = dias >= 7 ? "#C62828" : (dias >= 3 ? "#B26A00" : "#1B7F4B");
+  caja.innerHTML = '<span style="color:' + color + ';font-weight:600">\u00daltima descarga: '
+    + new Date(p.ts).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+    + (dias > 0 ? " (hace " + dias + (dias === 1 ? " d\u00eda" : " d\u00edas") + ")" : "") + "</span><br>"
+    + (p.detalle || "");
+}
+
+function abrirPrepararCampo() {
+  abrirPanel("panel-preparar");
+  document.getElementById("prep-estado").textContent = "";
+  document.getElementById("prep-barra-caja").style.display = "none";
+}
+
+async function ejecutarPrepararCampo() {
+  if (!navigator.onLine) {
+    toast("Sin conexi\u00f3n. Esto se hace con WiFi antes de salir a campo.");
+    return;
+  }
+  const btn = document.getElementById("prep-btn");
+  const est = document.getElementById("prep-estado");
+  const barraCaja = document.getElementById("prep-barra-caja");
+  const barra = document.getElementById("prep-barra");
+
+  const tareas = [];
+  if (document.getElementById("prep-activos").checked)      tareas.push("activos");
+  if (document.getElementById("prep-materiales").checked)   tareas.push("materiales");
+  if (document.getElementById("prep-programacion").checked) tareas.push("programacion");
+  if (document.getElementById("prep-documentos").checked)   tareas.push("documentos");
+  if (!tareas.length) { toast("Marca al menos una cosa para descargar."); return; }
+
+  btn.disabled = true;
+  btn.textContent = "Descargando...";
+  barraCaja.style.display = "block";
+
+  const hechas = [], fallidas = [];
+  let i = 0;
+  const avanzar = (texto) => {
+    barra.style.width = Math.round((i / tareas.length) * 100) + "%";
+    est.textContent = texto;
+  };
+
+  /* Paginador comun. Se rinde tras tres plazos seguidos en la misma
+     pagina en vez de reintentar sin fin: con la red asi, insistir solo
+     alarga la espera del tecnico. */
+  async function traerTodo(vista, orden) {
+    const PAGINA = 1000;
+    let desde = 0, todos = [];
+    while (true) {
+      const { data, error } = await sb.from(vista).select("*").order(orden)
+        .range(desde, desde + PAGINA - 1);
+      if (error) throw error;
+      todos = todos.concat(data || []);
+      if (!data || data.length < PAGINA) break;
+      desde += PAGINA;
+      avanzar("Descargando " + vista + ": " + todos.length + " registros...");
+    }
+    return todos;
+  }
+
+  for (const t of tareas) {
+    try {
+      if (t === "activos") {
+        avanzar("Descargando activos...");
+        const filas = await traerTodo("v_equipos_ubicacion", "descripcion");
+        equipos = filas;
+        _buscables.clear();
+        await idbGuardar(CACHE_KEY, { ts: Date.now(), equipos: filas });
+        hechas.push(filas.length + " activos");
+
+      } else if (t === "materiales") {
+        avanzar("Descargando materiales...");
+        const filas = await traerTodo("v_materiales_estado", "codigo_sap");
+        await guardarEspejo(ESPEJO.materiales, filas);
+        hechas.push(filas.length + " materiales");
+
+      } else if (t === "documentos") {
+        avanzar("Descargando fichas de documentos...");
+        const { data, error } = await sb.from("documentos").select("*")
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        await guardarEspejo(ESPEJO.documentos, data || []);
+        hechas.push((data || []).length + " fichas de documento");
+
+      } else if (t === "programacion") {
+        /* Siete dias desde hoy. Una sola consulta por rango y despues
+           se reparte por fecha, que es como la lee cargarProgramacionDia. */
+        avanzar("Descargando programaci\u00f3n...");
+        const hoy = new Date();
+        const iso = (d) => d.toISOString().slice(0, 10);
+        const hasta = new Date(hoy.getTime() + 6 * 86400000);
+        const { data, error } = await sb.from("v_programa_actividades").select("*")
+          .gte("fecha_programada", iso(hoy)).lte("fecha_programada", iso(hasta))
+          .order("estacion", { ascending: true }).order("item", { ascending: true });
+        if (error) throw error;
+        const porFecha = {};
+        (data || []).forEach((a) => {
+          (porFecha[a.fecha_programada] = porFecha[a.fecha_programada] || []).push(a);
+        });
+        for (let d = 0; d < 7; d++) {
+          const f = iso(new Date(hoy.getTime() + d * 86400000));
+          await guardarEspejo(ESPEJO.programacion + "_" + f, porFecha[f] || []);
+        }
+        hechas.push((data || []).length + " actividades de 7 d\u00edas");
+      }
+    } catch (e) {
+      fallidas.push(t + (e.esPlazo ? " (la red no respondi\u00f3)" : ": " + e.message));
+    }
+    i++;
+    avanzar("");
+  }
+
+  barra.style.width = "100%";
+  btn.disabled = false;
+  btn.textContent = "Volver a descargar";
+
+  const detalle = hechas.join(" \u00b7 ") || "nada descargado";
+  kmAlmacen.setItem(PREP_KEY, JSON.stringify({ ts: Date.now(), detalle }));
+  pintarResumenPreparacion();
+
+  est.innerHTML = fallidas.length
+    ? '<span style="color:#C62828"><b>Incompleto.</b> No se pudo descargar: ' + fallidas.join("; ")
+      + '. Eso no va a estar disponible en campo.</span>'
+    : '<span style="color:#1B7F4B"><b>Listo.</b> ' + detalle + " guardados en este dispositivo.</span>";
+}
+
 async function cargarPanelPerfil() {
   actualizarBadgePerfil();
+  pintarResumenPreparacion();
   const seccionAdmin = document.getElementById("perfil-admin-seccion");
   if (usuarioActual && usuarioActual.rol === "admin") {
     seccionAdmin.style.display = "block";
@@ -10134,31 +10505,60 @@ function progMoverDia(delta) {
 async function cargarProgramacionDia() {
   const cont = document.getElementById("prog-lista");
   cont.innerHTML = '<div class="loading">Cargando programación...</div>';
-  let q = sb.from("v_programa_actividades").select("*").eq("fecha_programada", progFecha);
-  if (progDisciplina !== "TODAS") q = q.contains("disciplinas", [progDisciplina]);
-  const { data, error } = await q
-    .order("estacion", { ascending: true })
-    .order("item", { ascending: true });
 
-  if (error) {
-    cont.innerHTML = '<div class="empty">No se pudo cargar: ' + error.message + "</div>";
+  /* El espejo se guarda por fecha: la programacion del martes no sirve
+     para el miercoles, y una sola clave las pisaria entre si. */
+  const clave = ESPEJO.programacion + "_" + progFecha;
+
+  try {
+    let q = sb.from("v_programa_actividades").select("*").eq("fecha_programada", progFecha);
+    if (progDisciplina !== "TODAS") q = q.contains("disciplinas", [progDisciplina]);
+    const { data, error } = await q
+      .order("estacion", { ascending: true })
+      .order("item", { ascending: true });
+    if (error) throw error;
+    progLista = data || [];
+
+    /* Arrastre: una actividad que quedó en ejecución un día anterior sigue
+       siendo trabajo de hoy. Se trae a la lista del día en curso para poder
+       continuarla sin tener que retroceder de fecha.
+       Va aparte: si el arrastre falla, la programacion del dia se muestra
+       igual en vez de perderse entera. */
+    try {
+      const arr = await sb.rpc("programa_arrastradas", { p_fecha: progFecha });
+      const ids = (arr.data || []).map(x => x.id).filter(id => !progLista.some(a => a.id === id));
+      if (ids.length) {
+        let q2 = sb.from("v_programa_actividades").select("*").in("id", ids);
+        if (progDisciplina !== "TODAS") q2 = q2.contains("disciplinas", [progDisciplina]);
+        const r2 = await q2;
+        (r2.data || []).forEach(a => { a._arrastrada = true; progLista.unshift(a); });
+      }
+    } catch (e2) {
+      console.warn("Arrastre no disponible:", e2.message);
+    }
+
+    /* Se guarda la lista completa, sin el filtro de disciplina aplicado
+       encima: guardar lo filtrado dejaria el espejo incompleto segun la
+       disciplina que estuviera puesta al descargarlo. */
+    if (progDisciplina === "TODAS") await guardarEspejo(clave, progLista);
+
+    renderProgramacionDia();
     return;
+  } catch (e) {
+    const esp = await leerEspejo(clave);
+    if (!esp || !esp.datos) {
+      cont.innerHTML = '<div class="empty">No se pudo cargar la programaci\u00f3n de esta fecha y no '
+        + 'hay copia guardada.<br><br>' + (e.esPlazo ? e.message : 'Error: ' + e.message)
+        + '<br><br>Desc\u00e1rgala antes de salir desde <b>Preparar para campo</b>.</div>';
+      return;
+    }
+    progLista = progDisciplina === "TODAS"
+      ? esp.datos
+      : esp.datos.filter(a => (a.disciplinas || []).includes(progDisciplina));
+    renderProgramacionDia();
+    cont.insertAdjacentHTML("afterbegin",
+      bannerEspejo(esp, "la programaci\u00f3n de " + progFecha));
   }
-  progLista = data || [];
-
-  /* Arrastre: una actividad que quedó en ejecución un día anterior sigue
-     siendo trabajo de hoy. Se trae a la lista del día en curso para poder
-     continuarla sin tener que retroceder de fecha. */
-  const arr = await sb.rpc("programa_arrastradas", { p_fecha: progFecha });
-  const ids = (arr.data || []).map(x => x.id).filter(id => !progLista.some(a => a.id === id));
-  if (ids.length) {
-    let q2 = sb.from("v_programa_actividades").select("*").in("id", ids);
-    if (progDisciplina !== "TODAS") q2 = q2.contains("disciplinas", [progDisciplina]);
-    const r2 = await q2;
-    (r2.data || []).forEach(a => { a._arrastrada = true; progLista.unshift(a); });
-  }
-
-  renderProgramacionDia();
 }
 
 function renderProgramacionDia() {
@@ -12486,7 +12886,13 @@ const DP_SCHEMA = "datapredictiva";
 /* Cliente aparte apuntado al esquema del módulo. No se toca `sb`,
    del que cuelgan todos los demás módulos. */
 const sbDP = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  db: { schema: DP_SCHEMA }
+  db: { schema: DP_SCHEMA },
+  /* Mismo plazo de red que el cliente principal: si este se queda sin
+     limite, el modulo predictivo cuelga la app igual que antes.
+     No persiste sesion ni refresca token -- la recibe de `sb` via
+     setSession -- asi que no compite por el candado de auth. */
+  global: { fetch: fetchConPlazo },
+  auth: { persistSession: false, autoRefreshToken: false, storageKey: "sb-dp-no-persist" }
 });
 
 /* La sesión vive en el cliente principal; se replica aquí. */
