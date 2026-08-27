@@ -160,8 +160,44 @@ body{background:var(--kp-page);color:var(--kp-ink);
   align-items:baseline;gap:8px}
 .kp-sub span{text-transform:none;letter-spacing:0;font-size:11.5px}
 
+.kp-rep .ext{display:flex;justify-content:space-between;font-size:13px;
+  color:var(--kp-ink2);margin-bottom:5px}
+.kp-rep .ext b{color:var(--kp-ink);font-size:14px}
+.kp-rep .barra{position:relative;display:flex;height:30px;border-radius:6px;
+  overflow:hidden;background:var(--kp-page)}
+.kp-rep .barra > div{display:flex;align-items:center;transition:width .25s}
+.kp-rep .barra .a{justify-content:flex-start;padding-left:9px}
+.kp-rep .barra .b{justify-content:flex-end;padding-right:9px}
+.kp-rep .barra span{font-size:12px;font-weight:600;color:#fff}
+/* La marca del 50 % va por encima de los dos bloques: es la referencia
+   contra la que se lee todo lo demas. */
+.kp-rep .mitad{position:absolute;left:50%;top:-3px;bottom:-3px;width:2px;
+  background:var(--kp-ink);opacity:.55;transform:translateX(-1px)}
+.kp-rep .pie{position:relative;height:14px;font-size:10.5px;color:var(--kp-ink3)}
+.kp-rep .pie span{position:absolute;left:50%;transform:translateX(-50%);top:1px;
+  white-space:nowrap}
+.kp-rep .res{font-size:13px;margin-top:8px}
+.kp-rep .hist{display:grid;grid-template-columns:auto minmax(90px,1fr) auto;
+  gap:12px;align-items:center;margin-top:14px;padding-top:12px;
+  border-top:1px solid var(--kp-line)}
+.kp-rep .hist .et{font-size:12px;color:var(--kp-ink2)}
+.kp-rep .hist .ra{font-size:12px;color:var(--kp-ink3);white-space:nowrap}
+.kp-rep .hist .sp{line-height:0}
+.kp-rep .hist .sp svg{width:100%;height:34px;display:block}
+@media(max-width:560px){
+  .kp-rep .hist{grid-template-columns:1fr auto;grid-template-areas:"et ra" "sp sp";
+    row-gap:6px}
+  .kp-rep .hist .et{grid-area:et} .kp-rep .hist .ra{grid-area:ra}
+  .kp-rep .hist .sp{grid-area:sp}
+}
+
 .kp-list .kp-oculta{display:none}
 .kp-list.kp-abierta .kp-oculta{display:flex}
+/* Plegado del bloque completo: se oculta todo menos su encabezado. */
+.kp-list.kp-plegada > *:not(.kp-cab){display:none}
+.kp-cab{cursor:pointer;display:flex;align-items:center;gap:7px;user-select:none}
+.kp-cab:hover{background:#f2f6f7}
+.kp-cab .tw{font-size:11px;opacity:.5;width:10px;flex:none}
 .kp-mas{display:block;width:100%;border:none;border-top:1px solid var(--kp-line);
   background:#fafafb;color:var(--kp-teal);font:600 12.5px inherit;
   padding:11px;cursor:pointer;text-align:center}
@@ -1161,22 +1197,20 @@ function kpRenderTendencia(tend, bal){
 
   /* 1. Reparto entre puentes: el indicador que mas dice de un 12
         pulsos y que no se ve en ningun nodo por separado. */
-  if (bal && bal.length > 1){
+  if (bal && bal.length){
     const ult = bal[bal.length - 1];
     const est = ult.diferencia_pct > 10 ? 'crit' : (ult.diferencia_pct > 5 ? 'warn' : 'ok');
-    const balPts = bal.map(b => ({x: b.medido_en || b.fecha, y: b.diferencia_pct}));
+    /* Una linea de la diferencia obliga a traducir "13 %" a que puente
+       carga mas y cuanto. La barra lo muestra directo: dos bloques
+       proporcionales y una marca en el centro, que es donde deberian
+       encontrarse si el reparto fuera parejo. La evolucion va debajo,
+       en la misma linea pequena que usa el resto de la pantalla. */
     h += '<div class="kp-card" style="border-left:4px solid ' + KP_HEX[est] + '">'
       +  '<div style="font-weight:600;margin-bottom:2px">Reparto entre secundarios \u0394 y Y</div>'
-      +  '<p class="hint" style="margin:0 0 10px">Los dos puentes pueden estar cada uno dentro de '
-      +  'su carga y aun asi repartirse mal. Sumados dan la misma corriente de entrada, '
-      +  'asi que esto no se ve en ningun otro indicador.</p>'
-      +  kpGrafico(balPts, '% de diferencia',
-                   {umbral_warn:5, umbral_crit:10, fmtX: kpFechaCorta})
-      +  '<div class="kp-leg" style="margin-top:8px">'
-      +  '<span>\u00daltima: <b>' + kpNum(ult.diferencia_pct) + ' %</b> '
-      +  '(\u0394 ' + kpNum(ult.delta) + ' A, Y ' + kpNum(ult.estrella) + ' A)</span>'
-      +  '<span>Mayor: ' + (ult.mayor === 'delta' ? 'secundario \u0394' : 'secundario Y') + '</span>'
-      +  '</div></div>';
+      +  '<p class="hint" style="margin:0 0 14px">Los dos puentes pueden estar cada uno dentro de '
+      +  'su carga y aun as\u00ed repartirse mal. Sumados dan la misma corriente de entrada, '
+      +  'as\u00ed que esto no se ve en ning\u00fan otro indicador.</p>'
+      +  kpReparto(bal) + '</div>';
   }
 
   /* 2 y 3. Corriente y desbalance por etapa.
@@ -1296,12 +1330,18 @@ function kpRenderTendencia(tend, bal){
      empujando hacia abajo lo que sigue. Se muestran las cuatro mas
      recientes y el resto queda detras de un boton. Las recientes son
      las que se consultan; el historico se abre cuando hace falta. */
+  /* El bloque entero se pliega y arranca cerrado. Es la parte que mas
+     crece -- una fila por ronda, para siempre -- y casi nunca es lo
+     que se viene a mirar: los indicadores de arriba ya resumen lo que
+     importa. Dentro, ademas, solo se listan las cuatro mas recientes
+     hasta que se pidan las demas. */
   const VISIBLES = 4;
   const total = claves.length;
-  h += '<div class="kp-list"><div class="kp-grp">Rondas registradas'
-    +  (total > VISIBLES ? ' <span style="text-transform:none;letter-spacing:0">'
-        + '&middot; ' + total + ' en total</span>' : '')
-    +  '</div>';
+  h += '<div class="kp-list kp-plegada" id="kp-rondas">'
+    +  '<div class="kp-grp kp-cab" onclick="kpPlegarRondas(this)">'
+    +  '<span class="tw">\u25b8</span>Rondas registradas'
+    +  '<span style="text-transform:none;letter-spacing:0">&middot; '
+    +  total + (total === 1 ? ' ronda' : ' rondas') + '</span></div>';
   claves.slice().reverse().forEach((k, idx) => {
     const dia = tend.filter(t => t.medicion_id === k);
     const m = dia.find(t => t.nodo === 'sutout') || dia[0];
@@ -1348,6 +1388,56 @@ function kpRenderTendencia(tend, bal){
    asi que se ve igual en un telefono que en un monitor sin recalcular
    nada al rotar la pantalla.                                      */
 const KP_SERIE = ['#12a5b8','#c77700','#7b5ea7','#2ea44f','#c0392b','#2f6fb0','#8a6d3b'];
+
+/* ============================================================
+   REPARTO ENTRE SECUNDARIOS
+   ============================================================
+   Dos bloques proporcionales a lo que carga cada puente, con una marca
+   en el 50 %. Si el reparto fuera parejo, la division caeria justo
+   sobre esa marca; cuanto se corre de ahi es el desequilibrio, sin
+   tener que interpretar un porcentaje.                              */
+function kpReparto(bal){
+  const u = bal[bal.length - 1];
+  const d = Number(u.delta) || 0, y = Number(u.estrella) || 0;
+  const tot = d + y;
+  if (!tot) return '<p class="hint">Sin lectura de los dos secundarios.</p>';
+  const pd = 100 * d / tot, py = 100 * y / tot;
+  const dif = Number(u.diferencia_pct) || 0;
+  const est = dif > 10 ? 'crit' : (dif > 5 ? 'warn' : 'ok');
+  const col = KP_HEX[est];
+
+  let h = '<div class="kp-rep">'
+    + '<div class="ext"><span><b>\u0394</b> ' + kpNum(d) + ' A</span>'
+    + '<span>' + kpNum(y) + ' A <b>Y</b></span></div>'
+    + '<div class="barra">'
+    +   '<div class="a" style="width:' + pd.toFixed(1) + '%;background:'
+    +     (pd >= py ? col : '#9fb3bb') + '"><span>' + pd.toFixed(0) + '%</span></div>'
+    +   '<div class="b" style="width:' + py.toFixed(1) + '%;background:'
+    +     (py > pd ? col : '#9fb3bb') + '"><span>' + py.toFixed(0) + '%</span></div>'
+    +   '<i class="mitad" title="Reparto parejo"></i>'
+    + '</div>'
+    + '<div class="pie"><span>Reparto parejo</span></div>'
+    + '<div class="res"><b style="color:' + col + '">' + kpNum(dif) + ' %</b> de diferencia'
+    +   (dif > 5 ? ' \u00b7 carga m\u00e1s el secundario '
+                 + (u.mayor === 'delta' ? '\u0394' : 'Y') : ' \u00b7 dentro de lo normal')
+    + '</div>';
+
+  /* La evolucion, solo si hay con que compararla. */
+  if (bal.length > 1){
+    const ys = bal.map(b => Number(b.diferencia_pct)).filter(v => isFinite(v));
+    h += '<div class="hist"><div class="et">Diferencia entre rondas</div>'
+      +  '<div class="sp">' + kpSpark(ys, {warn:5, crit:10}) + '</div>'
+      +  '<div class="ra">' + kpNum(Math.min(...ys)) + ' a ' + kpNum(Math.max(...ys)) + ' %</div>'
+      +  '</div>';
+  }
+  return h + '</div>';
+}
+
+function kpPlegarRondas(cab){
+  const lista = cab.closest('.kp-list');
+  const cerrada = lista.classList.toggle('kp-plegada');
+  cab.querySelector('.tw').textContent = cerrada ? '\u25b8' : '\u25be';
+}
 
 /* Despliega el resto de la lista. Se alterna en lugar de solo abrir:
    una vez consultado el historico, poder cerrarlo devuelve la pantalla
