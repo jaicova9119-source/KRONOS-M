@@ -143,6 +143,26 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-nav a:active{background:#eef3f5}
 
 .kp-chip{white-space:nowrap}
+.kp-bar2{border-top:none;padding-top:0}
+.kp-grupo{display:flex;gap:6px;flex-wrap:wrap}
+.kp-sel{cursor:pointer;max-width:190px;-webkit-appearance:none;appearance:none;
+  background-image:url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%236b6b70' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 10px center;padding-right:26px}
+.kp-buscar{min-width:140px;cursor:text}
+.kp-limpiar{color:var(--kp-crit);border-color:#eccac4}
+
+/* En movil las dos barras se apilan y cada grupo puede deslizarse en
+   horizontal por separado: con seis PAD los chips romperian el alto de
+   la cabecera y empujarian la lista fuera de la primera pantalla. */
+@media(max-width:640px){
+  .kp-bar{gap:6px;overflow-x:auto;flex-wrap:nowrap;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .kp-bar::-webkit-scrollbar{display:none}
+  .kp-grupo{flex-wrap:nowrap}
+  .kp-bar .lb{flex:none}
+  .kp-chip{flex:none}
+  .kp-buscar{min-width:120px}
+}
 
 @media(max-width:640px){
   .kp-wrap{padding:12px}
@@ -201,14 +221,25 @@ body{background:var(--kp-page);color:var(--kp-ink);
   <button class="kp-back" id="kpBack" style="display:none" onclick="kpVerFlota()">&larr; Volver a flota</button>
 </div>
 
-<div class="kp-bar" id="kpFiltros">
-  <span class="lb">Mostrar</span>
+<div class="kp-bar kp-bar1" id="kpFiltros">
+  <span class="lb">Estado</span>
   <button class="kp-chip on" data-s="all">Todas</button>
   <button class="kp-chip" data-s="vigente">Al d&iacute;a</button>
   <button class="kp-chip" data-s="vencida">Vencidas</button>
   <button class="kp-chip" data-s="sin">Sin rondas</button>
-  <input id="kpBuscar" class="kp-chip" style="min-width:130px;cursor:text"
-         placeholder="Buscar pozo" oninput="kpPintarFlota()">
+</div>
+
+<div class="kp-bar kp-bar2" id="kpFiltros2">
+  <span class="lb">Campo</span>
+  <span id="kpCampos" class="kp-grupo"></span>
+  <span class="lb" style="margin-left:6px">PAD</span>
+  <select id="kpPad" class="kp-chip kp-sel" onchange="kpPintarFlota()">
+    <option value="all">Todos</option>
+  </select>
+  <input id="kpBuscar" class="kp-chip kp-buscar" placeholder="Buscar pozo"
+         oninput="kpPintarFlota()">
+  <button class="kp-chip kp-limpiar" id="kpLimpiar" style="display:none"
+          onclick="kpLimpiarFiltros()">Limpiar</button>
 </div>
 
 <div class="kp-wrap" id="kpVista"><div class="kp-msg">Cargando&hellip;</div></div>
@@ -563,8 +594,9 @@ const KP_EST = {
 };
 const KP_HEX = {crit:"#c0392b", warn:"#c77700", ok:"#2ea44f", none:"#9a9aa0"};
 
-let kpFiltro = "all";
-let kpFlota = [];
+let kpFiltro = "all";     /* estado de ronda */
+let kpCampo  = "all";     /* campo */
+let kpFlota  = [];
 
 function kpPeor(lista){
   let r = "ok";
@@ -581,6 +613,7 @@ function kpPeor(lista){
 async function kpVerFlota(){
   document.getElementById("kpBack").style.display = "none";
   document.getElementById("kpFiltros").style.display = "flex";
+  document.getElementById("kpFiltros2").style.display = "flex";
   document.getElementById("kpTitulo").textContent = "Monitoreo de Condici\u00f3n";
   document.getElementById("kpSub").innerHTML =
     "Monitoreo de condici&oacute;n y diagn&oacute;stico de m&aacute;quinas";
@@ -592,16 +625,74 @@ async function kpVerFlota(){
     v.innerHTML = '<div class="kp-msg">No se pudo cargar la flota.<br>' + e.message + '</div>';
     return;
   }
+  kpPoblarFiltros();
+  kpPintarFlota();
+}
+
+/* Los campos y los PAD salen de los datos, no de una lista fija: si
+   entra un pozo de un PAD nuevo aparece solo, y si un PAD se retira
+   deja de estorbar en el filtro. */
+function kpPoblarFiltros(){
+  const campos = [...new Set(kpFlota.map(x => x.campo).filter(c => c && c !== '\u2014'))].sort();
+  let h = '<button class="kp-chip on" data-c="all">Todos</button>';
+  campos.forEach(c => {
+    h += '<button class="kp-chip" data-c="' + kpEsc(c) + '">' + kpEsc(c) + '</button>';
+  });
+  document.getElementById('kpCampos').innerHTML = h;
+  kpPoblarPads();
+}
+
+/* Los PAD se limitan al campo elegido. Ofrecer los PAD de Put Sur
+   cuando esta filtrado Put Norte solo produce listas vacias. */
+function kpPoblarPads(){
+  const sel = document.getElementById('kpPad');
+  const previo = sel.value;
+  const pads = [...new Set(kpFlota
+    .filter(x => kpCampo === 'all' || x.campo === kpCampo)
+    .map(x => x.pad).filter(p => p && p !== '\u2014'))].sort();
+
+  sel.innerHTML = '<option value="all">Todos</option>'
+    + pads.map(p => '<option value="' + kpEsc(p) + '">' + kpEsc(p) + '</option>').join('');
+  /* Se conserva la seleccion si el PAD sigue existiendo en el campo
+     nuevo; si no, se vuelve a Todos en lugar de dejar un filtro
+     invisible que no coincide con nada. */
+  sel.value = pads.indexOf(previo) >= 0 ? previo : 'all';
+}
+
+function kpLimpiarFiltros(){
+  kpFiltro = 'all';
+  kpCampo  = 'all';
+  document.getElementById('kpPad').value = 'all';
+  document.getElementById('kpBuscar').value = '';
+  document.querySelectorAll('#kpFiltros .kp-chip[data-s]')
+    .forEach(x => x.classList.toggle('on', x.dataset.s === 'all'));
+  kpPoblarPads();
+  document.querySelectorAll('#kpCampos .kp-chip')
+    .forEach(x => x.classList.toggle('on', x.dataset.c === 'all'));
   kpPintarFlota();
 }
 
 function kpPintarFlota(){
-  const q = (document.getElementById('kpBuscar')?.value || '').trim().toUpperCase();
-  const d = kpFlota
-    .filter(x => kpFiltro === "all" || x.estado === kpFiltro)
+  const q   = (document.getElementById('kpBuscar')?.value || '').trim().toUpperCase();
+  const pad = document.getElementById('kpPad')?.value || 'all';
+
+  /* El ambito es campo + PAD + busqueda. El estado se aplica despues,
+     aparte, para que los contadores de arriba sigan mostrando el total
+     del ambito aunque se este mirando solo un estado: si al tocar
+     "Vencidas" el contador de vencidas pasara a ser el total, no habria
+     con que compararlo. */
+  const ambito = kpFlota
+    .filter(x => kpCampo === 'all' || x.campo === kpCampo)
+    .filter(x => pad === 'all' || x.pad === pad)
     .filter(x => !q || x.pozo.toUpperCase().includes(q)
                     || (x.campo || '').toUpperCase().includes(q)
                     || (x.pad   || '').toUpperCase().includes(q));
+
+  const d = ambito.filter(x => kpFiltro === "all" || x.estado === kpFiltro);
+
+  const hayFiltro = (kpFiltro !== 'all' || kpCampo !== 'all' || pad !== 'all' || q);
+  const bl = document.getElementById('kpLimpiar');
+  if (bl) bl.style.display = hayFiltro ? '' : 'none';
 
   /* Orden: primero las que llevan mas tiempo sin ronda. Es lo que hay
      que salir a hacer, y por eso encabeza la lista. Las que nunca se
@@ -614,12 +705,20 @@ function kpPintarFlota(){
     return a.ultima.localeCompare(b.ultima);
   });
 
-  const cuenta = e => kpFlota.filter(x => x.estado === e).length;
-  const conRondas = kpFlota.filter(x => x.rondas > 0);
-  const totalRondas = kpFlota.reduce((a,x) => a + x.rondas, 0);
+  const cuenta = e => ambito.filter(x => x.estado === e).length;
+  const conRondas = ambito.filter(x => x.rondas > 0);
+  const totalRondas = ambito.reduce((a,x) => a + x.rondas, 0);
 
-  let h = '<h2>Unidades BES</h2><p class="hint">'
-        + kpFlota.length + ' unidades &middot; ' + totalRondas + ' rondas registradas'
+  const alcance = [];
+  if (kpCampo !== 'all') alcance.push(kpEsc(kpCampo));
+  if (pad !== 'all')     alcance.push(kpEsc(pad));
+  if (q)                 alcance.push('"' + kpEsc(q) + '"');
+
+  let h = '<h2>Unidades BES' + (alcance.length ? ' \u00b7 ' + alcance.join(' \u00b7 ') : '')
+        + '</h2><p class="hint">'
+        + ambito.length + (ambito.length === 1 ? ' unidad' : ' unidades')
+        + ' &middot; ' + totalRondas + ' rondas registradas'
+        + (alcance.length ? ' &middot; de ' + kpFlota.length + ' en total' : '')
         + ' &middot; ordenadas por antig&uuml;edad de la &uacute;ltima ronda</p>';
 
   h += '<div class="kp-stats">'
@@ -634,7 +733,13 @@ function kpPintarFlota(){
     +  '</div></div></div>';
 
   if (!d.length){
-    h += '<div class="kp-list"><div class="kp-msg">Ninguna unidad con ese criterio.</div></div>';
+    h += '<div class="kp-list"><div class="kp-msg">'
+      +  (ambito.length
+            ? 'Ninguna de las ' + ambito.length + ' unidades de este alcance est&aacute; en ese estado.'
+            : 'Ninguna unidad con estos filtros.')
+      +  (hayFiltro ? '<br><br><button class="kp-chip" onclick="kpLimpiarFiltros()">'
+                    + 'Quitar los filtros</button>' : '')
+      +  '</div></div>';
     document.getElementById("kpVista").innerHTML = h;
     return;
   }
@@ -679,6 +784,7 @@ function kpDiasDesde(iso){
 async function kpVerPozo(codigo){
   document.getElementById("kpBack").style.display = "block";
   document.getElementById("kpFiltros").style.display = "none";
+  document.getElementById("kpFiltros2").style.display = "none";
   const v = document.getElementById("kpVista");
   v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
   document.getElementById("kpTitulo").textContent = codigo;
@@ -1556,6 +1662,16 @@ function kpLeyenda(){
 /* ============================================================
    ARRANQUE
    ============================================================ */
+document.getElementById("kpCampos").addEventListener("click", ev => {
+  const b = ev.target.closest(".kp-chip");
+  if (!b || !b.dataset.c) return;
+  kpCampo = b.dataset.c;
+  document.querySelectorAll("#kpCampos .kp-chip")
+    .forEach(x => x.classList.toggle("on", x === b));
+  kpPoblarPads();   /* los PAD del campo anterior ya no aplican */
+  kpPintarFlota();
+});
+
 document.getElementById("kpFiltros").addEventListener("click", ev => {
   const b = ev.target.closest(".kp-chip");
   /* El buscador comparte la clase kp-chip por estetica pero no es un
