@@ -104,7 +104,8 @@ body{background:var(--kp-page);color:var(--kp-ink);
   scrollbar-width:none;overscroll-behavior-x:contain}
 .kp-chain-wrap::-webkit-scrollbar{display:none}
 .kp-chain{width:100%;height:auto;display:block}
-.kp-chain-hint{display:none}
+.kp-chain-hint{display:block;margin-top:8px;font-size:11.5px;color:var(--kp-ink3)}
+.kp-chain-hint .sol-movil{display:none}
 .kp-leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--kp-ink2)}
 .kp-leg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 
@@ -295,8 +296,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
      cadena llegue al borde de la tarjeta en lugar de cortarse. */
   .kp-chain-wrap{margin:0 -16px;padding:0 16px}
   .kp-chain{width:var(--kp-chain-w);max-width:none}
-  .kp-chain-hint{display:block;margin-top:8px;font-size:11.5px;
-    color:var(--kp-ink3);letter-spacing:.2px}
+  .kp-chain-hint .sol-movil{display:inline}
 }
 /* Los graficos no se encogen por debajo de 280 px de ancho util:
    por debajo de eso las etiquetas del eje se pisan y no se lee nada.
@@ -544,6 +544,29 @@ function kpEje(v){
     : n.toFixed(1);
 }
 
+/* Temperaturas en Fahrenheit. El panel de superficie las entrega en F,
+   el tecnico las captura en F y las piensa en F; la base las guarda en
+   la unidad canonica (C) para poder compararlas entre pozos. Aqui se
+   devuelven a la escala en la que se leyeron.
+
+   Ademas se descarta el cero espurio: -17.78 C son exactamente 0 F, y
+   un 0 F en un motor de fondo operando no existe. Es el campo que
+   quedo vacio y se guardo como cero. Mostrarlo como temperatura seria
+   dar por medido algo que nadie midio. */
+function kpTempF(celsius){
+  if (celsius == null) return null;
+  const c = Number(celsius);
+  if (!isFinite(c)) return null;
+  const f = c * 9 / 5 + 32;
+  if (f <= 0.01) return null;          /* 0 F o menos: dato invalido */
+  return f;
+}
+
+function kpNumF(celsius){
+  const f = kpTempF(celsius);
+  return f == null ? '\u2014' : f.toFixed(1);
+}
+
 function kpPct(v){
   if (v == null) return '\u2014';
   const n = Number(v);
@@ -732,8 +755,8 @@ function kpTemperaturas(val){
     ['temp_igbt_u_c','IGBT U'], ['temp_igbt_v_c','IGBT V'], ['temp_igbt_w_c','IGBT W'],
     ['temp_pst_c','PST'], ['temp_sut_c','SUT']
   ];
-  return defs.filter(d => val[d[0]] != null)
-             .map(d => ({ nombre: d[1], valor: val[d[0]] }));
+  return defs.filter(d => kpTempF(val[d[0]]) != null)
+             .map(d => ({ nombre: d[1], valor: kpTempF(val[d[0]]) }));
 }
 
 /* ============================================================
@@ -1178,24 +1201,36 @@ function kpRenderResumen(med, bal){
      flota solo una de cada cuarenta rondas lo trae, y un hueco mudo
      haria pensar que el equipo esta bien cuando en realidad nadie lo
      midio.                                                          */
+  /* Los ceros no son mediciones: un PIP de 0 psi o una vibracion de 0 g
+     con la unidad operando es un campo que quedo vacio. Se descartan
+     igual que el 0 F de las temperaturas. */
+  const vivo = (v) => v != null && Number(v) !== 0;
   const sf = [
-    ['sf_pip_psi','PIP','psi'], ['sf_pdesc_psi','Descarga','psi'],
-    ['sf_t_motor_c','T motor','\u00b0C'], ['sf_t_intake_c','T intake','\u00b0C'],
-    ['sf_vib_x_g','Vib X','g'], ['sf_vib_y_g','Vib Y','g'],
-    ['sf_ct_ma','CT','mA'], ['sf_vt_v','Vt','V']
-  ].filter(d => val[d[0]] != null);
+    ['sf_pip_psi','PIP','psi',      v => vivo(v) ? kpNum(v) : null],
+    ['sf_pdesc_psi','Descarga','psi', v => vivo(v) ? kpNum(v) : null],
+    ['sf_t_motor_c','T motor','\u00b0F',  v => kpTempF(v) == null ? null : kpNumF(v)],
+    ['sf_t_intake_c','T intake','\u00b0F', v => kpTempF(v) == null ? null : kpNumF(v)],
+    ['sf_vib_x_g','Vib X','g',      v => vivo(v) ? kpNum(v) : null],
+    ['sf_vib_y_g','Vib Y','g',      v => vivo(v) ? kpNum(v) : null],
+    ['sf_ct_ma','CT','mA',          v => vivo(v) ? kpNum(v) : null],
+    ['sf_vt_v','Vt','V',            v => vivo(v) ? kpNum(v) : null]
+  ].map(d => [d[0], d[1], d[2], d[3](val[d[0]])])
+   .filter(d => d[3] != null);
 
   h += '<div class="kp-sub" style="margin-top:16px">Sensor de fondo</div>';
   if (sf.length){
     h += '<div class="kp-chips">';
     sf.forEach(d => {
       h += '<div class="kp-dato"><div class="k">' + d[1] + '</div>'
-        +  '<div class="v">' + kpNum(val[d[0]]) + '<small>' + d[2] + '</small></div></div>';
+        +  '<div class="v">' + d[3] + '<small>' + d[2] + '</small></div></div>';
     });
-    const tm = val.sf_t_motor_c, ti = val.sf_t_intake_c;
+    /* El delta se calcula en F, no en C convertido: una diferencia de
+       temperatura no se convierte con la formula de una temperatura,
+       y el tecnico compara este numero contra referencias en F. */
+    const tm = kpTempF(val.sf_t_motor_c), ti = kpTempF(val.sf_t_intake_c);
     if (tm != null && ti != null){
       h += '<div class="kp-dato"><div class="k">\u0394T motor-intake</div>'
-        +  '<div class="v">' + kpNum(tm - ti) + '<small>\u00b0C</small></div></div>';
+        +  '<div class="v">' + (tm - ti).toFixed(1) + '<small>\u00b0F</small></div></div>';
     }
     h += '</div>';
   } else {
@@ -1251,11 +1286,14 @@ function kpRenderResumen(med, bal){
          'IEEE 519 sugiere 8 % para sistemas de este nivel');
 
   const tmax = placa.motor_temp_max_c;
-  if (val.sf_t_motor_c != null && tmax > 0){
-    const pct = 100 * val.sf_t_motor_c / tmax;
+  const tmot = kpTempF(val.sf_t_motor_c) == null ? null : Number(val.sf_t_motor_c);
+  if (tmot != null && tmax > 0){
+    /* El porcentaje se calcula en la escala absoluta de la placa (C) y
+       se muestra en F, que es como se leyo. */
+    const pct = 100 * tmot / tmax;
     if (pct >= 90) nota(pct >= 100 ? 'crit' : 'warn',
       'Temperatura de motor al ' + pct.toFixed(0) + ' % del l\u00edmite',
-      kpNum(val.sf_t_motor_c) + ' \u00b0C de ' + kpNum(tmax) + ' \u00b0C de placa');
+      kpNumF(tmot) + ' \u00b0F de ' + kpNumF(tmax) + ' \u00b0F de placa');
   }
 
   av.sort((x, y) => (x.nivel === 'crit' ? 0 : 1) - (y.nivel === 'crit' ? 0 : 1));
@@ -2081,40 +2119,17 @@ function kpRenderMedicion(m){
      cabecera usaba kpFechaCorta con hora local: la misma ronda salia
      como 19:00 arriba y 00:00 aqui. Se usa la misma funcion en los dos
      sitios. */
-  const f = kpFechaCorta(mc.medido_en);
-  h += '<h2>Medici&oacute;n el&eacute;ctrica de campo</h2>';
-  h += '<p class="hint">' + f
-     + (mc.realizado_por ? ' &middot; ' + mc.realizado_por : '')
-     + (mc.frecuencia_hz != null ? ' &middot; ' + kpNum(mc.frecuencia_hz) + ' Hz' : '')
-     + (mc.control_mode ? ' &middot; ' + mc.control_mode : '')
-     + '</p>';
+  /* La fecha, la frecuencia y el modo ya salen como fichas en el
+     bloque de arriba. Repetirlos aqui era una linea de ruido. */
 
   if (cad.length){
+    /* Se elimino la lista "Detalle por etapa": repetia el diagrama nodo
+       por nodo. La carga y la corriente ya estan en cada caja, los
+       desbalances tienen su propia seccion en la tendencia, y lo unico
+       que solo vivia alli -- tension y kVA -- pasa al tooltip de cada
+       nodo del diagrama, donde no ocupa pantalla. */
     h += '<div class="kp-card">' + kpDibujarCadena(cad) + kpLeyenda() + '</div>';
-
-    h += '<div class="kp-list" style="margin-bottom:18px">';
-    h += '<div class="kp-grp">Detalle por etapa</div>';
-    cad.forEach(n => {
-      const e = KP_EST[n.estado] || KP_EST.none;
-      h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"><div>'
-        +  '<div><span class="nm">' + n.nodo + '</span> '
-        +  '<span class="id">' + n.detalle + '</span></div>'
-        +  '<div class="dt">' + kpNum(n.medido) + ' A'
-        +  (n.nominal ? ' de ' + kpNum(n.nominal) + ' A nominal' : ' &middot; sin placa')
-        +  (n.v_prom != null ? ' &middot; ' + kpNum(n.v_prom) + ' V' : '')
-        +  (n.kva != null ? ' &middot; ' + kpNum(n.kva) + ' kVA' : '')
-        +  '</div>'
-        +  '<div class="src">'
-        +  (n.desbal_i != null ? 'Desbalance de corriente ' + kpNum(n.desbal_i) + ' %' : 'Valor calculado, sin desbalance propio')
-        +  (n.desbal_v != null ? ' &middot; tensi&oacute;n ' + kpNum(n.desbal_v) + ' %' : '')
-        +  '</div></div>'
-        +  '<span class="kp-pill ' + e.cls + '">'
-        +  (n.carga_pct != null ? kpNum(n.carga_pct) + ' %' : 'Sin placa')
-        +  '</span></div>';
-    });
-    h += '</div>';
   }
-
   if (bal){
     const e = KP_EST[bal.estado];
     h += '<h2>Balance de rectificadores</h2>';
@@ -2169,7 +2184,7 @@ function kpRenderMedicion(m){
     h += '<div class="kp-kpis" style="margin-bottom:8px">';
     tmp.forEach(t => {
       h += '<div class="kp-kpi"><div class="k">' + t.nombre + '</div>'
-        +  '<div class="v">' + kpNum(t.valor) + '<small>\u00b0C</small></div></div>';
+        +  '<div class="v">' + kpNum(t.valor) + '<small>\u00b0F</small></div></div>';
     });
     h += '</div>';
   }
@@ -2231,6 +2246,17 @@ function kpDibujarCadena(nodos){
     const pct = (nd.nominal && nd.medido != null) ? (nd.medido / nd.nominal * 100) : null;
     const max = w - 12;
 
+    /* Todo el detalle que antes ocupaba una lista aparte cabe aqui:
+       se lee al posar el dedo o el cursor sobre el nodo. */
+    const det = [nd.nodo + (nd.detalle ? ' \u00b7 ' + nd.detalle : ''),
+      kpNum(nd.medido) + ' A' + (nd.nominal ? ' de ' + kpNum(nd.nominal) + ' A nominal' : ''),
+      (nd.v_prom != null ? kpNum(nd.v_prom) + ' V' : null),
+      (nd.kva != null ? kpNum(nd.kva) + ' kVA' : null),
+      (nd.desbal_i != null ? 'Desbalance de corriente ' + kpPct(nd.desbal_i) + ' %' : null),
+      (nd.desbal_v != null ? 'Desbalance de tension ' + kpPct(nd.desbal_v) + ' %' : null)
+    ].filter(Boolean).join('\n');
+
+    s += '<g><title>' + det + '</title>';
     s += '<rect x="' + x + '" y="18" width="' + w + '" height="132" rx="8" fill="#fff" '
       +  'stroke="' + col + '" stroke-width="1.5"/>';
     s += '<rect x="' + x + '" y="18" width="' + w + '" height="5" rx="2" fill="' + col + '"/>';
@@ -2244,14 +2270,17 @@ function kpDibujarCadena(nodos){
                         : (kpNum(nd.medido) + ' ' + nd.unidad),
              cx, 141, 10.5, 400, '#94949a', max);
 
+    s += '</g>';
+
     if (i < n - 1){
       s += '<line x1="' + (x + w + 3) + '" y1="84" x2="' + (x + w + gap - 3) + '" y2="84" '
         +  'stroke="#94949a" stroke-width="1.5" marker-end="url(#kpAr)"/>';
     }
   });
   return s + '</svg></div>'
-       + '<div class="kp-chain-hint">Desliza en horizontal para ver las '
-       + n + ' etapas.</div>';
+       + '<div class="kp-chain-hint"><span class="sol-movil">Desliza en horizontal para ver '
+       + 'las ' + n + ' etapas. </span>Toca una etapa para ver tensi\u00f3n, kVA y '
+       + 'desbalances.</div>';
 }
 
 function kpSimbolo(nombre, cx, cy, col){
