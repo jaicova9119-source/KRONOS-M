@@ -332,10 +332,15 @@ async function kpCargarFlota(){
     campo:   r.campo || '\u2014',
     pad:     r.pad   || '\u2014',
     marca:   r.marca_variador || '\u2014',
-    rondas:  Number(r.rondas || 0),
-    ultima:  r.ultima || null,
-    vencida: !!r.vencida,
-    estado:  (!r.rondas) ? 'sin' : (r.vencida ? 'vencida' : 'vigente')
+    rondas:      Number(r.rondas || 0),              /* de la corrida vigente */
+    historicas:  Number(r.rondas_historicas || 0),
+    ultima:      r.ultima || null,
+    ultima_hist: r.ultima_historica || null,
+    corrida:     r.inicio_corrida || null,
+    vencida:     !!r.vencida,
+    /* Un pozo con ocho rondas del equipo anterior y ninguna del actual
+       no esta al dia: esta sin medir desde el cambio. */
+    estado: (!r.rondas) ? 'sin' : (r.vencida ? 'vencida' : 'vigente')
   }));
 }
 
@@ -357,6 +362,13 @@ async function kpCargarMedicion(pozoId){
   const { data, error } = await kpCliente().rpc('dp_medicion', { p_pozo_id: pozoId });
   if (error) throw new Error(error.message);
   return data || null;
+}
+
+async function kpCargarCorridas(pozoId){
+  if (!pozoId) return [];
+  const { data, error } = await kpCliente().rpc('dp_corridas', { p_pozo_id: pozoId });
+  if (error) throw new Error(error.message);
+  return data || [];
 }
 
 async function kpCargarTendencia(pozoId){
@@ -407,6 +419,15 @@ function kpNum(v){
   const n = Number(v);
   if (!isFinite(n)) return '\u2014';
   return (Math.abs(n) >= 100) ? n.toFixed(0) : n.toFixed(2);
+}
+
+/* Los porcentajes llevan siempre un decimal. Con kpNum, una carga de
+   119.58 % se redondeaba a "120" en el resumen y salia "119.6" en la
+   cadena: dos cifras distintas del mismo dato en la misma pantalla. */
+function kpPct(v){
+  if (v == null) return '\u2014';
+  const n = Number(v);
+  return isFinite(n) ? n.toFixed(1) : '\u2014';
 }
 
 /* ============================================================
@@ -758,10 +779,16 @@ function kpPintarFlota(){
       +  (x.pad && x.pad !== '\u2014' ? ' \u00b7 ' + x.pad : '') + '</span></div>'
       +  '<div class="ds">' + (x.rondas
             ? x.rondas + (x.rondas === 1 ? ' ronda' : ' rondas')
-            : 'Sin rondas registradas') + '</div>'
+              + (x.corrida ? ' en la corrida actual' : '')
+            : (x.historicas
+                ? '<span style="color:var(--kp-warn)">Sin rondas desde el cambio de equipo</span>'
+                : 'Sin rondas registradas')) + '</div>'
       +  '<div class="ts">' + (x.ultima
             ? '\u00daltima: ' + x.ultima + ' \u00b7 ' + kpDiasDesde(x.ultima)
-            : 'Nunca se ha medido') + '</div></div>'
+            : (x.historicas
+                ? 'Equipo de fondo cambiado el ' + x.corrida + ' \u00b7 '
+                  + x.historicas + ' rondas del equipo anterior'
+                : 'Nunca se ha medido')) + '</div></div>'
       +  '<span class="kp-pill ' + cls + '">' + txt + '</span></div>';
   });
   h += '</div>';
@@ -801,15 +828,31 @@ async function kpVerPozo(codigo){
   /* Las cuatro consultas van en paralelo y cada una con su propio
      catch: en un PAD es normal que una responda y otra no, y perder
      la cadena porque fallaron los eventos seria absurdo. */
-  let med = null, ctx = null, evs = [], tend = [], bal = [];
+  let med = null, ctx = null, evs = [], tend = [], bal = [], cor = [];
   const r = await Promise.all([
     kpCargarMedicion(pozoId).catch(() => null),
     kpCargarContexto(pozoId).catch(() => null),
     kpCargarEventos(pozoId).catch(() => []),
     kpCargarTendencia(pozoId).catch(() => []),
-    kpCargarBalance(pozoId).catch(() => [])
+    kpCargarBalance(pozoId).catch(() => []),
+    kpCargarCorridas(pozoId).catch(() => [])
   ]);
-  med = r[0]; ctx = r[1]; evs = r[2] || []; tend = r[3] || []; bal = r[4] || [];
+  med = r[0]; ctx = r[1]; evs = r[2] || []; tend = r[3] || []; bal = r[4] || []; cor = r[5] || [];
+
+  /* Se cambio el equipo de fondo y todavia no hay rondas del nuevo. No
+     se muestran los numeros del anterior contra la placa nueva: serian
+     corriente de un equipo contra la nominal de otro. */
+  if (med && med.sin_rondas_corrida){
+    document.getElementById("kpSub").innerHTML =
+      'BES &middot; equipo de fondo cambiado el ' + med.inicio_corrida;
+    document.getElementById("kpVista").innerHTML =
+      kpAvisoCorrida(med, cor)
+      + '<div class="kp-sec"><h2>Rondas del equipo anterior</h2>'
+      + '<p class="hint">Se conservan y se pueden consultar, pero no se '
+      + 'mezclan con las del equipo actual.</p>'
+      + kpRenderCorridas(cor) + '</div>';
+    return;
+  }
 
   const hayCtx = ctx && ((ctx.bitacora||[]).length || (ctx.aislamiento||[]).length);
   if (!med && !hayCtx && !evs.length){
@@ -824,7 +867,8 @@ async function kpVerPozo(codigo){
   const mc = (med && med.medicion) || {};
   document.getElementById("kpSub").innerHTML =
     'BES' + (mc.medido_en ? ' &middot; &uacute;ltima ronda ' + kpFechaCorta(mc.medido_en) : '')
-    + (med && med.rondas ? ' &middot; ' + med.rondas + ' rondas' : '');
+    + (med && med.rondas ? ' &middot; ' + med.rondas + ' rondas' : '')
+    + (med && med.inicio_corrida ? ' &middot; corrida desde ' + med.inicio_corrida : '');
 
   KP_EV = evs;
   const angosta = window.matchMedia('(max-width:640px)').matches;
@@ -853,6 +897,12 @@ async function kpVerPozo(codigo){
       kpRenderTendencia(tend, bal), { cerrada: angosta }));
   }
 
+  if (cor.length > 1){
+    sec.push(kpSeccion('corridas', 'Equipo de fondo',
+      cor.length + ' corridas registradas',
+      kpRenderCorridas(cor), { cerrada:true }));
+  }
+
   const ev = kpRenderEventos(KP_EV);
   if (ev) sec.push(ev);
 
@@ -870,6 +920,71 @@ async function kpVerPozo(codigo){
   h += sec.map(x => x.html).join('');
   v.innerHTML = h;
   if (KP_EV.length) kpEvPintar();
+}
+
+/* ============================================================
+   CORRIDAS DE FONDO
+   ============================================================
+   Una corrida es el periodo entre la bajada del conjunto de fondo y su
+   recuperacion. Cortar las series ahi no es una preferencia de
+   presentacion: la placa vigente es la del equipo actual, asi que
+   calcular carga sobre mediciones del equipo anterior compara la
+   corriente de uno contra la nominal de otro.                      */
+function kpAvisoCorrida(med, cor){
+  const act = (cor || []).find(c => c.actual);
+  const eq = act && act.equipos && act.equipos.length ? act.equipos : [];
+  let h = '<div class="kp-sec" style="border-left:4px solid var(--kp-warn)">'
+        + '<h2>Se cambi&oacute; el equipo de fondo</h2>'
+        + '<p class="hint" style="margin-bottom:12px">'
+        + 'El conjunto actual se instal&oacute; el <b>' + med.inicio_corrida
+        + '</b> y todav&iacute;a no tiene rondas de campo. '
+        + 'Las ' + med.rondas_anteriores + ' rondas anteriores '
+        + '(la &uacute;ltima del ' + med.ultima_anterior + ') son del equipo retirado: '
+        + 'calcular carga con ellas contra la placa nueva dar&iacute;a un porcentaje '
+        + 'que no corresponde a ning&uacute;n equipo real.</p>';
+  if (eq.length){
+    h += '<div class="kp-list" style="margin-bottom:12px"><div class="kp-grp">Equipo instalado</div>';
+    eq.forEach(e => {
+      h += '<div class="kp-rule"><div>'
+        +  '<div><span class="nm">' + kpEsc(e.rol) + '</span> '
+        +  '<span class="id">' + kpEsc(e.serial || '\u2014') + '</span></div>'
+        +  '<div class="dt">' + kpEsc(e.marca || '\u2014')
+        +  (e.modelo ? ' \u00b7 ' + kpEsc(e.modelo) : '') + '</div>'
+        +  '<div class="src">Instalado el ' + e.instalado_el + '</div>'
+        +  '</div></div>';
+    });
+    h += '</div>';
+  }
+  h += '<p class="hint" style="margin:0">Registra una ronda de campo para que la unidad '
+    +  'vuelva a evaluarse. Los indicadores aparecen en cuanto haya la primera medici&oacute;n '
+    +  'del equipo nuevo.</p></div>';
+  return h;
+}
+
+function kpRenderCorridas(cor){
+  if (!cor || !cor.length)
+    return '<p class="hint">Sin instalaciones de fondo registradas para este activo.</p>';
+  let h = '<div class="kp-list">';
+  cor.forEach(c => {
+    const eq = (c.equipos || []).map(e =>
+      kpEsc(e.rol) + ' ' + kpEsc(e.marca || '') + ' ' + kpEsc(e.modelo || '')
+      + (e.serial ? ' (' + kpEsc(e.serial) + ')' : '')).join(' \u00b7 ');
+    /* Los dias de corrida son el run life, que es como se juzga un
+       equipo de fondo. Una corrida de ocho anos es informacion, no
+       relleno. */
+    const fin = c.fin ? new Date(c.fin) : new Date();
+    const dias = Math.round((fin - new Date(c.inicio)) / 86400000);
+    h += '<div class="kp-rule' + (c.actual ? ' ok' : '') + '"><div>'
+      +  '<div><span class="nm">' + c.inicio + (c.fin ? ' a ' + c.fin : ' \u2014 en servicio')
+      +  '</span></div>'
+      +  '<div class="dt">' + (eq || 'Sin detalle de equipo') + '</div>'
+      +  '<div class="src">' + c.rondas + (c.rondas === 1 ? ' ronda' : ' rondas')
+      +  ' &middot; ' + (dias >= 365 ? (dias/365).toFixed(1) + ' a\u00f1os' : dias + ' d\u00edas')
+      +  (c.actual ? ' en servicio' : ' de corrida') + '</div>'
+      +  '</div><span class="kp-pill ' + (c.actual ? 'ok' : 'none') + '">'
+      +  (c.actual ? 'Actual' : 'Anterior') + '</span></div>';
+  });
+  return h + '</div>';
 }
 
 function kpSubRonda(mc){
@@ -904,20 +1019,20 @@ function kpRenderResumen(med){
   const tarjeta = (etq, val_, uni, ref, est) => k.push({etq, val: val_, uni, ref, est});
 
   if (motor && motor.carga_pct != null)
-    tarjeta('Carga del motor', kpNum(motor.carga_pct), '%',
+    tarjeta('Carga del motor', kpPct(motor.carga_pct), '%',
       kpNum(motor.medido) + ' de ' + kpNum(motor.nominal) + ' A',
       kpEstadoCarga(motor.carga_pct));
   else
     tarjeta('Carga del motor', '\u2014', '', 'Sin corriente o sin placa', 'none');
 
   if (iSal && iSal.desbal_i != null)
-    tarjeta('Desbalance de corriente', kpNum(iSal.desbal_i), '%',
+    tarjeta('Desbalance de corriente', kpPct(iSal.desbal_i), '%',
       'Al motor \u00b7 criterio NEMA', kpEstadoDesbal(iSal.desbal_i));
   else
     tarjeta('Desbalance de corriente', '\u2014', '', 'Sin corriente al motor', 'none');
 
   if (bal)
-    tarjeta('Reparto \u0394 / Y', kpNum(bal.diferencia_pct), '%',
+    tarjeta('Reparto \u0394 / Y', kpPct(bal.diferencia_pct), '%',
       kpNum(bal.conv1) + ' y ' + kpNum(bal.conv2) + ' A', bal.estado);
   else
     tarjeta('Reparto \u0394 / Y', '\u2014', '', 'Sin los dos secundarios', 'none');
@@ -1458,7 +1573,11 @@ function kpRenderMedicion(m){
   const tmp   = kpTemperaturas(val);
   let h = '';
 
-  const f = mc.medido_en ? String(mc.medido_en).slice(0,16).replace('T',' ') : '\u2014';
+  /* Antes se cortaba el ISO en crudo, que esta en UTC, mientras la
+     cabecera usaba kpFechaCorta con hora local: la misma ronda salia
+     como 19:00 arriba y 00:00 aqui. Se usa la misma funcion en los dos
+     sitios. */
+  const f = kpFechaCorta(mc.medido_en);
   h += '<h2>Medici&oacute;n el&eacute;ctrica de campo</h2>';
   h += '<p class="hint">' + f
      + (mc.realizado_por ? ' &middot; ' + mc.realizado_por : '')
