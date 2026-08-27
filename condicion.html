@@ -32,7 +32,19 @@ body{background:var(--kp-page);color:var(--kp-ink);
   font-size:13px;cursor:pointer;color:var(--kp-ink)}
 .kp-chip.on{background:#2f9fd4;border-color:#2f9fd4;color:#fff}
 
-.kp-wrap{padding:18px 20px;max-width:1180px}
+.kp-wrap{padding:18px 20px;max-width:1180px;margin:0 auto}
+
+/* En monitores anchos la cadena y los graficos ganan mucho con mas
+   ancho; el texto no, porque una linea larguisima se lee peor. Por eso
+   crece el contenedor y no el cuerpo de los parrafos. */
+@media(min-width:1500px){
+  .kp-wrap{max-width:1400px}
+}
+/* Tablet: dos columnas para las tarjetas de seccion que se leen en
+   paralelo, en vez de una fila larga de scroll. */
+@media(min-width:900px) and (max-width:1400px){
+  .kp-kpis{grid-template-columns:repeat(4,1fr)}
+}
 .kp-wrap h2{font-size:17px;font-weight:600;margin:0 0 4px}
 .kp-wrap .hint{margin:0 0 14px;font-size:13px;color:var(--kp-ink2)}
 
@@ -155,14 +167,31 @@ body{background:var(--kp-page);color:var(--kp-ink);
   .kp-chain-hint{display:block;margin-top:8px;font-size:11.5px;
     color:var(--kp-ink3);letter-spacing:.2px}
 }
+/* Los graficos no se encogen por debajo de 280 px de ancho util:
+   por debajo de eso las etiquetas del eje se pisan y no se lee nada.
+   Se desliza en horizontal, igual que la cadena. */
+@media(max-width:640px){
+  .kp-leg{gap:10px;font-size:11.5px}
+  .kp-rule{padding:11px 12px}
+  .kp-nav{position:sticky;top:0;z-index:5;background:var(--kp-page);
+    margin:0 -12px;padding:8px 12px 10px}
+}
 @media(max-width:380px){
   .kp-kpis{grid-template-columns:1fr}
+  .kp-top h1{font-size:18px}
+}
+/* Impresion: las secciones plegadas se abren y desaparecen los
+   controles, para que un reporte impreso no salga a medias. */
+@media print{
+  .kp-top,.kp-bar,.kp-nav,.kp-back{display:none !important}
+  .kp-sec.cerrada .cuerpo{display:block !important}
+  .kp-sec{break-inside:avoid;border-color:#ccc}
+  body{background:#fff}
 }
 </style>
 </head>
 <body>
 
-<div id="kpDemo" class="kp-demo">Modo demostraci&oacute;n &mdash; datos de ejemplo. No consulta la base de datos.</div>
 
 <div class="kp-top">
   <div>
@@ -173,11 +202,13 @@ body{background:var(--kp-page);color:var(--kp-ink);
 </div>
 
 <div class="kp-bar" id="kpFiltros">
-  <span class="lb">Sistema</span>
-  <button class="kp-chip on" data-s="all">Todos</button>
-  <button class="kp-chip" data-s="BES">BES</button>
-  <button class="kp-chip" data-s="HPUM">HPUM</button>
-  <button class="kp-chip" data-s="UBH">UBH</button>
+  <span class="lb">Mostrar</span>
+  <button class="kp-chip on" data-s="all">Todas</button>
+  <button class="kp-chip" data-s="vigente">Al d&iacute;a</button>
+  <button class="kp-chip" data-s="vencida">Vencidas</button>
+  <button class="kp-chip" data-s="sin">Sin rondas</button>
+  <input id="kpBuscar" class="kp-chip" style="min-width:130px;cursor:text"
+         placeholder="Buscar pozo" oninput="kpPintarFlota()">
 </div>
 
 <div class="kp-wrap" id="kpVista"><div class="kp-msg">Cargando&hellip;</div></div>
@@ -208,15 +239,14 @@ function kpCredencial(nombre){
    cargar este archivo, para que no dependa de cual de los dos
    documentos termine de cargar primero. */
 const KP = {
-  MODO_DEMO: false,
   SUPABASE_URL: null,
   SUPABASE_ANON_KEY: null
 };
 
 /* ============================================================
    CAPA DE DATOS
-   Unico punto que toca la base. Al pasar MODO_DEMO a false,
-   completar las dos funciones marcadas PENDIENTE.
+   Unico punto que toca la base. Todo sale de las rondas de campo
+   confirmadas: no hay vector del analizador ni datos de ejemplo.
    ============================================================ */
 /* Las RPC viven en public, asi que el cliente va con el esquema por
    defecto. La sesion se toma sola de localStorage porque el iframe
@@ -241,7 +271,6 @@ function kpClienteHeredado(){
 }
 
 function kpCliente(){
-  if (KP.MODO_DEMO) return null;
   if (kpSb) return kpSb;
 
   kpSb = kpClienteHeredado();
@@ -260,129 +289,75 @@ function kpCliente(){
   return kpSb;
 }
 
+/* La flota sale de dp_bes_lista y no de dp_flota. dp_flota se apoyaba
+   en los dictamenes del analizador, que ya no existen: mostraria los 53
+   pozos como "No evaluable". Ahora el estado de una unidad es cuando fue
+   su ultima ronda, que es la informacion real que hay. */
 async function kpCargarFlota(){
-  if (KP.MODO_DEMO) return kpDemoFlota;
-  const { data, error } = await kpCliente().rpc('dp_flota');
+  const { data, error } = await kpCliente().rpc('dp_bes_lista');
   if (error) throw new Error(error.message);
   return (data || []).map(r => ({
-    pozo_id:      r.pozo_id,
-    pozo:         r.pozo,
-    campo:        r.campo || '\u2014',
-    sistema:      r.sistema || '\u2014',
-    estado:       kpAfinar(r),
-    resumen:      kpResumen(r),
-    fecha_vector: r.fecha_vector || '\u2014'
+    pozo:    r.pozo,
+    campo:   r.campo || '\u2014',
+    pad:     r.pad   || '\u2014',
+    marca:   r.marca_variador || '\u2014',
+    rondas:  Number(r.rondas || 0),
+    ultima:  r.ultima || null,
+    vencida: !!r.vencida,
+    estado:  (!r.rondas) ? 'sin' : (r.vencida ? 'vencida' : 'vigente')
   }));
 }
+
+/* Se conserva por si vuelve una fuente de dictamenes. Hoy no se llama. */
 
 /* Un pozo no evaluable puede serlo por dos razones muy distintas:
    nunca se le cargo un archivo, o el archivo llego incompleto. La
    primera se resuelve cargando datos; la segunda, averiguando por que
    faltan muestras. Mostrarlas juntas esconde esa diferencia. */
-function kpAfinar(r){
-  if (r.estado !== 'none') return r.estado;
-  if (!r.fecha_vector) return 'sindatos';
-  if (r.cobertura_pct != null) return 'cobertura';
-  const m = (r.motivo_no_evaluable || '').toLowerCase();
-  if (m.indexOf('cobertura') >= 0) return 'cobertura';
-  return 'sindatos';
-}
 
 /* El resumen dice por que el pozo esta como esta. Un pozo sin vector
    no es un pozo sano: hay que decir que no se pudo evaluar. */
-function kpResumen(r){
-  if (!r.fecha_vector) return 'Sin vector calculado';
-  if (r.evaluable !== true)
-    return r.motivo_no_evaluable || 'No evaluable';
-  const n = (r.n_alta || 0) + (r.n_atencion_alta || 0) + (r.n_atencion || 0);
-  if (n === 0) return 'Sin hallazgos';
-  return n + (n === 1 ? ' hallazgo' : ' hallazgos');
-}
 
-async function kpCargarPozo(codigo, pozoId){
-  if (KP.MODO_DEMO) return kpDemoPozo[codigo] || null;
-  const { data, error } = await kpCliente().rpc('dp_dictamen', { p_pozo_id: pozoId });
-  if (error) throw new Error(error.message);
-  if (!data || !data.dictamen) return null;
-  return kpArmarPozo(data);
-}
 
 /* Traduce lo que devuelve la RPC a lo que la vista ya sabe pintar. */
-function kpArmarPozo(d){
-  const f  = d.features || {};
-  const dc = d.dictamen || {};
-  const hs = d.hallazgos || [];
-  const porRegla = {};
-  hs.forEach(h => { porRegla[h.regla_codigo] = h; });
-
-  /* hallazgos.nivel se guarda en mayusculas: ALTA, ATENCION_ALTA,
-     ATENCION. Comparar en minusculas nunca coincide y degrada todo
-     hallazgo critico a simple atencion, sin dar error. */
-  const nivel = function(n){
-    var v = String(n || '').toUpperCase();
-    if (v === 'ALTA') return 'crit';
-    if (v === 'ATENCION_ALTA' || v === 'ATENCION') return 'warn';
-    return 'warn';
-  };
-
-  const reglas = (d.reglas || []).map(r => {
-    const h = porRegla[r.codigo];
-    if (h) return {
-      codigo: r.codigo, nombre: r.nombre, estado: nivel(h.nivel),
-      detalle: h.mensaje || (kpNum(h.valor_observado) + ' \u2014 umbral ' + kpNum(h.umbral_aplicado)),
-      fuente: r.fuente_tipo || '\u2014'
-    };
-    const sinUmbral = (r.umbral_inf == null && r.umbral_sup == null);
-    return {
-      codigo: r.codigo, nombre: r.nombre,
-      estado:  (!r.activa || sinUmbral) ? 'sinumbral' : 'ok',
-      detalle: (!r.activa || sinUmbral) ? 'Regla inactiva o umbral sin parametrizar'
-                                        : 'Dentro de umbral',
-      fuente: r.fuente_tipo || '\u2014'
-    };
-  });
-
-  const ind = [];
-  const add = (etq, val, uni, ref) => {
-    if (val == null) return;
-    ind.push({ etiqueta: etq, valor: kpNum(val), unidad: uni, referencia: ref, estado: 'ok' });
-  };
-  /* La carga del motor NO va como tarjeta. El calculo era
-     i_prom_a / motor_i_nominal_a, que divide la corriente de SALIDA del
-     variador (lado 480 V, en superficie) entre la nominal del motor de
-     fondo (lado 3305 V): son dos lados distintos del SUT y daba 574 %.
-     La cadena energetica ya la resuelve bien reflejando por la relacion
-     del transformador. */
-  add('Frecuencia',     f.frec_prom_hz,    'Hz',  'Rango ' + kpNum(f.frec_min_hz) + ' \u2014 ' + kpNum(f.frec_max_hz));
-  add('Presi\u00f3n intake', f.pip_prom_psi, 'psi', 'M\u00ednima ' + kpNum(f.pip_min_psi));
-  add('Temp. motor',    f.t_motor_prom_c,  '\u00b0C', 'M\u00e1xima ' + kpNum(f.t_motor_max_c) + ' \u00b0C');
-  add('Vibraci\u00f3n',     f.vib_max,     'G',   'Vx ' + kpNum(f.vib_x_prom));
-  add('Desbalance I',   f.i_desbal_pct_prom, '%', 'M\u00e1ximo ' + kpNum(f.i_desbal_pct_max) + ' %');
-  add('Disponibilidad', f.disponibilidad_pct, '%', kpNum(f.n_arranques) + ' arranques');
-  add('Cobertura',      dc.cobertura_pct,  '%',   kpNum(f.muestras_recibidas) + ' muestras');
-
-  return {
-    pozo:    d.pozo ? d.pozo.nombre : '\u2014',
-    campo:   d.pozo ? (d.pozo.campo || '\u2014') : '\u2014',
-    sistema: d.pozo ? (d.pozo.sistema || '\u2014') : '\u2014',
-    estado:  dc.n_alta > 0 ? 'crit'
-             : ((dc.n_atencion_alta > 0 || dc.n_atencion > 0) ? 'warn' : 'ok'),
-    fecha_vector: dc.fecha || '\u2014',
-    indicadores:  ind,
-    cadena:       [],
-    reglas:       reglas
-  };
-}
 
 async function kpCargarMedicion(pozoId){
-  if (KP.MODO_DEMO || !pozoId) return null;
+  if (!pozoId) return null;
   const { data, error } = await kpCliente().rpc('dp_medicion', { p_pozo_id: pozoId });
   if (error) throw new Error(error.message);
   return data || null;
 }
 
+async function kpCargarTendencia(pozoId){
+  if (!pozoId) return [];
+  const { data, error } = await kpCliente().rpc('dp_tendencia_nodos',
+    { p_pozo_id: pozoId, p_rondas: 12 });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+async function kpCargarBalance(pozoId){
+  if (!pozoId) return [];
+  const { data, error } = await kpCliente().rpc('dp_balance_convertidores',
+    { p_pozo_id: pozoId, p_rondas: 12 });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+/* La lista de flota no trae el id del pozo, y las RPC del detalle lo
+   necesitan. Se resuelve por nombre una sola vez y se recuerda. */
+const kpIds = {};
+async function kpIdDe(codigo){
+  if (kpIds[codigo]) return kpIds[codigo];
+  const { data, error } = await kpCliente().rpc('dp_buscar_unidad', { p_texto: codigo });
+  if (error) throw new Error(error.message);
+  const f = (data || []).find(x => x.nombre === codigo) || (data || [])[0];
+  if (f) kpIds[codigo] = f.id;
+  return f ? f.id : null;
+}
+
 async function kpCargarEventos(pozoId){
-  if (KP.MODO_DEMO || !pozoId) return [];
+  if (!pozoId) return [];
   const { data, error } = await kpCliente().rpc('dp_eventos_pozo',
     { p_pozo_id: pozoId, p_dias: 90 });
   if (error) throw new Error(error.message);
@@ -390,7 +365,7 @@ async function kpCargarEventos(pozoId){
 }
 
 async function kpCargarContexto(pozoId){
-  if (KP.MODO_DEMO || !pozoId) return null;
+  if (!pozoId) return null;
   const { data, error } = await kpCliente().rpc('dp_contexto', { p_pozo_id: pozoId });
   if (error) throw new Error(error.message);
   return data || null;
@@ -406,56 +381,6 @@ function kpNum(v){
 /* ============================================================
    DATOS DE DEMOSTRACION
    ============================================================ */
-const kpDemoFlota = [
- {pozo:"CYC-09",  campo:"Put Norte", sistema:"BES",  estado:"crit", resumen:"2 hallazgos &middot; arranques repetidos",      fecha_vector:"hoy 06:10"},
- {pozo:"MQT-28",  campo:"Moqueta",   sistema:"BES",  estado:"crit", resumen:"3 hallazgos &middot; temperatura de motor",     fecha_vector:"hoy 06:10"},
- {pozo:"CSTK-18", campo:"Costayaco", sistema:"BES",  estado:"warn", resumen:"1 hallazgo &middot; desbalance de corriente",   fecha_vector:"hoy 06:10"},
- {pozo:"TRY-04",  campo:"Toroyaco",  sistema:"HPUM", estado:"warn", resumen:"1 hallazgo &middot; factor de potencia",        fecha_vector:"hoy 06:08"},
- {pozo:"STN-11",  campo:"Santana",   sistema:"UBH",  estado:"warn", resumen:"1 hallazgo &middot; disponibilidad",            fecha_vector:"ayer 06:09"},
- {pozo:"CSTK-07", campo:"Costayaco", sistema:"BES",  estado:"ok",   resumen:"Sin hallazgos",                                 fecha_vector:"hoy 06:10"},
- {pozo:"MRY-02",  campo:"Mary",      sistema:"HPUM", estado:"ok",   resumen:"Sin hallazgos",                                 fecha_vector:"hoy 06:09"},
- {pozo:"CSTK-22", campo:"Costayaco", sistema:"BES",  estado:"ok",   resumen:"Sin hallazgos",                                 fecha_vector:"hoy 06:10"},
- {pozo:"MQT-31",  campo:"Moqueta",   sistema:"BES",  estado:"none", resumen:"Sin archivo cargado",                           fecha_vector:"&mdash;"},
- {pozo:"TRY-09",  campo:"Toroyaco",  sistema:"UBH",  estado:"none", resumen:"Sin archivo cargado",                           fecha_vector:"&mdash;"}
-];
-
-const kpDemoPozo = {
- "CYC-09":{
-  pozo:"CYC-09", campo:"Put Norte", sistema:"BES", estado:"crit", fecha_vector:"2026-08-09 06:10",
-  indicadores:[
-   {etiqueta:"Carga motor",     valor:"76.3", unidad:"%",   referencia:"Media 95.4 A", estado:"ok"},
-   {etiqueta:"Frecuencia",      valor:"53.15",unidad:"Hz",  referencia:"Rango 0 &mdash; 54.1", estado:"ok"},
-   {etiqueta:"Presi&oacute;n intake", valor:"488", unidad:"psi", referencia:"Rango 0 &mdash; 3360", estado:"ok"},
-   {etiqueta:"Temp. motor",     valor:"236",  unidad:"&deg;F", referencia:"Pico 491 &deg;F", estado:"crit"},
-   {etiqueta:"Vibraci&oacute;n Vx",   valor:"2.01", unidad:"G",   referencia:"Pico 4.17 G", estado:"crit"},
-   {etiqueta:"Volt. motor",     valor:"3534", unidad:"V",   referencia:"Nominal 3940 V", estado:"ok"}
-  ],
-  cadena:[
-   {nodo:"PST",  detalle:"Secundario 1", medido:448, nominal:435, unidad:"A", estado:"crit"},
-   {nodo:"VFD",  detalle:"Entrada",      medido:888, nominal:946, unidad:"A", estado:"warn"},
-   {nodo:"SUT",  detalle:"Tap 3",        medido:91,  nominal:107, unidad:"A", estado:"ok"},
-   {nodo:"Motor",detalle:"800 hp",       medido:97,  nominal:125, unidad:"A", estado:"ok"}
-  ],
-  reglas:[
-   {codigo:"R12", nombre:"Arranques repetidos",        estado:"crit",     detalle:"7 arranques en 24 h &mdash; umbral 3", fuente:"Fabricante"},
-   {codigo:"R01", nombre:"Desbalance de corriente",    estado:"warn",     detalle:"4.8 % &mdash; umbral 3.5 %",           fuente:"Fabricante"},
-   {codigo:"R02", nombre:"Desbalance de voltaje",      estado:"ok",       detalle:"1.1 % &mdash; umbral 2.0 %",           fuente:"Norma"},
-   {codigo:"R07", nombre:"Temperatura de motor",       estado:"ok",       detalle:"236 &deg;F &mdash; umbral 260 &deg;F", fuente:"Norma"},
-   {codigo:"R13", nombre:"Disponibilidad",             estado:"ok",       detalle:"98.4 % &mdash; umbral 95 %",           fuente:"Operativo"},
-   {codigo:"R08", nombre:"Delta T motor - intake",     estado:"baseline", detalle:"12 de 30 d&iacute;as de l&iacute;nea base", fuente:"Baseline"},
-   {codigo:"R10", nombre:"Deriva de PIP",              estado:"baseline", detalle:"12 de 30 d&iacute;as de l&iacute;nea base", fuente:"Baseline"},
-   {codigo:"R14", nombre:"Deriva de corriente por Hz", estado:"baseline", detalle:"12 de 30 d&iacute;as de l&iacute;nea base", fuente:"Baseline"},
-   {codigo:"R03", nombre:"Distorsi&oacute;n arm&oacute;nica de corriente", estado:"sindato", detalle:"THD no disponible en el formato de origen", fuente:"Norma"},
-   {codigo:"R04", nombre:"Distorsi&oacute;n arm&oacute;nica de voltaje",   estado:"sindato", detalle:"THD no disponible en el formato de origen", fuente:"Norma"},
-   {codigo:"R05", nombre:"Factor de potencia bajo",    estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Fabricante"},
-   {codigo:"R06", nombre:"Carga del motor",            estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Fabricante"},
-   {codigo:"R09", nombre:"PIP bajo",                   estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Operativo"},
-   {codigo:"R11", nombre:"Vibraci&oacute;n",           estado:"sinumbral",detalle:"Umbral sin parametrizar", fuente:"Fabricante"}
-  ]
- }
-};
-
-
 /* ============================================================
    CALCULO ELECTRICO SOBRE LA MEDICION DE CAMPO
    Formulas verificadas contra resultados conocidos:
@@ -671,129 +596,158 @@ async function kpVerFlota(){
 }
 
 function kpPintarFlota(){
+  const q = (document.getElementById('kpBuscar')?.value || '').trim().toUpperCase();
   const d = kpFlota
-    .filter(x => kpFiltro === "all" || x.sistema === kpFiltro)
-    .sort((a,b) => KP_EST[a.estado].ord - KP_EST[b.estado].ord);
-  const n = e => (e === 'none')
-    ? d.filter(x => ['none','sindatos','cobertura'].includes(x.estado)).length
-    : d.filter(x => x.estado === e).length;
+    .filter(x => kpFiltro === "all" || x.estado === kpFiltro)
+    .filter(x => !q || x.pozo.toUpperCase().includes(q)
+                    || (x.campo || '').toUpperCase().includes(q)
+                    || (x.pad   || '').toUpperCase().includes(q));
 
-  let h = '<h2>Flota</h2><p class="hint">' + d.length +
-    ' pozos &middot; ordenados por severidad</p><div class="kp-stats">';
-  [["Cr&iacute;tico","crit"],["Atenci&oacute;n","warn"],["Normal","ok"],["No evaluable","none"]]
-    .forEach(([t,e]) => {
-      h += '<div class="kp-stat"><div class="k">' + t + '</div><div class="v">' + n(e) + '</div></div>';
-    });
-  h += '</div>';
+  /* Orden: primero las que llevan mas tiempo sin ronda. Es lo que hay
+     que salir a hacer, y por eso encabeza la lista. Las que nunca se
+     han medido van al final: no son urgentes, son un pendiente de
+     otra naturaleza. */
+  d.sort((a,b) => {
+    if (!a.ultima && !b.ultima) return a.pozo.localeCompare(b.pozo);
+    if (!a.ultima) return 1;
+    if (!b.ultima) return -1;
+    return a.ultima.localeCompare(b.ultima);
+  });
+
+  const cuenta = e => kpFlota.filter(x => x.estado === e).length;
+  const conRondas = kpFlota.filter(x => x.rondas > 0);
+  const totalRondas = kpFlota.reduce((a,x) => a + x.rondas, 0);
+
+  let h = '<h2>Unidades BES</h2><p class="hint">'
+        + kpFlota.length + ' unidades &middot; ' + totalRondas + ' rondas registradas'
+        + ' &middot; ordenadas por antig&uuml;edad de la &uacute;ltima ronda</p>';
+
+  h += '<div class="kp-stats">'
+    +  '<div class="kp-stat"><div class="k">Al d&iacute;a</div><div class="v" style="color:var(--kp-ok)">'
+    +  cuenta('vigente') + '</div></div>'
+    +  '<div class="kp-stat"><div class="k">Vencidas</div><div class="v" style="color:var(--kp-warn)">'
+    +  cuenta('vencida') + '</div></div>'
+    +  '<div class="kp-stat"><div class="k">Sin rondas</div><div class="v" style="color:var(--kp-null)">'
+    +  cuenta('sin') + '</div></div>'
+    +  '<div class="kp-stat"><div class="k">Rondas / unidad</div><div class="v">'
+    +  (conRondas.length ? (totalRondas / conRondas.length).toFixed(1) : '0')
+    +  '</div></div></div>';
 
   if (!d.length){
-    h += '<div class="kp-list"><div class="kp-msg">Sin pozos para este filtro.</div></div>';
-  } else {
-    h += '<div class="kp-list">';
-    d.forEach(x => {
-      const e = KP_EST[x.estado];
-      h += '<div class="kp-row" onclick="kpVerPozo(\'' + x.pozo + '\',\'' + (x.pozo_id||'') + '\')">'
-        +  '<div style="flex:1;min-width:0">'
-        +  '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
-        +  '<span class="nm">' + x.pozo + '</span>'
-        +  '<span class="sys">' + x.sistema + '</span>'
-        +  '<span style="font-size:12px;color:var(--kp-ink3)">' + x.campo + '</span></div>'
-        +  '<div class="ds">' + x.resumen + '</div>'
-        +  '<div class="ts">Vector: ' + x.fecha_vector + '</div></div>'
-        +  '<span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
-    });
-    h += '</div>';
+    h += '<div class="kp-list"><div class="kp-msg">Ninguna unidad con ese criterio.</div></div>';
+    document.getElementById("kpVista").innerHTML = h;
+    return;
   }
+
+  h += '<div class="kp-list">';
+  d.forEach(x => {
+    const cls = x.estado === 'vigente' ? 'ok' : (x.estado === 'vencida' ? 'warn' : 'none');
+    const txt = x.estado === 'vigente' ? 'Al d\u00eda'
+              : (x.estado === 'vencida' ? 'Vencida' : 'Sin rondas');
+    h += '<div class="kp-row" onclick="kpVerPozo(\'' + x.pozo + '\')">'
+      +  '<div style="flex:1;min-width:0">'
+      +  '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'
+      +  '<span class="nm">' + x.pozo + '</span>'
+      +  '<span class="sys">' + x.marca + '</span>'
+      +  '<span style="font-size:12px;color:var(--kp-ink3)">' + x.campo
+      +  (x.pad && x.pad !== '\u2014' ? ' \u00b7 ' + x.pad : '') + '</span></div>'
+      +  '<div class="ds">' + (x.rondas
+            ? x.rondas + (x.rondas === 1 ? ' ronda' : ' rondas')
+            : 'Sin rondas registradas') + '</div>'
+      +  '<div class="ts">' + (x.ultima
+            ? '\u00daltima: ' + x.ultima + ' \u00b7 ' + kpDiasDesde(x.ultima)
+            : 'Nunca se ha medido') + '</div></div>'
+      +  '<span class="kp-pill ' + cls + '">' + txt + '</span></div>';
+  });
+  h += '</div>';
   document.getElementById("kpVista").innerHTML = h;
+}
+
+/* "hace 47 dias" se entiende de una; una fecha sola obliga a restar
+   mentalmente para saber si eso esta bien o mal. */
+function kpDiasDesde(iso){
+  const d = Math.floor((Date.now() - new Date(iso + 'T12:00:00').getTime()) / 86400000);
+  if (d <= 0) return 'hoy';
+  if (d === 1) return 'ayer';
+  if (d < 60) return 'hace ' + d + ' d\u00edas';
+  return 'hace ' + Math.round(d / 30) + ' meses';
 }
 
 /* ============================================================
    VISTA: POZO
    ============================================================ */
-async function kpVerPozo(codigo, pozoId){
+async function kpVerPozo(codigo){
   document.getElementById("kpBack").style.display = "block";
   document.getElementById("kpFiltros").style.display = "none";
   const v = document.getElementById("kpVista");
   v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
+  document.getElementById("kpTitulo").textContent = codigo;
+  document.getElementById("kpSub").innerHTML = "Cargando&hellip;";
 
-  let p = null, med = null, ctx = null, evs = [];
-  try {
-    const r = await Promise.all([
-      kpCargarPozo(codigo, pozoId).catch(() => null),
-      kpCargarMedicion(pozoId).catch(() => null),
-      kpCargarContexto(pozoId).catch(() => null),
-      kpCargarEventos(pozoId).catch(() => [])
-    ]);
-    p = r[0]; med = r[1]; ctx = r[2]; evs = r[3] || [];
-  } catch (e) {
-    v.innerHTML = '<div class="kp-msg">No se pudo cargar el pozo.<br>' + e.message + '</div>';
-    return;
-  }
-
-  if (!p && !med && !(ctx && ((ctx.bitacora||[]).length || (ctx.aislamiento||[]).length))){
-    document.getElementById("kpTitulo").textContent = codigo;
-    document.getElementById("kpSub").innerHTML = "Sin datos";
+  let pozoId = null;
+  try { pozoId = await kpIdDe(codigo); } catch(e){}
+  if (!pozoId){
     v.innerHTML = '<div class="kp-card"><div class="kp-msg">'
-      + 'Este pozo no tiene medici&oacute;n el&eacute;ctrica registrada '
-      + 'ni vector diario calculado.</div></div>';
+      + 'No se pudo resolver el activo ' + kpEsc(codigo) + '.</div></div>';
     return;
   }
 
-  if (!p){
-    p = { pozo: codigo, campo: '\u2014', sistema: '\u2014', estado: 'ok',
-          fecha_vector: null, indicadores: [], cadena: [], reglas: [] };
+  /* Las cuatro consultas van en paralelo y cada una con su propio
+     catch: en un PAD es normal que una responda y otra no, y perder
+     la cadena porque fallaron los eventos seria absurdo. */
+  let med = null, ctx = null, evs = [], tend = [], bal = [];
+  const r = await Promise.all([
+    kpCargarMedicion(pozoId).catch(() => null),
+    kpCargarContexto(pozoId).catch(() => null),
+    kpCargarEventos(pozoId).catch(() => []),
+    kpCargarTendencia(pozoId).catch(() => []),
+    kpCargarBalance(pozoId).catch(() => [])
+  ]);
+  med = r[0]; ctx = r[1]; evs = r[2] || []; tend = r[3] || []; bal = r[4] || [];
+
+  const hayCtx = ctx && ((ctx.bitacora||[]).length || (ctx.aislamiento||[]).length);
+  if (!med && !hayCtx && !evs.length){
+    document.getElementById("kpSub").innerHTML = "Sin rondas registradas";
+    v.innerHTML = '<div class="kp-card"><div class="kp-msg">'
+      + 'Esta unidad no tiene rondas de campo confirmadas.<br>'
+      + 'Los indicadores se calculan a partir de la captura en campo: '
+      + 'en cuanto se registre una ronda, aparecen aqu&iacute;.</div></div>';
+    return;
   }
-  p.eventos = evs;
 
-  document.getElementById("kpTitulo").textContent = p.pozo;
+  const mc = (med && med.medicion) || {};
   document.getElementById("kpSub").innerHTML =
-    "Sistema " + p.sistema + " &middot; " + p.campo
-    + (p.fecha_vector ? (" &middot; vector " + p.fecha_vector) : "");
+    'BES' + (mc.medido_en ? ' &middot; &uacute;ltima ronda ' + kpFechaCorta(mc.medido_en) : '')
+    + (med && med.rondas ? ' &middot; ' + med.rondas + ' rondas' : '');
 
-  /* Orden de lectura, no orden de tablas:
-       1 veredicto        -> hay algo que atender?
-       2 hallazgos        -> por que
-       3 cadena electrica -> donde esta el margen
-       4 condicion        -> los numeros del dia
-       5 eventos y paros  -> que paso en el periodo
-       6 contexto y dato  -> informacion sobre el dato, al final
-     Las secciones largas arrancan plegadas en pantalla angosta. */
+  KP_EV = evs;
   const angosta = window.matchMedia('(max-width:640px)').matches;
   const sec = [];
 
-  sec.push(kpSeccion('veredicto', 'Veredicto', null,
-    kpRenderVeredicto(p), { plegable:false }));
-
-  if (p.reglas.length){
-    const ev = p.reglas.filter(r => ["crit","warn","ok"].includes(r.estado)).length;
-    const cri = p.reglas.filter(r => r.estado === 'crit').length;
-    sec.push(kpSeccion('hallazgos', 'Hallazgos y reglas evaluadas',
-      p.reglas.length + ' reglas &middot; ' + ev + ' evaluadas'
-        + (cri ? ' &middot; ' + cri + ' en criterio cr\u00edtico' : ''),
-      '<div class="kp-list">' + kpDibujarReglas(p.reglas) + '</div>',
-      { cerrada: angosta && !cri }));
-  }
+  /* Orden de lectura:
+       1 resumen        -> como esta la unidad ahora, en cuatro cifras
+       2 cadena         -> donde esta el margen, etapa por etapa
+       3 tendencia      -> hacia donde va, que es lo que no se ve en una foto
+       4 eventos        -> que paso en el periodo
+       5 contexto       -> informacion sobre el dato, al final */
 
   if (med){
-    sec.push(kpSeccion('cadena', 'Cadena energ&eacute;tica', null,
+    sec.push(kpSeccion('resumen', 'Estado de la unidad',
+      kpSubRonda(mc), kpRenderResumen(med), { plegable:false }));
+
+    sec.push(kpSeccion('cadena', 'Cadena de potencia',
+      'Cada etapa contra su propia nominal de placa',
       kpRenderMedicion(med), { cerrada:false }));
   }
 
-  if (p.indicadores.length){
-    let k = '<div class="kp-kpis">';
-    p.indicadores.forEach(i => {
-      const c = KP_EST[i.estado].cls;
-      k += '<div class="kp-kpi ' + c + '"><div class="k">' + i.etiqueta + '</div>'
-        +  '<div class="v">' + i.valor + '<small>' + i.unidad + '</small></div>'
-        +  '<div class="r">' + i.referencia + '</div>'
-        +  '<span class="kp-pill ' + c + '">' + KP_EST[i.estado].txt + '</span></div>';
-    });
-    k += '</div>';
-    sec.push(kpSeccion('condicion', 'Condici&oacute;n de la unidad',
-      'DATA del variador &middot; vector diario del ' + p.fecha_vector, k, {}));
+  if (tend.length){
+    const nRondas = new Set(tend.map(t => t.fecha)).size;
+    sec.push(kpSeccion('tendencia', 'Tendencia entre rondas',
+      nRondas + (nRondas === 1 ? ' ronda' : ' rondas') + ' &middot; una foto no dice si algo se est&aacute; moviendo',
+      kpRenderTendencia(tend, bal), { cerrada: angosta }));
   }
 
-  const ev = kpRenderEventos(p.eventos);
+  const ev = kpRenderEventos(KP_EV);
   if (ev) sec.push(ev);
 
   if (ctx){
@@ -801,7 +755,6 @@ async function kpVerPozo(codigo, pozoId){
       kpRenderContexto(ctx), { cerrada:true }));
   }
 
-  /* Indice solo si vale la pena: con dos secciones estorba mas que ayuda */
   let h = '';
   if (sec.length > 3){
     h += '<div class="kp-nav">'
@@ -809,9 +762,271 @@ async function kpVerPozo(codigo, pozoId){
       +  '</div>';
   }
   h += sec.map(x => x.html).join('');
-
   v.innerHTML = h;
   if (KP_EV.length) kpEvPintar();
+}
+
+function kpSubRonda(mc){
+  if (!mc || !mc.medido_en) return null;
+  const p = [];
+  p.push(kpFechaCorta(mc.medido_en));
+  if (mc.realizado_por) p.push(kpEsc(mc.realizado_por));
+  if (mc.condicion)     p.push(kpEsc(mc.condicion));
+  if (mc.frecuencia_hz != null) p.push(kpNum(mc.frecuencia_hz) + ' Hz');
+  if (mc.control_mode)  p.push(kpEsc(mc.control_mode));
+  return p.join(' &middot; ');
+}
+
+/* ============================================================
+   RESUMEN: las cuatro cifras que deciden si hay que hacer algo
+   ============================================================
+   Se eligen las que un electricista mira primero al llegar: cuanto
+   carga el motor, si las corrientes vienen parejas, como reparten los
+   dos puentes y como esta el factor de potencia en la acometida.
+   El resto esta abajo para quien quiera entrar en detalle.        */
+function kpRenderResumen(med){
+  const val = med.valores || {}, placa = med.placa || {};
+  const cad = kpCalcularCadena(val, placa);
+  const bal = kpBalanceRectificadores(val);
+
+  const motor = cad.find(x => x.nodo === 'Motor');
+  const sut   = cad.find(x => x.nodo === 'SUT salida');
+  const iSal  = motor || sut;
+  const fp    = val.pst_in_fp;
+
+  const k = [];
+  const tarjeta = (etq, val_, uni, ref, est) => k.push({etq, val: val_, uni, ref, est});
+
+  if (motor && motor.carga_pct != null)
+    tarjeta('Carga del motor', kpNum(motor.carga_pct), '%',
+      kpNum(motor.medido) + ' de ' + kpNum(motor.nominal) + ' A',
+      kpEstadoCarga(motor.carga_pct));
+  else
+    tarjeta('Carga del motor', '\u2014', '', 'Sin corriente o sin placa', 'none');
+
+  if (iSal && iSal.desbal_i != null)
+    tarjeta('Desbalance de corriente', kpNum(iSal.desbal_i), '%',
+      'Al motor \u00b7 criterio NEMA', kpEstadoDesbal(iSal.desbal_i));
+  else
+    tarjeta('Desbalance de corriente', '\u2014', '', 'Sin corriente al motor', 'none');
+
+  if (bal)
+    tarjeta('Reparto \u0394 / Y', kpNum(bal.diferencia_pct), '%',
+      kpNum(bal.conv1) + ' y ' + kpNum(bal.conv2) + ' A', bal.estado);
+  else
+    tarjeta('Reparto \u0394 / Y', '\u2014', '', 'Sin los dos secundarios', 'none');
+
+  if (fp != null)
+    tarjeta('Factor de potencia', Number(fp).toFixed(2), '', 'En la acometida',
+      fp <= 0.80 ? 'crit' : (fp <= 0.85 ? 'warn' : 'ok'));
+  else
+    tarjeta('Factor de potencia', '\u2014', '', 'No medido en esta ronda', 'none');
+
+  let h = '<div class="kp-kpis">';
+  k.forEach(i => {
+    const c = KP_EST[i.est] ? KP_EST[i.est].cls : 'none';
+    h += '<div class="kp-kpi ' + c + '"><div class="k">' + i.etq + '</div>'
+      +  '<div class="v">' + i.val + (i.uni ? '<small>' + i.uni + '</small>' : '') + '</div>'
+      +  '<div class="r">' + i.ref + '</div></div>';
+  });
+  h += '</div>';
+  return h;
+}
+
+/* ============================================================
+   TENDENCIA
+   ============================================================
+   Un desbalance de 1,6 % no dice nada por si solo. Que venia en 0,4 %
+   hace tres rondas lo dice todo. Por eso la tendencia no es un extra:
+   es donde aparece lo que una medicion aislada esconde.
+
+   Los graficos son SVG sin librerias: se dibujan igual sin conexion y
+   no agregan 200 kB de descarga a una app que se usa en campo.     */
+function kpRenderTendencia(tend, bal){
+  const porNodo = {};
+  tend.forEach(t => { (porNodo[t.nodo] = porNodo[t.nodo] || []).push(t); });
+  const fechas = [...new Set(tend.map(t => t.fecha))].sort();
+
+  let h = '';
+
+  /* 1. Reparto entre puentes: el indicador que mas dice de un 12
+        pulsos y que no se ve en ningun nodo por separado. */
+  if (bal && bal.length > 1){
+    const ult = bal[bal.length - 1];
+    const est = ult.diferencia_pct > 10 ? 'crit' : (ult.diferencia_pct > 5 ? 'warn' : 'ok');
+    h += '<div class="kp-card" style="border-left:4px solid ' + KP_HEX[est] + '">'
+      +  '<div style="font-weight:600;margin-bottom:2px">Reparto entre secundarios \u0394 y Y</div>'
+      +  '<p class="hint" style="margin:0 0 10px">Los dos puentes pueden estar cada uno dentro de '
+      +  'su carga y aun asi repartirse mal. Sumados dan la misma corriente de entrada, '
+      +  'asi que esto no se ve en ningun otro indicador.</p>'
+      +  kpGrafico(bal.map(b => ({x: b.fecha, y: b.diferencia_pct})),
+                   '% de diferencia', {umbral_warn:5, umbral_crit:10})
+      +  '<div class="kp-leg" style="margin-top:8px">'
+      +  '<span>\u00daltima: <b>' + kpNum(ult.diferencia_pct) + ' %</b> '
+      +  '(\u0394 ' + kpNum(ult.delta) + ' A, Y ' + kpNum(ult.estrella) + ' A)</span>'
+      +  '<span>Mayor: ' + (ult.mayor === 'delta' ? 'secundario \u0394' : 'secundario Y') + '</span>'
+      +  '</div></div>';
+  }
+
+  /* 2. Carga por nodo a lo largo del tiempo */
+  const series = [];
+  Object.keys(porNodo).forEach(nodo => {
+    const pts = porNodo[nodo].filter(p => p.i_prom != null)
+                             .map(p => ({x: p.fecha, y: Number(p.i_prom)}));
+    if (pts.length > 1) series.push({nombre: porNodo[nodo][0].etiqueta_corta || nodo, pts});
+  });
+  if (series.length){
+    h += '<div class="kp-card"><div style="font-weight:600;margin-bottom:2px">'
+      +  'Corriente por etapa</div>'
+      +  '<p class="hint" style="margin:0 0 10px">Amperios medidos en cada punto de la cadena.</p>'
+      +  kpGraficoMulti(series, 'A') + '</div>';
+  }
+
+  /* 3. Desbalances */
+  const sDes = [];
+  Object.keys(porNodo).forEach(nodo => {
+    const pts = porNodo[nodo].filter(p => p.i_desbal_pct != null)
+                             .map(p => ({x: p.fecha, y: Number(p.i_desbal_pct)}));
+    if (pts.length > 1) sDes.push({nombre: porNodo[nodo][0].etiqueta_corta || nodo, pts});
+  });
+  if (sDes.length){
+    h += '<div class="kp-card"><div style="font-weight:600;margin-bottom:2px">'
+      +  'Desbalance de corriente por etapa</div>'
+      +  '<p class="hint" style="margin:0 0 10px">Criterio NEMA: m&aacute;xima desviaci&oacute;n '
+      +  'respecto al promedio. Sobre 2 % conviene revisar.</p>'
+      +  kpGraficoMulti(sDes, '%', {umbral_warn:1, umbral_crit:2}) + '</div>';
+  }
+
+  /* 4. Calidad de energia: entrada contra salida */
+  const cal = [];
+  ['pst_in','vfdout'].forEach(n => {
+    if (!porNodo[n]) return;
+    const pts = porNodo[n].filter(p => p.thd_i_pct != null)
+                          .map(p => ({x: p.fecha, y: Number(p.thd_i_pct)}));
+    if (pts.length > 1)
+      cal.push({nombre: (n === 'pst_in' ? 'Entrada (red)' : 'Salida (al motor)'), pts});
+  });
+  if (cal.length){
+    h += '<div class="kp-card"><div style="font-weight:600;margin-bottom:2px">'
+      +  'Distorsi&oacute;n de corriente</div>'
+      +  '<p class="hint" style="margin:0 0 10px">En la acometida se compara contra IEEE 519. '
+      +  'En la salida del variador la distorsi&oacute;n es propia de la onda PWM y '
+      +  'no constituye falla: sirve para ver si cambia, no para juzgarla contra una norma.</p>'
+      +  kpGraficoMulti(cal, '%') + '</div>';
+  }
+
+  /* 5. Tabla de rondas, para quien quiere el numero exacto */
+  h += '<div class="kp-list"><div class="kp-grp">Rondas registradas</div>';
+  fechas.slice().reverse().forEach(f => {
+    const dia = tend.filter(t => t.fecha === f);
+    const m = dia.find(t => t.nodo === 'sutout') || dia[0];
+    const p = dia.find(t => t.nodo === 'pst_in');
+    h += '<div class="kp-rule"><div>'
+      +  '<div><span class="nm">' + f + '</span> '
+      +  '<span class="id">' + dia.length + ' etapas</span></div>'
+      +  '<div class="dt">'
+      +  (m && m.i_prom != null ? 'Al motor ' + kpNum(m.i_prom) + ' A' : 'Sin corriente de salida')
+      +  (m && m.frec_hz != null ? ' &middot; ' + kpNum(m.frec_hz) + ' Hz' : '')
+      +  (p && p.fp != null ? ' &middot; FP ' + Number(p.fp).toFixed(2) : '')
+      +  '</div>'
+      +  '<div class="src">' + (m && m.condicion ? kpEsc(m.condicion) : '') + '</div>'
+      +  '</div></div>';
+  });
+  h += '</div>';
+
+  return h;
+}
+
+/* ============================================================
+   GRAFICOS
+   ============================================================
+   SVG a mano, sin libreria. Escala al ancho disponible con viewBox,
+   asi que se ve igual en un telefono que en un monitor sin recalcular
+   nada al rotar la pantalla.                                      */
+const KP_SERIE = ['#12a5b8','#c77700','#7b5ea7','#2ea44f','#c0392b','#2f6fb0','#8a6d3b'];
+
+function kpGrafico(pts, unidad, op){
+  return kpGraficoMulti([{nombre:'', pts:pts}], unidad, op);
+}
+
+function kpGraficoMulti(series, unidad, op){
+  op = op || {};
+  const W = 640, H = 200, ml = 46, mr = 12, mt = 14, mb = 34;
+  const todas = series.flatMap(s => s.pts).filter(p => p.y != null && isFinite(p.y));
+  if (todas.length < 2) return '<p class="hint">Hace falta m&aacute;s de una ronda.</p>';
+
+  const xs = [...new Set(series.flatMap(s => s.pts.map(p => p.x)))].sort();
+  let yMin = Math.min(...todas.map(p => p.y));
+  let yMax = Math.max(...todas.map(p => p.y));
+  if (op.umbral_crit != null) yMax = Math.max(yMax, op.umbral_crit * 1.15);
+  /* Un margen del 12 % evita que la linea toque el borde y que un
+     tramo plano parezca pegado al eje. */
+  const rango = (yMax - yMin) || Math.abs(yMax) || 1;
+  yMin = Math.max(0, yMin - rango * 0.12);
+  yMax = yMax + rango * 0.12;
+
+  const px = i => ml + (xs.length === 1 ? (W-ml-mr)/2
+                        : i * (W - ml - mr) / (xs.length - 1));
+  const py = y => mt + (H - mt - mb) * (1 - (y - yMin) / (yMax - yMin));
+
+  let s = '<div style="overflow-x:auto"><svg viewBox="0 0 ' + W + ' ' + H
+        + '" style="width:100%;height:auto;display:block;min-width:280px" '
+        + 'role="img" xmlns="http://www.w3.org/2000/svg">';
+
+  /* Bandas de umbral al fondo: dicen cuando un valor deja de ser
+     normal sin tener que leer una leyenda aparte. */
+  if (op.umbral_warn != null){
+    const y1 = py(Math.min(op.umbral_crit != null ? op.umbral_crit : yMax, yMax));
+    const y2 = py(op.umbral_warn);
+    if (op.umbral_crit != null)
+      s += '<rect x="' + ml + '" y="' + mt + '" width="' + (W-ml-mr) + '" height="'
+        +  Math.max(0, py(op.umbral_crit) - mt) + '" fill="#c0392b" opacity="0.07"/>';
+    s += '<rect x="' + ml + '" y="' + y1 + '" width="' + (W-ml-mr) + '" height="'
+      +  Math.max(0, y2 - y1) + '" fill="#c77700" opacity="0.07"/>';
+  }
+
+  /* Rejilla horizontal con cuatro marcas: mas lineas ensucian y no
+     ayudan a leer. */
+  for (let i = 0; i <= 3; i++){
+    const y = mt + (H - mt - mb) * i / 3;
+    const v = yMax - (yMax - yMin) * i / 3;
+    s += '<line x1="' + ml + '" y1="' + y + '" x2="' + (W-mr) + '" y2="' + y
+      +  '" stroke="#e3e3e6" stroke-width="1"/>'
+      +  '<text x="' + (ml-6) + '" y="' + (y+4) + '" text-anchor="end" font-size="11" '
+      +  'fill="#94949a" font-family="inherit">' + kpNum(v) + '</text>';
+  }
+
+  series.forEach((se, k) => {
+    const col = KP_SERIE[k % KP_SERIE.length];
+    const d = se.pts.filter(p => p.y != null)
+      .map(p => (px(xs.indexOf(p.x))) + ',' + py(p.y));
+    if (d.length < 2) return;
+    s += '<polyline points="' + d.join(' ') + '" fill="none" stroke="' + col
+      +  '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
+    se.pts.filter(p => p.y != null).forEach(p => {
+      s += '<circle cx="' + px(xs.indexOf(p.x)) + '" cy="' + py(p.y) + '" r="3.2" fill="'
+        +  col + '"><title>' + p.x + ': ' + kpNum(p.y) + ' ' + unidad + '</title></circle>';
+    });
+  });
+
+  /* Solo primera y ultima fecha en el eje: con doce rondas las
+     etiquetas se encaballan y no se lee ninguna. */
+  s += '<text x="' + ml + '" y="' + (H-10) + '" font-size="11" fill="#94949a" '
+    +  'font-family="inherit">' + xs[0] + '</text>'
+    +  '<text x="' + (W-mr) + '" y="' + (H-10) + '" text-anchor="end" font-size="11" '
+    +  'fill="#94949a" font-family="inherit">' + xs[xs.length-1] + '</text>';
+  s += '</svg></div>';
+
+  if (series.length > 1 || series[0].nombre){
+    s += '<div class="kp-leg">';
+    series.forEach((se, k) => {
+      if (!se.nombre) return;
+      s += '<span><i style="background:' + KP_SERIE[k % KP_SERIE.length] + '"></i>'
+        +  kpEsc(se.nombre) + '</span>';
+    });
+    s += '</div>';
+  }
+  return s;
 }
 
 /* Envuelve un bloque como seccion plegable. Devuelve id, titulo y html
@@ -840,34 +1055,6 @@ function kpPlegar(id){
 }
 
 /* Veredicto: el estado y por que, sin numeros que haya que interpretar */
-function kpRenderVeredicto(p){
-  const est = p.estado || 'ok';
-  const txt = { ok:'Sin novedad', warn:'Requiere atenci\u00f3n', crit:'Cr\u00edtico' }[est]
-            || 'Sin clasificar';
-  const cri = (p.reglas || []).filter(r => r.estado === 'crit');
-  const adv = (p.reglas || []).filter(r => r.estado === 'warn');
-
-  let det;
-  if (cri.length)      det = cri.length + ' regla(s) en criterio cr\u00edtico: '
-                             + kpEsc(cri.slice(0,3).map(r => r.nombre || r.regla || '').join(', '));
-  else if (adv.length) det = adv.length + ' regla(s) por encima del umbral de atenci\u00f3n';
-  else                 det = 'Ninguna regla activada por encima de umbral';
-
-  let h = '<div class="kp-vd ' + est + '">';
-  h += '<div><div class="est">' + txt + '</div><div class="det">' + det + '</div></div>';
-  h += '</div>';
-  h += '<div class="kp-stats" style="margin:14px 0 0">'
-    +  kpVdDato('Sistema', p.sistema || '\u2014')
-    +  kpVdDato('Campo', p.campo || '\u2014')
-    +  kpVdDato('Vector', p.fecha_vector || 'sin calcular')
-    +  kpVdDato('Eventos del per\u00edodo', (p.eventos || []).length || '\u2014')
-    +  '</div>';
-  return h;
-}
-function kpVdDato(k, v){
-  return '<div class="kp-kpi none"><div class="k">' + k + '</div>'
-    + '<div class="v" style="font-size:16px">' + v + '</div></div>';
-}
 
 /* ── Eventos y paros del variador ─────────────────────────────────────
    Se agrupa por causa ANTES de listar: 60 paros con la misma causa son
@@ -1040,41 +1227,6 @@ function kpFechaCorta(iso){
        + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
-function kpDibujarReglas(reglas){
-  const bloques = [
-    ["Hallazgos",     r => r.estado === "crit" || r.estado === "warn", true],
-    ["Sin hallazgo",  r => r.estado === "ok",        false],
-    ["No evaluadas",  r => ["baseline","sindato","sinumbral"].includes(r.estado), false]
-  ];
-  let h = '';
-  bloques.forEach(([titulo, filtro, individual]) => {
-    const g = reglas.filter(filtro);
-    if (!g.length) return;
-    h += '<div class="kp-grp">' + titulo + '</div>';
-    if (individual){
-      g.sort((a,b) => KP_EST[a.estado].ord - KP_EST[b.estado].ord).forEach(r => {
-        const e = KP_EST[r.estado];
-        h += '<div class="kp-rule ' + e.cls + '"><div>'
-          +  '<div><span class="id">' + r.codigo + '</span> <span class="nm">' + r.nombre + '</span></div>'
-          +  '<div class="dt">' + r.detalle + '</div>'
-          +  '<div class="src">Fuente: ' + r.fuente + '</div></div>'
-          +  '<span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
-      });
-    } else {
-      const sub = {};
-      g.forEach(r => { (sub[r.estado] = sub[r.estado] || []).push(r); });
-      Object.keys(sub).forEach(k => {
-        const l = sub[k];
-        h += '<div class="kp-rule"><div>'
-          +  '<div><span class="id">' + l.map(r => r.codigo).join(" &middot; ") + '</span></div>'
-          +  '<div class="dt">' + l.map(r => r.nombre).join(", ") + '</div>'
-          +  '<div class="src">' + l[0].detalle + '</div></div>'
-          +  '<span class="kp-pill ' + KP_EST[k].cls + '">' + KP_EST[k].txt + '</span></div>';
-      });
-    }
-  });
-  return h;
-}
 
 
 /* ============================================================
@@ -1085,13 +1237,22 @@ function kpDibujarReglas(reglas){
    muestran como referencia y no como dictamen: la norma matiza
    segun clase de aislamiento y temperatura, y el valor absoluto
    minimo depende de la tension nominal. */
+
+/* Indice de polarizacion segun IEEE 43-2013. Los rangos son los de la
+   norma para sistemas de aislamiento termoestables.
+
+   El caso de IP menor a 1 no se marca solo como malo: en devanados con
+   resistencia de aislamiento muy alta la corriente de absorcion es tan
+   pequena que el IP pierde sentido, y la propia norma lo advierte. Se
+   dice, en lugar de dar una alarma que puede no significar nada. */
 function kpEstadoIP(ip){
-  if (ip == null) return {cls:'none', txt:'Sin dato'};
-  if (ip === 0)   return {cls:'crit', txt:'Falla'};
-  if (ip < 1)     return {cls:'crit', txt:'Deficiente'};
-  if (ip < 2)     return {cls:'warn', txt:'Cuestionable'};
-  if (ip < 4)     return {cls:'ok',   txt:'Aceptable'};
-  return {cls:'ok', txt:'Bueno'};
+  if (ip == null || !isFinite(Number(ip)))
+    return { cls:'none', txt:'Sin IP' };
+  const v = Number(ip);
+  if (v >= 4)   return { cls:'ok',   txt:'IP excelente' };
+  if (v >= 2)   return { cls:'ok',   txt:'IP aceptable' };
+  if (v >= 1)   return { cls:'warn', txt:'IP cuestionable' };
+  return { cls:'crit', txt:'IP bajo' };
 }
 
 function kpRenderContexto(ctx){
@@ -1397,13 +1558,15 @@ function kpLeyenda(){
    ============================================================ */
 document.getElementById("kpFiltros").addEventListener("click", ev => {
   const b = ev.target.closest(".kp-chip");
-  if (!b) return;
+  /* El buscador comparte la clase kp-chip por estetica pero no es un
+     filtro: sin este guardia, tocarlo dejaba kpFiltro en undefined y la
+     lista se vaciaba entera. */
+  if (!b || !b.dataset.s) return;
   kpFiltro = b.dataset.s;
-  document.querySelectorAll(".kp-chip").forEach(x => x.classList.toggle("on", x === b));
+  document.querySelectorAll(".kp-chip[data-s]").forEach(x => x.classList.toggle("on", x === b));
   kpPintarFlota();
 });
 
-if (!KP.MODO_DEMO) document.getElementById("kpDemo").style.display = "none";
 kpVerFlota();
 </script>
 </body>
