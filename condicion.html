@@ -160,6 +160,31 @@ body{background:var(--kp-page);color:var(--kp-ink);
   align-items:baseline;gap:8px}
 .kp-sub span{text-transform:none;letter-spacing:0;font-size:11.5px}
 
+/* Datos de operacion y sensor: fichas pequenas que se acomodan solas.
+   Cuatro tarjetas grandes ocupaban una pantalla para decir lo que la
+   cadena ya dice; estas caben en dos filas y no repiten nada. */
+.kp-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
+.kp-dato{border:1px solid var(--kp-line);border-radius:7px;padding:7px 11px;
+  background:#fff;min-width:78px}
+.kp-dato .k{font-size:10px;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--kp-ink3);white-space:nowrap}
+.kp-dato .v{font-size:15px;font-weight:600;margin-top:2px;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.kp-dato .v small{font-size:10.5px;font-weight:400;color:var(--kp-ink2);margin-left:2px}
+
+/* Avisos: solo aparece lo que se sale de rango. Cuando no hay nada,
+   una linea verde vale mas que cuatro tarjetas repitiendo cifras. */
+.kp-ok{margin-top:6px;padding:11px 13px;border-radius:7px;font-size:13px;
+  background:var(--kp-ok-bg);color:#1d6b32;border-left:3px solid var(--kp-ok)}
+.kp-avisos{display:grid;grid-template-columns:1fr;gap:8px;margin-top:6px}
+@media(min-width:900px){ .kp-avisos{grid-template-columns:1fr 1fr} }
+.kp-aviso{padding:10px 13px;border-radius:7px;border-left:3px solid var(--kp-warn);
+  background:var(--kp-warn-bg)}
+.kp-aviso.crit{border-left-color:var(--kp-crit);background:var(--kp-crit-bg)}
+.kp-aviso .q{font-size:13.5px;font-weight:600;color:#7a4a00}
+.kp-aviso.crit .q{color:#8f2a1f}
+.kp-aviso .d{font-size:12px;color:var(--kp-ink2);margin-top:2px}
+
 .kp-rep .ext{display:flex;justify-content:space-between;font-size:13px;
   color:var(--kp-ink2);margin-bottom:5px}
 .kp-rep .ext b{color:var(--kp-ink);font-size:14px}
@@ -995,7 +1020,7 @@ async function kpVerPozo(codigo){
 
   if (med){
     sec.push(kpSeccion('resumen', 'Estado de la unidad',
-      kpSubRonda(mc), kpRenderResumen(med), { plegable:false }));
+      kpSubRonda(mc), kpRenderResumen(med, bal), { plegable:false }));
 
     sec.push(kpSeccion('cadena', 'Cadena de potencia',
       'Cada etapa contra su propia nominal de placa',
@@ -1101,12 +1126,10 @@ function kpRenderCorridas(cor){
 
 function kpSubRonda(mc){
   if (!mc || !mc.medido_en) return null;
-  const p = [];
-  p.push(kpFechaCorta(mc.medido_en));
+  /* Solo cuando y quien. La frecuencia, el modo y la condicion pasaron
+     a fichas propias: repetirlos aqui era ruido. */
+  const p = [kpFechaCorta(mc.medido_en)];
   if (mc.realizado_por) p.push(kpEsc(mc.realizado_por));
-  if (mc.condicion)     p.push(kpEsc(mc.condicion));
-  if (mc.frecuencia_hz != null) p.push(kpNum(mc.frecuencia_hz) + ' Hz');
-  if (mc.control_mode)  p.push(kpEsc(mc.control_mode));
   return p.join(' &middot; ');
 }
 
@@ -1117,52 +1140,141 @@ function kpSubRonda(mc){
    carga el motor, si las corrientes vienen parejas, como reparten los
    dos puentes y como esta el factor de potencia en la acometida.
    El resto esta abajo para quien quiera entrar en detalle.        */
-function kpRenderResumen(med){
+function kpRenderResumen(med, bal){
   const val = med.valores || {}, placa = med.placa || {};
+  const mc  = med.medicion || {};
   const cad = kpCalcularCadena(val, placa);
-  const bal = kpBalanceRectificadores(val);
+  const b   = (bal && bal.length) ? bal[bal.length - 1] : kpBalanceRectificadores(val);
 
-  const motor = cad.find(x => x.nodo === 'Motor');
-  const sut   = cad.find(x => x.nodo === 'SUT salida');
-  const iSal  = motor || sut;
-  const fp    = val.pst_in_fp;
+  let h = '';
 
-  const k = [];
-  const tarjeta = (etq, val_, uni, ref, est) => k.push({etq, val: val_, uni, ref, est});
+  /* ---- Operacion: como esta puesta la maquina -------------------
+     Antes esto vivia en una linea de texto gris bajo el titulo y las
+     cuatro tarjetas grandes repetian lo que ya dice la cadena. Los
+     parametros de operacion son lo primero que se contrasta al llegar
+     -- si la frecuencia no es la esperada, todo lo demas se lee
+     distinto -- asi que suben aqui.                                */
+  const op = [];
+  const chip = (k, v, u) => { if (v != null && v !== '') op.push({k, v, u: u || ''}); };
+  chip('Frecuencia',  kpNum(mc.frecuencia_hz), 'Hz');
+  chip('Setpoint',    kpNum(mc.setpoint_hz), 'Hz');
+  chip('HSC',         kpNum(mc.hsc), 'Hz');
+  chip('LSC',         kpNum(mc.lsc), 'Hz');
+  chip('Modo',        mc.control_mode ? kpEsc(mc.control_mode) : null);
+  chip('Condici\u00f3n', mc.condicion ? kpEsc(mc.condicion) : null);
 
-  if (motor && motor.carga_pct != null)
-    tarjeta('Carga del motor', kpPct(motor.carga_pct), '%',
-      kpNum(motor.medido) + ' de ' + kpNum(motor.nominal) + ' A',
-      kpEstadoCarga(motor.carga_pct));
-  else
-    tarjeta('Carga del motor', '\u2014', '', 'Sin corriente o sin placa', 'none');
+  if (op.length){
+    h += '<div class="kp-chips">';
+    op.forEach(x => {
+      h += '<div class="kp-dato"><div class="k">' + x.k + '</div>'
+        +  '<div class="v">' + x.v + (x.u ? '<small>' + x.u + '</small>' : '') + '</div></div>';
+    });
+    h += '</div>';
+  }
 
-  if (iSal && iSal.desbal_i != null)
-    tarjeta('Desbalance de corriente', kpPct(iSal.desbal_i), '%',
-      'Al motor \u00b7 revisar sobre 5 %', kpEstadoDesbalI(iSal.desbal_i));
-  else
-    tarjeta('Desbalance de corriente', '\u2014', '', 'Sin corriente al motor', 'none');
+  /* ---- Sensor de fondo -------------------------------------------
+     Se muestra aparte porque es el unico bloque que habla de la bomba
+     y no de la instalacion electrica. Cuando no viene, se dice: en la
+     flota solo una de cada cuarenta rondas lo trae, y un hueco mudo
+     haria pensar que el equipo esta bien cuando en realidad nadie lo
+     midio.                                                          */
+  const sf = [
+    ['sf_pip_psi','PIP','psi'], ['sf_pdesc_psi','Descarga','psi'],
+    ['sf_t_motor_c','T motor','\u00b0C'], ['sf_t_intake_c','T intake','\u00b0C'],
+    ['sf_vib_x_g','Vib X','g'], ['sf_vib_y_g','Vib Y','g'],
+    ['sf_ct_ma','CT','mA'], ['sf_vt_v','Vt','V']
+  ].filter(d => val[d[0]] != null);
 
-  if (bal)
-    tarjeta('Reparto \u0394 / Y', kpPct(bal.diferencia_pct), '%',
-      kpNum(bal.conv1) + ' y ' + kpNum(bal.conv2) + ' A', bal.estado);
-  else
-    tarjeta('Reparto \u0394 / Y', '\u2014', '', 'Sin los dos secundarios', 'none');
+  h += '<div class="kp-sub" style="margin-top:16px">Sensor de fondo</div>';
+  if (sf.length){
+    h += '<div class="kp-chips">';
+    sf.forEach(d => {
+      h += '<div class="kp-dato"><div class="k">' + d[1] + '</div>'
+        +  '<div class="v">' + kpNum(val[d[0]]) + '<small>' + d[2] + '</small></div></div>';
+    });
+    const tm = val.sf_t_motor_c, ti = val.sf_t_intake_c;
+    if (tm != null && ti != null){
+      h += '<div class="kp-dato"><div class="k">\u0394T motor-intake</div>'
+        +  '<div class="v">' + kpNum(tm - ti) + '<small>\u00b0C</small></div></div>';
+    }
+    h += '</div>';
+  } else {
+    h += '<p class="hint" style="margin:2px 0 0">No se registr&oacute; en esta ronda. '
+      +  'Sin estos valores no hay lectura de la bomba: presi&oacute;n de entrada, '
+      +  'temperaturas y vibraci&oacute;n quedan sin evaluar.</p>';
+  }
 
-  if (fp != null)
-    tarjeta('Factor de potencia', Number(fp).toFixed(2), '', 'En la acometida',
-      fp <= 0.80 ? 'crit' : (fp <= 0.85 ? 'warn' : 'ok'));
-  else
-    tarjeta('Factor de potencia', '\u2014', '', 'No medido en esta ronda', 'none');
+  /* ---- Que revisar ------------------------------------------------
+     Recorre lo medido y deja arriba solo lo que se sale de rango. Es
+     lo que reemplaza a las cuatro tarjetas: en vez de mostrar cuatro
+     cifras siempre, aunque esten bien, muestra las que piden atencion
+     y calla cuando no hay ninguna.                                  */
+  const av = [];
+  const nota = (nivel, que, detalle) => av.push({nivel, que, detalle});
 
-  let h = '<div class="kp-kpis">';
-  k.forEach(i => {
-    const c = KP_EST[i.est] ? KP_EST[i.est].cls : 'none';
-    h += '<div class="kp-kpi ' + c + '"><div class="k">' + i.etq + '</div>'
-      +  '<div class="v">' + i.val + (i.uni ? '<small>' + i.uni + '</small>' : '') + '</div>'
-      +  '<div class="r">' + i.ref + '</div></div>';
+  cad.forEach(n => {
+    if (n.carga_pct != null){
+      const e = kpEstadoCarga(n.carga_pct);
+      if (e !== 'ok') nota(e, n.nodo + ': carga ' + kpPct(n.carga_pct) + ' %',
+        kpNum(n.medido) + ' A de ' + kpNum(n.nominal) + ' A nominal');
+    }
+    if (n.desbal_i != null){
+      const e = kpEstadoDesbalI(n.desbal_i);
+      if (e !== 'ok' && e !== 'none')
+        nota(e, n.nodo + ': desbalance de corriente ' + kpPct(n.desbal_i) + ' %',
+             'Se revisa desde 5 %, se act\u00faa sobre 10 %');
+    }
+    if (n.desbal_v != null){
+      const e = kpEstadoDesbal(n.desbal_v);
+      /* La salida del variador no lleva criterio NEMA: la onda es PWM. */
+      if (e !== 'ok' && e !== 'none' && n.nodo.indexOf('VFD salida') < 0)
+        nota(e, n.nodo + ': desbalance de tensi\u00f3n ' + kpPct(n.desbal_v) + ' %',
+             'NEMA MG-1 marca derateo del motor desde 1 %');
+    }
   });
-  h += '</div>';
+
+  if (b && b.diferencia_pct != null && b.diferencia_pct > 5){
+    nota(b.diferencia_pct > 10 ? 'crit' : 'warn',
+      'Reparto \u0394 / Y desigual: ' + kpPct(b.diferencia_pct) + ' %',
+      'Carga m\u00e1s el secundario '
+        + ((b.mayor === 'delta' || b.mayor === 'secundario delta') ? '\u0394' : 'Y'));
+  }
+
+  const fp = val.pst_in_fp;
+  if (fp != null && fp <= 0.85)
+    nota(fp <= 0.80 ? 'crit' : 'warn', 'Factor de potencia ' + Number(fp).toFixed(2),
+         'Medido en la acometida');
+
+  const thdv = val.pst_in_thdv;
+  if (thdv != null && thdv > 8)
+    nota('warn', 'Distorsi\u00f3n de tensi\u00f3n ' + kpNum(thdv) + ' % en la red',
+         'IEEE 519 sugiere 8 % para sistemas de este nivel');
+
+  const tmax = placa.motor_temp_max_c;
+  if (val.sf_t_motor_c != null && tmax > 0){
+    const pct = 100 * val.sf_t_motor_c / tmax;
+    if (pct >= 90) nota(pct >= 100 ? 'crit' : 'warn',
+      'Temperatura de motor al ' + pct.toFixed(0) + ' % del l\u00edmite',
+      kpNum(val.sf_t_motor_c) + ' \u00b0C de ' + kpNum(tmax) + ' \u00b0C de placa');
+  }
+
+  av.sort((x, y) => (x.nivel === 'crit' ? 0 : 1) - (y.nivel === 'crit' ? 0 : 1));
+
+  h += '<div class="kp-sub" style="margin-top:18px">Requiere revisi&oacute;n</div>';
+  if (!av.length){
+    h += '<div class="kp-ok">Nada fuera de rango en esta ronda.'
+      +  (sf.length ? '' : ' Ten en cuenta que el sensor de fondo no se midi&oacute;.')
+      +  '</div>';
+  } else {
+    h += '<div class="kp-avisos">';
+    av.forEach(a => {
+      h += '<div class="kp-aviso ' + a.nivel + '">'
+        +  '<div class="q">' + a.que + '</div>'
+        +  '<div class="d">' + a.detalle + '</div></div>';
+    });
+    h += '</div>';
+  }
+
   return h;
 }
 
