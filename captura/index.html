@@ -775,7 +775,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM y UBH
-      &middot; <span id="dp-build">v15</span>
+      &middot; <span id="dp-build">v16</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -941,6 +941,9 @@ function actualizarBadgePendientes(){
 }
 
 function intentarSincronizarTodo(){
+  /* Se lanza tambien cuando la cola esta vacia: puede haber mediciones
+     de una sincronizacion anterior que nunca generaron indicadores. */
+  setTimeout(dpProcesarPendientesCondicion, 3000);
   var cola = leerCola();
   if(cola.length === 0){ return; }
 
@@ -1007,7 +1010,9 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta, alAsegurar
      formulario, asi que el respaldo local puede soltarse. No corre si
      la base lo rechazo por datos: ahi el trabajo sigue en pantalla y
      borrar el respaldo seria perderlo. */
-  var asegurado = function(){ if (typeof alAsegurar === 'function') alAsegurar(); };
+  var asegurado = function(enLinea, body){
+    if (typeof alAsegurar === 'function') alAsegurar(!!enLinea, body || null);
+  };
   mostrarGuardando(boton, true);
   sb.rpc(rpc, { p: payload })
     .then(function(r){
@@ -1016,7 +1021,7 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta, alAsegurar
         /* Sin red, o la sesion caduco. En ambos casos el trabajo del
            tecnico no se pierde: queda en el dispositivo. */
         encolarPendiente(rpc, payload, etiqueta);
-        asegurado();
+        asegurado(false);
         alert('No se pudo enviar ahora. El registro (' + etiqueta + ') quedo guardado en este '
             + 'dispositivo y se sincronizara solo cuando vuelva la conexion.');
         ir('home');
@@ -1031,7 +1036,7 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta, alAsegurar
         alert('Error al guardar: ' + (body.error || 'desconocido'));
         return;
       }
-      asegurado();
+      asegurado(true, body);
       var extra = '';
       if (body.duplicado) extra = '\n\nEste registro ya estaba guardado; no se duplico.';
       else if (body.guardados != null) {
@@ -1044,7 +1049,7 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta, alAsegurar
     })
     .catch(function(){
       encolarPendiente(rpc, payload, etiqueta);
-      asegurado();
+      asegurado(false);
       mostrarGuardando(boton, false);
       alert('Sin conexion. El registro (' + etiqueta + ') quedo guardado en este dispositivo.');
       ir('home');
@@ -2089,10 +2094,72 @@ function guardarMedicion(estado){
       ? 'Borrador guardado. Puedes continuarlo despues desde la pantalla de medicion.'
       : 'Medicion confirmada.',
     'Medicion ' + medPozoActual,
-    function(){
+    function(enLinea){
       medLocalBorrar(pozoRespaldo);
       medLocalPintarLista();
+      /* Solo tiene sentido si el registro llego a la base. Si quedo en
+         la cola, las features las genera dpProcesarPendientesCondicion
+         al sincronizar. */
+      if (enLinea && estado === 'CONFIRMADA') dpGenerarCondicion(payload.id, pozoRespaldo);
     });
+}
+
+/* ============================================================
+   MONITOREO DE CONDICION
+   ============================================================
+   Al confirmar una medicion se traduce a indicadores y se evalua. Lo
+   importante para el tecnico no es que el proceso corrio, sino si su
+   ronda alcanzo para evaluar la unidad: eso solo puede arreglarlo
+   mientras sigue en el pozo. Por eso el aviso llega ahora y no en un
+   reporte al dia siguiente.                                        */
+
+function dpGenerarCondicion(medicionId, pozo){
+  if (!sb || !navigator.onLine) return;
+  sb.rpc('dp_features_desde_medicion', { p_medicion_id: medicionId })
+    .then(function(r){
+      if (r.error) return;                       /* silencioso: el dato ya esta guardado */
+      var j = r.data || {};
+      if (!j.ok){
+        /* Que ese dia ya tenga telemetria no es un error que valga la
+           pena mostrarle a nadie en campo. */
+        if (j.omitida) return;
+        return;
+      }
+      var cob = Number(j.cobertura_pct || 0);
+      var linea = 'Monitoreo de condicion: ' + j.indicadores_logrados + ' de '
+                + j.indicadores_esperados + ' indicadores (' + cob.toFixed(0) + '%).';
+
+      var cargas = j.cargas_pct || {};
+      if (cargas.motor != null) linea += '\nCarga del motor: ' + cargas.motor + '%.';
+
+      if (j.suficiente){
+        linea += '\n\nLa unidad queda evaluada.';
+      } else {
+        linea += '\n\nNo alcanza el minimo para evaluar. Si todavia estas en el pozo, '
+               + 'completa lo que falte y vuelve a guardar; despues hay 48 horas de plazo '
+               + 'desde "Confirmadas de las ultimas 48 horas".';
+      }
+      var notas = j.notas || [];
+      if (notas.length) linea += '\n\n' + notas.join('\n');
+      alert(linea);
+    })
+    .catch(function(){});
+}
+
+/* Las mediciones que se guardaron sin señal entran por la cola y solo
+   llaman a dp_guardar_medicion, asi que no generan indicadores. Este
+   barrido las recoge despues de sincronizar. */
+function dpProcesarPendientesCondicion(){
+  if (!sb || !navigator.onLine) return;
+  sb.rpc('dp_features_pendientes', { p_limite: 25 })
+    .then(function(r){
+      if (r.error || !r.data || !r.data.ok) return;
+      if (r.data.procesadas > 0) console.log('Condicion: ' + r.data.procesadas
+        + ' mediciones procesadas, ' + r.data.pendientes + ' pendientes.');
+      /* Si quedan mas, se sigue en la proxima pasada en vez de encadenar
+         llamadas: el barrido corre en segundo plano y no hay prisa. */
+    })
+    .catch(function(){});
 }
 
 /* ============================================================
