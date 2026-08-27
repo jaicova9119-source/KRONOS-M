@@ -775,7 +775,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM y UBH
-      &middot; <span id="dp-build">v18</span>
+      &middot; <span id="dp-build">v19</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -2601,6 +2601,8 @@ var MEDCAB_COLUMNA = {
   'med-lsc':       'lsc',
   'med-modo':      'control_mode',
   'med-condicion': 'condicion'
+  /* med-fecha y med-hora no van aqui: no son una columna cada uno,
+     los dos arman medido_en. Se tratan aparte en guardarCompletado. */
 };
 var MEDCAB_EDITABLES = Object.keys(MEDCAB_COLUMNA);
 var MEDCAB_ETIQUETA = {
@@ -2707,29 +2709,24 @@ function dpAbrirCompletar(id){
       poner('med-hsc',       m.hsc);
       poner('med-lsc',       m.lsc);
 
-      /* La cabecera SI se puede completar y corregir. Los cuatro campos
-         de frecuencia estuvieron mucho tiempo sin dibujarse, asi que hay
-         mediciones viejas con esas columnas vacias: bloquearlas impedia
-         completar justo lo que falta.
-
-         Fecha y hora quedan fuera. Mover medido_en desplaza la medicion
-         en el tiempo y corre la ventana de 48 h; eso es una anulacion. */
+      /* Toda la cabecera se puede corregir, incluidas la fecha y la
+         hora. Estaban bloqueadas con el argumento de que mover
+         medido_en desplaza la medicion en el tiempo, y eso suponia que
+         la fecha guardada era correcta. No lo era: hasta la v18 la app
+         enviaba la hora sin zona y mezclaba fecha UTC con hora local,
+         asi que hay rondas guardadas con cinco horas de corrimiento y
+         algunas con la fecha del dia siguiente. Bloquear la correccion
+         de un error del software protege el error, no el dato. */
       MED_ORIG_CAB = {};
-      ['med-fecha','med-hora'].forEach(function(idc){
-        var e = document.getElementById(idc);
-        if (e){
-          e.disabled = true;
-          e.style.background = 'var(--bg)';
-          e.style.color = 'var(--ink-soft)';
-          e.title = 'La fecha de la medicion no se cambia. Si esta mal, pide una anulacion.';
-        }
-      });
       /* Marca de "ya guardado" con un borde, no con fondo. El fondo
          gris verdoso que se usaba antes (#F2F6F2) es casi identico al
          gris de los campos deshabilitados (#F7F8F9): el tecnico veia
          gris, daba por hecho que no se podia tocar y ni lo intentaba.
          Un borde de color dice "tiene dato" sin decir "bloqueado". */
       MED_ORIG_CAB = MED_ORIG_CAB || {};
+      MED_ORIG_CAB['med-fecha'] = String(document.getElementById('med-fecha').value || '');
+      MED_ORIG_CAB['med-hora']  = String(document.getElementById('med-hora').value || '');
+
       MEDCAB_EDITABLES.forEach(function(idc){
         var e = document.getElementById(idc);
         if (!e) return;
@@ -2765,8 +2762,8 @@ function dpAbrirCompletar(id){
       av.innerHTML = '<b>Completando una medicion confirmada</b><br>'
         + '<span style="color:var(--ink-soft);">' + conValor + ' puntos ya guardados '
         + '(barra verde a la izquierda) y ' + vacios + ' sin llenar. '
-        + '<b>Todos se pueden editar</b>, tambien las frecuencias, el control mode y la '
-        + 'condicion; solo la fecha y la hora quedan fijas. Solo se envia lo que cambies. '
+        + '<b>Todos se pueden editar</b>, incluidas la fecha, la hora, las frecuencias, '
+        + 'el control mode y la condicion. Solo se envia lo que cambies. '
         + 'Quedan ' + Math.max(0, Math.round((48 - j.horas_transcurridas) * 10) / 10)
         + ' h de plazo. Cada cambio se registra con su valor anterior.</span>';
       var caja = document.getElementById('form-medicion');
@@ -2800,6 +2797,17 @@ function guardarCompletado(){
 
   /* Cabecera: mismo criterio que los puntos, solo lo que cambio. */
   var cabecera = {};
+
+  /* Fecha y hora arman un solo campo. Se envia con la zona del
+     dispositivo: sin ella la base la leeria como UTC y volveria a
+     correrse cinco horas, que es el error que se esta corrigiendo. */
+  var fNueva = String(document.getElementById('med-fecha').value || '').trim();
+  var hNueva = String(document.getElementById('med-hora').value || '').trim();
+  if (fNueva && (fNueva !== MED_ORIG_CAB['med-fecha'] || hNueva !== MED_ORIG_CAB['med-hora'])){
+    cabecera.medido_en = dpInstante(fNueva, hNueva);
+    cambiados.push('Fecha y hora: ' + MED_ORIG_CAB['med-fecha'] + ' '
+      + (MED_ORIG_CAB['med-hora'] || '') + ' \u2192 ' + fNueva + ' ' + hNueva);
+  }
   MEDCAB_EDITABLES.forEach(function(idc){
     var e = document.getElementById(idc);
     if (!e) return;
@@ -2816,6 +2824,15 @@ function guardarCompletado(){
     alert('No hay nada nuevo ni distinto. Si querias agregar el SUT, las frecuencias '
         + 'u otra etapa, llena esos campos antes de guardar.');
     return;
+  }
+
+  if (cabecera.medido_en){
+    if (!confirm('Vas a mover la fecha y hora de esta medicion.\n\n'
+      + 'Ten en cuenta dos cosas:\n'
+      + '\u2022 El plazo de 48 horas se cuenta desde la fecha nueva. Si la mueves '
+      + 'muy atras, la medicion queda fuera de plazo y ya no se podra editar.\n'
+      + '\u2022 Si cambia de dia, los indicadores de Monitoreo de Condicion se '
+      + 'recalculan en la fecha nueva.\n\nContinuar?')) return;
   }
 
   if (cambiados.length){
