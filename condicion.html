@@ -70,7 +70,9 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-pill.crit{background:var(--kp-crit-bg);color:#8f2a1f}
 .kp-pill.none{background:var(--kp-null-bg);color:#5f5f66;border:1px solid var(--kp-line)}
 
-.kp-card{background:#fff;border:1px solid var(--kp-line);border-radius:8px;padding:16px;margin-bottom:18px}
+.kp-card{background:#fff;border:1px solid var(--kp-line);border-radius:8px;
+  padding:16px;margin-bottom:14px}
+.kp-card:last-child{margin-bottom:0}
 .kp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
 .kp-kpi{background:#fff;border:1px solid var(--kp-line);border-left:4px solid var(--kp-ok);
   border-radius:8px;padding:12px 14px}
@@ -147,26 +149,37 @@ body{background:var(--kp-page);color:var(--kp-ink);
 /* Filas por etapa. Rejilla de cuatro columnas en pantalla ancha; en
    movil el nombre y el valor van arriba y la linea abajo, en lugar de
    comprimir cuatro columnas hasta que no se lea ninguna. */
+/* Dos bloques lado a lado en pantalla ancha, apilados en angosta.
+   Es donde se aprovecha el ancho de un monitor sin estirar el texto. */
+.kp-dos{display:grid;grid-template-columns:1fr;gap:20px}
+@media(min-width:1000px){
+  .kp-dos{grid-template-columns:1fr 1fr;gap:26px}
+}
+.kp-sub{font-size:11px;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--kp-ink3);margin-bottom:2px;display:flex;justify-content:space-between;
+  align-items:baseline;gap:8px}
+.kp-sub span{text-transform:none;letter-spacing:0;font-size:11.5px}
+
 .kp-etapas{display:flex;flex-direction:column}
-.kp-etapa{display:grid;grid-template-columns:1fr auto auto 116px;
-  gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--kp-line)}
+.kp-etapa{display:grid;grid-template-columns:104px 78px 74px minmax(90px,1fr);
+  gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--kp-line)}
 .kp-etapa:first-child{border-top:none}
 .kp-etapa.warn{border-left:3px solid var(--kp-warn);padding-left:10px}
 .kp-etapa.crit{border-left:3px solid var(--kp-crit);padding-left:10px}
 .kp-etapa .nb{font-size:13.5px;font-weight:600}
 .kp-etapa .vl{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;
-  white-space:nowrap}
+  white-space:nowrap;text-align:right}
 .kp-etapa .vl small{font-size:11px;font-weight:400;color:var(--kp-ink2);margin-left:2px}
-.kp-etapa .dl{font-size:12px;white-space:nowrap;min-width:74px;text-align:right}
+.kp-etapa .dl{font-size:12px;white-space:nowrap;text-align:right}
 .kp-etapa .dl .sube{color:var(--kp-crit)}
 .kp-etapa .dl .baja{color:var(--kp-ok)}
 .kp-etapa .dl .ig{color:var(--kp-ink3)}
-.kp-etapa .sp{line-height:0;text-align:right}
-.kp-etapa .sp svg{max-width:100%;height:auto}
+.kp-etapa .sp{line-height:0}
+.kp-etapa .sp svg{width:100%;height:34px;display:block}
 
 @media(max-width:560px){
   .kp-etapa{grid-template-columns:1fr auto;grid-template-areas:"nb vl" "sp dl";
-    row-gap:4px}
+    row-gap:2px;gap:10px}
   .kp-etapa .nb{grid-area:nb}
   .kp-etapa .vl{grid-area:vl;text-align:right}
   .kp-etapa .sp{grid-area:sp;text-align:left}
@@ -1177,15 +1190,41 @@ function kpRenderTendencia(tend, bal){
       +  kpFilasEtapa(sI, 'A') + '</div>';
   }
 
+  /* Corriente y tension van en la misma tarjeta, en dos columnas.
+     Se leen juntas porque un desbalance de corriente alto con la
+     tension equilibrada apunta al motor o al cable, y si las dos estan
+     desbalanceadas el origen esta aguas arriba. Separarlas en dos
+     tarjetas obliga a bajar y subir para hacer esa comparacion. */
   const sD = serie('i_desbal_pct');
-  if (sD.length){
+  const sV = serie('v_desbal_pct');
+  if (sD.length || sV.length){
     h += '<div class="kp-card"><div style="font-weight:600;margin-bottom:2px">'
-      +  'Desbalance de corriente por etapa</div>'
-      +  '<p class="hint" style="margin:0 0 10px">M&aacute;xima desviaci&oacute;n respecto al '
-      +  'promedio. En corriente se revisa desde 5 % y se act&uacute;a sobre 10 %: un '
-      +  'desbalance de tensi&oacute;n peque&ntilde;o produce uno de corriente varias veces '
-      +  'mayor, as&iacute; que no lleva el mismo umbral que la tensi&oacute;n.</p>'
-      +  kpFilasEtapa(sD, '%', {warn:5, crit:10}) + '</div>';
+      +  'Desbalance por etapa</div>'
+      +  '<p class="hint" style="margin:0 0 12px">M&aacute;xima desviaci&oacute;n respecto al '
+      +  'promedio, criterio NEMA. Los umbrales no son los mismos: un desbalance de '
+      +  'tensi&oacute;n peque&ntilde;o produce uno de corriente varias veces mayor. '
+      +  'Si la corriente est&aacute; desbalanceada y la tensi&oacute;n no, el origen suele '
+      +  'estar en el motor o el cable; si las dos lo est&aacute;n, viene de aguas arriba.</p>'
+      +  '<div class="kp-dos">';
+    if (sD.length){
+      h += '<div><div class="kp-sub">Corriente <span>revisar sobre 5 %</span></div>'
+        +  kpFilasEtapa(sD, '%', {warn:5, crit:10}) + '</div>';
+    }
+    if (sV.length){
+      h += '<div><div class="kp-sub">Tensi&oacute;n <span>revisar sobre 1 %</span></div>'
+        +  kpFilasEtapa(sV, '%', {warn:1, crit:2})
+        /* El criterio NEMA vale para una senoidal. A la salida del
+           variador la onda es PWM y la lectura depende del instrumento,
+           igual que pasa con el THD: sirve para ver si cambia entre
+           rondas, no para juzgarla contra la norma. */
+        + (sV.some(x => x.nombre === 'VFD OUT')
+            ? '<p class="hint" style="margin:8px 0 0;font-size:11.5px">En VFD OUT la onda es '
+              + 'PWM y la lectura depende del instrumento: mira si cambia entre rondas, no el '
+              + 'valor contra la norma.</p>'
+            : '')
+        +  '</div>';
+    }
+    h += '</div></div>';
   }
 
   /* 4. Calidad de energia: entrada contra salida */
@@ -1310,7 +1349,11 @@ function kpFilasEtapa(series, unidad, um){
 /* Linea minima, sin ejes ni etiquetas: aqui la forma es el dato y el
    numero exacto ya esta en la columna de al lado. */
 function kpSpark(ys, um){
-  const W = 116, H = 30, m = 3;
+  /* viewBox ancho y width al 100 %: la linea se estira con la columna
+     en vez de dejar un hueco a su izquierda. En pantalla ancha eso
+     convierte el espacio sobrante en mas resolucion horizontal, que es
+     justo donde se lee la forma de la serie. */
+  const W = 260, H = 34, m = 4;
   const val = ys.filter(y => y != null && isFinite(y));
   if (val.length < 2) return '<span class="ig">\u2014</span>';
   let lo = Math.min(...val), hi = Math.max(...val);
@@ -1318,17 +1361,22 @@ function kpSpark(ys, um){
   const px = i => m + i * (W - m*2) / (ys.length - 1);
   const py = y => m + (H - m*2) * (1 - (y - lo) / (hi - lo));
 
-  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H
-        + '" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">';
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" '
+        + 'aria-hidden="true" xmlns="http://www.w3.org/2000/svg">';
   const col = (um && um.crit != null && ys[ys.length-1] >= um.crit) ? KP_HEX.crit
             : (um && um.warn != null && ys[ys.length-1] >= um.warn) ? KP_HEX.warn
             : '#12a5b8';
   s += '<polyline points="' + ys.map((y,i) => px(i) + ',' + py(y)).join(' ')
     +  '" fill="none" stroke="' + col + '" stroke-width="1.8" '
+    +  'vector-effect="non-scaling-stroke" '
     +  'stroke-linejoin="round" stroke-linecap="round"/>';
   /* Solo el ultimo punto lleva marca: es el que se esta leyendo. */
-  s += '<circle cx="' + px(ys.length-1) + '" cy="' + py(ys[ys.length-1])
-    +  '" r="2.8" fill="' + col + '"/>';
+  /* El circulo se deforma con preserveAspectRatio none, asi que se
+     dibuja como una barra vertical fina en el ultimo punto. */
+  s += '<line x1="' + px(ys.length-1) + '" y1="' + (py(ys[ys.length-1]) - 4)
+    +  '" x2="' + px(ys.length-1) + '" y2="' + (py(ys[ys.length-1]) + 4)
+    +  '" stroke="' + col + '" stroke-width="3" vector-effect="non-scaling-stroke" '
+    +  'stroke-linecap="round"/>';
   return s + '</svg>';
 }
 
@@ -1338,7 +1386,10 @@ function kpGrafico(pts, unidad, op){
 
 function kpGraficoMulti(series, unidad, op){
   op = op || {};
-  const W = 640, H = 200, ml = 46, mr = 12, mt = 14, mb = 34;
+  /* Alto reducido de 200 a 150. Con dos series separadas -- 11 % en la
+     entrada y 5 % en la salida -- el hueco entre ellas es inevitable,
+     pero no hace falta darle 200 px de alto para verlo. */
+  const W = 640, H = 150, ml = 44, mr = 12, mt = 12, mb = 28;
   const todas = series.flatMap(s => s.pts).filter(p => p.y != null && isFinite(p.y));
   if (todas.length < 2) return '<p class="hint">Hace falta m&aacute;s de una ronda.</p>';
 
@@ -1349,8 +1400,8 @@ function kpGraficoMulti(series, unidad, op){
   /* Un margen del 12 % evita que la linea toque el borde y que un
      tramo plano parezca pegado al eje. */
   const rango = (yMax - yMin) || Math.abs(yMax) || 1;
-  yMin = Math.max(0, yMin - rango * 0.12);
-  yMax = yMax + rango * 0.12;
+  yMin = Math.max(0, yMin - rango * 0.08);
+  yMax = yMax + rango * 0.08;
 
   const px = i => ml + (xs.length === 1 ? (W-ml-mr)/2
                         : i * (W - ml - mr) / (xs.length - 1));
@@ -1374,9 +1425,9 @@ function kpGraficoMulti(series, unidad, op){
 
   /* Rejilla horizontal con cuatro marcas: mas lineas ensucian y no
      ayudan a leer. */
-  for (let i = 0; i <= 3; i++){
-    const y = mt + (H - mt - mb) * i / 3;
-    const v = yMax - (yMax - yMin) * i / 3;
+  for (let i = 0; i <= 2; i++){
+    const y = mt + (H - mt - mb) * i / 2;
+    const v = yMax - (yMax - yMin) * i / 2;
     s += '<line x1="' + ml + '" y1="' + y + '" x2="' + (W-mr) + '" y2="' + y
       +  '" stroke="#e3e3e6" stroke-width="1"/>'
       +  '<text x="' + (ml-6) + '" y="' + (y+4) + '" text-anchor="end" font-size="11" '
