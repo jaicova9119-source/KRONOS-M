@@ -143,6 +143,36 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-nav a:active{background:#eef3f5}
 
 .kp-chip{white-space:nowrap}
+
+/* Filas por etapa. Rejilla de cuatro columnas en pantalla ancha; en
+   movil el nombre y el valor van arriba y la linea abajo, en lugar de
+   comprimir cuatro columnas hasta que no se lea ninguna. */
+.kp-etapas{display:flex;flex-direction:column}
+.kp-etapa{display:grid;grid-template-columns:1fr auto auto 116px;
+  gap:12px;align-items:center;padding:11px 0;border-top:1px solid var(--kp-line)}
+.kp-etapa:first-child{border-top:none}
+.kp-etapa.warn{border-left:3px solid var(--kp-warn);padding-left:10px}
+.kp-etapa.crit{border-left:3px solid var(--kp-crit);padding-left:10px}
+.kp-etapa .nb{font-size:13.5px;font-weight:600}
+.kp-etapa .vl{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums;
+  white-space:nowrap}
+.kp-etapa .vl small{font-size:11px;font-weight:400;color:var(--kp-ink2);margin-left:2px}
+.kp-etapa .dl{font-size:12px;white-space:nowrap;min-width:74px;text-align:right}
+.kp-etapa .dl .sube{color:var(--kp-crit)}
+.kp-etapa .dl .baja{color:var(--kp-ok)}
+.kp-etapa .dl .ig{color:var(--kp-ink3)}
+.kp-etapa .sp{line-height:0;text-align:right}
+.kp-etapa .sp svg{max-width:100%;height:auto}
+
+@media(max-width:560px){
+  .kp-etapa{grid-template-columns:1fr auto;grid-template-areas:"nb vl" "sp dl";
+    row-gap:4px}
+  .kp-etapa .nb{grid-area:nb}
+  .kp-etapa .vl{grid-area:vl;text-align:right}
+  .kp-etapa .sp{grid-area:sp;text-align:left}
+  .kp-etapa .dl{grid-area:dl}
+}
+
 .kp-bar2{border-top:none;padding-top:0}
 .kp-grupo{display:flex;gap:6px;flex-wrap:wrap}
 .kp-sel{cursor:pointer;max-width:190px;-webkit-appearance:none;appearance:none;
@@ -461,10 +491,27 @@ function kpEstadoCarga(pct){
   if (pct >= 95) return 'warn';
   return 'ok';
 }
+/* Desbalance de TENSION. NEMA MG-1 marca el derateo del motor desde
+   1 % y desaconseja operar por encima de 5 %. */
 function kpEstadoDesbal(pct){
   if (pct == null) return 'none';
   if (pct > 2)   return 'crit';
   if (pct > 1)   return 'warn';
+  return 'ok';
+}
+
+/* Desbalance de CORRIENTE. No lleva el mismo umbral que la tension:
+   un desbalance de tension pequeno produce uno de corriente entre seis
+   y diez veces mayor, asi que juzgar la corriente contra el 2 % de la
+   tension pinta en rojo una flota que esta bien. La practica en ESP es
+   revisar desde 5 % y actuar sobre 10 %.
+
+   Con el criterio anterior, las cinco etapas de CYC-54 salian en
+   critico con valores de 4 a 6 %, que son normales. */
+function kpEstadoDesbalI(pct){
+  if (pct == null) return 'none';
+  if (pct > 10)  return 'crit';
+  if (pct > 5)   return 'warn';
   return 'ok';
 }
 
@@ -1027,7 +1074,7 @@ function kpRenderResumen(med){
 
   if (iSal && iSal.desbal_i != null)
     tarjeta('Desbalance de corriente', kpPct(iSal.desbal_i), '%',
-      'Al motor \u00b7 criterio NEMA', kpEstadoDesbal(iSal.desbal_i));
+      'Al motor \u00b7 revisar sobre 5 %', kpEstadoDesbalI(iSal.desbal_i));
   else
     tarjeta('Desbalance de corriente', '\u2014', '', 'Sin corriente al motor', 'none');
 
@@ -1103,33 +1150,42 @@ function kpRenderTendencia(tend, bal){
       +  '</div></div>';
   }
 
-  /* 2. Carga por nodo a lo largo del tiempo */
-  const series = [];
-  Object.keys(porNodo).forEach(nodo => {
-    const pts = porNodo[nodo].filter(p => p.i_prom != null)
-                             .map(p => ({x: p.medicion_id, y: Number(p.i_prom)}));
-    if (pts.length > 1) series.push({nombre: porNodo[nodo][0].etiqueta_corta || nodo, pts});
-  });
-  if (series.length){
+  /* 2 y 3. Corriente y desbalance por etapa.
+     Antes iban como graficos de cinco lineas superpuestas. Con cinco
+     etapas en un rango parecido, las lineas se cruzan y no se lee ni
+     el valor de una ni la diferencia entre dos: ocupa media pantalla
+     y no responde ni "esta mal" ni "se esta moviendo".
+     Una fila por etapa si responde las dos: el numero de ahora, cuanto
+     cambio desde la ronda anterior, y una linea propia para la forma. */
+  const serie = (campo) => {
+    const out = [];
+    Object.keys(porNodo).forEach(nodo => {
+      const pts = porNodo[nodo].filter(p => p[campo] != null)
+        .map(p => ({x: p.medicion_id, y: Number(p[campo])}));
+      if (pts.length) out.push({nombre: porNodo[nodo][0].etiqueta_corta || nodo,
+                                orden: porNodo[nodo][0].orden || 999, pts});
+    });
+    return out.sort((a2,b2) => a2.orden - b2.orden);
+  };
+
+  const sI = serie('i_prom');
+  if (sI.length){
     h += '<div class="kp-card"><div style="font-weight:600;margin-bottom:2px">'
       +  'Corriente por etapa</div>'
-      +  '<p class="hint" style="margin:0 0 10px">Amperios medidos en cada punto de la cadena.</p>'
-      +  kpGraficoMulti(series, 'A', {fmtX: k => kpFechaCorta(fechaDe(k))}) + '</div>';
+      +  '<p class="hint" style="margin:0 0 10px">Amperios medidos en cada punto de la cadena, '
+      +  'en orden de flujo de energ&iacute;a.</p>'
+      +  kpFilasEtapa(sI, 'A') + '</div>';
   }
 
-  /* 3. Desbalances */
-  const sDes = [];
-  Object.keys(porNodo).forEach(nodo => {
-    const pts = porNodo[nodo].filter(p => p.i_desbal_pct != null)
-                             .map(p => ({x: p.medicion_id, y: Number(p.i_desbal_pct)}));
-    if (pts.length > 1) sDes.push({nombre: porNodo[nodo][0].etiqueta_corta || nodo, pts});
-  });
-  if (sDes.length){
+  const sD = serie('i_desbal_pct');
+  if (sD.length){
     h += '<div class="kp-card"><div style="font-weight:600;margin-bottom:2px">'
       +  'Desbalance de corriente por etapa</div>'
-      +  '<p class="hint" style="margin:0 0 10px">Criterio NEMA: m&aacute;xima desviaci&oacute;n '
-      +  'respecto al promedio. Sobre 2 % conviene revisar.</p>'
-      +  kpGraficoMulti(sDes, '%', {umbral_warn:1, umbral_crit:2, fmtX: kpFechaCorta}) + '</div>';
+      +  '<p class="hint" style="margin:0 0 10px">M&aacute;xima desviaci&oacute;n respecto al '
+      +  'promedio. En corriente se revisa desde 5 % y se act&uacute;a sobre 10 %: un '
+      +  'desbalance de tensi&oacute;n peque&ntilde;o produce uno de corriente varias veces '
+      +  'mayor, as&iacute; que no lleva el mismo umbral que la tensi&oacute;n.</p>'
+      +  kpFilasEtapa(sD, '%', {warn:5, crit:10}) + '</div>';
   }
 
   /* 4. Calidad de energia: entrada contra salida */
@@ -1148,6 +1204,8 @@ function kpRenderTendencia(tend, bal){
       +  'En la salida del variador la distorsi&oacute;n es propia de la onda PWM y '
       +  'no constituye falla: sirve para ver si cambia, no para juzgarla contra una norma.</p>'
       +  kpGraficoMulti(cal, '%', {fmtX: k => kpFechaCorta(fechaDe(k))}) + '</div>';
+    /* Este si va como grafico: son dos series y el punto es compararlas
+       entre si, no leer cada una por separado. */
   }
 
   /* 5. Tabla de rondas, una fila por medicion */
@@ -1200,6 +1258,79 @@ function kpRenderTendencia(tend, bal){
    asi que se ve igual en un telefono que en un monitor sin recalcular
    nada al rotar la pantalla.                                      */
 const KP_SERIE = ['#12a5b8','#c77700','#7b5ea7','#2ea44f','#c0392b','#2f6fb0','#8a6d3b'];
+
+/* ============================================================
+   FILAS POR ETAPA
+   ============================================================
+   Una fila por nodo: valor actual, cuanto cambio desde la ronda
+   anterior, y una linea pequena con la forma de la serie. Responde de
+   un vistazo lo unico que se le pregunta a esta seccion -- si el valor
+   esta fuera de rango y si se esta moviendo -- sin obligar a
+   distinguir cinco colores cruzados.                               */
+function kpFilasEtapa(series, unidad, um){
+  um = um || {};
+  const estado = v => {
+    if (v == null || um.warn == null) return null;
+    if (um.crit != null && v >= um.crit) return 'crit';
+    if (v >= um.warn) return 'warn';
+    return 'ok';
+  };
+
+  let h = '<div class="kp-etapas">';
+  series.forEach(se => {
+    const ys = se.pts.map(p => p.y);
+    const ult = ys[ys.length - 1];
+    const ant = ys.length > 1 ? ys[ys.length - 2] : null;
+    const est = estado(ult);
+
+    /* La variacion se mide contra la ronda anterior, no contra la
+       primera: lo que interesa es si algo cambio desde la ultima vez
+       que se estuvo en el pozo. */
+    let delta = '';
+    if (ant != null){
+      const d = ult - ant;
+      const rel = Math.abs(ant) > 0 ? Math.abs(d / ant) : 0;
+      if (rel < 0.03) delta = '<span class="ig">sin cambio</span>';
+      else delta = '<span class="' + (d > 0 ? 'sube' : 'baja') + '">'
+                 + (d > 0 ? '\u2191' : '\u2193') + ' ' + kpNum(Math.abs(d)) + '</span>';
+    } else {
+      delta = '<span class="ig">1.\u00aa ronda</span>';
+    }
+
+    h += '<div class="kp-etapa' + (est ? ' ' + est : '') + '">'
+      +  '<div class="nb">' + kpEsc(se.nombre) + '</div>'
+      +  '<div class="vl">' + kpNum(ult) + '<small>' + unidad + '</small></div>'
+      +  '<div class="dl">' + delta + '</div>'
+      +  '<div class="sp">' + kpSpark(ys, um) + '</div>'
+      +  '</div>';
+  });
+  return h + '</div>';
+}
+
+/* Linea minima, sin ejes ni etiquetas: aqui la forma es el dato y el
+   numero exacto ya esta en la columna de al lado. */
+function kpSpark(ys, um){
+  const W = 116, H = 30, m = 3;
+  const val = ys.filter(y => y != null && isFinite(y));
+  if (val.length < 2) return '<span class="ig">\u2014</span>';
+  let lo = Math.min(...val), hi = Math.max(...val);
+  if (hi === lo){ hi = lo + 1; lo = lo - 1; }   /* serie plana: linea al centro */
+  const px = i => m + i * (W - m*2) / (ys.length - 1);
+  const py = y => m + (H - m*2) * (1 - (y - lo) / (hi - lo));
+
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H
+        + '" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">';
+  const col = (um && um.crit != null && ys[ys.length-1] >= um.crit) ? KP_HEX.crit
+            : (um && um.warn != null && ys[ys.length-1] >= um.warn) ? KP_HEX.warn
+            : '#12a5b8';
+  s += '<polyline points="' + ys.map((y,i) => px(i) + ',' + py(y)).join(' ')
+    +  '" fill="none" stroke="' + col + '" stroke-width="1.8" '
+    +  'stroke-linejoin="round" stroke-linecap="round"/>';
+  /* Solo el ultimo punto lleva marca: es el que se esta leyendo. */
+  s += '<circle cx="' + px(ys.length-1) + '" cy="' + py(ys[ys.length-1])
+    +  '" r="2.8" fill="' + col + '"/>';
+  return s + '</svg>';
+}
 
 function kpGrafico(pts, unidad, op){
   return kpGraficoMulti([{nombre:'', pts:pts}], unidad, op);
