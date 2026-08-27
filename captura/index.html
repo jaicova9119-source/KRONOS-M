@@ -775,7 +775,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM y UBH
-      &middot; <span id="dp-build">v17</span>
+      &middot; <span id="dp-build">v18</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -888,6 +888,46 @@ try {
 /* Identificador propio por registro. Es la clave de la
    idempotencia: si la cola reintenta un envio que en realidad si
    llego, la base lo reconoce por este id y no lo duplica. */
+/* ============================================================
+   FECHA Y HORA LOCALES
+   ============================================================
+   toISOString() devuelve la fecha en UTC. Mezclarla con
+   toTimeString(), que es local, hace que despues de las 7 de la tarde
+   en Putumayo la fecha salte al dia siguiente mientras la hora sigue
+   siendo la de hoy: a las 11:09 p.m. del 26 el formulario mostraba
+   27/08 y 11:09 p.m.
+
+   Y al enviar hay que decir en que huso esta esa hora. medido_en es
+   timestamptz: una cadena sin zona la interpreta el servidor como UTC,
+   asi que una ronda de las 07:53 de la manana quedaba guardada como
+   07:53 UTC, o sea 02:53 de la madrugada hora local. */
+function dpDosDig(n){ return (n < 10 ? '0' : '') + n; }
+
+function dpFechaLocal(d){
+  d = d || new Date();
+  return d.getFullYear() + '-' + dpDosDig(d.getMonth()+1) + '-' + dpDosDig(d.getDate());
+}
+
+function dpHoraLocal(d){
+  d = d || new Date();
+  return dpDosDig(d.getHours()) + ':' + dpDosDig(d.getMinutes());
+}
+
+/* Offset del dispositivo, en formato +HH:MM. Se toma del navegador y
+   no se fija en -05:00 para que siga siendo correcto si alguien
+   consulta desde otro huso. */
+function dpOffsetLocal(){
+  var m = -new Date().getTimezoneOffset();
+  var signo = m < 0 ? '-' : '+';
+  m = Math.abs(m);
+  return signo + dpDosDig(Math.floor(m / 60)) + ':' + dpDosDig(m % 60);
+}
+
+/* Arma el instante completo a partir de lo que el tecnico escribio. */
+function dpInstante(fecha, hora){
+  return fecha + 'T' + (hora || '00:00') + ':00' + dpOffsetLocal();
+}
+
 function dpNuevoId(){
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c){
@@ -1649,8 +1689,8 @@ function iniciarMedicion(){
     '<div class="field"><label>Realizado por</label><input id="med-realizo" value="' + tecnicoActual + '" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>' +
     '</div>' +
     '<div class="grid-fields">' +
-    '<div class="field"><label>Fecha</label><input type="date" id="med-fecha" value="' + ahora.toISOString().slice(0,10) + '"></div>' +
-    '<div class="field"><label>Hora</label><input type="time" id="med-hora" value="' + ahora.toTimeString().slice(0,5) + '"></div>' +
+    '<div class="field"><label>Fecha</label><input type="date" id="med-fecha" value="' + dpFechaLocal(ahora) + '"></div>' +
+    '<div class="field"><label>Hora</label><input type="time" id="med-hora" value="' + dpHoraLocal(ahora) + '"></div>' +
     '</div>' +
     /* Frecuencia y limites. Estos cuatro campos ya se enviaban en el
        payload y se rellenaban al abrir un borrador, pero NUNCA se
@@ -1899,8 +1939,9 @@ function setupPintarFormulario(j){
   }
 
   /* La fecha arranca en hoy: se esta registrando el ajuste de ahora,
-     no reeditando el anterior. */
-  var hoy = new Date().toISOString().slice(0,10);
+     no reeditando el anterior. Fecha local: con toISOString, despues
+     de las 7 de la tarde ya seria manana. */
+  var hoy = dpFechaLocal();
 
   SETUP_CABECERA.forEach(function(g){
     html += '<fieldset><legend>' + g.titulo + '</legend><div class="group-card"><div class="grid-fields g3">';
@@ -2086,7 +2127,7 @@ function guardarMedicion(estado){
     id: medBorradorId || medIdActual,
     estado: estado,
     pozo: medPozoActual,
-    medido_en: fecha + 'T' + hora + ':00',
+    medido_en: dpInstante(fecha, hora),
     realizado_por: document.getElementById('med-realizo').value,
     control_mode: document.getElementById('med-modo').value,
     condicion: document.getElementById('med-condicion').value,
@@ -2683,12 +2724,25 @@ function dpAbrirCompletar(id){
           e.title = 'La fecha de la medicion no se cambia. Si esta mal, pide una anulacion.';
         }
       });
+      /* Marca de "ya guardado" con un borde, no con fondo. El fondo
+         gris verdoso que se usaba antes (#F2F6F2) es casi identico al
+         gris de los campos deshabilitados (#F7F8F9): el tecnico veia
+         gris, daba por hecho que no se podia tocar y ni lo intentaba.
+         Un borde de color dice "tiene dato" sin decir "bloqueado". */
+      MED_ORIG_CAB = MED_ORIG_CAB || {};
       MEDCAB_EDITABLES.forEach(function(idc){
         var e = document.getElementById(idc);
         if (!e) return;
         var v = String(e.value || '').trim();
         MED_ORIG_CAB[idc] = v;
-        if (v !== ''){ e.style.background = '#F2F6F2'; e.title = 'Ya guardado'; }
+        if (v !== ''){
+          e.style.background  = '#fff';
+          e.style.borderLeft  = '3px solid #1B7F4B';
+          e.title = 'Ya guardado. Puedes corregirlo: el cambio queda registrado.';
+        } else {
+          e.style.borderLeft  = '3px solid #C9A227';
+          e.title = 'Sin registrar. Puedes completarlo.';
+        }
       });
 
       var conValor = 0;
@@ -2697,10 +2751,10 @@ function dpAbrirCompletar(id){
         if (!e) return;
         e.value = v[cod];
         MED_ORIGINAL[cod] = String(v[cod]);
-        /* Marca visual: lo que ya esta guardado se distingue de lo que
-           esta por llenar, que es justo lo que el tecnico viene a ver. */
-        e.style.background = '#F2F6F2';
-        e.title = 'Ya guardado el ' + String(m.medido_en).slice(0,16).replace('T',' ');
+        /* Borde en vez de fondo, por lo mismo: un fondo gris se lee
+           como campo bloqueado. */
+        e.style.borderLeft = '3px solid #1B7F4B';
+        e.title = 'Ya guardado. Puedes corregirlo: el cambio queda registrado.';
         conValor++;
       });
 
@@ -2709,9 +2763,10 @@ function dpAbrirCompletar(id){
       av.className = 'group-card';
       av.style.cssText = 'margin-bottom:14px;border-left:3px solid var(--navy);font-size:13px;';
       av.innerHTML = '<b>Completando una medicion confirmada</b><br>'
-        + '<span style="color:var(--ink-soft);">' + conValor + ' puntos ya guardados (fondo verde) y '
-        + vacios + ' sin llenar. Las frecuencias, el control mode y la condicion tambien se '
-        + 'pueden completar o corregir; la fecha y la hora no. Solo se envia lo que cambies. '
+        + '<span style="color:var(--ink-soft);">' + conValor + ' puntos ya guardados '
+        + '(barra verde a la izquierda) y ' + vacios + ' sin llenar. '
+        + '<b>Todos se pueden editar</b>, tambien las frecuencias, el control mode y la '
+        + 'condicion; solo la fecha y la hora quedan fijas. Solo se envia lo que cambies. '
         + 'Quedan ' + Math.max(0, Math.round((48 - j.horas_transcurridas) * 10) / 10)
         + ' h de plazo. Cada cambio se registra con su valor anterior.</span>';
       var caja = document.getElementById('form-medicion');
@@ -2819,8 +2874,8 @@ function abrirBitacora(){
   evtIdActual = dpNuevoId();
   var ahora = new Date();
   document.getElementById('evt-realizo').value = tecnicoActual;
-  document.getElementById('evt-fecha').value   = ahora.toISOString().slice(0,10);
-  document.getElementById('evt-hora').value    = ahora.toTimeString().slice(0,5);
+  document.getElementById('evt-fecha').value   = dpFechaLocal(ahora);
+  document.getElementById('evt-hora').value    = dpHoraLocal(ahora);
   document.getElementById('evt-pozo').value      = '';
   document.getElementById('evt-categoria').value = 'Mantenimiento';
   document.getElementById('evt-severidad').value = 'Informativo';
@@ -2833,7 +2888,7 @@ function abrirBitacora(){
 function abrirAislamiento(){
   aisIdActual = dpNuevoId();
   document.getElementById('ais-realizo').value = tecnicoActual;
-  document.getElementById('ais-fecha').value   = new Date().toISOString().slice(0,10);
+  document.getElementById('ais-fecha').value   = dpFechaLocal();
   document.getElementById('ais-pozo').value  = '';
   document.getElementById('ais-equipo').value = '';
   ['ais-aislamiento','ais-dar','ais-ip','ais-balance-ab','ais-balance-ac','ais-balance-bc']
@@ -2856,7 +2911,7 @@ function guardarBitacora(){
     id: evtIdActual,
     pozo: pozo,
     realizado_por: document.getElementById('evt-realizo').value,
-    ocurrido_en: fecha + 'T' + hora + ':00',
+    ocurrido_en: dpInstante(fecha, hora),
     categoria: document.getElementById('evt-categoria').value,
     severidad: document.getElementById('evt-severidad').value,
     observaciones: document.getElementById('evt-obs').value,
