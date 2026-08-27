@@ -160,6 +160,13 @@ body{background:var(--kp-page);color:var(--kp-ink);
   align-items:baseline;gap:8px}
 .kp-sub span{text-transform:none;letter-spacing:0;font-size:11.5px}
 
+.kp-list .kp-oculta{display:none}
+.kp-list.kp-abierta .kp-oculta{display:flex}
+.kp-mas{display:block;width:100%;border:none;border-top:1px solid var(--kp-line);
+  background:#fafafb;color:var(--kp-teal);font:600 12.5px inherit;
+  padding:11px;cursor:pointer;text-align:center}
+.kp-mas:hover{background:#f2f6f7}
+
 .kp-etapas{display:flex;flex-direction:column}
 .kp-etapa{display:grid;grid-template-columns:104px 78px 74px minmax(90px,1fr);
   gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--kp-line)}
@@ -467,6 +474,15 @@ function kpNum(v){
 /* Los porcentajes llevan siempre un decimal. Con kpNum, una carga de
    119.58 % se redondeaba a "120" en el resumen y salia "119.6" en la
    cadena: dos cifras distintas del mismo dato en la misma pantalla. */
+/* Etiqueta de eje: sin decimales de relleno. 10, no 10.00. */
+function kpEje(v){
+  const n = Number(v);
+  if (!isFinite(n)) return '';
+  return (Math.abs(n) >= 10 || n === Math.round(n))
+    ? String(Math.round(n * 100) / 100)
+    : n.toFixed(1);
+}
+
 function kpPct(v){
   if (v == null) return '\u2014';
   const n = Number(v);
@@ -1227,24 +1243,45 @@ function kpRenderTendencia(tend, bal){
     h += '</div></div>';
   }
 
-  /* 4. Calidad de energia: entrada contra salida */
+  /* 4. Calidad de energia: entrada contra salida.
+     Iba como grafico de dos series, pero la entrada ronda el 11 % y la
+     salida el 5 %: dos lineas planas separadas por un hueco que ocupaba
+     la mitad de la tarjeta sin decir nada. La diferencia de nivel se
+     lee mejor en los numeros, y la tendencia de cada una en su propia
+     linea. */
   const cal = [];
-  ['pst_in','vfdout'].forEach(n => {
+  const calDef = [['pst_in','Entrada (red)'], ['vfdout','Salida (al motor)']];
+  calDef.forEach(([n, etq], k) => {
     if (!porNodo[n]) return;
     const pts = porNodo[n].filter(p => p.thd_i_pct != null)
                           .map(p => ({x: p.medicion_id, y: Number(p.thd_i_pct)}));
-    if (pts.length > 1)
-      cal.push({nombre: (n === 'pst_in' ? 'Entrada (red)' : 'Salida (al motor)'), pts});
+    if (pts.length) cal.push({nombre: etq, orden: k, pts});
   });
-  if (cal.length){
+  const calV = [];
+  calDef.forEach(([n, etq], k) => {
+    if (!porNodo[n]) return;
+    const pts = porNodo[n].filter(p => p.thd_v_pct != null)
+                          .map(p => ({x: p.medicion_id, y: Number(p.thd_v_pct)}));
+    if (pts.length) calV.push({nombre: etq, orden: k, pts});
+  });
+
+  if (cal.length || calV.length){
     h += '<div class="kp-card"><div style="font-weight:600;margin-bottom:2px">'
-      +  'Distorsi&oacute;n de corriente</div>'
-      +  '<p class="hint" style="margin:0 0 10px">En la acometida se compara contra IEEE 519. '
-      +  'En la salida del variador la distorsi&oacute;n es propia de la onda PWM y '
-      +  'no constituye falla: sirve para ver si cambia, no para juzgarla contra una norma.</p>'
-      +  kpGraficoMulti(cal, '%', {fmtX: k => kpFechaCorta(fechaDe(k))}) + '</div>';
-    /* Este si va como grafico: son dos series y el punto es compararlas
-       entre si, no leer cada una por separado. */
+      +  'Distorsi&oacute;n arm&oacute;nica</div>'
+      +  '<p class="hint" style="margin:0 0 12px">En la acometida se compara contra IEEE 519, '
+      +  'que para sistemas de este nivel sugiere 8 % en tensi&oacute;n. En la salida del '
+      +  'variador la distorsi&oacute;n es propia de la onda PWM y no constituye falla: '
+      +  'sirve para ver si cambia entre rondas, no para juzgarla contra una norma.</p>'
+      +  '<div class="kp-dos">';
+    if (cal.length){
+      h += '<div><div class="kp-sub">Corriente <span>THD-I</span></div>'
+        +  kpFilasEtapa(cal, '%') + '</div>';
+    }
+    if (calV.length){
+      h += '<div><div class="kp-sub">Tensi&oacute;n <span>IEEE 519: 8 % en la red</span></div>'
+        +  kpFilasEtapa(calV, '%', {warn:5, crit:8, soloPrimero:true}) + '</div>';
+    }
+    h += '</div></div>';
   }
 
   /* 5. Tabla de rondas, una fila por medicion */
@@ -1255,13 +1292,23 @@ function kpRenderTendencia(tend, bal){
   });
   const repetidos = Object.keys(porDia).filter(f => porDia[f] > 1);
 
-  h += '<div class="kp-list"><div class="kp-grp">Rondas registradas</div>';
-  claves.slice().reverse().forEach(k => {
+  /* La lista crece con cada ronda: a doce rondas ya son doce filas
+     empujando hacia abajo lo que sigue. Se muestran las cuatro mas
+     recientes y el resto queda detras de un boton. Las recientes son
+     las que se consultan; el historico se abre cuando hace falta. */
+  const VISIBLES = 4;
+  const total = claves.length;
+  h += '<div class="kp-list"><div class="kp-grp">Rondas registradas'
+    +  (total > VISIBLES ? ' <span style="text-transform:none;letter-spacing:0">'
+        + '&middot; ' + total + ' en total</span>' : '')
+    +  '</div>';
+  claves.slice().reverse().forEach((k, idx) => {
     const dia = tend.filter(t => t.medicion_id === k);
     const m = dia.find(t => t.nodo === 'sutout') || dia[0];
     const p = dia.find(t => t.nodo === 'pst_in');
     const f = String(fechaDe(k)).slice(0,10);
-    h += '<div class="kp-rule' + (porDia[f] > 1 ? ' warn' : '') + '"><div>'
+    h += '<div class="kp-rule' + (porDia[f] > 1 ? ' warn' : '')
+      +  (idx >= VISIBLES ? ' kp-oculta' : '') + '"><div>'
       +  '<div><span class="nm">' + kpFechaCorta(fechaDe(k)) + '</span> '
       +  '<span class="id">' + dia.length + (dia.length === 1 ? ' etapa' : ' etapas') + '</span></div>'
       +  '<div class="dt">'
@@ -1272,6 +1319,10 @@ function kpRenderTendencia(tend, bal){
       +  '<div class="src">' + (m && m.condicion ? kpEsc(m.condicion) : '') + '</div>'
       +  '</div></div>';
   });
+  if (total > VISIBLES){
+    h += '<button class="kp-mas" onclick="kpMasRondas(this)">'
+      +  'Ver las ' + (total - VISIBLES) + ' rondas anteriores</button>';
+  }
   h += '</div>';
 
   /* Varias rondas con la misma marca de tiempo casi siempre son
@@ -1298,6 +1349,17 @@ function kpRenderTendencia(tend, bal){
    nada al rotar la pantalla.                                      */
 const KP_SERIE = ['#12a5b8','#c77700','#7b5ea7','#2ea44f','#c0392b','#2f6fb0','#8a6d3b'];
 
+/* Despliega el resto de la lista. Se alterna en lugar de solo abrir:
+   una vez consultado el historico, poder cerrarlo devuelve la pantalla
+   a su tamano util. */
+function kpMasRondas(boton){
+  const lista = boton.closest('.kp-list');
+  const abierto = lista.classList.toggle('kp-abierta');
+  const n = lista.querySelectorAll('.kp-oculta').length;
+  boton.textContent = abierto ? 'Ver menos'
+                              : 'Ver las ' + n + ' rondas anteriores';
+}
+
 /* ============================================================
    FILAS POR ETAPA
    ============================================================
@@ -1308,19 +1370,24 @@ const KP_SERIE = ['#12a5b8','#c77700','#7b5ea7','#2ea44f','#c0392b','#2f6fb0','#
    distinguir cinco colores cruzados.                               */
 function kpFilasEtapa(series, unidad, um){
   um = um || {};
-  const estado = v => {
+  const estado = (v, i) => {
     if (v == null || um.warn == null) return null;
+    /* soloPrimero: el umbral vale para la acometida y no para la salida
+       del variador, donde la onda PWM distorsiona por diseno. Pintar
+       en rojo la salida por superar un limite que no le aplica seria
+       una alarma falsa permanente. */
+    if (um.soloPrimero && i > 0) return null;
     if (um.crit != null && v >= um.crit) return 'crit';
     if (v >= um.warn) return 'warn';
     return 'ok';
   };
 
   let h = '<div class="kp-etapas">';
-  series.forEach(se => {
+  series.forEach((se, idx) => {
     const ys = se.pts.map(p => p.y);
     const ult = ys[ys.length - 1];
     const ant = ys.length > 1 ? ys[ys.length - 2] : null;
-    const est = estado(ult);
+    const est = estado(ult, idx);
 
     /* La variacion se mide contra la ronda anterior, no contra la
        primera: lo que interesa es si algo cambio desde la ultima vez
@@ -1384,6 +1451,20 @@ function kpGrafico(pts, unidad, op){
   return kpGraficoMulti([{nombre:'', pts:pts}], unidad, op);
 }
 
+/* Redondea el eje a pasos que una persona lee de un vistazo. Sin
+   esto las marcas salen del minimo y el maximo crudos -- 0.82, 13.70,
+   26.58 -- y hay que hacer cuentas para ubicar un valor. */
+function kpEscala(lo, hi, divisiones){
+  const rango = (hi - lo) || Math.abs(hi) || 1;
+  const bruto = rango / divisiones;
+  const mag   = Math.pow(10, Math.floor(Math.log10(bruto)));
+  const norm  = bruto / mag;
+  const paso  = (norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10) * mag;
+  return { min: Math.floor(lo / paso) * paso,
+           max: Math.ceil(hi / paso) * paso,
+           paso: paso };
+}
+
 function kpGraficoMulti(series, unidad, op){
   op = op || {};
   /* Alto reducido de 200 a 150. Con dos series separadas -- 11 % en la
@@ -1402,6 +1483,8 @@ function kpGraficoMulti(series, unidad, op){
   const rango = (yMax - yMin) || Math.abs(yMax) || 1;
   yMin = Math.max(0, yMin - rango * 0.08);
   yMax = yMax + rango * 0.08;
+  const esc = kpEscala(yMin, yMax, 2);
+  yMin = esc.min; yMax = esc.max;
 
   const px = i => ml + (xs.length === 1 ? (W-ml-mr)/2
                         : i * (W - ml - mr) / (xs.length - 1));
@@ -1431,7 +1514,7 @@ function kpGraficoMulti(series, unidad, op){
     s += '<line x1="' + ml + '" y1="' + y + '" x2="' + (W-mr) + '" y2="' + y
       +  '" stroke="#e3e3e6" stroke-width="1"/>'
       +  '<text x="' + (ml-6) + '" y="' + (y+4) + '" text-anchor="end" font-size="11" '
-      +  'fill="#94949a" font-family="inherit">' + kpNum(v) + '</text>';
+      +  'fill="#94949a" font-family="inherit">' + kpEje(v) + '</text>';
   }
 
   series.forEach((se, k) => {
