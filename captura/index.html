@@ -775,7 +775,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM y UBH
-      &middot; <span id="dp-build">v19</span>
+      &middot; <span id="dp-build">v20</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -2128,14 +2128,20 @@ function guardarMedicion(estado){
     estado: estado,
     pozo: medPozoActual,
     medido_en: dpInstante(fecha, hora),
-    realizado_por: document.getElementById('med-realizo').value,
+    realizado_por: dpNombreTecnico(),
     control_mode: document.getElementById('med-modo').value,
     condicion: document.getElementById('med-condicion').value,
     frecuencia_operacion_hz: valNum('med-frecop'),
     frec_setpoint_hz: valNum('med-frecset'),
     hsc: valNum('med-hsc'),
     lsc: valNum('med-lsc'),
-    creado_por: tecnicoActual,
+    /* creado_por no se envia. Es la identidad con la que
+       dp_completar_medicion decide quien puede editar despues, y la
+       base la sella con auth.jwt()->>'email'. Mandar aqui un nombre
+       rompia ese control: la comparacion contra el correo de la sesion
+       nunca coincidiria y nadie podria completar sus propias
+       mediciones. realizado_por es otra cosa: es quien hizo el trabajo,
+       y ese si va como nombre legible. */
     valores: valores,
     unidades: unidades
   };
@@ -2927,14 +2933,14 @@ function guardarBitacora(){
   var payload = {
     id: evtIdActual,
     pozo: pozo,
-    realizado_por: document.getElementById('evt-realizo').value,
+    realizado_por: dpNombreTecnico(),
     ocurrido_en: dpInstante(fecha, hora),
     categoria: document.getElementById('evt-categoria').value,
     severidad: document.getElementById('evt-severidad').value,
     observaciones: document.getElementById('evt-obs').value,
     recomendaciones: document.getElementById('evt-rec').value,
-    estado: document.getElementById('evt-status').value,
-    creado_por: tecnicoActual
+    estado: document.getElementById('evt-status').value
+    /* creado_por lo sella la base con el correo de la sesion. */
   };
 
   var boton = event.target.closest('button');
@@ -2963,9 +2969,9 @@ function guardarAislamiento(){
     balance_ab_ohm: valNum('ais-balance-ab'),
     balance_ac_ohm: valNum('ais-balance-ac'),
     balance_bc_ohm: valNum('ais-balance-bc'),
-    realizado_por: document.getElementById('ais-realizo').value,
-    observaciones: document.getElementById('ais-obs').value,
-    creado_por: tecnicoActual
+    realizado_por: dpNombreTecnico(),
+    observaciones: document.getElementById('ais-obs').value
+    /* creado_por lo sella la base con el correo de la sesion. */
   };
 
   var boton = event.target.closest('button');
@@ -3234,6 +3240,16 @@ var perfilActual = null;
 
 var CLAVE_PERFIL = 'dp_perfil_cache';
 
+/* El nombre siempre sale del perfil si ya llego. tecnicoActual arranca
+   con el correo de la sesion y solo se reemplaza cuando responde
+   dp_perfil; si el tecnico abre el formulario antes, el correo se
+   quedaba pegado al registro. Preguntando por el perfil en el momento
+   de guardar, la carrera deja de importar. */
+function dpNombreTecnico(){
+  if (perfilActual && perfilActual.nombre) return perfilActual.nombre;
+  return tecnicoActual || '';
+}
+
 function dpEtiquetaTecnico(sufijo){
   document.getElementById('tech-name').textContent = tecnicoActual + (sufijo || '');
 }
@@ -3283,6 +3299,12 @@ function dpEntrar(user){
     try { dpAlmacen.setItem(CLAVE_PERFIL, JSON.stringify(r.data)); } catch(e){}
     tecnicoActual = perfilActual.nombre || tecnicoActual;
     dpEtiquetaTecnico();
+    /* Si el formulario ya estaba abierto mostrando el correo, se
+       corrige en pantalla en cuanto llega el nombre. */
+    ['med-realizo','evt-realizo','ais-realizo'].forEach(function(id){
+      var e = document.getElementById(id);
+      if (e && e.value !== tecnicoActual) e.value = tecnicoActual;
+    });
   }).catch(function(){
     if (!guardado) dpEtiquetaTecnico(' (perfil sin verificar)');
   });
