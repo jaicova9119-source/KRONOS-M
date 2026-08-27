@@ -384,7 +384,7 @@
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
-        <div class="action-card card-aislamiento" data-sistemas="BES" onclick="document.getElementById('ais-realizo').value=tecnicoActual; ir('aislamiento-form')">
+        <div class="action-card card-aislamiento" data-sistemas="BES" onclick="abrirAislamiento()">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub">Megado, DAR, IP y balance de fases</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -406,7 +406,7 @@
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
-        <div class="action-card card-bitacora" data-sistemas="BES,HPUM,UBH" onclick="document.getElementById('evt-realizo').value=tecnicoActual; ir('bitacora-form')">
+        <div class="action-card card-bitacora" data-sistemas="BES,HPUM,UBH" onclick="abrirBitacora()">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6l1 3H8l1-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 6h12v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6Z" stroke="currentColor" stroke-width="1.8"/><path d="M9 11h6M9 15h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
           <div class="body"><div class="ttl">Evento / Bitacora</div><div class="sub">Novedades, mantenimiento, hallazgos</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -775,7 +775,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM y UBH
-      &middot; <span id="dp-build">v14</span>
+      &middot; <span id="dp-build">v15</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -2256,7 +2256,7 @@ function medLocalRecoger(){
     if (e && e.value !== ''){ valores[pt.codigo] = e.value; n++; }
   });
   return { pozo: medLocalPozo, plantilla: MED_PLANTILLA, borrador_id: medBorradorId,
-           completar_id: medCompletarId, original: MED_ORIGINAL,
+           completar_id: medCompletarId, original: MED_ORIGINAL, original_cab: MED_ORIG_CAB,
            cabecera: cab, valores: valores, n: n, ts: new Date().toISOString() };
 }
 
@@ -2381,6 +2381,7 @@ function medLocalRestaurar(pozo){
     if (d.completar_id){
       medEntrarModoCompletar(d.completar_id);
       MED_ORIGINAL = d.original || {};
+      MED_ORIG_CAB = d.original_cab || {};
     }
 
     Object.keys(d.cabecera || {}).forEach(function(id){
@@ -2448,6 +2449,24 @@ window.addEventListener('pagehide', medLocalGuardar);
 
 var medCompletarId = null;
 var MED_ORIGINAL = {};
+var MED_ORIG_CAB = {};
+
+/* Campos de cabecera que la base acepta completar o corregir. El id del
+   formulario mapea a la columna que espera dp_completar_medicion. */
+var MEDCAB_COLUMNA = {
+  'med-frecop':    'frecuencia_operacion_hz',
+  'med-frecset':   'frec_setpoint_hz',
+  'med-hsc':       'hsc',
+  'med-lsc':       'lsc',
+  'med-modo':      'control_mode',
+  'med-condicion': 'condicion'
+};
+var MEDCAB_EDITABLES = Object.keys(MEDCAB_COLUMNA);
+var MEDCAB_ETIQUETA = {
+  'med-frecop': 'Frecuencia de operacion', 'med-frecset': 'Setpoint de frecuencia',
+  'med-hsc': 'HSC', 'med-lsc': 'LSC',
+  'med-modo': 'Control mode', 'med-condicion': 'Condicion del pozo'
+};
 
 function dpListarCompletables(){
   var caja = document.getElementById('med-completables');
@@ -2483,6 +2502,7 @@ function dpListarCompletables(){
 function medSalirModoCompletar(){
   medCompletarId = null;
   MED_ORIGINAL = {};
+  MED_ORIG_CAB = {};
   var n = document.getElementById('med-botones-normal');
   var c = document.getElementById('med-botones-completar');
   if (n) n.classList.remove('hidden');
@@ -2546,12 +2566,29 @@ function dpAbrirCompletar(id){
       poner('med-hsc',       m.hsc);
       poner('med-lsc',       m.lsc);
 
-      /* La cabecera se muestra pero no se envia: cambiar la condicion
-         o la frecuencia despues de confirmar cambia el sentido de toda
-         la serie, y eso es una anulacion, no un olvido. */
-      MEDLOCAL_CABECERA.forEach(function(idc){
+      /* La cabecera SI se puede completar y corregir. Los cuatro campos
+         de frecuencia estuvieron mucho tiempo sin dibujarse, asi que hay
+         mediciones viejas con esas columnas vacias: bloquearlas impedia
+         completar justo lo que falta.
+
+         Fecha y hora quedan fuera. Mover medido_en desplaza la medicion
+         en el tiempo y corre la ventana de 48 h; eso es una anulacion. */
+      MED_ORIG_CAB = {};
+      ['med-fecha','med-hora'].forEach(function(idc){
         var e = document.getElementById(idc);
-        if (e){ e.disabled = true; e.style.background = 'var(--bg)'; e.style.color = 'var(--ink-soft)'; }
+        if (e){
+          e.disabled = true;
+          e.style.background = 'var(--bg)';
+          e.style.color = 'var(--ink-soft)';
+          e.title = 'La fecha de la medicion no se cambia. Si esta mal, pide una anulacion.';
+        }
+      });
+      MEDCAB_EDITABLES.forEach(function(idc){
+        var e = document.getElementById(idc);
+        if (!e) return;
+        var v = String(e.value || '').trim();
+        MED_ORIG_CAB[idc] = v;
+        if (v !== ''){ e.style.background = '#F2F6F2'; e.title = 'Ya guardado'; }
       });
 
       var conValor = 0;
@@ -2573,7 +2610,8 @@ function dpAbrirCompletar(id){
       av.style.cssText = 'margin-bottom:14px;border-left:3px solid var(--navy);font-size:13px;';
       av.innerHTML = '<b>Completando una medicion confirmada</b><br>'
         + '<span style="color:var(--ink-soft);">' + conValor + ' puntos ya guardados (fondo verde) y '
-        + vacios + ' sin llenar. Solo se envia lo que cambies. '
+        + vacios + ' sin llenar. Las frecuencias, el control mode y la condicion tambien se '
+        + 'pueden completar o corregir; la fecha y la hora no. Solo se envia lo que cambies. '
         + 'Quedan ' + Math.max(0, Math.round((48 - j.horas_transcurridas) * 10) / 10)
         + ' h de plazo. Cada cambio se registra con su valor anterior.</span>';
       var caja = document.getElementById('form-medicion');
@@ -2605,9 +2643,23 @@ function guardarCompletado(){
     else cambiados.push((pt.etiqueta || pt.codigo) + ': ' + antes + ' \u2192 ' + txt);
   });
 
-  if (Object.keys(valores).length === 0){
-    alert('No hay nada nuevo ni distinto. Si querias agregar el SUT u otra etapa, '
-        + 'llena esos campos antes de guardar.');
+  /* Cabecera: mismo criterio que los puntos, solo lo que cambio. */
+  var cabecera = {};
+  MEDCAB_EDITABLES.forEach(function(idc){
+    var e = document.getElementById(idc);
+    if (!e) return;
+    var txt = String(e.value || '').trim();
+    if (txt === '') return;
+    var antes = MED_ORIG_CAB[idc];
+    if (antes === txt) return;
+    cabecera[MEDCAB_COLUMNA[idc]] = txt;
+    if (antes === '' || antes === undefined) nuevos++;
+    else cambiados.push(MEDCAB_ETIQUETA[idc] + ': ' + antes + ' \u2192 ' + txt);
+  });
+
+  if (Object.keys(valores).length === 0 && Object.keys(cabecera).length === 0){
+    alert('No hay nada nuevo ni distinto. Si querias agregar el SUT, las frecuencias '
+        + 'u otra etapa, llena esos campos antes de guardar.');
     return;
   }
 
@@ -2617,7 +2669,7 @@ function guardarCompletado(){
       + (cambiados.length === 1 ? '' : 's') + ':\n\n'
       + cambiados.slice(0,10).join('\n')
       + (cambiados.length > 10 ? '\n... y ' + (cambiados.length-10) + ' mas' : '')
-      + (nuevos ? '\n\nY agregar ' + nuevos + ' punto' + (nuevos===1?'':'s') + ' nuevo' + (nuevos===1?'':'s') + '.' : '')
+      + (nuevos ? '\n\nY agregar ' + nuevos + ' dato' + (nuevos===1?'':'s') + ' nuevo' + (nuevos===1?'':'s') + '.' : '')
       + '\n\nQueda registrado quien lo cambio y cual era el valor anterior.\n\nContinuar?')) return;
   }
 
@@ -2626,8 +2678,9 @@ function guardarCompletado(){
     id: medCompletarId,
     valores: valores,
     unidades: unidades,
+    cabecera: cabecera,
     nota: nuevos && !cambiados.length
-      ? 'Se completaron ' + nuevos + ' puntos que quedaron sin registrar.'
+      ? 'Se completaron ' + nuevos + ' datos que quedaron sin registrar.'
       : null
   };
 
@@ -2642,14 +2695,65 @@ function guardarCompletado(){
 }
 
 /* ===================== GUARDADO REAL: BITACORA ===================== */
+/* ============================================================
+   IDENTIDAD ESTABLE DEL EVENTO Y DE LA PRUEBA
+   ============================================================
+   El id se generaba en el momento de guardar. Si el primer envio si
+   llegaba pero la respuesta se perdia, el segundo clic nacia con un
+   id distinto y la base lo veia como un evento nuevo: tres registros
+   identicos de la misma inspeccion. En medicion no pasa porque el id
+   del borrador es estable y la base responde duplicado:true.
+
+   Ahora el id nace al ABRIR el formulario y se conserva mientras se
+   trabaja. Volver a guardar reenvia el mismo id, y la base lo
+   reconoce en vez de duplicarlo.
+
+   Y al guardar se limpia el formulario. Antes quedaba todo escrito,
+   asi que al cambiar de pozo seguia ahi el evento del anterior y el
+   siguiente registro salia con el texto equivocado si nadie lo
+   notaba.                                                        */
+var evtIdActual = null;
+var aisIdActual = null;
+
+function abrirBitacora(){
+  evtIdActual = dpNuevoId();
+  var ahora = new Date();
+  document.getElementById('evt-realizo').value = tecnicoActual;
+  document.getElementById('evt-fecha').value   = ahora.toISOString().slice(0,10);
+  document.getElementById('evt-hora').value    = ahora.toTimeString().slice(0,5);
+  document.getElementById('evt-pozo').value      = '';
+  document.getElementById('evt-categoria').value = 'Mantenimiento';
+  document.getElementById('evt-severidad').value = 'Informativo';
+  document.getElementById('evt-status').value    = 'Pendiente';
+  document.getElementById('evt-obs').value = '';
+  document.getElementById('evt-rec').value = '';
+  ir('bitacora-form');
+}
+
+function abrirAislamiento(){
+  aisIdActual = dpNuevoId();
+  document.getElementById('ais-realizo').value = tecnicoActual;
+  document.getElementById('ais-fecha').value   = new Date().toISOString().slice(0,10);
+  document.getElementById('ais-pozo').value  = '';
+  document.getElementById('ais-equipo').value = '';
+  ['ais-aislamiento','ais-dar','ais-ip','ais-balance-ab','ais-balance-ac','ais-balance-bc']
+    .forEach(function(id){ var e = document.getElementById(id); if(e) e.value = ''; });
+  document.getElementById('ais-obs').value = '';
+  ir('aislamiento-form');
+}
+
 function guardarBitacora(){
   var pozo = document.getElementById('evt-pozo').value;
   if(!pozo){ alert('Selecciona un pozo.'); return; }
   var fecha = document.getElementById('evt-fecha').value;
   var hora = document.getElementById('evt-hora').value || '00:00';
 
+  /* Si se entro al formulario por una ruta que no paso por
+     abrirBitacora, se genera aqui una sola vez. */
+  if(!evtIdActual) evtIdActual = dpNuevoId();
+
   var payload = {
-    id: dpNuevoId(),
+    id: evtIdActual,
     pozo: pozo,
     realizado_por: document.getElementById('evt-realizo').value,
     ocurrido_en: fecha + 'T' + hora + ':00',
@@ -2663,7 +2767,8 @@ function guardarBitacora(){
 
   var boton = event.target.closest('button');
   guardarOEncolar('dp_guardar_bitacora', payload, boton,
-    'Evento guardado.', 'Evento ' + pozo);
+    'Evento guardado.', 'Evento ' + pozo,
+    function(){ evtIdActual = null; });
 }
 
 /* ===================== GUARDADO REAL: PRUEBA DE AISLAMIENTO ===================== */
@@ -2673,8 +2778,10 @@ function guardarAislamiento(){
   var aislamiento = document.getElementById('ais-aislamiento').value;
   if(!aislamiento){ alert('El valor de Aislamiento es obligatorio.'); return; }
 
+  if(!aisIdActual) aisIdActual = dpNuevoId();
+
   var payload = {
-    id: dpNuevoId(),
+    id: aisIdActual,
     pozo: pozo,
     fecha_prueba: document.getElementById('ais-fecha').value,
     equipo_medicion: document.getElementById('ais-equipo').value,
@@ -2691,7 +2798,8 @@ function guardarAislamiento(){
 
   var boton = event.target.closest('button');
   guardarOEncolar('dp_guardar_aislamiento', payload, boton,
-    'Prueba guardada.', 'Aislamiento ' + pozo);
+    'Prueba guardada.', 'Aislamiento ' + pozo,
+    function(){ aisIdActual = null; });
 }
 
 /* ===================== GUARDADO REAL: POZO NUEVO ===================== */
