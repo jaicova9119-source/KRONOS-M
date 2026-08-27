@@ -775,7 +775,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM y UBH
-      &middot; <span id="dp-build">v16</span>
+      &middot; <span id="dp-build">v17</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -1629,6 +1629,15 @@ function iniciarMedicion(){
      terminaria sobreescribiendolo. */
   medBorradorId = null;
   medSalirModoCompletar();
+
+  /* El id nace al ABRIR el formulario, no al guardar. Antes se armaba
+     como medBorradorId || dpNuevoId(), asi que al confirmar sin pasar
+     por borrador cada guardado generaba un id distinto: si el primer
+     envio llegaba pero la respuesta se perdia, el segundo intento
+     entraba como medicion nueva. Asi aparecieron tres CYC-54 con la
+     misma marca de tiempo. Con el id estable, dp_guardar_medicion
+     reconoce el reenvio y responde duplicado. */
+  medIdActual = dpNuevoId();
   var pozo = document.getElementById('med-pozo-select').value;
   if(!pozo){ alert('Selecciona un pozo primero.'); return; }
   document.getElementById('med-pozo-label').textContent = pozo;
@@ -2069,8 +2078,12 @@ function guardarMedicion(estado){
       return;
   }
 
+  /* Si se entro por una ruta que no paso por iniciarMedicion, se
+     genera una sola vez y se conserva. */
+  if (!medIdActual) medIdActual = dpNuevoId();
+
   var payload = {
-    id: medBorradorId || dpNuevoId(),
+    id: medBorradorId || medIdActual,
     estado: estado,
     pozo: medPozoActual,
     medido_en: fecha + 'T' + hora + ':00',
@@ -2096,6 +2109,7 @@ function guardarMedicion(estado){
     'Medicion ' + medPozoActual,
     function(enLinea){
       medLocalBorrar(pozoRespaldo);
+      medIdActual = null;
       medLocalPintarLista();
       /* Solo tiene sentido si el registro llego a la base. Si quedo en
          la cola, las features las genera dpProcesarPendientesCondicion
@@ -2323,6 +2337,7 @@ function medLocalRecoger(){
     if (e && e.value !== ''){ valores[pt.codigo] = e.value; n++; }
   });
   return { pozo: medLocalPozo, plantilla: MED_PLANTILLA, borrador_id: medBorradorId,
+           id_actual: medIdActual,
            completar_id: medCompletarId, original: MED_ORIGINAL, original_cab: MED_ORIG_CAB,
            cabecera: cab, valores: valores, n: n, ts: new Date().toISOString() };
 }
@@ -2358,6 +2373,20 @@ function medLocalBorrar(pozo){
   if (!pozo) return;
   dpAlmacen.removeItem(medLocalClave(pozo));
   if (medLocalTimer){ clearTimeout(medLocalTimer); medLocalTimer = null; }
+
+  /* Sin esto el respaldo resucitaba. Al guardar se borraba la clave,
+     pero medLocalPozo seguia apuntando al pozo y el formulario seguia
+     lleno en el DOM: bastaba con que el tecnico cambiara de app o
+     bloqueara el movil para que visibilitychange llamara a
+     medLocalGuardar, que recogia los mismos valores y volvia a
+     escribir la captura "sin terminar". Por eso reaparecia con una
+     hora posterior a la del guardado. */
+  if (pozo === medLocalPozo){
+    medLocalPozo = '';
+    MED_ORIGINAL = {};
+    MED_ORIG_CAB = {};
+  }
+
   var e = document.getElementById('med-autosave');
   if (e) e.classList.add('hidden');
 }
@@ -2445,6 +2474,9 @@ function medLocalRestaurar(pozo){
        venia de uno, se reengancha para que la base actualice en vez
        de crear un registro nuevo. */
     medBorradorId = d.borrador_id || null;
+    /* Se recupera el id de la captura interrumpida: si el envio previo
+       si habia llegado, reenviar con el mismo id no crea otra. */
+    if (d.id_actual) medIdActual = d.id_actual;
     if (d.completar_id){
       medEntrarModoCompletar(d.completar_id);
       MED_ORIGINAL = d.original || {};
@@ -2515,6 +2547,7 @@ window.addEventListener('pagehide', medLocalGuardar);
    ensuciaria la traza con correcciones que no ocurrieron.        */
 
 var medCompletarId = null;
+var medIdActual = null;   /* id de la captura en curso, estable entre reintentos */
 var MED_ORIGINAL = {};
 var MED_ORIG_CAB = {};
 
@@ -2590,7 +2623,7 @@ function dpAbrirCompletar(id){
         + 'guardado para no sobreescribirlo.');
     return;
   }
-  sb.rpc('dp_medicion', { p_id: id }).then(function(r){
+  sb.rpc('dp_medicion_detalle', { p_id: id }).then(function(r){
     if (r.error) throw new Error(r.error.message);
     var j = r.data || {};
     if (!j.ok) throw new Error(j.error || 'No se pudo abrir la medicion.');
