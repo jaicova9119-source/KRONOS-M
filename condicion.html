@@ -1066,7 +1066,20 @@ function kpRenderResumen(med){
 function kpRenderTendencia(tend, bal){
   const porNodo = {};
   tend.forEach(t => { (porNodo[t.nodo] = porNodo[t.nodo] || []).push(t); });
-  const fechas = [...new Set(tend.map(t => t.fecha))].sort();
+
+  /* La clave es medicion_id, no la fecha ni la hora. Con fecha, dos
+     rondas del mismo dia se colapsan y la tabla suma sus etapas:
+     mostraba "24 etapas" donde una ronda tiene 6. Y con medido_en
+     tampoco alcanza, porque los guardados repetidos comparten esa
+     marca al segundo: viene del formulario, no del reloj del envio.
+     Cada medicion es un punto. */
+  const claves = [...new Set(tend.map(t => t.medicion_id))];
+  claves.sort((a2,b2) => {
+    const ta = (tend.find(t => t.medicion_id === a2) || {}).medido_en || '';
+    const tb = (tend.find(t => t.medicion_id === b2) || {}).medido_en || '';
+    return ta.localeCompare(tb) || String(a2).localeCompare(String(b2));
+  });
+  const fechaDe = k => (tend.find(t => t.medicion_id === k) || {}).medido_en || '';
 
   let h = '';
 
@@ -1075,13 +1088,14 @@ function kpRenderTendencia(tend, bal){
   if (bal && bal.length > 1){
     const ult = bal[bal.length - 1];
     const est = ult.diferencia_pct > 10 ? 'crit' : (ult.diferencia_pct > 5 ? 'warn' : 'ok');
+    const balPts = bal.map(b => ({x: b.medido_en || b.fecha, y: b.diferencia_pct}));
     h += '<div class="kp-card" style="border-left:4px solid ' + KP_HEX[est] + '">'
       +  '<div style="font-weight:600;margin-bottom:2px">Reparto entre secundarios \u0394 y Y</div>'
       +  '<p class="hint" style="margin:0 0 10px">Los dos puentes pueden estar cada uno dentro de '
       +  'su carga y aun asi repartirse mal. Sumados dan la misma corriente de entrada, '
       +  'asi que esto no se ve en ningun otro indicador.</p>'
-      +  kpGrafico(bal.map(b => ({x: b.fecha, y: b.diferencia_pct})),
-                   '% de diferencia', {umbral_warn:5, umbral_crit:10})
+      +  kpGrafico(balPts, '% de diferencia',
+                   {umbral_warn:5, umbral_crit:10, fmtX: kpFechaCorta})
       +  '<div class="kp-leg" style="margin-top:8px">'
       +  '<span>\u00daltima: <b>' + kpNum(ult.diferencia_pct) + ' %</b> '
       +  '(\u0394 ' + kpNum(ult.delta) + ' A, Y ' + kpNum(ult.estrella) + ' A)</span>'
@@ -1093,21 +1107,21 @@ function kpRenderTendencia(tend, bal){
   const series = [];
   Object.keys(porNodo).forEach(nodo => {
     const pts = porNodo[nodo].filter(p => p.i_prom != null)
-                             .map(p => ({x: p.fecha, y: Number(p.i_prom)}));
+                             .map(p => ({x: p.medicion_id, y: Number(p.i_prom)}));
     if (pts.length > 1) series.push({nombre: porNodo[nodo][0].etiqueta_corta || nodo, pts});
   });
   if (series.length){
     h += '<div class="kp-card"><div style="font-weight:600;margin-bottom:2px">'
       +  'Corriente por etapa</div>'
       +  '<p class="hint" style="margin:0 0 10px">Amperios medidos en cada punto de la cadena.</p>'
-      +  kpGraficoMulti(series, 'A') + '</div>';
+      +  kpGraficoMulti(series, 'A', {fmtX: k => kpFechaCorta(fechaDe(k))}) + '</div>';
   }
 
   /* 3. Desbalances */
   const sDes = [];
   Object.keys(porNodo).forEach(nodo => {
     const pts = porNodo[nodo].filter(p => p.i_desbal_pct != null)
-                             .map(p => ({x: p.fecha, y: Number(p.i_desbal_pct)}));
+                             .map(p => ({x: p.medicion_id, y: Number(p.i_desbal_pct)}));
     if (pts.length > 1) sDes.push({nombre: porNodo[nodo][0].etiqueta_corta || nodo, pts});
   });
   if (sDes.length){
@@ -1115,7 +1129,7 @@ function kpRenderTendencia(tend, bal){
       +  'Desbalance de corriente por etapa</div>'
       +  '<p class="hint" style="margin:0 0 10px">Criterio NEMA: m&aacute;xima desviaci&oacute;n '
       +  'respecto al promedio. Sobre 2 % conviene revisar.</p>'
-      +  kpGraficoMulti(sDes, '%', {umbral_warn:1, umbral_crit:2}) + '</div>';
+      +  kpGraficoMulti(sDes, '%', {umbral_warn:1, umbral_crit:2, fmtX: kpFechaCorta}) + '</div>';
   }
 
   /* 4. Calidad de energia: entrada contra salida */
@@ -1123,7 +1137,7 @@ function kpRenderTendencia(tend, bal){
   ['pst_in','vfdout'].forEach(n => {
     if (!porNodo[n]) return;
     const pts = porNodo[n].filter(p => p.thd_i_pct != null)
-                          .map(p => ({x: p.fecha, y: Number(p.thd_i_pct)}));
+                          .map(p => ({x: p.medicion_id, y: Number(p.thd_i_pct)}));
     if (pts.length > 1)
       cal.push({nombre: (n === 'pst_in' ? 'Entrada (red)' : 'Salida (al motor)'), pts});
   });
@@ -1133,18 +1147,26 @@ function kpRenderTendencia(tend, bal){
       +  '<p class="hint" style="margin:0 0 10px">En la acometida se compara contra IEEE 519. '
       +  'En la salida del variador la distorsi&oacute;n es propia de la onda PWM y '
       +  'no constituye falla: sirve para ver si cambia, no para juzgarla contra una norma.</p>'
-      +  kpGraficoMulti(cal, '%') + '</div>';
+      +  kpGraficoMulti(cal, '%', {fmtX: k => kpFechaCorta(fechaDe(k))}) + '</div>';
   }
 
-  /* 5. Tabla de rondas, para quien quiere el numero exacto */
+  /* 5. Tabla de rondas, una fila por medicion */
+  const porDia = {};
+  claves.forEach(k => {
+    const f = String(fechaDe(k)).slice(0,10);
+    porDia[f] = (porDia[f] || 0) + 1;
+  });
+  const repetidos = Object.keys(porDia).filter(f => porDia[f] > 1);
+
   h += '<div class="kp-list"><div class="kp-grp">Rondas registradas</div>';
-  fechas.slice().reverse().forEach(f => {
-    const dia = tend.filter(t => t.fecha === f);
+  claves.slice().reverse().forEach(k => {
+    const dia = tend.filter(t => t.medicion_id === k);
     const m = dia.find(t => t.nodo === 'sutout') || dia[0];
     const p = dia.find(t => t.nodo === 'pst_in');
-    h += '<div class="kp-rule"><div>'
-      +  '<div><span class="nm">' + f + '</span> '
-      +  '<span class="id">' + dia.length + ' etapas</span></div>'
+    const f = String(fechaDe(k)).slice(0,10);
+    h += '<div class="kp-rule' + (porDia[f] > 1 ? ' warn' : '') + '"><div>'
+      +  '<div><span class="nm">' + kpFechaCorta(fechaDe(k)) + '</span> '
+      +  '<span class="id">' + dia.length + (dia.length === 1 ? ' etapa' : ' etapas') + '</span></div>'
       +  '<div class="dt">'
       +  (m && m.i_prom != null ? 'Al motor ' + kpNum(m.i_prom) + ' A' : 'Sin corriente de salida')
       +  (m && m.frec_hz != null ? ' &middot; ' + kpNum(m.frec_hz) + ' Hz' : '')
@@ -1154,6 +1176,19 @@ function kpRenderTendencia(tend, bal){
       +  '</div></div>';
   });
   h += '</div>';
+
+  /* Varias rondas con la misma marca de tiempo casi siempre son
+     reintentos de guardado, no mediciones distintas. Se avisa en vez de
+     dejar que inflen la serie en silencio. */
+  if (repetidos.length){
+    h += '<div class="kp-card" style="border-left:4px solid var(--kp-warn);margin-top:14px">'
+      +  '<div style="font-weight:600;margin-bottom:2px">Rondas repetidas el mismo d&iacute;a</div>'
+      +  '<p class="hint" style="margin:0">'
+      +  repetidos.map(f => f + ' \u2014 ' + porDia[f] + ' registros').join(', ')
+      +  '. Cuando coinciden en fecha y hora suelen ser reintentos de guardado, '
+      +  'no mediciones distintas: inflan la serie y desplazan el promedio. '
+      +  'Conviene revisarlas y dejar una sola.</p></div>';
+  }
 
   return h;
 }
@@ -1226,16 +1261,18 @@ function kpGraficoMulti(series, unidad, op){
       +  '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>';
     se.pts.filter(p => p.y != null).forEach(p => {
       s += '<circle cx="' + px(xs.indexOf(p.x)) + '" cy="' + py(p.y) + '" r="3.2" fill="'
-        +  col + '"><title>' + p.x + ': ' + kpNum(p.y) + ' ' + unidad + '</title></circle>';
+        +  col + '"><title>' + (op.fmtX ? op.fmtX(p.x) : p.x) + ': '
+        +  kpNum(p.y) + ' ' + unidad + '</title></circle>';
     });
   });
 
   /* Solo primera y ultima fecha en el eje: con doce rondas las
      etiquetas se encaballan y no se lee ninguna. */
+  const fx = op.fmtX || (v => String(v).slice(0,10));
   s += '<text x="' + ml + '" y="' + (H-10) + '" font-size="11" fill="#94949a" '
-    +  'font-family="inherit">' + xs[0] + '</text>'
+    +  'font-family="inherit">' + fx(xs[0]) + '</text>'
     +  '<text x="' + (W-mr) + '" y="' + (H-10) + '" text-anchor="end" font-size="11" '
-    +  'fill="#94949a" font-family="inherit">' + xs[xs.length-1] + '</text>';
+    +  'fill="#94949a" font-family="inherit">' + fx(xs[xs.length-1]) + '</text>';
   s += '</svg></div>';
 
   if (series.length > 1 || series[0].nombre){
