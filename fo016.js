@@ -3,6 +3,18 @@
    Clon estructural del formato GTEC-MT-FO-016 VERSIÓN 00 (FECHA 2018/05/16)
    tal como lo imprime SAP.
 
+   rev.7 — Paginación por presupuesto. El documento dejó de ser tres hojas
+           fijas: cuando el contenido no cabe se abren hojas de continuación
+           con cabecera completa y "Página N de M" dinámico, en vez de dejar
+           que el navegador meta un salto donde le alcance. Aquel salto
+           implícito nacía sin cabecera y sin el relleno que hace de margen,
+           y por eso el bloque "¿Cómo quedó el equipo?" terminaba solo y
+           pegado al borde del papel.
+
+           Con contenido que cabe, la salida es la misma de siempre: el caso
+           de referencia rinde exactamente las mismas tres hojas y el mismo
+           texto que la rev.6.
+
    rev.6 — Estilos EN LÍNEA y ninguna tabla con bordes mezclados.
 
            Dos limitaciones de Word obligan a esto:
@@ -55,6 +67,56 @@ const FO016 = (function () {
     dsBanda: 0.62, dsCbx: 0.50, dsRengl: 0.63,
     p2Rengl: 0.655
   };
+
+  /* ------------------- presupuesto de página (rev.7) ----------------------
+     El formato es una retícula fija de tres hojas. Mientras el contenido
+     quepa, se imprime igual que el original de SAP. Cuando no cabe, el
+     navegador metía un salto donde le alcanzaba: esa hoja implícita nace sin
+     cabecera y sin el relleno que hace de margen (el relleno vive en
+     .fo016-pag, que ya arrancó en la hoja anterior). De ahí el bloque
+     "¿Cómo quedó el equipo?" suelto contra el borde del papel.
+
+     La solución es cortar el flujo antes de que se pase, midiendo en cm, y
+     abrir hoja de continuación con cabecera completa — que es exactamente
+     como se comporta el impreso de SAP cuando el texto no cabe.
+
+     Calibración: el impreso de referencia (OT 100032747) lleva 9 operaciones,
+     sin materiales, y deja 8 renglones en la caja de descripción, con blanco
+     sobrante al pie. SEGURIDAD reserva parte de ese blanco para absorber el
+     error de las alturas estimadas. Es la única perilla que hay que mover si
+     alguna hoja llegara a desbordarse: subirla achica el flujo. */
+
+  const ALTO_HOJA  = 29.70;
+  const MARGEN_V   = 0.88;
+  const ALTO_UTIL  = ALTO_HOJA - 2 * MARGEN_V;   // 27.94 cm
+
+  const ALTO_CAB   = 3.43;   // cabecera + espaciador
+  const ALTO_DATOS = 5.16;   // bloque de datos + espaciador
+  const OPS_HEAD   = 1.52;   // banda + fila de encabezados de operaciones
+  const MAT_HEAD   = 1.60;   // espaciador + banda + encabezados de materiales
+  const DESC_HEAD  = 2.28;   // banda + ¿cómo encontró? + casillas + rótulo
+  const DESC_COLA  = 1.60;   // ¿cómo quedó? + casillas + rótulo recomendaciones
+
+  const RENGLON    = H.dsRengl + 0.05;   // 0.68 cm — renglón de la hoja 1
+  const RENGLON2   = H.p2Rengl + 0.05;   // 0.705 cm — renglón de la hoja 2
+  const FILA_OP    = H.opFila  + 0.06;   // 0.50 cm
+  const FILA_MAT   = H.matFila + 0.06;   // 0.52 cm
+
+  const SEGURIDAD  = 1.50;
+  const P1_FLUJO   = ALTO_UTIL - ALTO_CAB - ALTO_DATOS - SEGURIDAD;  // 17.85
+  const CONT_FLUJO = ALTO_UTIL - ALTO_CAB - SEGURIDAD;               // 23.01
+
+  const MIN_RENG   = 3;
+  const MAX_RENG   = 16;
+  const OPS_REF    = 9;
+  const RENG_REF   = 8;
+
+  /* Hoja 2: bajo los renglones va una retícula fija (tiempos de parada,
+     estado y recepción). El impreso de referencia deja 7 renglones y sobra
+     blanco; P2_RENG_MAX es hasta dónde puede crecer sin invadir esa retícula. */
+  const P2_RENG_BASE = 7;
+  const P2_RENG_MAX  = 12;
+  const P2_RENG_CONT = Math.floor(CONT_FLUJO / RENGLON2);   // hoja solo de renglones
 
   /* ----------------------------- utilidades ------------------------------- */
 
@@ -214,7 +276,7 @@ const FO016 = (function () {
 
   /* ------------------------------ cabecera -------------------------------- */
 
-  function cabecera(ot, pag) {
+  function cabecera(ot, pag, total) {
     /* Logo: 5.40 x 1.47 cm, borde superior a 0.62 cm del tope y 0.24 cm del
        margen. No va centrado verticalmente. La celda del logo no lleva borde,
        así que el recuadro de la derecha va en su propia tabla anidada: si
@@ -237,7 +299,7 @@ const FO016 = (function () {
     <td rowspan="2" style="${ttl}">FORMATO</td>
     <td style="${cod}">FECHA: ${FECHA_FO}</td>
   </tr>
-  <tr><td style="${cod}">Página ${pag} de ${TOTAL_PAG}</td></tr>
+  <tr><td style="${cod}">Página ${pag} de ${total || TOTAL_PAG}</td></tr>
   <tr>
     <td style="${ttl}">ORDEN DE TRABAJO No.</td>
     <td style="${TD};${BD};font-size:8.5pt;height:${H.cabUlt}cm">${esc(ot.numero_ot)}</td>
@@ -297,10 +359,16 @@ ${SPACER(0.20)}`;
 
   /* --------------------- operaciones de mantenimiento --------------------- */
 
-  function tablaOperaciones(ot) {
+  /* Recibe el trozo de operaciones que cabe en la hoja, no la orden completa:
+     así el encabezado se repite en cada hoja de continuación, como en SAP.
+     'base' es el índice de la primera operación del trozo, necesario para que
+     la numeración por defecto (0010, 0020, ...) siga corrida. */
+  function tablaOperaciones(lista, base) {
+    if (!lista || !lista.length) return '';
+    const off = base || 0;
     const h = `height:${H.opFila}cm`;
     const c = `${TD};${BD};text-align:center;${h}`;
-    const filas = (ot.operaciones || []).map((o, i) => `<tr>
+    const filas = lista.map((o, k) => { const i = off + k; return `<tr>
   <td style="${TD};${BD};${MONO};font-size:9.5pt;${h}">${oper(o.oper, i)}</td>
   <td style="${c}">${escT(o.puesto)}</td>
   <td style="${TD};${BD};${h}">${escT(o.descripcion)}</td>
@@ -309,7 +377,7 @@ ${SPACER(0.20)}`;
   <td style="${c}">${escT(o.cant)}</td>
   <td style="${c}">${escT(o.duracion)}</td>
   <td style="${c}">${fechaSAP(o.fecha)}</td>
-</tr>`).join('');
+</tr>`; }).join('');
 
     /* Los saltos de línea de los encabezados son fijos en SAP: no se deja que
        el navegador decida dónde partir. */
@@ -335,13 +403,17 @@ ${filas}
      mismas convenciones del resto del documento. Se rellena hasta
      H.matMin renglones para anotar a mano en campo.                       */
 
-  function tablaMateriales(ot) {
-    const mats = ot.materiales || [];
+  /* Igual que las operaciones: recibe el trozo que cabe en la hoja. El relleno
+     hasta H.matMin renglones en blanco solo se aplica en el último fragmento,
+     porque es lo que se anota a mano cuando el material se toma en campo. */
+  function tablaMateriales(lista, base, rellenar) {
+    const mats = lista || [];
     if (!mats.length) return '';
     const h = `height:${H.matFila}cm`;
     const c = `${TD};${BD};text-align:center;${h}`;
+    const n = rellenar ? Math.max(H.matMin, mats.length) : mats.length;
     let filas = '';
-    for (let i = 0; i < Math.max(H.matMin, mats.length); i++) {
+    for (let i = 0; i < n; i++) {
       const m = mats[i] || {};
       filas += `<tr>
   <td style="${TD};${BD};${h}">${escT(m.codigo)}</td>
@@ -397,51 +469,75 @@ ${filas}
 
   /* ------------- caja "descripción del trabajo" (página 1) ---------------- */
 
-  function cajaDescripcion(ot, nRengl) {
-    const q  = t => `<tr><td style="${LAT};padding:2px 4px 0;${MONO};height:0.66cm">${t}</td></tr>`;
-    const qb = t => `<tr><td style="${LAT_B};padding:1px 4px 0;${MONO};height:0.44cm">${t}</td></tr>`;
-    const cb = m => `<tr><td style="${LAT};padding:0">${boxes(m)}</td></tr>`;
+  /* La caja va en tres piezas para poder cortarla entre hojas. Cada pieza es
+     una tabla completa; como los renglones solo llevan borde lateral e
+     inferior, al apilarse se ven como una sola caja continua y ninguna línea
+     queda duplicada. La primera pieza de cada hoja de continuación sí lleva
+     borde superior, para que la caja cierre arriba. */
 
-    const lineas = ot.actividad_realizada
-      ? renglonear(ot.actividad_realizada, CHARS_RENGLON) : [];
-    const total = Math.max(nRengl, lineas.length);
+  const dsQ  = t => `<tr><td style="${LAT};padding:2px 4px 0;${MONO};height:0.66cm">${t}</td></tr>`;
+  const dsQB = t => `<tr><td style="${LAT_B};padding:1px 4px 0;${MONO};height:0.44cm">${t}</td></tr>`;
+  const dsCB = m => `<tr><td style="${LAT};padding:0">${boxes(m)}</td></tr>`;
+
+  function descCabeza(ot) {
+    return `${tabla(W.total)}
+  <tr><td style="${BANDA};height:${H.dsBanda}cm">DESCRIPCION DEL TRABAJO:(DEFINA EN FRASES CONCRETAS LA ACTIVIDAD&nbsp; REALIZADA)</td></tr>
+${dsQ('¿Cómo encontró el equipo?')}
+${dsCB(ot.como_encontro)}
+${dsQB('¿Qué actividad adicional realizó sobre el equipo?')}
+</table>`;
+  }
+
+  /** Renglones de la caja de descripción. 'cerrar' pone borde superior en el
+      primero, para las hojas de continuación. */
+  function descRenglones(lineas, desde, cuantos, cerrar) {
+    if (cuantos <= 0) return '';
     const est = `${LAT_B};height:${H.dsRengl}cm;${MONO};` +
                 'vertical-align:bottom;padding:0 4px 1px';
     let ren = '';
-    for (let i = 0; i < total; i++) {
-      ren += `<tr><td style="${est}">${lineas[i] ? escT(lineas[i]) : '&nbsp;'}</td></tr>`;
+    for (let k = 0; k < cuantos; k++) {
+      const txt = lineas[desde + k];
+      const e = (cerrar && k === 0) ? est.replace(LAT_B, LAT_TB) : est;
+      ren += `<tr><td style="${e}">${txt ? escT(txt) : '&nbsp;'}</td></tr>`;
     }
-
     return `${tabla(W.total)}
-  <tr><td style="${BANDA};height:${H.dsBanda}cm">DESCRIPCION DEL TRABAJO:(DEFINA EN FRASES CONCRETAS LA ACTIVIDAD&nbsp; REALIZADA)</td></tr>
-${q('¿Cómo encontró el equipo?')}
-${cb(ot.como_encontro)}
-${qb('¿Qué actividad adicional realizó sobre el equipo?')}
 ${ren}
-${q('¿Cómo quedó el equipo?')}
-${cb(ot.como_quedo)}
-${qb('Recomendaciones adicionales y/o trabajos pendientes?')}
+</table>`;
+  }
+
+  function descCola(ot) {
+    return `${tabla(W.total)}
+${dsQ('¿Cómo quedó el equipo?')}
+${dsCB(ot.como_quedo)}
+${dsQB('Recomendaciones adicionales y/o trabajos pendientes?')}
 </table>`;
   }
 
   /* ------- caja renglones + tiempos de parada (página 2) ------------------ */
 
-  function cajaTiempos(ot, nRengl) {
-    const e = `${NB};white-space:nowrap`;
-    const bc = 'border:none;padding:0 0 0 2px;vertical-align:bottom';
-    const u = (v, w) => `<td style="${bc}">${campo(w, escT(v))}</td>`;
-
-    const lineas = ot.recomendaciones
-      ? renglonear(ot.recomendaciones, CHARS_RENGLON) : [];
-    const total = Math.max(nRengl, lineas.length);
+  /* Renglones de "Recomendaciones adicionales". Van sueltos para poder
+     repartirlos entre hojas: el bloque de tiempos siempre viaja pegado al
+     último grupo, nunca se separa de la retícula que lo sigue. */
+  function p2Renglones(lineas, desde, cuantos, cerrar) {
+    if (cuantos <= 0) return '';
     const est = `${LAT_B};height:${H.p2Rengl}cm;${MONO};` +
                 'vertical-align:bottom;padding:0 4px 1px';
     let ren = '';
-    for (let i = 0; i < total; i++) {
-      const e0 = i === 0 ? est.replace(bord(0, 1, 1, 1), LAT_TB) : est;
-      ren += `<tr><td style="${e0}">` +
-             `${lineas[i] ? escT(lineas[i]) : '&nbsp;'}</td></tr>`;
+    for (let k = 0; k < cuantos; k++) {
+      const txt = lineas[desde + k];
+      const e0 = (cerrar && k === 0) ? est.replace(bord(0, 1, 1, 1), LAT_TB) : est;
+      ren += `<tr><td style="${e0}">${txt ? escT(txt) : '&nbsp;'}</td></tr>`;
     }
+    return `${SPACER(0.11)}
+${tabla(W.total)}
+${ren}
+</table>`;
+  }
+
+  function cajaTiempos(ot) {
+    const e = `${NB};white-space:nowrap`;
+    const bc = 'border:none;padding:0 0 0 2px;vertical-align:bottom';
+    const u = (v, w) => `<td style="${bc}">${campo(w, escT(v))}</td>`;
 
     const T = W.tiemp;
     const interior = `${tbN(W.total - 0.20, T)}
@@ -457,9 +553,7 @@ ${qb('Recomendaciones adicionales y/o trabajos pendientes?')}
   </tr>
 </table>`;
 
-    return `${SPACER(0.11)}
-${tabla(W.total)}
-${ren}
+    return `${tabla(W.total)}
   <tr><td style="${LAT};padding:0.42cm 4px 0.08cm;${MONO}">Tiempos de Parada e Intervención</td></tr>
   <tr><td style="${LAT};padding:0 3px">${interior}</td></tr>
   <tr><td style="${LAT_B};height:1.17cm">&nbsp;</td></tr>
@@ -679,35 +773,171 @@ ${tbN(W.total, W.clerk)}
 
   /* ------------------------------- render --------------------------------- */
 
-  function render(ot) {
+  /** Renglones en blanco que el impreso de referencia deja en la caja de
+      descripción: 8 con 9 operaciones y sin materiales. Cada operación que
+      falta libera FILA_OP cm y la tabla de materiales los quita. */
+  function rengDeseado(ot) {
     const nOps = (ot.operaciones || []).length;
-    /* El impreso SAP de referencia trae 9 operaciones y 8 renglones en blanco.
-       Si la orden lleva materiales se descuentan los renglones que ocupa esa
-       tabla, para que la hoja 1 siga cerrando en una sola página. */
-    const descuento = Math.ceil(altoMateriales(ot) / (H.dsRengl + 0.05));
-    const rengP1 = Math.min(16, Math.max(3, 8 + (9 - nOps) - descuento));
+    const cm = RENG_REF * RENGLON
+             + (OPS_REF - nOps) * FILA_OP
+             - altoMateriales(ot);
+    return Math.min(MAX_RENG, Math.max(MIN_RENG, Math.round(cm / RENGLON)));
+  }
 
-    const p1 = `<div class="fo016-pag">
-${cabecera(ot, 1)}
-${bloqueDatos(ot)}
-${tablaOperaciones(ot)}
-${tablaMateriales(ot)}
-${cajaDescripcion(ot, rengP1)}
+  /* ----------------------- paginador de la hoja 1 -------------------------
+     Recorre el flujo (operaciones, materiales, caja de descripción) llevando
+     la cuenta en cm de lo que queda libre. Cuando un bloque no cabe, cierra
+     la hoja y abre otra: la cabecera se vuelve a imprimir arriba y el relleno
+     que hace de margen se aplica de nuevo, porque cada hoja es su propio
+     .fo016-pag. Mientras el contenido quepa —el caso normal— sale una sola
+     hoja idéntica a la de siempre.                                        */
+
+  function hojasFlujo(ot) {
+    const ops  = ot.operaciones || [];
+    const mats = ot.materiales  || [];
+    const lineas = ot.actividad_realizada
+      ? renglonear(ot.actividad_realizada, CHARS_RENGLON) : [];
+    const nRengl = Math.max(rengDeseado(ot), lineas.length);
+
+    const hojas = [];
+    let buf  = bloqueDatos(ot);          // el bloque de datos solo va en la 1.ª
+    let libre = P1_FLUJO;
+    let cont = false;                    // ¿la hoja actual es de continuación?
+
+    const cerrar = () => {
+      hojas.push(buf);
+      buf = '';
+      libre = CONT_FLUJO;
+      cont = true;
+    };
+
+    /* --- operaciones --- */
+    let i = 0;
+    while (i < ops.length) {
+      let caben = Math.floor((libre - OPS_HEAD) / FILA_OP);
+      if (caben < 1) { cerrar(); continue; }
+      if (caben > ops.length - i) caben = ops.length - i;
+      buf += tablaOperaciones(ops.slice(i, i + caben), i);
+      libre -= OPS_HEAD + caben * FILA_OP;
+      i += caben;
+      if (i < ops.length) cerrar();
+    }
+
+    /* --- materiales --- */
+    let j = 0;
+    while (j < mats.length) {
+      let caben = Math.floor((libre - MAT_HEAD) / FILA_MAT);
+      if (caben < 1) { cerrar(); continue; }
+      const ultimo = caben >= mats.length - j;
+      if (ultimo) caben = mats.length - j;
+      /* El relleno en blanco solo tiene sentido si cabe entero. */
+      const rellena = ultimo &&
+        (libre - MAT_HEAD) / FILA_MAT >= Math.max(H.matMin, caben);
+      buf += tablaMateriales(mats.slice(j, j + caben), j, rellena);
+      libre -= MAT_HEAD + (rellena ? Math.max(H.matMin, caben) : caben) * FILA_MAT;
+      j += caben;
+      if (j < mats.length) cerrar();
+    }
+
+    /* --- cabeza de la caja de descripción: no se deja huérfana ---
+       Se exige sitio para el rótulo y al menos dos renglones. */
+    if (libre < DESC_HEAD + 2 * RENGLON) cerrar();
+    buf += descCabeza(ot);
+    libre -= DESC_HEAD;
+    let abierta = false;   // ¿la caja viene abierta de la hoja anterior?
+
+    /* --- renglones --- */
+    let r = 0;
+    while (r < nRengl) {
+      let caben = Math.floor(libre / RENGLON);
+      /* La cola tiene que quedar con los últimos renglones, nunca sola. */
+      const ultimos = nRengl - r;
+      if (caben >= ultimos && libre - ultimos * RENGLON < DESC_COLA) {
+        caben = Math.floor((libre - DESC_COLA) / RENGLON);
+      }
+      if (caben < 1) { cerrar(); abierta = true; continue; }
+      if (caben > ultimos) caben = ultimos;
+      buf += descRenglones(lineas, r, caben, abierta);
+      libre -= caben * RENGLON;
+      r += caben;
+      abierta = false;
+      if (r < nRengl) { cerrar(); abierta = true; }
+    }
+
+    /* --- cola --- */
+    if (libre < DESC_COLA) { cerrar(); abierta = true; }
+    if (abierta) {
+      /* Abre la hoja con un renglón de cierre para que la caja no arranque
+         sin borde superior. */
+      buf += descRenglones([], 0, 1, true);
+      libre -= RENGLON;
+    }
+    buf += descCola(ot);
+    hojas.push(buf);
+
+    return hojas;
+  }
+
+  /* ----------------------- paginador de la hoja 2 -------------------------
+     Los renglones de "Recomendaciones" son lo único que crece. El bloque de
+     tiempos, el estado y la recepción viajan siempre juntos en la última.  */
+
+  function hojasCierre(ot) {
+    const lineas = ot.recomendaciones
+      ? renglonear(ot.recomendaciones, CHARS_RENGLON) : [];
+
+    /* Las observaciones de recepción también crecen. Lo que ocupen de más
+       sobre los cuatro renglones del impreso se le quita al presupuesto de
+       recomendaciones, para no empujar la retícula fuera de la hoja. */
+    const obs = renglonearVar((ot.recepcion || {}).observaciones, [80, 98]);
+    const extraObs = Math.max(0, obs.length - 4) * 0.44;
+    const tope = Math.max(P2_RENG_BASE,
+                          P2_RENG_MAX - Math.ceil(extraObs / RENGLON2));
+
+    const hojas = [];
+    let r = 0;
+    let restan = Math.max(P2_RENG_BASE, lineas.length);
+    /* En la hoja 2 la caja arranca de cero: el primer renglón siempre lleva
+       borde superior, igual que en el impreso original. */
+    let abierta = true;
+
+    /* Se llenan hojas completas mientras el resto siga sin caber. Solo cuando
+       lo que queda cabe en una hoja se corta antes, para no dejar una hoja de
+       continuación con tres renglones sueltos. */
+    while (restan > tope) {
+      const n = (restan <= P2_RENG_CONT || restan - P2_RENG_CONT >= tope)
+        ? Math.min(restan, P2_RENG_CONT)
+        : restan - tope;
+      hojas.push(p2Renglones(lineas, r, n, abierta));
+      r += n; restan -= n; abierta = true;
+    }
+
+    hojas.push(
+      p2Renglones(lineas, r, restan > 0 ? restan : P2_RENG_BASE, abierta) +
+      cajaTiempos(ot) +
+      estadoOrden(ot) +
+      recepcion(ot)
+    );
+    return hojas;
+  }
+
+  /* ------------------------------ render ---------------------------------- */
+
+  function render(ot) {
+    const cuerpos = hojasFlujo(ot)
+      .concat(hojasCierre(ot))
+      .concat([firmas(ot)]);
+
+    const total = cuerpos.length;
+    const hojas = cuerpos.map((cuerpo, k) => {
+      const ultima = k === total - 1;
+      return `<div class="fo016-pag${ultima ? ' fo016-fin' : ''}">
+${cabecera(ot, k + 1, total)}
+${cuerpo}
 </div>`;
+    }).join('');
 
-    const p2 = `<div class="fo016-pag">
-${cabecera(ot, 2)}
-${cajaTiempos(ot, 7)}
-${estadoOrden(ot)}
-${recepcion(ot)}
-</div>`;
-
-    const p3 = `<div class="fo016-pag fo016-fin">
-${cabecera(ot, 3)}
-${firmas(ot)}
-</div>`;
-
-    return `<style>${CSS}</style><div class="fo016">${p1}${p2}${p3}</div>`;
+    return `<style>${CSS}</style><div class="fo016">${hojas}</div>`;
   }
 
   /* ------------------------------ impresión ------------------------------- */
@@ -764,11 +994,32 @@ ${firmas(ot)}
       if (m) m.remove();
     }
 
+    /* El reparto de hojas se calcula con alturas estimadas en cm. Aquí, con el
+       documento ya maquetado, se mide de verdad: si alguna hoja se pasó del
+       papel es que una estimación quedó corta y hay que subir SEGURIDAD. Solo
+       avisa por consola; no altera la impresión. */
+    function verificarAlturas(doc) {
+      try {
+        const limite = doc.body.clientWidth
+          ? doc.querySelectorAll('.fo016-pag')[0].clientWidth * (29.70 / 21.00)
+          : 0;
+        if (!limite) return;
+        doc.querySelectorAll('.fo016-pag').forEach((p, i) => {
+          if (p.scrollHeight > limite + 2) {
+            console.warn('[FO016] La hoja ' + (i + 1) + ' se desborda ' +
+              Math.round((p.scrollHeight - limite) / limite * 29.7 * 10) / 10 +
+              ' cm. Suba la constante SEGURIDAD.');
+          }
+        });
+      } catch (_) {}
+    }
+
     function lanzar() {
       if (lanzado) return;
       lanzado = true;
       const v = marco.contentWindow;
       esperarImagenes(v.document).then(() => {
+        verificarAlturas(v.document);
         /* Retirar el iframe mientras el diálogo sigue abierto cancela la
            impresión en Android. Se espera al evento y, si el navegador no lo
            emite, a un tiempo largo. */
@@ -876,7 +1127,8 @@ div.WordSection1{page:WordSection1;}
     recepcion: { conformidad:null, area:null, equipo:null, observaciones:'' }
   };
 
-  return { render, imprimir, exportarWord, CSS, PAGE_CSS, PRINT_CSS, EJEMPLO, fechaSAP, oper };
+  return { render, imprimir, exportarWord, CSS, PAGE_CSS, PRINT_CSS, EJEMPLO,
+           fechaSAP, oper, hojasFlujo, hojasCierre, rengDeseado };
 })();
 
 if (typeof window !== 'undefined') window.FO016 = FO016;
