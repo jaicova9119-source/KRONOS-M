@@ -255,24 +255,24 @@ body{background:var(--kp-page);color:var(--kp-ink);
   .kp-etapa .dl{grid-area:dl}
 }
 
-/* ── Filtros plegables en movil ──────────────────────────────────
-   Las dos barras de filtros ocupaban dos renglones completos y
-   empujaban la lista fuera de la primera pantalla. En movil se
-   colapsan detras de un boton que muestra lo que hay activo, para
-   que plegarlas no signifique perder de vista que se esta filtrando.
-   El buscador no entra al pliegue: en campo es lo primero que se usa.
-   En pantalla ancha nada de esto aplica y la cabecera se ve igual. */
+/* ── Filtros como desplegables en movil ─────────────────────────
+   En pantalla ancha los chips de Estado y Campo se ven de un vistazo
+   y tocar es barato. En un telefono esos mismos chips son cuatro
+   renglones de cabecera que empujan la lista fuera de la primera
+   pantalla. Ahi cada dimension pasa a ser un desplegable nativo: se
+   toca Estado y sale su lista, se toca Campo y sale la suya. El
+   selector nativo abre el picker del sistema, que es mas comodo con
+   el pulgar que una fila de chips que hay que deslizar.
+
+   Los dos juegos de controles comparten estado; kpSincronizar() los
+   deja siempre diciendo lo mismo. */
 .kp-fbar{background:#fff;border-bottom:1px solid var(--kp-line);
-  padding:10px 20px;display:none;gap:8px;align-items:center}
-.kp-toggle{display:flex;align-items:center;gap:7px;flex:none;max-width:60%;
-  border:1px solid var(--kp-line);background:#fff;border-radius:6px;
-  padding:5px 11px;font-size:13px;color:var(--kp-ink);cursor:pointer}
-.kp-toggle .res{font-size:12px;color:var(--kp-ink3);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.kp-toggle .res.act{color:#2f9fd4;font-weight:600}
-.kp-toggle .tw{font-size:9px;opacity:.5;flex:none;transition:transform .15s}
-.kp-toggle.abierto{border-color:#2f9fd4;color:#2f9fd4}
-.kp-toggle.abierto .tw{transform:rotate(180deg);opacity:1}
+  padding:9px 14px;display:none;flex-direction:column;gap:7px}
+.kp-fsel{display:flex;gap:6px}
+.kp-fsel select{flex:1 1 0;min-width:0;max-width:none;
+  text-overflow:ellipsis;padding-top:7px;padding-bottom:7px}
+.kp-fbus{display:flex;gap:6px}
+.kp-fbus .kp-buscar{flex:1 1 auto;min-width:0;padding-top:7px;padding-bottom:7px}
 
 .kp-bar2{border-top:none;padding-top:0}
 .kp-grupo{display:flex;gap:6px;flex-wrap:wrap}
@@ -294,12 +294,11 @@ body{background:var(--kp-page);color:var(--kp-ink);
   .kp-chip{flex:none}
   .kp-buscar{min-width:120px}
 
-  /* El pliegue solo existe aqui. El panel arranca cerrado y el
-     buscador pasa a la barra del boton (lo mueve kpUbicarBuscador). */
-  .kp-fbar{display:flex;padding:9px 14px}
+  /* Los chips se retiran y mandan los desplegables. Los controles no
+     se duplican: kpUbicarControles() mueve el buscador y el boton
+     Limpiar, asi que conservan lo escrito al girar el telefono. */
+  .kp-fbar{display:flex}
   .kp-panel{display:none}
-  .kp-panel.abierto{display:block}
-  .kp-fbar .kp-buscar{flex:1 1 auto;min-width:0}
 }
 
 @media(max-width:640px){
@@ -359,9 +358,24 @@ body{background:var(--kp-page);color:var(--kp-ink);
 </div>
 
 <div class="kp-fbar" id="kpFBar">
-  <button class="kp-toggle" id="kpToggle" type="button"
-          aria-expanded="false" aria-controls="kpPanel"
-          onclick="kpTogglePanel()">Filtros<span class="res" id="kpResumen"></span><span class="tw">&#9660;</span></button>
+  <div class="kp-fsel">
+    <select id="kpEstadoSel" class="kp-chip kp-sel" aria-label="Estado"
+            onchange="kpSetEstado(this.value)">
+      <option value="all">Todos los estados</option>
+      <option value="vigente">Al d&iacute;a</option>
+      <option value="vencida">Vencidas</option>
+      <option value="sin">Sin rondas</option>
+    </select>
+    <select id="kpCampoSel" class="kp-chip kp-sel" aria-label="Campo"
+            onchange="kpSetCampo(this.value)">
+      <option value="all">Todos los campos</option>
+    </select>
+    <select id="kpPadSel" class="kp-chip kp-sel" aria-label="PAD"
+            onchange="kpSetPad(this.value)">
+      <option value="all">Todos los PAD</option>
+    </select>
+  </div>
+  <div class="kp-fbus" id="kpFBus"></div>
 </div>
 
 <div class="kp-panel" id="kpPanel">
@@ -377,7 +391,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
     <span class="lb">Campo</span>
     <span id="kpCampos" class="kp-grupo"></span>
     <span class="lb" style="margin-left:6px">PAD</span>
-    <select id="kpPad" class="kp-chip kp-sel" onchange="kpPintarFlota()">
+    <select id="kpPad" class="kp-chip kp-sel" onchange="kpSetPad(this.value)">
       <option value="all">Todos</option>
     </select>
     <input id="kpBuscar" class="kp-chip kp-buscar" placeholder="Buscar pozo"
@@ -811,59 +825,70 @@ const KP_HEX = {crit:"#c0392b", warn:"#c77700", ok:"#2ea44f", none:"#9a9aa0"};
 
 let kpFiltro = "all";     /* estado de ronda */
 let kpCampo  = "all";     /* campo */
+let kpPad    = "all";     /* PAD */
 let kpFlota  = [];
 
 /* ============================================================
-   FILTROS PLEGABLES (solo movil)
+   FILTROS: CHIPS EN ESCRITORIO, DESPLEGABLES EN MOVIL
+   Los dos juegos apuntan a las mismas tres variables. Quien cambia
+   el filtro llama a un kpSet*, no toca el DOM del otro juego.
    ============================================================ */
 
-const KP_ETIQ_EST = {vigente:'Al d\u00eda', vencida:'Vencidas', sin:'Sin rondas'};
 const kpMQ = window.matchMedia('(max-width:640px)');
 
-/* El buscador vive en la barra del boton mientras el panel se pueda
-   plegar, y vuelve a su sitio en pantalla ancha. Se mueve el mismo
-   elemento, asi que conserva lo escrito. */
-function kpUbicarBuscador(){
+/* El buscador y el boton Limpiar se mueven entre las dos barras en
+   lugar de duplicarse: asi no hay dos valores que sincronizar y lo
+   escrito sobrevive a un giro de pantalla. */
+function kpUbicarControles(){
   const b = document.getElementById('kpBuscar');
-  if (!b) return;
-  const destino = kpMQ.matches ? document.getElementById('kpFBar')
+  const l = document.getElementById('kpLimpiar');
+  if (!b || !l) return;
+  const destino = kpMQ.matches ? document.getElementById('kpFBus')
                                : document.getElementById('kpFiltros2');
   if (b.parentNode === destino) return;
-  if (kpMQ.matches) destino.appendChild(b);
-  else destino.insertBefore(b, document.getElementById('kpLimpiar'));
+  destino.appendChild(b);
+  destino.appendChild(l);
 }
 
-function kpTogglePanel(){
-  const p = document.getElementById('kpPanel');
-  const t = document.getElementById('kpToggle');
-  const abierto = !p.classList.contains('abierto');
-  p.classList.toggle('abierto', abierto);
-  t.classList.toggle('abierto', abierto);
-  t.setAttribute('aria-expanded', abierto ? 'true' : 'false');
-  try { localStorage.setItem('kpFiltrosAbierto', abierto ? '1' : '0'); } catch(_){}
+/* Deja los dos juegos de controles diciendo lo mismo. */
+function kpSincronizar(){
+  document.querySelectorAll('#kpFiltros .kp-chip[data-s]')
+    .forEach(x => x.classList.toggle('on', x.dataset.s === kpFiltro));
+  document.querySelectorAll('#kpCampos .kp-chip')
+    .forEach(x => x.classList.toggle('on', x.dataset.c === kpCampo));
+  const e = document.getElementById('kpEstadoSel'); if (e) e.value = kpFiltro;
+  const c = document.getElementById('kpCampoSel');  if (c) c.value = kpCampo;
+  const p = document.getElementById('kpPad');       if (p) p.value = kpPad;
+  const m = document.getElementById('kpPadSel');    if (m) m.value = kpPad;
 }
 
-/* Plegar no puede significar perder de vista que se esta filtrando:
-   el boton muestra lo activo. Sin filtros no dice nada y queda solo
-   la palabra Filtros. */
-function kpPintarResumen(){
-  const r = document.getElementById('kpResumen');
-  if (!r) return;
-  const pad = document.getElementById('kpPad')?.value || 'all';
-  const p = [];
-  if (KP_ETIQ_EST[kpFiltro]) p.push(KP_ETIQ_EST[kpFiltro]);
-  if (kpCampo !== 'all')     p.push(kpCampo);
-  if (pad !== 'all')         p.push(pad);
-  r.textContent = p.join(' \u00b7 ');
-  r.classList.toggle('act', p.length > 0);
+function kpSetEstado(v){
+  kpFiltro = v;
+  kpSincronizar();
+  kpPintarFlota();
+}
+
+/* Cambiar de campo invalida los PAD del anterior. */
+function kpSetCampo(v){
+  kpCampo = v;
+  kpPoblarPads();
+  kpSincronizar();
+  kpPintarFlota();
+}
+
+function kpSetPad(v){
+  kpPad = v;
+  kpSincronizar();
+  kpPintarFlota();
 }
 
 function kpMostrarFiltros(v){
   document.getElementById('kpFiltros').style.display  = v ? 'flex' : 'none';
   document.getElementById('kpFiltros2').style.display = v ? 'flex' : 'none';
   /* Cadena vacia devuelve el control a la hoja de estilos, que es la
-     que decide si la barra del boton existe segun el ancho. */
-  document.getElementById('kpFBar').style.display = v ? '' : 'none';
+     que decide si la barra de desplegables existe segun el ancho. */
+  document.getElementById('kpFBar').style.display  = v ? '' : 'none';
+  document.getElementById('kpPanel').style.display = v ? '' : 'none';
 }
 
 function kpPeor(lista){
@@ -906,42 +931,48 @@ function kpPoblarFiltros(){
     h += '<button class="kp-chip" data-c="' + kpEsc(c) + '">' + kpEsc(c) + '</button>';
   });
   document.getElementById('kpCampos').innerHTML = h;
+
+  const sel = document.getElementById('kpCampoSel');
+  if (sel) {
+    sel.innerHTML = '<option value="all">Todos los campos</option>'
+      + campos.map(c => '<option value="' + kpEsc(c) + '">' + kpEsc(c) + '</option>').join('');
+  }
   kpPoblarPads();
+  kpSincronizar();
 }
 
 /* Los PAD se limitan al campo elegido. Ofrecer los PAD de Put Sur
    cuando esta filtrado Put Norte solo produce listas vacias. */
 function kpPoblarPads(){
-  const sel = document.getElementById('kpPad');
-  const previo = sel.value;
   const pads = [...new Set(kpFlota
     .filter(x => kpCampo === 'all' || x.campo === kpCampo)
     .map(x => x.pad).filter(p => p && p !== '\u2014'))].sort();
 
-  sel.innerHTML = '<option value="all">Todos</option>'
-    + pads.map(p => '<option value="' + kpEsc(p) + '">' + kpEsc(p) + '</option>').join('');
   /* Se conserva la seleccion si el PAD sigue existiendo en el campo
      nuevo; si no, se vuelve a Todos en lugar de dejar un filtro
      invisible que no coincide con nada. */
-  sel.value = pads.indexOf(previo) >= 0 ? previo : 'all';
+  if (pads.indexOf(kpPad) < 0) kpPad = 'all';
+
+  const ops = pads.map(p => '<option value="' + kpEsc(p) + '">' + kpEsc(p) + '</option>').join('');
+  const sel = document.getElementById('kpPad');
+  if (sel) { sel.innerHTML = '<option value="all">Todos</option>' + ops; sel.value = kpPad; }
+  const mov = document.getElementById('kpPadSel');
+  if (mov) { mov.innerHTML = '<option value="all">Todos los PAD</option>' + ops; mov.value = kpPad; }
 }
 
 function kpLimpiarFiltros(){
   kpFiltro = 'all';
   kpCampo  = 'all';
-  document.getElementById('kpPad').value = 'all';
+  kpPad    = 'all';
   document.getElementById('kpBuscar').value = '';
-  document.querySelectorAll('#kpFiltros .kp-chip[data-s]')
-    .forEach(x => x.classList.toggle('on', x.dataset.s === 'all'));
   kpPoblarPads();
-  document.querySelectorAll('#kpCampos .kp-chip')
-    .forEach(x => x.classList.toggle('on', x.dataset.c === 'all'));
+  kpSincronizar();
   kpPintarFlota();
 }
 
 function kpPintarFlota(){
   const q   = (document.getElementById('kpBuscar')?.value || '').trim().toUpperCase();
-  const pad = document.getElementById('kpPad')?.value || 'all';
+  const pad = kpPad;
 
   /* El ambito es campo + PAD + busqueda. El estado se aplica despues,
      aparte, para que los contadores de arriba sigan mostrando el total
@@ -960,7 +991,6 @@ function kpPintarFlota(){
   const hayFiltro = (kpFiltro !== 'all' || kpCampo !== 'all' || pad !== 'all' || q);
   const bl = document.getElementById('kpLimpiar');
   if (bl) bl.style.display = hayFiltro ? '' : 'none';
-  kpPintarResumen();
 
   /* Orden: primero las que llevan mas tiempo sin ronda. Es lo que hay
      que salir a hacer, y por eso encabeza la lista. Las que nunca se
@@ -2403,11 +2433,7 @@ function kpLeyenda(){
 document.getElementById("kpCampos").addEventListener("click", ev => {
   const b = ev.target.closest(".kp-chip");
   if (!b || !b.dataset.c) return;
-  kpCampo = b.dataset.c;
-  document.querySelectorAll("#kpCampos .kp-chip")
-    .forEach(x => x.classList.toggle("on", x === b));
-  kpPoblarPads();   /* los PAD del campo anterior ya no aplican */
-  kpPintarFlota();
+  kpSetCampo(b.dataset.c);   /* los PAD del campo anterior ya no aplican */
 });
 
 document.getElementById("kpFiltros").addEventListener("click", ev => {
@@ -2416,22 +2442,14 @@ document.getElementById("kpFiltros").addEventListener("click", ev => {
      filtro: sin este guardia, tocarlo dejaba kpFiltro en undefined y la
      lista se vaciaba entera. */
   if (!b || !b.dataset.s) return;
-  kpFiltro = b.dataset.s;
-  document.querySelectorAll(".kp-chip[data-s]").forEach(x => x.classList.toggle("on", x === b));
-  kpPintarFlota();
+  kpSetEstado(b.dataset.s);
 });
 
-/* El buscador se coloca antes del primer pintado y se reacomoda si el
-   telefono gira o si la ventana cambia de ancho. */
-kpUbicarBuscador();
-if (kpMQ.addEventListener) kpMQ.addEventListener('change', kpUbicarBuscador);
-else kpMQ.addListener(kpUbicarBuscador);
-
-/* Se recuerda si el panel quedo desplegado: quien filtra por PAD suele
-   hacerlo varias veces seguidas y no tiene por que reabrirlo cada vez. */
-try {
-  if (localStorage.getItem('kpFiltrosAbierto') === '1') kpTogglePanel();
-} catch(_){}
+/* Los controles se colocan antes del primer pintado y se reacomodan si
+   el telefono gira o si la ventana cambia de ancho. */
+kpUbicarControles();
+if (kpMQ.addEventListener) kpMQ.addEventListener('change', kpUbicarControles);
+else kpMQ.addListener(kpUbicarControles);
 
 kpVerFlota();
 </script>
