@@ -11,6 +11,12 @@
            y por eso el bloque "¿Cómo quedó el equipo?" terminaba solo y
            pegado al borde del papel.
 
+           El reparto es una sola pasada sobre todo el documento, así que una
+           hoja de continuación sigue de largo con lo que venga detrás en vez
+           de cerrar con media hoja en blanco. El único corte que no depende
+           del espacio es el de la hoja 1, que cierra después de
+           "Recomendaciones adicionales" porque así lo hace el impreso de SAP.
+
            Con contenido que cabe, la salida es la misma de siempre: el caso
            de referencia rinde exactamente las mismas tres hojas y el mismo
            texto que la rev.6.
@@ -111,12 +117,12 @@ const FO016 = (function () {
   const OPS_REF    = 9;
   const RENG_REF   = 8;
 
-  /* Hoja 2: bajo los renglones va una retícula fija (tiempos de parada,
-     estado y recepción). El impreso de referencia deja 7 renglones y sobra
-     blanco; P2_RENG_MAX es hasta dónde puede crecer sin invadir esa retícula. */
-  const P2_RENG_BASE = 7;
-  const P2_RENG_MAX  = 12;
-  const P2_RENG_CONT = Math.floor(CONT_FLUJO / RENGLON2);   // hoja solo de renglones
+  /* Hoja 2: bajo los renglones va una retícula que viaja entera —tiempos de
+     parada, estado de la orden y recepción de servicio—. El impreso de
+     referencia deja 7 renglones encima de ella. */
+  const P2_RENG_BASE  = 7;
+  const ESPACIADOR_P2 = 0.11;
+  const ALTO_CIERRE   = 14.50;
 
   /* ----------------------------- utilidades ------------------------------- */
 
@@ -784,38 +790,58 @@ ${tbN(W.total, W.clerk)}
     return Math.min(MAX_RENG, Math.max(MIN_RENG, Math.round(cm / RENGLON)));
   }
 
-  /* ----------------------- paginador de la hoja 1 -------------------------
-     Recorre el flujo (operaciones, materiales, caja de descripción) llevando
-     la cuenta en cm de lo que queda libre. Cuando un bloque no cabe, cierra
-     la hoja y abre otra: la cabecera se vuelve a imprimir arriba y el relleno
-     que hace de margen se aplica de nuevo, porque cada hoja es su propio
-     .fo016-pag. Mientras el contenido quepa —el caso normal— sale una sola
-     hoja idéntica a la de siempre.                                        */
+  /* --------------------------- paginador ----------------------------------
+     Una sola pasada sobre todo el documento, llevando la cuenta en cm de lo
+     que queda libre en la hoja. Cuando un bloque no cabe, cierra la hoja y
+     abre otra: la cabecera se vuelve a imprimir arriba y el relleno que hace
+     de margen se aplica de nuevo, porque cada hoja es su propio .fo016-pag.
 
-  function hojasFlujo(ot) {
-    const ops  = ot.operaciones || [];
-    const mats = ot.materiales  || [];
+     El corte de la hoja 1 es el único que no depende del espacio: el impreso
+     de SAP cierra siempre después de "Recomendaciones adicionales", con
+     blanco al pie, y esa retícula se respeta. De ahí en adelante el reparto
+     es por espacio, así que una hoja de continuación que arranque con dos
+     renglones sigue de largo con las recomendaciones y con la retícula de
+     tiempos, estado y recepción si alcanzan a caber. Antes esas dos partes
+     las armaban paginadores distintos y la segunda abría hoja nueva sí o sí:
+     de ahí la hoja con tres líneas arriba y el resto en blanco.            */
+
+  function hojasDocumento(ot) {
+    const ops    = ot.operaciones || [];
+    const mats   = ot.materiales  || [];
     const lineas = ot.actividad_realizada
       ? renglonear(ot.actividad_realizada, CHARS_RENGLON) : [];
+    const recom  = ot.recomendaciones
+      ? renglonear(ot.recomendaciones, CHARS_RENGLON) : [];
     const nRengl = Math.max(rengDeseado(ot), lineas.length);
 
+    /* La retícula de cierre viaja entera. Las observaciones de recepción son
+       lo único que la hace crecer. */
+    const obs = renglonearVar((ot.recepcion || {}).observaciones, [80, 98]);
+    const altoCierre = ALTO_CIERRE + Math.max(0, obs.length - 4) * 0.44;
+    /* Si las observaciones son tan largas que la retícula ya no cabe en una
+       hoja entera, romper la página no arregla nada: solo agrega hojas casi
+       vacías. En ese caso no se reserva espacio ni se corta, y el aviso de
+       imprimir() delata el desborde con la medida real. */
+    const cabeSuelta = ESPACIADOR_P2 + P2_RENG_BASE * RENGLON2
+                     + altoCierre <= CONT_FLUJO;
+
     const hojas = [];
-    let buf  = bloqueDatos(ot);          // el bloque de datos solo va en la 1.ª
+    let buf   = bloqueDatos(ot);         // el bloque de datos solo va en la 1.ª
     let libre = P1_FLUJO;
-    let cont = false;                    // ¿la hoja actual es de continuación?
+    let hoja1 = true;
 
     const cerrar = () => {
       hojas.push(buf);
       buf = '';
       libre = CONT_FLUJO;
-      cont = true;
+      hoja1 = false;
     };
 
     /* --- operaciones --- */
     let i = 0;
     while (i < ops.length) {
       let caben = Math.floor((libre - OPS_HEAD) / FILA_OP);
-      if (caben < 1) { cerrar(); continue; }
+      if (caben < 1) { if (!buf) { caben = 1; } else { cerrar(); continue; } }
       if (caben > ops.length - i) caben = ops.length - i;
       buf += tablaOperaciones(ops.slice(i, i + caben), i);
       libre -= OPS_HEAD + caben * FILA_OP;
@@ -827,7 +853,7 @@ ${tbN(W.total, W.clerk)}
     let j = 0;
     while (j < mats.length) {
       let caben = Math.floor((libre - MAT_HEAD) / FILA_MAT);
-      if (caben < 1) { cerrar(); continue; }
+      if (caben < 1) { if (!buf) { caben = 1; } else { cerrar(); continue; } }
       const ultimo = caben >= mats.length - j;
       if (ultimo) caben = mats.length - j;
       /* El relleno en blanco solo tiene sentido si cabe entero. */
@@ -844,9 +870,9 @@ ${tbN(W.total, W.clerk)}
     if (libre < DESC_HEAD + 2 * RENGLON) cerrar();
     buf += descCabeza(ot);
     libre -= DESC_HEAD;
-    let abierta = false;   // ¿la caja viene abierta de la hoja anterior?
+    let abierta = false;                 // ¿la caja viene abierta de la hoja anterior?
 
-    /* --- renglones --- */
+    /* --- renglones de la descripción --- */
     let r = 0;
     while (r < nRengl) {
       let caben = Math.floor(libre / RENGLON);
@@ -855,7 +881,10 @@ ${tbN(W.total, W.clerk)}
       if (caben >= ultimos && libre - ultimos * RENGLON < DESC_COLA) {
         caben = Math.floor((libre - DESC_COLA) / RENGLON);
       }
-      if (caben < 1) { cerrar(); abierta = true; continue; }
+      if (caben < 1) {
+        if (buf) { cerrar(); abierta = true; continue; }
+        caben = 1;
+      }
       if (caben > ultimos) caben = ultimos;
       buf += descRenglones(lineas, r, caben, abierta);
       libre -= caben * RENGLON;
@@ -864,7 +893,7 @@ ${tbN(W.total, W.clerk)}
       if (r < nRengl) { cerrar(); abierta = true; }
     }
 
-    /* --- cola --- */
+    /* --- cola de la caja de descripción --- */
     if (libre < DESC_COLA) { cerrar(); abierta = true; }
     if (abierta) {
       /* Abre la hoja con un renglón de cierre para que la caja no arranque
@@ -873,60 +902,60 @@ ${tbN(W.total, W.clerk)}
       libre -= RENGLON;
     }
     buf += descCola(ot);
-    hojas.push(buf);
+    libre -= DESC_COLA;
 
-    return hojas;
-  }
+    /* Fin de la hoja 1 del formato. Si el contenido nunca se desbordó, aquí
+       se corta por diseño; si ya venimos en continuación, se sigue llenando. */
+    if (hoja1) cerrar();
 
-  /* ----------------------- paginador de la hoja 2 -------------------------
-     Los renglones de "Recomendaciones" son lo único que crece. El bloque de
-     tiempos, el estado y la recepción viajan siempre juntos en la última.  */
-
-  function hojasCierre(ot) {
-    const lineas = ot.recomendaciones
-      ? renglonear(ot.recomendaciones, CHARS_RENGLON) : [];
-
-    /* Las observaciones de recepción también crecen. Lo que ocupen de más
-       sobre los cuatro renglones del impreso se le quita al presupuesto de
-       recomendaciones, para no empujar la retícula fuera de la hoja. */
-    const obs = renglonearVar((ot.recepcion || {}).observaciones, [80, 98]);
-    const extraObs = Math.max(0, obs.length - 4) * 0.44;
-    const tope = Math.max(P2_RENG_BASE,
-                          P2_RENG_MAX - Math.ceil(extraObs / RENGLON2));
-
-    const hojas = [];
-    let r = 0;
-    let restan = Math.max(P2_RENG_BASE, lineas.length);
-    /* En la hoja 2 la caja arranca de cero: el primer renglón siempre lleva
-       borde superior, igual que en el impreso original. */
-    let abierta = true;
-
-    /* Se llenan hojas completas mientras el resto siga sin caber. Solo cuando
-       lo que queda cabe en una hoja se corta antes, para no dejar una hoja de
-       continuación con tres renglones sueltos. */
-    while (restan > tope) {
-      const n = (restan <= P2_RENG_CONT || restan - P2_RENG_CONT >= tope)
-        ? Math.min(restan, P2_RENG_CONT)
-        : restan - tope;
-      hojas.push(p2Renglones(lineas, r, n, abierta));
-      r += n; restan -= n; abierta = true;
+    /* --- renglones de recomendaciones --- */
+    const nRec = Math.max(P2_RENG_BASE, recom.length);
+    let q = 0;
+    let abierta2 = true;   // la caja arranca de cero: lleva borde superior
+    while (q < nRec) {
+      let caben = Math.floor((libre - ESPACIADOR_P2) / RENGLON2);
+      const ultimos = nRec - q;
+      /* La retícula de cierre no se separa de los últimos renglones. */
+      /* La retícula de cierre no se separa de los últimos renglones, pero
+         solo tiene sentido reservarle sitio si en una hoja limpia sí caben
+         juntos. Si no, se deja correr. */
+      const juntos = ESPACIADOR_P2 + ultimos * RENGLON2 + altoCierre;
+      if (caben >= ultimos && juntos > libre && juntos <= CONT_FLUJO) {
+        caben = Math.floor((libre - ESPACIADOR_P2 - altoCierre) / RENGLON2);
+      }
+      if (caben < 1) {
+        if (buf) { cerrar(); abierta2 = true; continue; }
+        caben = 1;                       // hoja vacía: se fuerza para no ciclar
+      }
+      if (caben > ultimos) caben = ultimos;
+      buf += p2Renglones(recom, q, caben, abierta2);
+      libre -= ESPACIADOR_P2 + caben * RENGLON2;
+      q += caben;
+      abierta2 = false;
+      if (q < nRec) { cerrar(); abierta2 = true; }
     }
 
-    hojas.push(
-      p2Renglones(lineas, r, restan > 0 ? restan : P2_RENG_BASE, abierta) +
-      cajaTiempos(ot) +
-      estadoOrden(ot) +
-      recepcion(ot)
-    );
+    /* --- retícula de cierre --- */
+    if (libre < altoCierre && cabeSuelta) {
+      cerrar();
+      /* Nunca queda sin renglones encima: es donde se sigue escribiendo. */
+      buf += p2Renglones([], 0, P2_RENG_BASE, true);
+      libre -= ESPACIADOR_P2 + P2_RENG_BASE * RENGLON2;
+    }
+    buf += cajaTiempos(ot) + estadoOrden(ot) + recepcion(ot);
+    libre -= altoCierre;
+    cerrar();
+
+    /* --- firmas: hoja propia, como en el original --- */
+    hojas.push(firmas(ot));
+
     return hojas;
   }
 
   /* ------------------------------ render ---------------------------------- */
 
   function render(ot) {
-    const cuerpos = hojasFlujo(ot)
-      .concat(hojasCierre(ot))
-      .concat([firmas(ot)]);
+    const cuerpos = hojasDocumento(ot);
 
     const total = cuerpos.length;
     const hojas = cuerpos.map((cuerpo, k) => {
@@ -1128,7 +1157,7 @@ div.WordSection1{page:WordSection1;}
   };
 
   return { render, imprimir, exportarWord, CSS, PAGE_CSS, PRINT_CSS, EJEMPLO,
-           fechaSAP, oper, hojasFlujo, hojasCierre, rengDeseado };
+           fechaSAP, oper, hojasDocumento, rengDeseado };
 })();
 
 if (typeof window !== 'undefined') window.FO016 = FO016;
