@@ -255,6 +255,25 @@ body{background:var(--kp-page);color:var(--kp-ink);
   .kp-etapa .dl{grid-area:dl}
 }
 
+/* ── Filtros plegables en movil ──────────────────────────────────
+   Las dos barras de filtros ocupaban dos renglones completos y
+   empujaban la lista fuera de la primera pantalla. En movil se
+   colapsan detras de un boton que muestra lo que hay activo, para
+   que plegarlas no signifique perder de vista que se esta filtrando.
+   El buscador no entra al pliegue: en campo es lo primero que se usa.
+   En pantalla ancha nada de esto aplica y la cabecera se ve igual. */
+.kp-fbar{background:#fff;border-bottom:1px solid var(--kp-line);
+  padding:10px 20px;display:none;gap:8px;align-items:center}
+.kp-toggle{display:flex;align-items:center;gap:7px;flex:none;max-width:60%;
+  border:1px solid var(--kp-line);background:#fff;border-radius:6px;
+  padding:5px 11px;font-size:13px;color:var(--kp-ink);cursor:pointer}
+.kp-toggle .res{font-size:12px;color:var(--kp-ink3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kp-toggle .res.act{color:#2f9fd4;font-weight:600}
+.kp-toggle .tw{font-size:9px;opacity:.5;flex:none;transition:transform .15s}
+.kp-toggle.abierto{border-color:#2f9fd4;color:#2f9fd4}
+.kp-toggle.abierto .tw{transform:rotate(180deg);opacity:1}
+
 .kp-bar2{border-top:none;padding-top:0}
 .kp-grupo{display:flex;gap:6px;flex-wrap:wrap}
 .kp-sel{cursor:pointer;max-width:190px;-webkit-appearance:none;appearance:none;
@@ -274,6 +293,13 @@ body{background:var(--kp-page);color:var(--kp-ink);
   .kp-bar .lb{flex:none}
   .kp-chip{flex:none}
   .kp-buscar{min-width:120px}
+
+  /* El pliegue solo existe aqui. El panel arranca cerrado y el
+     buscador pasa a la barra del boton (lo mueve kpUbicarBuscador). */
+  .kp-fbar{display:flex;padding:9px 14px}
+  .kp-panel{display:none}
+  .kp-panel.abierto{display:block}
+  .kp-fbar .kp-buscar{flex:1 1 auto;min-width:0}
 }
 
 @media(max-width:640px){
@@ -314,7 +340,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
 /* Impresion: las secciones plegadas se abren y desaparecen los
    controles, para que un reporte impreso no salga a medias. */
 @media print{
-  .kp-top,.kp-bar,.kp-nav,.kp-back{display:none !important}
+  .kp-top,.kp-bar,.kp-fbar,.kp-nav,.kp-back{display:none !important}
   .kp-sec.cerrada .cuerpo{display:block !important}
   .kp-sec{break-inside:avoid;border-color:#ccc}
   body{background:#fff}
@@ -332,25 +358,33 @@ body{background:var(--kp-page);color:var(--kp-ink);
   <button class="kp-back" id="kpBack" style="display:none" onclick="kpVerFlota()">&larr; Volver a flota</button>
 </div>
 
-<div class="kp-bar kp-bar1" id="kpFiltros">
-  <span class="lb">Estado</span>
-  <button class="kp-chip on" data-s="all">Todas</button>
-  <button class="kp-chip" data-s="vigente">Al d&iacute;a</button>
-  <button class="kp-chip" data-s="vencida">Vencidas</button>
-  <button class="kp-chip" data-s="sin">Sin rondas</button>
+<div class="kp-fbar" id="kpFBar">
+  <button class="kp-toggle" id="kpToggle" type="button"
+          aria-expanded="false" aria-controls="kpPanel"
+          onclick="kpTogglePanel()">Filtros<span class="res" id="kpResumen"></span><span class="tw">&#9660;</span></button>
 </div>
 
-<div class="kp-bar kp-bar2" id="kpFiltros2">
-  <span class="lb">Campo</span>
-  <span id="kpCampos" class="kp-grupo"></span>
-  <span class="lb" style="margin-left:6px">PAD</span>
-  <select id="kpPad" class="kp-chip kp-sel" onchange="kpPintarFlota()">
-    <option value="all">Todos</option>
-  </select>
-  <input id="kpBuscar" class="kp-chip kp-buscar" placeholder="Buscar pozo"
-         oninput="kpPintarFlota()">
-  <button class="kp-chip kp-limpiar" id="kpLimpiar" style="display:none"
-          onclick="kpLimpiarFiltros()">Limpiar</button>
+<div class="kp-panel" id="kpPanel">
+  <div class="kp-bar kp-bar1" id="kpFiltros">
+    <span class="lb">Estado</span>
+    <button class="kp-chip on" data-s="all">Todas</button>
+    <button class="kp-chip" data-s="vigente">Al d&iacute;a</button>
+    <button class="kp-chip" data-s="vencida">Vencidas</button>
+    <button class="kp-chip" data-s="sin">Sin rondas</button>
+  </div>
+
+  <div class="kp-bar kp-bar2" id="kpFiltros2">
+    <span class="lb">Campo</span>
+    <span id="kpCampos" class="kp-grupo"></span>
+    <span class="lb" style="margin-left:6px">PAD</span>
+    <select id="kpPad" class="kp-chip kp-sel" onchange="kpPintarFlota()">
+      <option value="all">Todos</option>
+    </select>
+    <input id="kpBuscar" class="kp-chip kp-buscar" placeholder="Buscar pozo"
+           oninput="kpPintarFlota()">
+    <button class="kp-chip kp-limpiar" id="kpLimpiar" style="display:none"
+            onclick="kpLimpiarFiltros()">Limpiar</button>
+  </div>
 </div>
 
 <div class="kp-wrap" id="kpVista"><div class="kp-msg">Cargando&hellip;</div></div>
@@ -779,6 +813,59 @@ let kpFiltro = "all";     /* estado de ronda */
 let kpCampo  = "all";     /* campo */
 let kpFlota  = [];
 
+/* ============================================================
+   FILTROS PLEGABLES (solo movil)
+   ============================================================ */
+
+const KP_ETIQ_EST = {vigente:'Al d\u00eda', vencida:'Vencidas', sin:'Sin rondas'};
+const kpMQ = window.matchMedia('(max-width:640px)');
+
+/* El buscador vive en la barra del boton mientras el panel se pueda
+   plegar, y vuelve a su sitio en pantalla ancha. Se mueve el mismo
+   elemento, asi que conserva lo escrito. */
+function kpUbicarBuscador(){
+  const b = document.getElementById('kpBuscar');
+  if (!b) return;
+  const destino = kpMQ.matches ? document.getElementById('kpFBar')
+                               : document.getElementById('kpFiltros2');
+  if (b.parentNode === destino) return;
+  if (kpMQ.matches) destino.appendChild(b);
+  else destino.insertBefore(b, document.getElementById('kpLimpiar'));
+}
+
+function kpTogglePanel(){
+  const p = document.getElementById('kpPanel');
+  const t = document.getElementById('kpToggle');
+  const abierto = !p.classList.contains('abierto');
+  p.classList.toggle('abierto', abierto);
+  t.classList.toggle('abierto', abierto);
+  t.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+  try { localStorage.setItem('kpFiltrosAbierto', abierto ? '1' : '0'); } catch(_){}
+}
+
+/* Plegar no puede significar perder de vista que se esta filtrando:
+   el boton muestra lo activo. Sin filtros no dice nada y queda solo
+   la palabra Filtros. */
+function kpPintarResumen(){
+  const r = document.getElementById('kpResumen');
+  if (!r) return;
+  const pad = document.getElementById('kpPad')?.value || 'all';
+  const p = [];
+  if (KP_ETIQ_EST[kpFiltro]) p.push(KP_ETIQ_EST[kpFiltro]);
+  if (kpCampo !== 'all')     p.push(kpCampo);
+  if (pad !== 'all')         p.push(pad);
+  r.textContent = p.join(' \u00b7 ');
+  r.classList.toggle('act', p.length > 0);
+}
+
+function kpMostrarFiltros(v){
+  document.getElementById('kpFiltros').style.display  = v ? 'flex' : 'none';
+  document.getElementById('kpFiltros2').style.display = v ? 'flex' : 'none';
+  /* Cadena vacia devuelve el control a la hoja de estilos, que es la
+     que decide si la barra del boton existe segun el ancho. */
+  document.getElementById('kpFBar').style.display = v ? '' : 'none';
+}
+
 function kpPeor(lista){
   let r = "ok";
   for (const x of lista){
@@ -793,8 +880,7 @@ function kpPeor(lista){
    ============================================================ */
 async function kpVerFlota(){
   document.getElementById("kpBack").style.display = "none";
-  document.getElementById("kpFiltros").style.display = "flex";
-  document.getElementById("kpFiltros2").style.display = "flex";
+  kpMostrarFiltros(true);
   document.getElementById("kpTitulo").textContent = "Monitoreo de Condici\u00f3n";
   document.getElementById("kpSub").innerHTML =
     "Monitoreo de condici&oacute;n y diagn&oacute;stico de m&aacute;quinas";
@@ -874,6 +960,7 @@ function kpPintarFlota(){
   const hayFiltro = (kpFiltro !== 'all' || kpCampo !== 'all' || pad !== 'all' || q);
   const bl = document.getElementById('kpLimpiar');
   if (bl) bl.style.display = hayFiltro ? '' : 'none';
+  kpPintarResumen();
 
   /* Orden: primero las que llevan mas tiempo sin ronda. Es lo que hay
      que salir a hacer, y por eso encabeza la lista. Las que nunca se
@@ -970,8 +1057,7 @@ function kpDiasDesde(iso){
    ============================================================ */
 async function kpVerPozo(codigo){
   document.getElementById("kpBack").style.display = "block";
-  document.getElementById("kpFiltros").style.display = "none";
-  document.getElementById("kpFiltros2").style.display = "none";
+  kpMostrarFiltros(false);
   const v = document.getElementById("kpVista");
   v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
   document.getElementById("kpTitulo").textContent = codigo;
@@ -2334,6 +2420,18 @@ document.getElementById("kpFiltros").addEventListener("click", ev => {
   document.querySelectorAll(".kp-chip[data-s]").forEach(x => x.classList.toggle("on", x === b));
   kpPintarFlota();
 });
+
+/* El buscador se coloca antes del primer pintado y se reacomoda si el
+   telefono gira o si la ventana cambia de ancho. */
+kpUbicarBuscador();
+if (kpMQ.addEventListener) kpMQ.addEventListener('change', kpUbicarBuscador);
+else kpMQ.addListener(kpUbicarBuscador);
+
+/* Se recuerda si el panel quedo desplegado: quien filtra por PAD suele
+   hacerlo varias veces seguidas y no tiene por que reabrirlo cada vez. */
+try {
+  if (localStorage.getItem('kpFiltrosAbierto') === '1') kpTogglePanel();
+} catch(_){}
 
 kpVerFlota();
 </script>
