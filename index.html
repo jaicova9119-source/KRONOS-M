@@ -2909,6 +2909,10 @@ function aplicarModulo(modulo, irVistaDefault = true) {
   moduloActivo = modulo;
   localStorage.setItem(MODULO_KEY, modulo);
 
+  /* El boton del asistente estorba en los modulos que corren dentro de un
+     iframe con barra propia. Se apaga ahi y se prende en el resto. */
+  if (window.asistenteVisibleEn) window.asistenteVisibleEn(modulo);
+
   const navbar = document.getElementById("navbar-principal");
   navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental",
                           "modulo-ensayos", "modulo-programacion", "modulo-vfd",
@@ -12960,6 +12964,273 @@ function abrirAsistente() {
 }
 
 document.getElementById("btn-asistente").onclick = abrirAsistente;
+
+/* ============================================================
+   Boton del asistente · comportamiento de ocultamiento
+   ============================================================
+   El boton flotante estorba cuando se lee una lista larga o
+   cuando el modulo corre en un iframe con barra propia. En vez
+   de quitarlo, se le dan cuatro salidas:
+
+     1. Se repliega contra el borde al bajar; vuelve al subir.
+     2. Se arrastra y se pega al borde izquierdo o derecho.
+        La posicion queda guardada por dispositivo.
+     3. Pulsacion larga lo reduce a una pestaña delgada.
+        Un toque en la pestaña lo devuelve.
+     4. Se apaga por completo en los modulos de OCULTAR_EN.
+
+   Toma el control del toque, por eso el onclick de arriba se
+   anula: hay que distinguir entre tocar, arrastrar y mantener. */
+(function () {
+  "use strict";
+
+  var K_POS = "kx_asis_pos";
+  var K_MIN = "kx_asis_min";
+  var K_TIP = "kx_asis_tip";
+
+  var UMBRAL   = 8;    // px para distinguir arrastre de toque
+  var MS_LARGA = 550;  // pulsacion larga
+  var MS_QUIETO = 900; // reaparece si el scroll se detiene
+
+  /* Modulos donde el boton estorba mas de lo que sirve.
+     Vaciar el arreglo para tenerlo siempre visible. */
+  var OCULTAR_EN = ["vfd"];
+
+  var btn = document.getElementById("btn-asistente");
+  if (!btn) return;
+
+  var estado = {
+    lado: null,   // null = respeta la posicion del CSS
+    top: null,
+    minimizado: false,
+    replegado: false,
+    apagado: false,
+  };
+
+  var arrastrando = false, movio = false;
+  var tLarga = null, tScroll = null;
+  var inicio = null;
+  var posPrevias = new WeakMap();
+
+  function leer(k, d) {
+    try { var v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); }
+    catch (e) { return d; }
+  }
+  function guardar(k, v) {
+    try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* cuota */ }
+  }
+  function limitar(v, a, b) { return v < a ? a : v > b ? b : v; }
+
+  var css = document.createElement("style");
+  css.id = "kx-asis-css";
+  css.textContent = [
+    "#btn-asistente{",
+    "  touch-action:none;user-select:none;-webkit-user-select:none;",
+    "  -webkit-tap-highlight-color:transparent;",
+    "  transition:transform .22s ease,opacity .22s ease,width .22s ease,border-radius .22s ease;",
+    "}",
+    "#btn-asistente.kx-repliega.kx-der{transform:translateX(36px);opacity:.32}",
+    "#btn-asistente.kx-repliega.kx-izq{transform:translateX(-36px);opacity:.32}",
+    "#btn-asistente.kx-min{width:14px;border-radius:7px;box-shadow:none;padding:0}",
+    "#btn-asistente.kx-min svg{display:none}",
+    "#btn-asistente.kx-min.kx-der{transform:translateX(7px)}",
+    "#btn-asistente.kx-min.kx-izq{transform:translateX(-7px)}",
+    "#btn-asistente.kx-apagado{display:none}",
+    "@media (prefers-reduced-motion: reduce){#btn-asistente{transition:none}}",
+  ].join("");
+  document.head.appendChild(css);
+
+  function aplicarPosicion() {
+    if (!estado.lado) return;   // nunca lo arrastraron: queda como en el CSS
+
+    var alto = window.innerHeight;
+    var h = btn.offsetHeight || 52;
+    btn.style.top = Math.round(limitar(estado.top, 16, alto - h - 16)) + "px";
+    btn.style.bottom = "auto";
+
+    if (estado.lado === "der") {
+      btn.style.right = "16px";
+      btn.style.left = "auto";
+    } else {
+      btn.style.left = "16px";
+      btn.style.right = "auto";
+    }
+    btn.classList.toggle("kx-der", estado.lado === "der");
+    btn.classList.toggle("kx-izq", estado.lado === "izq");
+  }
+
+  function aplicarEstado() {
+    if (!estado.lado) btn.classList.add("kx-der");
+    btn.classList.toggle("kx-min", estado.minimizado);
+    btn.classList.toggle("kx-repliega", estado.replegado && !arrastrando);
+    btn.classList.toggle("kx-apagado", estado.apagado);
+    btn.title = estado.minimizado ? "Mostrar asistente" : "Asistente tecnico";
+  }
+
+  /* El scroll ocurre dentro de .panel-body y .list, no en window.
+     Los eventos scroll no burbujean, pero si se capturan. */
+  document.addEventListener("scroll", function (ev) {
+    if (arrastrando || estado.apagado) return;
+
+    var cont = ev.target;
+    if (!cont || cont === document) return;
+
+    var y = cont.scrollTop;
+    if (typeof y !== "number") return;
+
+    var previo = posPrevias.get(cont) || 0;
+    posPrevias.set(cont, y);
+
+    var d = y - previo;
+    if (Math.abs(d) < 4) return;
+
+    if (d > 0 && !estado.replegado) {
+      estado.replegado = true;
+      aplicarEstado();
+    } else if (d < 0 && estado.replegado) {
+      estado.replegado = false;
+      aplicarEstado();
+    }
+
+    clearTimeout(tScroll);
+    tScroll = setTimeout(function () {
+      if (estado.replegado) { estado.replegado = false; aplicarEstado(); }
+    }, MS_QUIETO);
+  }, true);
+
+  /* Scroll reportado por los iframes submodulo. */
+  window.addEventListener("message", function (ev) {
+    var d = ev.data;
+    if (!d || d.tipo !== "kx-scroll" || arrastrando || estado.apagado) return;
+
+    var y = Number(d.y) || 0;
+    var previo = posPrevias.get(window) || 0;
+    posPrevias.set(window, y);
+    if (Math.abs(y - previo) < 4) return;
+
+    estado.replegado = y > previo;
+    aplicarEstado();
+
+    clearTimeout(tScroll);
+    tScroll = setTimeout(function () {
+      if (estado.replegado) { estado.replegado = false; aplicarEstado(); }
+    }, MS_QUIETO);
+  });
+
+  btn.addEventListener("pointerdown", function (ev) {
+    if (ev.button !== undefined && ev.button !== 0) return;
+
+    arrastrando = true;
+    movio = false;
+    inicio = {
+      x: ev.clientX,
+      y: ev.clientY,
+      top: btn.getBoundingClientRect().top,
+      id: ev.pointerId,
+    };
+
+    estado.replegado = false;
+    aplicarEstado();
+
+    try { btn.setPointerCapture(ev.pointerId); } catch (e) { /* ok */ }
+
+    tLarga = setTimeout(function () {
+      if (movio) return;
+      arrastrando = false;
+      try { btn.releasePointerCapture(inicio.id); } catch (e) { /* ok */ }
+      alternarMinimizado();
+    }, MS_LARGA);
+  });
+
+  btn.addEventListener("pointermove", function (ev) {
+    if (!arrastrando) return;
+
+    var dx = ev.clientX - inicio.x;
+    var dy = ev.clientY - inicio.y;
+
+    if (!movio && Math.abs(dx) + Math.abs(dy) > UMBRAL) {
+      movio = true;
+      clearTimeout(tLarga);
+      if (!estado.lado) estado.lado = "der";   // toma control de la posicion
+    }
+    if (!movio) return;
+
+    estado.top = inicio.top + dy;
+    estado.lado = ev.clientX < window.innerWidth / 2 ? "izq" : "der";
+    aplicarPosicion();
+  });
+
+  btn.addEventListener("pointerup", function (ev) {
+    clearTimeout(tLarga);
+    if (!arrastrando) return;
+    arrastrando = false;
+    try { btn.releasePointerCapture(ev.pointerId); } catch (e) { /* ok */ }
+
+    if (movio) {
+      estado.top = btn.getBoundingClientRect().top;
+      guardar(K_POS, { lado: estado.lado, top: estado.top });
+      aplicarPosicion();
+      return;
+    }
+
+    if (estado.minimizado) alternarMinimizado();
+    else abrirAsistente();
+  });
+
+  btn.addEventListener("pointercancel", function (ev) {
+    clearTimeout(tLarga);
+    arrastrando = false;
+    try { btn.releasePointerCapture(ev.pointerId); } catch (e) { /* ok */ }
+  });
+
+  btn.addEventListener("contextmenu", function (ev) { ev.preventDefault(); });
+
+  /* El toque lo maneja pointerup, no el click. */
+  btn.onclick = null;
+
+  function alternarMinimizado() {
+    estado.minimizado = !estado.minimizado;
+    guardar(K_MIN, estado.minimizado);
+    aplicarEstado();
+    if (navigator.vibrate) { try { navigator.vibrate(12); } catch (e) { /* ok */ } }
+  }
+
+  /* Llamada desde aplicarModulo(). */
+  window.asistenteVisibleEn = function (modulo) {
+    estado.apagado = OCULTAR_EN.indexOf(modulo) !== -1;
+    aplicarEstado();
+  };
+
+  var pos = leer(K_POS, null);
+  if (pos && (pos.lado === "izq" || pos.lado === "der") && typeof pos.top === "number") {
+    estado.lado = pos.lado;
+    estado.top = pos.top;
+  }
+  estado.minimizado = leer(K_MIN, false) === true;
+
+  aplicarPosicion();
+  aplicarEstado();
+  window.addEventListener("resize", aplicarPosicion);
+
+  if (typeof moduloActivo !== "undefined") window.asistenteVisibleEn(moduloActivo);
+
+  if (!leer(K_TIP, false)) {
+    setTimeout(function () {
+      if (typeof toast === "function") {
+        toast("Arrastra el boton del asistente para moverlo. Mantenlo presionado para reducirlo.");
+      }
+      guardar(K_TIP, true);
+    }, 2000);
+  }
+
+  /* Para pruebas: kxAsistenteReset() en la consola vuelve todo a cero. */
+  window.kxAsistenteReset = function () {
+    [K_POS, K_MIN, K_TIP].forEach(function (k) {
+      try { localStorage.removeItem(k); } catch (e) { /* ok */ }
+    });
+    location.reload();
+  };
+})();
 document.getElementById("asis-cerrar").onclick = () =>
   document.getElementById("asis-sheet").classList.remove("abierto");
 document.getElementById("asis-sheet").onclick = (e) => {
