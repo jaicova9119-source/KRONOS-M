@@ -273,55 +273,6 @@ body{background:var(--kp-page);color:var(--kp-ink);
   text-overflow:ellipsis;padding-top:7px;padding-bottom:7px}
 .kp-fbus{display:flex;gap:6px}
 
-/* ── Potencia en acometida ───────────────────────────────────────
-   Va plegada por defecto: la pantalla de flota existe para ver que
-   unidades hay que ir a medir, y la potencia es otra pregunta. El
-   encabezado lleva el total, asi que plegada igual informa. */
-.kp-pot{background:#fff;border:1px solid var(--kp-line);border-radius:8px;
-  margin:0 0 14px;overflow:hidden}
-.kp-pot-cab{display:flex;align-items:center;gap:10px;padding:11px 14px;
-  cursor:pointer;user-select:none}
-.kp-pot-cab:hover{background:#fafbfc}
-.kp-pot-cab .tit{font-size:13px;font-weight:600;color:var(--kp-ink)}
-.kp-pot-cab .tot{font-size:13px;font-weight:600;color:#2f9fd4;
-  margin-left:auto;white-space:nowrap}
-.kp-pot-cab .tw{font-size:9px;opacity:.5;transition:transform .15s}
-.kp-pot.abierta .tw{transform:rotate(180deg);opacity:1}
-.kp-pot-cuerpo{display:none;border-top:1px solid var(--kp-line);padding:12px 14px}
-.kp-pot.abierta .kp-pot-cuerpo{display:block}
-
-.kp-pot-kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;
-  margin-bottom:12px}
-.kp-pot-kpi .c{border:1px solid var(--kp-line);border-radius:6px;padding:8px 10px}
-.kp-pot-kpi .k{font-size:10px;letter-spacing:.4px;text-transform:uppercase;
-  color:var(--kp-ink3)}
-.kp-pot-kpi .v{font-size:19px;font-weight:600;color:var(--kp-ink);margin-top:2px}
-.kp-pot-kpi .u{font-size:11px;font-weight:400;color:var(--kp-ink3);margin-left:2px}
-
-.kp-pot-nota{font-size:11.5px;color:var(--kp-ink3);line-height:1.5;
-  margin:0 0 12px}
-.kp-pot-nota b{color:var(--kp-ink2);font-weight:600}
-
-.kp-pot-tabla{width:100%;border-collapse:collapse;font-size:12px}
-.kp-pot-tabla th{text-align:right;font-weight:600;color:var(--kp-ink3);
-  font-size:10px;letter-spacing:.3px;text-transform:uppercase;
-  padding:0 0 6px 10px;border-bottom:1px solid var(--kp-line);white-space:nowrap}
-.kp-pot-tabla th:first-child,.kp-pot-tabla td:first-child{text-align:left;padding-left:0}
-.kp-pot-tabla td{text-align:right;padding:6px 0 6px 10px;
-  border-bottom:1px solid var(--kp-line2,#f0f2f4);white-space:nowrap}
-.kp-pot-tabla tr:last-child td{border-bottom:none}
-.kp-pot-tabla .pz{font-weight:600;color:var(--kp-ink);cursor:pointer}
-.kp-pot-tabla .pz:hover{color:#2f9fd4}
-.kp-pot-tabla .vj{color:var(--kp-warn)}
-.kp-pot-tabla .sd{color:var(--kp-null)}
-.kp-pot-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-
-@media(max-width:640px){
-  .kp-pot-kpi{grid-template-columns:repeat(2,1fr)}
-  .kp-pot-cab{padding:10px 12px}
-  .kp-pot-cuerpo{padding:10px 12px}
-  .kp-pot-tabla{font-size:11.5px}
-}
 .kp-fbus .kp-buscar{flex:1 1 auto;min-width:0;padding-top:7px;padding-bottom:7px}
 
 .kp-bar2{border-top:none;padding-top:0}
@@ -394,6 +345,149 @@ body{background:var(--kp-page);color:var(--kp-ink);
   .kp-sec{break-inside:avoid;border-color:#ccc}
   body{background:#fff}
 }
+/* ── Demanda energetica: boton de entrada ────────────────────────
+   El panel plegable se reemplaza por una puerta. La cifra de la
+   acometida no es un dato secundario de la lista de rondas: es otra
+   pregunta, con su propia pantalla. El boton informa plegado y
+   promete lo que hay detras. */
+.kp-dem-btn{width:100%;display:flex;align-items:center;gap:14px;text-align:left;
+  background:linear-gradient(102deg,#0d2438 0%,#123f5e 55%,#0f5f66 100%);
+  border:none;border-radius:10px;padding:0;margin:0 0 14px;cursor:pointer;
+  color:#fff;font-family:inherit;overflow:hidden}
+.kp-dem-btn:hover{filter:brightness(1.12)}
+.kp-dem-btn:active{transform:scale(.995)}
+.kp-dem-btn .ic{flex:0 0 auto;width:46px;align-self:stretch;display:flex;
+  align-items:center;justify-content:center;background:rgba(255,255,255,.10);
+  font-size:19px;line-height:1}
+.kp-dem-btn .tx{flex:1 1 auto;min-width:0;padding:13px 0}
+.kp-dem-btn .t1{font-size:14px;font-weight:600;letter-spacing:.2px}
+.kp-dem-btn .t2{font-size:11.5px;color:rgba(255,255,255,.72);margin-top:2px}
+.kp-dem-btn .vl{flex:0 0 auto;padding:13px 0;text-align:right;line-height:1.1}
+.kp-dem-btn .vl b{font-size:21px;font-weight:600;letter-spacing:-.3px}
+.kp-dem-btn .vl b small{font-size:11px;font-weight:400;
+  color:rgba(255,255,255,.72);margin-left:3px}
+.kp-dem-btn .vl span{display:block;font-size:11px;color:rgba(255,255,255,.72)}
+.kp-dem-btn .fw{flex:0 0 auto;padding:0 16px 0 14px;font-size:15px;
+  color:rgba(255,255,255,.72)}
+.kp-dem-btn.nd{background:#fff;border:1px solid var(--kp-line);color:var(--kp-ink2);
+  cursor:default}
+.kp-dem-btn.nd .ic{background:var(--kp-null-bg);color:var(--kp-null)}
+.kp-dem-btn.nd .t2,.kp-dem-btn.nd .vl span{color:var(--kp-ink3)}
+@media(max-width:560px){
+  .kp-dem-btn .t2{display:none}
+  .kp-dem-btn .fw{padding:0 12px 0 8px}
+}
+
+/* ── Demanda energetica: tablero ─────────────────────────────────
+   Fondo oscuro porque la pantalla se dedica a esto: la cifra tiene
+   que leerse desde lejos, en una reunion o en un telefono al sol.
+   Todo el color esta en los datos; el resto es superficie. */
+body.kp-oscuro{background:#081724}
+.kd{color:#eef4f9}
+.kd h2{color:#fff;font-size:17px;font-weight:600;margin:0}
+.kd .kd-sub{font-size:12.5px;color:#8ba5ba;margin:3px 0 0}
+
+.kd-mig{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:13px;
+  margin:0 0 14px}
+.kd-mig button{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);
+  color:#bcd2e3;border-radius:6px;padding:4px 11px;font-size:12.5px;cursor:pointer;
+  font-family:inherit}
+.kd-mig button:hover{background:rgba(255,255,255,.14);color:#fff}
+.kd-mig .aq{background:linear-gradient(100deg,#12a5b8,#35a853);border-color:transparent;
+  color:#fff;font-weight:600;cursor:default}
+.kd-mig .sep{color:#5c7590;font-size:11px}
+
+.kd-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+  gap:10px;margin:0 0 14px}
+.kd-h{background:#0f2739;border:1px solid rgba(255,255,255,.09);border-radius:9px;
+  padding:11px 13px;position:relative;overflow:hidden}
+.kd-h:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:#12a5b8}
+.kd-h.g:before{background:#35a853}
+.kd-h.w:before{background:#e0a230}
+.kd-h.r:before{background:#d6584a}
+.kd-h .k{font-size:9.5px;letter-spacing:.9px;text-transform:uppercase;color:#7f9bb2}
+.kd-h .v{font-size:25px;font-weight:600;letter-spacing:-.6px;margin:3px 0 0;
+  color:#fff;line-height:1.05}
+.kd-h .v small{font-size:11.5px;font-weight:400;color:#8ba5ba;margin-left:3px;
+  letter-spacing:0}
+.kd-h .r2{font-size:11px;color:#7f9bb2;margin-top:3px}
+
+.kd-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);
+  gap:14px;margin-bottom:14px}
+@media(max-width:900px){.kd-grid{grid-template-columns:1fr}}
+.kd-card{background:#0f2739;border:1px solid rgba(255,255,255,.09);
+  border-radius:9px;padding:13px 15px}
+.kd-card .ct{display:flex;justify-content:space-between;align-items:baseline;
+  gap:10px;margin-bottom:12px}
+.kd-card .ct b{font-size:13px;font-weight:600;color:#fff}
+.kd-card .ct span{font-size:10.5px;color:#7f9bb2;letter-spacing:.4px;
+  text-transform:uppercase;white-space:nowrap}
+
+.kd-bar{border:none;background:none;padding:0;margin:0 0 11px;width:100%;
+  display:block;text-align:left;font-family:inherit;color:inherit}
+.kd-bar:last-child{margin-bottom:0}
+.kd-bar.cl{cursor:pointer}
+.kd-bar .lb{display:flex;justify-content:space-between;gap:10px;font-size:12.5px;
+  margin-bottom:4px;align-items:baseline}
+.kd-bar .lb i{font-style:normal;color:#dce8f2;font-weight:500}
+.kd-bar .lb u{text-decoration:none;color:#7f9bb2;font-size:11px;margin-left:6px}
+.kd-bar .lb em{font-style:normal;color:#fff;font-weight:600;white-space:nowrap}
+.kd-bar .lb em s{text-decoration:none;color:#7f9bb2;font-weight:400;font-size:11px}
+.kd-bar .tk{height:15px;background:rgba(255,255,255,.06);border-radius:4px;
+  overflow:hidden}
+.kd-bar .fl{height:100%;background:linear-gradient(90deg,#12a5b8,#35a853);
+  border-radius:0 4px 4px 0;min-width:2px}
+.kd-bar.cl:hover .fl{filter:brightness(1.18)}
+.kd-bar.cl:hover .lb i{color:#fff}
+
+.kd-don{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
+.kd-don svg{flex:0 0 auto}
+.kd-don .lg{flex:1 1 130px;min-width:0}
+.kd-don .lg div{display:flex;align-items:center;gap:7px;font-size:12px;
+  padding:3px 0;color:#c3d6e5}
+.kd-don .lg i{width:9px;height:9px;border-radius:2px;flex:0 0 auto}
+.kd-don .lg b{margin-left:auto;color:#fff;font-weight:600}
+
+.kd-fp{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;
+  align-items:end;height:104px;margin-bottom:10px}
+.kd-fp .cl2{display:flex;flex-direction:column;justify-content:flex-end;
+  height:100%;text-align:center}
+.kd-fp .n{font-size:12px;font-weight:600;color:#fff;margin-bottom:3px}
+.kd-fp .cb{border-radius:4px 4px 0 0;min-height:3px}
+.kd-fp .lg2{font-size:9.5px;color:#7f9bb2;margin-top:5px;letter-spacing:.2px}
+
+.kd-nota{font-size:11.5px;color:#7f9bb2;line-height:1.55;margin:12px 0 0}
+.kd-nota b{color:#a7bccd;font-weight:600}
+.kd-nota .al{color:#e0a230}
+
+.kd-tabla{width:100%;border-collapse:collapse;font-size:12px;color:#c3d6e5}
+.kd-tabla th{text-align:right;font-weight:600;color:#7f9bb2;font-size:10.5px;
+  letter-spacing:.5px;text-transform:uppercase;padding:0 0 7px 10px;
+  border-bottom:1px solid rgba(255,255,255,.12);white-space:nowrap}
+.kd-tabla th:first-child,.kd-tabla td:first-child{text-align:left;padding-left:0}
+.kd-tabla td{text-align:right;padding:7px 0 7px 10px;
+  border-bottom:1px solid rgba(255,255,255,.06);white-space:nowrap}
+.kd-tabla tr:last-child td{border-bottom:none}
+.kd-tabla .pz{font-weight:600;color:#fff;cursor:pointer}
+.kd-tabla .pz:hover{color:#4ecbdd}
+.kd-tabla .vj{color:#e0a230}
+.kd-tabla .ba{color:#e88a7d}
+.kd-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+.kd-abrir{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.16);
+  color:#dce8f2;border-radius:7px;padding:9px 15px;font-size:13px;cursor:pointer;
+  font-family:inherit}
+.kd-abrir:hover{background:rgba(255,255,255,.15);color:#fff}
+.kd-vacio{padding:26px 14px;text-align:center;color:#7f9bb2;font-size:13.5px}
+
+@media(max-width:560px){
+  .kd-hero{grid-template-columns:repeat(2,1fr)}
+  .kd-h .v{font-size:22px}
+  .kd-card{padding:12px 13px}
+  .kd-fp{height:88px}
+}
+
 </style>
 </head>
 <body>
@@ -404,7 +498,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
     <h1 id="kpTitulo">Monitoreo de Condici&oacute;n</h1>
     <p class="sub" id="kpSub">Monitoreo de condici&oacute;n y diagn&oacute;stico de m&aacute;quinas</p>
   </div>
-  <button class="kp-back" id="kpBack" style="display:none" onclick="kpVerFlota()">&larr; Volver a flota</button>
+  <button class="kp-back" id="kpBack" style="display:none" onclick="kpAtras()">&larr; Volver a flota</button>
 </div>
 
 <div class="kp-fbar" id="kpFBar">
@@ -920,7 +1014,6 @@ let kpCampo  = "all";     /* campo */
 let kpPad    = "all";     /* PAD */
 let kpFlota  = [];
 let kpPot    = {};        /* pozo -> potencia en acometida */
-let kpPotAbierta = false; /* el panel de potencia queda plegado por defecto */
 
 /* ============================================================
    FILTROS: CHIPS EN ESCRITORIO, DESPLEGABLES EN MOVIL
@@ -998,7 +1091,12 @@ function kpPeor(lista){
    VISTA: FLOTA
    ============================================================ */
 async function kpVerFlota(){
+  kpVistaActual = 'flota';
+  kpEnDemanda   = false;
+  kpDemPozo     = null;
+  document.body.classList.remove('kp-oscuro');
   document.getElementById("kpBack").style.display = "none";
+  document.getElementById("kpBack").innerHTML = '&larr; Volver a flota';
   kpMostrarFiltros(true);
   document.getElementById("kpTitulo").textContent = "Monitoreo de Condici\u00f3n";
   document.getElementById("kpSub").innerHTML =
@@ -1072,46 +1170,414 @@ function kpLimpiarFiltros(){
   kpPintarFlota();
 }
 
-/* El panel agrega sobre el ambito ya filtrado (campo + PAD + busqueda),
-   no sobre el estado. Un PAD tiene la potencia que tiene, sin importar
-   si estas mirando solo las vencidas. */
-function kpPanelPotencia(ambito){
+/* ============================================================
+   DEMANDA ENERGETICA
+   La acometida dejo de ser un panel plegado dentro de la lista de
+   rondas y paso a ser una pantalla propia. Motivos: la pregunta que
+   responde es distinta (cuanto consume el activo, no a que unidad
+   hay que ir), y para responderla bien hace falta jerarquia. Un
+   total de flota no dice nada; un total por PAD decide una compra
+   de transformador.
+
+   La navegacion del tablero escribe sobre kpCampo y kpPad, los
+   mismos filtros de la vista de flota. Asi, bajar a un PAD aqui y
+   cerrar el tablero deja la lista de unidades en ese mismo PAD: no
+   hay dos estados que sincronizar.
+
+   El estado de ronda (vigente / vencida) no participa. La demanda
+   de un PAD es la que es, sin importar si la ronda esta vencida.
+   ============================================================ */
+
+let kpEnDemanda   = false;
+let kpDemPozo     = null;   /* hoja de la jerarquia: unidad individual */
+let kpVistaActual = 'flota';
+
+const KD_HEX = ['#12a5b8','#35a853','#3f8fd0','#c9a227','#8e6fd0','#d6584a','#5f7d94'];
+
+/* El boton informa plegado: quien no entre al tablero igual se lleva
+   el total del alcance que esta mirando. */
+function kpBotonDemanda(ambito){
   const con = ambito.map(x => ({ u: x, p: kpPot[x.pozo] }))
                     .filter(r => r.p && r.p.kw != null);
-  const sin = ambito.length - con.length;
 
-  if (!con.length) {
-    return '<div class="kp-pot"><div class="kp-pot-cab" onclick="kpTogglePot()">'
-      + '<span class="tit">Potencia en acometida</span>'
-      + '<span class="tot" style="color:var(--kp-null)">sin datos</span></div></div>';
+  if (!con.length){
+    return '<div class="kp-dem-btn nd">'
+      + '<span class="ic">&#9889;</span>'
+      + '<span class="tx"><span class="t1">Demanda energ&eacute;tica</span>'
+      +   '<span class="t2">Sin acometidas medidas en este alcance</span></span>'
+      + '<span class="vl"><span>sin datos</span></span>'
+      + '<span class="fw">&nbsp;</span></div>';
   }
 
-  const sum = k => con.reduce((a, r) => a + (r.p[k] != null ? r.p[k] : 0), 0);
-  const kw   = sum('kw');
-  const kvar = sum('kvar');
-  /* La aparente total no es la suma de las aparentes: se recompone de la
-     activa y la reactiva sumadas. Sumar kVA daria de mas siempre que los
-     factores de potencia difieran entre unidades. */
+  const t = kpDemTotales(con);
+  return '<button class="kp-dem-btn" onclick="kpVerDemanda()">'
+    + '<span class="ic">&#9889;</span>'
+    + '<span class="tx"><span class="t1">Demanda energ&eacute;tica</span>'
+    +   '<span class="t2">Tablero por campo, PAD y unidad</span></span>'
+    + '<span class="vl"><b>' + t.kw.toFixed(0) + '<small>kW</small></b>'
+    +   '<span>' + con.length + (con.length === 1 ? ' unidad' : ' unidades')
+    +   ' &middot; FP ' + (t.fp != null ? t.fp.toFixed(2) : '\u2014') + '</span></span>'
+    + '<span class="fw">&rsaquo;</span></button>';
+}
+
+/* Total del conjunto. La aparente se recompone de la activa y la
+   reactiva sumadas: sumar kVA individuales da de mas siempre que los
+   factores de potencia difieran, que es el caso normal en campo. */
+function kpDemTotales(rs){
+  const s = k => rs.reduce((a, r) => a + (r.p[k] != null ? r.p[k] : 0), 0);
+  const kw   = s('kw');
+  const kvar = s('kvar');
   const kva  = Math.sqrt(kw * kw + kvar * kvar);
-  const fp   = kva ? kw / kva : null;
+  const thds = rs.map(r => r.p.thd_i).filter(v => v != null);
+  return {
+    kw: kw, kvar: kvar, kva: kva,
+    fp: kva ? kw / kva : null,
+    n: rs.length,
+    thd: thds.length ? thds.reduce((a, b) => a + b, 0) / thds.length : null
+  };
+}
 
-  const dias = con.map(r => r.p.dias).filter(d => d != null).sort((a, b) => a - b);
-  const mediana = dias.length ? dias[Math.floor(dias.length / 2)] : null;
-  const viejas  = con.filter(r => r.p.dias != null && r.p.dias > 120).length;
-  const otraCorrida = con.filter(r => r.p.corrida_actual === false).length;
+/* Las filas del tablero salen del cruce entre la flota (que tiene
+   campo y PAD) y la RPC de potencia (que tiene la medida). Una
+   unidad sin acometida medida no entra al total, y eso se dice en
+   la nota al pie en lugar de disimularlo. */
+function kpDemFilas(){
+  return kpFlota
+    .filter(x => kpCampo === 'all' || x.campo === kpCampo)
+    .filter(x => kpPad   === 'all' || x.pad   === kpPad)
+    .filter(x => !kpDemPozo || x.pozo === kpDemPozo)
+    .map(x => ({ u: x, p: kpPot[x.pozo] }));
+}
 
+function kpDemNivel(){
+  if (kpDemPozo)        return 3;
+  if (kpPad   !== 'all') return 2;
+  if (kpCampo !== 'all') return 1;
+  return 0;
+}
+
+/* Agrupa por la dimension que corresponde al nivel y ordena por
+   demanda descendente: lo que mas pesa arriba. */
+function kpDemGrupos(con, clave){
+  const m = new Map();
+  con.forEach(r => {
+    const k = r.u[clave] || '\u2014';
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(r);
+  });
+  return [...m.entries()]
+    .map(([k, v]) => Object.assign({ nombre: k }, kpDemTotales(v)))
+    .sort((a, b) => b.kw - a.kw);
+}
+
+function kpDemBajar(valor){
+  const n = kpDemNivel();
+  if (n === 0){ kpCampo = valor; kpPoblarPads(); }
+  else if (n === 1){ kpPad = valor; }
+  else if (n === 2){ kpDemPozo = valor; }
+  kpSincronizar();
+  kpPintarDemanda();
+}
+
+/* La miga de pan sube: el nivel al que se toca queda como ultimo. */
+function kpDemSubir(n){
+  if (n <= 0){ kpCampo = 'all'; kpPad = 'all'; kpDemPozo = null; kpPoblarPads(); }
+  else if (n === 1){ kpPad = 'all'; kpDemPozo = null; kpPoblarPads(); }
+  else if (n === 2){ kpDemPozo = null; }
+  kpSincronizar();
+  kpPintarDemanda();
+}
+
+function kpVerDemanda(){
+  if (!kpEnDemanda) kpDemPozo = null;   /* entrada nueva: desde la raiz */
+  kpEnDemanda   = true;
+  kpVistaActual = 'demanda';
+  document.body.classList.add('kp-oscuro');
+  kpMostrarFiltros(false);
+  const b = document.getElementById('kpBack');
+  b.style.display = 'block';
+  b.innerHTML = '&larr; Volver a flota';
+  document.getElementById('kpTitulo').textContent = 'Demanda Energ\u00e9tica';
+  document.getElementById('kpSub').innerHTML =
+    'Acometida medida por campo, PAD y unidad';
+  kpPintarDemanda();
+}
+
+function kpCerrarDemanda(){
+  kpEnDemanda   = false;
+  kpDemPozo     = null;
+  kpVistaActual = 'flota';
+  document.body.classList.remove('kp-oscuro');
+  document.getElementById('kpBack').style.display = 'none';
+  document.getElementById('kpBack').innerHTML = '&larr; Volver a flota';
+  kpMostrarFiltros(true);
+  document.getElementById('kpTitulo').textContent = 'Monitoreo de Condici\u00f3n';
+  document.getElementById('kpSub').innerHTML =
+    'Monitoreo de condici&oacute;n y diagn&oacute;stico de m&aacute;quinas';
+  kpSincronizar();
+  kpPintarFlota();
+}
+
+/* Un solo boton de cabecera para tres vistas. Desde el diagnostico de
+   una unidad abierta desde el tablero se vuelve al tablero, no a la
+   flota: se perderia el punto de la jerarquia en el que estaba. */
+function kpAtras(){
+  if (kpVistaActual === 'pozo' && kpEnDemanda) kpVerDemanda();
+  else if (kpVistaActual === 'demanda')        kpCerrarDemanda();
+  else                                         kpVerFlota();
+}
+
+function kpPintarDemanda(){
+  const v = document.getElementById('kpVista');
+  const todas = kpDemFilas();
+  const con   = todas.filter(r => r.p && r.p.kw != null);
+  const sin   = todas.length - con.length;
+  const nivel = kpDemNivel();
+
+  let h = '<div class="kd">' + kpDemMiga();
+
+  if (!con.length){
+    h += '<div class="kd-card"><div class="kd-vacio">'
+      +  'Ninguna de las ' + todas.length
+      +  (todas.length === 1 ? ' unidad de este alcance tiene'
+                             : ' unidades de este alcance tienen')
+      +  ' acometida medida.<br>La demanda se calcula sobre el punto de '
+      +  'entrada al PST capturado en ronda.</div></div></div>';
+    v.innerHTML = h;
+    return;
+  }
+
+  const t = kpDemTotales(con);
+  h += kpDemHero(t, con, nivel);
+
+  if (nivel < 3){
+    const clave = nivel === 0 ? 'campo' : (nivel === 1 ? 'pad' : 'pozo');
+    const gr    = kpDemGrupos(con, clave);
+    const tit   = nivel === 0 ? 'Demanda por campo'
+                : (nivel === 1 ? 'Demanda por PAD' : 'Demanda por unidad');
+
+    h += '<div class="kd-grid">'
+      +  '<div class="kd-card"><div class="ct"><b>' + tit + '</b>'
+      +    '<span>Toque para bajar</span></div>'
+      +    kpDemBarras(gr, nivel) + '</div>'
+      +  '<div class="kd-card"><div class="ct"><b>Participaci&oacute;n</b>'
+      +    '<span>% de kW</span></div>' + kpDemDonut(gr, t.kw) + '</div>'
+      +  '</div>';
+  } else {
+    h += kpDemUnidad(con[0]);
+  }
+
+  h += '<div class="kd-grid">'
+    +  '<div class="kd-card"><div class="ct"><b>Factor de potencia</b>'
+    +    '<span>' + con.length + ' unidades</span></div>'
+    +    kpDemFP(con) + '</div>'
+    +  '<div class="kd-card"><div class="ct"><b>Mayor demanda</b>'
+    +    '<span>Top ' + Math.min(6, con.length) + '</span></div>'
+    +    kpDemRanking(con) + '</div>'
+    +  '</div>';
+
+  h += '<div class="kd-card"><div class="ct"><b>Detalle de unidades</b>'
+    +  '<span>' + con.length + '</span></div>'
+    +  kpDemTabla(con) + kpDemNota(con, sin) + '</div>';
+
+  h += '</div>';
+  v.innerHTML = h;
+}
+
+function kpDemMiga(){
+  let h = '<div class="kd-mig">';
+  const n = kpDemNivel();
+  const paso = (txt, i, act) => act
+    ? '<button class="aq">' + txt + '</button>'
+    : '<button onclick="kpDemSubir(' + i + ')">' + txt + '</button>';
+
+  h += paso('Todos los campos', 0, n === 0);
+  if (n >= 1) h += '<span class="sep">&rsaquo;</span>'
+    + paso(kpEsc(kpCampo), 1, n === 1);
+  if (n >= 2) h += '<span class="sep">&rsaquo;</span>'
+    + paso(kpEsc(kpPad), 2, n === 2);
+  if (n >= 3) h += '<span class="sep">&rsaquo;</span>'
+    + paso(kpEsc(kpDemPozo), 3, true);
+  return h + '</div>';
+}
+
+function kpDemHero(t, con, nivel){
+  const kwu = t.n ? t.kw / t.n : null;
+  const fpc = t.fp == null ? '' : (t.fp < 0.85 ? ' r' : (t.fp < 0.90 ? ' w' : ' g'));
+  const thc = t.thd == null ? '' : (t.thd > 8 ? ' w' : ' g');
+  const tile = (cls, k, v, u, r) => '<div class="kd-h' + cls + '">'
+    + '<div class="k">' + k + '</div>'
+    + '<div class="v">' + v + (u ? '<small>' + u + '</small>' : '') + '</div>'
+    + (r ? '<div class="r2">' + r + '</div>' : '') + '</div>';
+
+  return '<div class="kd-hero">'
+    + tile('',    'Activa',   t.kw.toFixed(0),   'kW',   'demanda medida')
+    + tile('',    'Aparente', t.kva.toFixed(0),  'kVA',  'recompuesta')
+    + tile('',    'Reactiva', t.kvar.toFixed(0), 'kVAr', 'inductiva')
+    + tile(fpc,   'Factor de potencia',
+           t.fp != null ? t.fp.toFixed(3) : '\u2014', '',
+           t.fp == null ? '' : (t.fp < 0.90 ? 'bajo 0.90' : 'dentro de rango'))
+    + tile('g',   'Unidades', String(t.n), '',
+           kwu != null ? kwu.toFixed(0) + ' kW promedio' : '')
+    + tile(thc,   'THD-I promedio',
+           t.thd != null ? t.thd.toFixed(1) : '\u2014',
+           t.thd != null ? '%' : '',
+           t.thd != null ? (t.thd > 8 ? 'sobre IEEE 519' : 'dentro de IEEE 519') : 'sin medida')
+    + '</div>';
+}
+
+function kpDemBarras(gr, nivel){
+  const max = Math.max.apply(null, gr.map(g => g.kw).concat([1]));
+  return gr.map(g => {
+    const w   = Math.max(2, Math.round(g.kw / max * 100));
+    const baj = nivel < 3;
+    const at  = baj ? ' class="kd-bar cl" onclick="kpDemBajar(this.dataset.v)"'
+                    : ' class="kd-bar"';
+    return '<button' + at + ' data-v="' + kpEsc(g.nombre) + '">'
+      + '<span class="lb"><span><i>' + kpEsc(g.nombre) + '</i>'
+      +   '<u>' + g.n + (g.n === 1 ? ' unidad' : ' unidades')
+      +   (g.fp != null ? ' \u00b7 FP ' + g.fp.toFixed(2) : '') + '</u></span>'
+      +   '<em>' + g.kw.toFixed(0) + '<s> kW</s></em></span>'
+      + '<span class="tk"><span class="fl" style="width:' + w + '%"></span></span>'
+      + '</button>';
+  }).join('');
+}
+
+/* Rosco por porcentaje de kW. Mas de seis rebanadas no se distinguen,
+   asi que el resto se agrupa. */
+function kpDemDonut(gr, kwTot){
+  if (!kwTot) return '<div class="kd-vacio">Sin demanda para repartir</div>';
+
+  let items = gr.slice(0, 6).map((g, i) => ({ n: g.nombre, kw: g.kw, c: KD_HEX[i] }));
+  if (gr.length > 6){
+    const resto = gr.slice(6).reduce((a, g) => a + g.kw, 0);
+    items.push({ n: 'Otros ' + (gr.length - 6), kw: resto, c: KD_HEX[6] });
+  }
+
+  const R = 52, SW = 15, C = 2 * Math.PI * R;
+  let off = 0;
+  const anillos = items.map(it => {
+    const len = C * (it.kw / kwTot);
+    const s = '<circle cx="66" cy="66" r="' + R + '" fill="none" stroke="' + it.c
+      + '" stroke-width="' + SW + '" stroke-dasharray="' + len.toFixed(2)
+      + ' ' + (C - len).toFixed(2) + '" stroke-dashoffset="' + (-off).toFixed(2)
+      + '" transform="rotate(-90 66 66)"></circle>';
+    off += len;
+    return s;
+  }).join('');
+
+  const leyenda = items.map(it =>
+    '<div><i style="background:' + it.c + '"></i>'
+    + '<span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'
+    + kpEsc(it.n) + '</span><b>' + (it.kw / kwTot * 100).toFixed(0) + '%</b></div>'
+  ).join('');
+
+  return '<div class="kd-don"><svg width="132" height="132" viewBox="0 0 132 132">'
+    + '<circle cx="66" cy="66" r="' + R + '" fill="none" stroke="rgba(255,255,255,.07)" '
+    +   'stroke-width="' + SW + '"></circle>'
+    + anillos
+    + '<text x="66" y="62" text-anchor="middle" fill="#fff" font-size="20" '
+    +   'font-weight="600">' + kwTot.toFixed(0) + '</text>'
+    + '<text x="66" y="79" text-anchor="middle" fill="#7f9bb2" font-size="11">kW</text>'
+    + '</svg><div class="lg">' + leyenda + '</div></div>';
+}
+
+/* Cuatro cajones de FP. El corte en 0.90 es el que factura: por
+   debajo hay penalizacion, y por eso los dos primeros van en calido. */
+function kpDemFP(con){
+  const fps = con.map(r => r.p.fp).filter(v => v != null);
+  if (!fps.length) return '<div class="kd-vacio">Sin factor de potencia medido</div>';
+
+  const cajones = [
+    { t: '< 0.85',      f: v => v <  0.85,             c: '#d6584a' },
+    { t: '0.85 - 0.90', f: v => v >= 0.85 && v < 0.90, c: '#e0a230' },
+    { t: '0.90 - 0.95', f: v => v >= 0.90 && v < 0.95, c: '#35a853' },
+    { t: '\u2265 0.95', f: v => v >= 0.95,             c: '#12a5b8' }
+  ].map(c => Object.assign(c, { n: fps.filter(c.f).length }));
+
+  const max = Math.max.apply(null, cajones.map(c => c.n).concat([1]));
+  const cols = cajones.map(c => '<div class="cl2">'
+    + '<div class="n">' + c.n + '</div>'
+    + '<div class="cb" style="height:' + Math.round(c.n / max * 74) + 'px;'
+    +   'background:' + c.c + (c.n ? '' : ';opacity:.25') + '"></div>'
+    + '<div class="lg2">' + c.t + '</div></div>').join('');
+
+  const bajos = con.filter(r => r.p.fp != null && r.p.fp < 0.90)
+                   .sort((a, b) => a.p.fp - b.p.fp).slice(0, 3);
+  let pie = '';
+  if (bajos.length){
+    pie = '<p class="kd-nota"><span class="al">Bajo 0.90:</span> '
+      + bajos.map(r => kpEsc(r.u.pozo) + ' (' + r.p.fp.toFixed(2) + ')').join(' \u00b7 ')
+      + (con.filter(r => r.p.fp != null && r.p.fp < 0.90).length > 3
+          ? ' y otras' : '') + '.</p>';
+  } else {
+    pie = '<p class="kd-nota">Todas las unidades medidas est&aacute;n en 0.90 o m&aacute;s.</p>';
+  }
+  return '<div class="kd-fp">' + cols + '</div>' + pie;
+}
+
+function kpDemRanking(con){
+  const top = con.slice().sort((a, b) => (b.p.kw || 0) - (a.p.kw || 0)).slice(0, 6);
+  const max = Math.max.apply(null, top.map(r => r.p.kw || 0).concat([1]));
+  return top.map((r, i) =>
+    '<button class="kd-bar cl" onclick="kpVerPozo(this.dataset.p)" '
+    + 'data-p="' + kpEsc(r.u.pozo) + '">'
+    + '<span class="lb"><span><i>' + (i + 1) + '. ' + kpEsc(r.u.pozo) + '</i>'
+    +   '<u>' + kpEsc(r.u.pad && r.u.pad !== '\u2014' ? r.u.pad : r.u.campo) + '</u></span>'
+    +   '<em>' + r.p.kw.toFixed(0) + '<s> kW</s></em></span>'
+    + '<span class="tk"><span class="fl" style="width:'
+    +   Math.max(2, Math.round(r.p.kw / max * 100)) + '%"></span></span>'
+    + '</button>'
+  ).join('');
+}
+
+/* Hoja de la jerarquia: una sola unidad. Aqui la pregunta ya no es
+   cuanto suma, es como esta esa acometida. */
+function kpDemUnidad(r){
+  const p = r.p;
+  const c = (k, v, u) => '<div class="kd-h"><div class="k">' + k + '</div>'
+    + '<div class="v">' + v + (u ? '<small>' + u + '</small>' : '') + '</div></div>';
+
+  return '<div class="kd-card">'
+    + '<div class="ct"><b>' + kpEsc(r.u.pozo) + ' \u00b7 ' + kpEsc(r.u.marca) + '</b>'
+    +   '<span>' + kpEsc(r.u.campo)
+    +   (r.u.pad && r.u.pad !== '\u2014' ? ' \u00b7 ' + kpEsc(r.u.pad) : '') + '</span></div>'
+    + '<div class="kd-hero" style="margin-bottom:0">'
+    +   c('Corriente', kpNum(p.i), 'A')
+    +   c('Tensi&oacute;n', kpNum(p.v), 'V')
+    +   c('Frecuencia', p.hz != null ? p.hz.toFixed(1) : '\u2014', 'Hz')
+    +   c('THD-I', p.thd_i != null ? p.thd_i.toFixed(1) : '\u2014', '%')
+    +   c('THD-V', p.thd_v != null ? p.thd_v.toFixed(1) : '\u2014', '%')
+    +   c('Factor K', p.factor_k != null ? p.factor_k.toFixed(2) : '\u2014', '')
+    + '</div>'
+    + '<p class="kd-nota">Condici&oacute;n de la medida: <b>'
+    +   kpEsc(p.condicion || 'no registrada') + '</b>'
+    +   (p.medido_en ? ' \u00b7 ' + kpEsc(p.medido_en) : '')
+    +   (p.dias != null ? ' \u00b7 hace ' + p.dias + ' d\u00edas' : '')
+    +   (p.corrida_actual === false
+          ? ' \u00b7 <span class="al">corresponde a la corrida anterior</span>' : '')
+    +   '</p>'
+    + '<button class="kd-abrir" onclick="kpVerPozo(this.dataset.p)" '
+    +   'data-p="' + kpEsc(r.u.pozo) + '">Abrir diagn&oacute;stico de la unidad</button>'
+    + '</div>';
+}
+
+function kpDemTabla(con){
   const filas = con.slice()
     .sort((a, b) => (b.p.kw || 0) - (a.p.kw || 0))
     .map(r => {
-      const p = r.p;
-      const vj = (p.dias != null && p.dias > 120) ? ' vj' : '';
+      const p  = r.p;
+      const vj = (p.dias != null && p.dias > 120);
+      const ba = (p.fp != null && p.fp < 0.90);
       return '<tr>'
-        + '<td class="pz" onclick="kpVerPozo(\'' + kpEsc(r.u.pozo) + '\')">'
-        +   kpEsc(r.u.pozo) + '</td>'
+        + '<td class="pz" onclick="kpDemVer(this.dataset.p)" data-p="'
+        +   kpEsc(r.u.pozo) + '">' + kpEsc(r.u.pozo) + '</td>'
+        + '<td>' + kpEsc(r.u.pad && r.u.pad !== '\u2014' ? r.u.pad : r.u.campo) + '</td>'
         + '<td>' + kpNum(p.kw)   + '</td>'
         + '<td>' + kpNum(p.kva)  + '</td>'
         + '<td>' + kpNum(p.kvar) + '</td>'
-        + '<td>' + (p.fp != null ? p.fp.toFixed(2) : '\u2014') + '</td>'
+        + '<td class="' + (ba ? 'ba' : '') + '">'
+        +   (p.fp != null ? p.fp.toFixed(2) : '\u2014') + '</td>'
         + '<td>' + kpNum(p.i)    + '</td>'
         + '<td>' + kpNum(p.v)    + '</td>'
         + '<td>' + (p.thd_i != null ? p.thd_i.toFixed(1) : '\u2014') + '</td>'
@@ -1121,51 +1587,48 @@ function kpPanelPotencia(ambito){
         + '</tr>';
     }).join('');
 
-  const kpi = (k, v, u) => '<div class="c"><div class="k">' + k + '</div>'
-    + '<div class="v">' + v + (u ? '<span class="u">' + u + '</span>' : '') + '</div></div>';
-
-  /* Lo que la cifra no dice hay que escribirlo. Quien mira un total de
-     kW asume que es la demanda del PAD ahora mismo, y no lo es. */
-  let nota = '<p class="kp-pot-nota">Medido en la entrada del PST desde la red, '
-    + 'sobre la &uacute;ltima ronda de cada unidad que incluy&oacute; ese punto. '
-    + '<b>No es demanda simult&aacute;nea</b>: las rondas son de fechas distintas'
-    + (mediana != null ? ', la mediana tiene ' + mediana + ' d\u00edas' : '') + '.';
-  if (viejas) nota += ' ' + viejas + (viejas === 1
-    ? ' unidad supera los 4 meses.' : ' unidades superan los 4 meses.');
-  if (otraCorrida) nota += ' ' + otraCorrida + (otraCorrida === 1
-    ? ' corresponde a la corrida anterior.' : ' corresponden a la corrida anterior.');
-  if (sin) nota += ' ' + sin + (sin === 1 ? ' unidad no tiene' : ' unidades no tienen')
-    + ' acometida medida y queda' + (sin === 1 ? '' : 'n') + ' fuera del total.';
-  nota += '</p>';
-
-  return '<div class="kp-pot' + (kpPotAbierta ? ' abierta' : '') + '" id="kpPot">'
-    + '<div class="kp-pot-cab" onclick="kpTogglePot()">'
-    +   '<span class="tit">Potencia en acometida</span>'
-    +   '<span class="tot">' + kw.toFixed(0) + ' kW \u00b7 '
-    +     con.length + (con.length === 1 ? ' unidad' : ' unidades') + '</span>'
-    +   '<span class="tw">&#9660;</span>'
-    + '</div>'
-    + '<div class="kp-pot-cuerpo">'
-    +   '<div class="kp-pot-kpi">'
-    +     kpi('Activa',   kw.toFixed(0),   ' kW')
-    +     kpi('Aparente', kva.toFixed(0),  ' kVA')
-    +     kpi('Reactiva', kvar.toFixed(0), ' kVAr')
-    +     kpi('Factor de potencia', fp != null ? fp.toFixed(3) : '\u2014', '')
-    +   '</div>'
-    +   nota
-    +   '<div class="kp-pot-scroll"><table class="kp-pot-tabla">'
-    +     '<thead><tr><th>Unidad</th><th>kW</th><th>kVA</th><th>kVAr</th>'
-    +     '<th>FP</th><th>A</th><th>V</th><th>THD-I&nbsp;%</th><th>Hz</th>'
-    +     '<th>Medida</th></tr></thead>'
-    +     '<tbody>' + filas + '</tbody>'
-    +   '</table></div>'
-    + '</div></div>';
+  return '<div class="kd-scroll"><table class="kd-tabla">'
+    + '<thead><tr><th>Unidad</th><th>Ubicaci&oacute;n</th><th>kW</th><th>kVA</th>'
+    + '<th>kVAr</th><th>FP</th><th>A</th><th>V</th><th>THD-I&nbsp;%</th>'
+    + '<th>Hz</th><th>Medida</th></tr></thead>'
+    + '<tbody>' + filas + '</tbody></table></div>';
 }
 
-function kpTogglePot(){
-  kpPotAbierta = !kpPotAbierta;
-  const el = document.getElementById('kpPot');
-  if (el) el.classList.toggle('abierta', kpPotAbierta);
+/* Desde la tabla se baja a la unidad dentro del tablero, no se sale
+   al diagnostico: quien esta comparando acometidas quiere ver esa
+   acometida, y para el diagnostico ya hay un boton explicito. */
+function kpDemVer(pozo){
+  const u = kpFlota.find(x => x.pozo === pozo);
+  if (!u) return;
+  kpCampo   = u.campo;
+  kpPad     = u.pad;
+  kpDemPozo = pozo;
+  kpPoblarPads();
+  kpSincronizar();
+  kpPintarDemanda();
+}
+
+/* Lo que la cifra no dice hay que escribirlo. Quien mira un total de
+   kW asume que es la demanda simultanea del PAD, y no lo es: cada
+   unidad aporta su ultima ronda, y las rondas son de fechas
+   distintas. */
+function kpDemNota(con, sin){
+  const dias    = con.map(r => r.p.dias).filter(d => d != null).sort((a, b) => a - b);
+  const mediana = dias.length ? dias[Math.floor(dias.length / 2)] : null;
+  const viejas  = con.filter(r => r.p.dias != null && r.p.dias > 120).length;
+  const otra    = con.filter(r => r.p.corrida_actual === false).length;
+
+  let n = '<p class="kd-nota">Medido en la entrada del PST desde la red, sobre la '
+    + '&uacute;ltima ronda de cada unidad que incluy&oacute; ese punto. '
+    + '<b>No es demanda simult&aacute;nea</b>: las rondas son de fechas distintas'
+    + (mediana != null ? ', la mediana tiene ' + mediana + ' d\u00edas' : '') + '.';
+  if (viejas) n += ' <span class="al">' + viejas
+    + (viejas === 1 ? ' unidad supera' : ' unidades superan') + ' los 4 meses.</span>';
+  if (otra) n += ' ' + otra
+    + (otra === 1 ? ' corresponde' : ' corresponden') + ' a la corrida anterior.';
+  if (sin) n += ' ' + sin + (sin === 1 ? ' unidad no tiene' : ' unidades no tienen')
+    + ' acometida medida y queda' + (sin === 1 ? '' : 'n') + ' fuera del total.';
+  return n + '</p>';
 }
 
 function kpPintarFlota(){
@@ -1228,7 +1691,7 @@ function kpPintarFlota(){
     +  (conRondas.length ? (totalRondas / conRondas.length).toFixed(1) : '0')
     +  '</div></div></div>';
 
-  h += kpPanelPotencia(ambito);
+  h += kpBotonDemanda(ambito);
 
   if (!d.length){
     h += '<div class="kp-list"><div class="kp-msg">'
@@ -1286,7 +1749,11 @@ function kpDiasDesde(iso){
    VISTA: POZO
    ============================================================ */
 async function kpVerPozo(codigo){
+  kpVistaActual = 'pozo';
+  document.body.classList.remove('kp-oscuro');
   document.getElementById("kpBack").style.display = "block";
+  document.getElementById("kpBack").innerHTML = kpEnDemanda
+    ? '&larr; Volver a demanda' : '&larr; Volver a flota';
   kpMostrarFiltros(false);
   const v = document.getElementById("kpVista");
   v.innerHTML = '<div class="kp-msg">Cargando&hellip;</div>';
