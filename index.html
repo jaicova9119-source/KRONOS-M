@@ -160,6 +160,8 @@ html,body{height:100%;margin:0;}
 .navbar.modulo-programacion .nav-item[data-modulo="programacion"]{display:flex;}
 .navbar.modulo-vfd .nav-item[data-modulo="vfd"]{display:flex;}
 .navbar.modulo-predictivo .nav-item[data-modulo="predictivo"]{display:flex;}
+.navbar.modulo-optimizacion .nav-item[data-modulo="optimizacion"]{display:flex;}
+.navbar.modulo-instalacion .nav-item[data-modulo="instalacion"]{display:flex;}
 
 /* El analizador de bitacoras corre en un iframe y no pegado en este archivo:
    define su propia paleta en :root, escribe data-theme sobre <html> y usa
@@ -186,6 +188,23 @@ html,body{height:100%;margin:0;}
   width:auto;margin:0;padding:5px 11px;font-size:12.5px;flex-shrink:0;
 }
 #panel-predictivo .panel-body:fullscreen{background:var(--bg-0)}
+/* Optimizacion energetica e Instalacion: mismo patron que el predictivo.
+   Cada uno corre en su iframe con su propia paleta oscura; aqui solo se
+   les da el marco y los dos controles de espacio. */
+#opt-marco{width:100%;height:100%;border:0;display:block;background:var(--bg-0)}
+#panel-optimizacion .panel-body{padding:0;overflow:hidden}
+#panel-optimizacion .panel-header{padding:4px 8px;gap:8px;justify-content:flex-end}
+#panel-optimizacion .panel-header .btn-secondary{
+  width:auto;margin:0;padding:5px 11px;font-size:12.5px;flex-shrink:0;
+}
+#panel-optimizacion .panel-body:fullscreen{background:var(--bg-0)}
+#inst-marco{width:100%;height:100%;border:0;display:block;background:var(--bg-0)}
+#panel-instalacion .panel-body{padding:0;overflow:hidden}
+#panel-instalacion .panel-header{padding:4px 8px;gap:8px;justify-content:flex-end}
+#panel-instalacion .panel-header .btn-secondary{
+  width:auto;margin:0;padding:5px 11px;font-size:12.5px;flex-shrink:0;
+}
+#panel-instalacion .panel-body:fullscreen{background:var(--bg-0)}
 .ee-pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;margin:0 3px}
 .ee-ok{background:#E8F5E9;color:#2E7D32}.ee-warn{background:#FFF3E0;color:#E08600}
 .ee-bad{background:#FFEBEE;color:#C62828}.ee-na{background:#F2F2F2;color:#666}
@@ -935,6 +954,8 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <option value="programacion">Programación de Actividades</option>
     <option value="vfd">Analizador de DATA</option>
     <option value="predictivo">Monitoreo de Condición</option>
+    <option value="optimizacion">Optimización Energética</option>
+    <option value="instalacion">Instalación y Cálculo de TAP</option>
     </select>
   </div>
 </div>
@@ -1067,6 +1088,16 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <button class="nav-item" data-tab="predictivo" data-modulo="predictivo">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2-7 4 14 2-7h6"/></svg>
     Condición
+  </button>
+
+  <button class="nav-item" data-tab="optimizacion" data-modulo="optimizacion">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></svg>
+    Optimización
+  </button>
+
+  <button class="nav-item" data-tab="instalacion" data-modulo="instalacion">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="9" rx="1.6"/><path d="M7 8V5M17 8V5M3 12.5h18"/></svg>
+    Instalación
   </button>
 
   <button class="nav-item" data-tab="prog-dia" data-modulo="programacion">
@@ -1888,6 +1919,26 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
 </div>
 
+<div class="panel" id="panel-optimizacion">
+  <div class="panel-header">
+    <button class="btn-secondary" onclick="optPantallaCompleta()">Pantalla completa</button>
+    <button class="btn-secondary" onclick="window.open('optimizacion.html','_blank')">Pestaña aparte</button>
+  </div>
+  <div class="panel-body">
+    <iframe id="opt-marco" title="Optimización Energética"></iframe>
+  </div>
+</div>
+
+<div class="panel" id="panel-instalacion">
+  <div class="panel-header">
+    <button class="btn-secondary" onclick="instPantallaCompleta()">Pantalla completa</button>
+    <button class="btn-secondary" onclick="window.open('instalacion.html','_blank')">Pestaña aparte</button>
+  </div>
+  <div class="panel-body">
+    <iframe id="inst-marco" title="Instalación y Cálculo de TAP"></iframe>
+  </div>
+</div>
+
 <div class="panel" id="panel-ee-informe">
   <div class="panel-header no-print">
     <button class="icon-btn" onclick="abrirMaquina(eeMaquinaActual.id)">&#8592;</button>
@@ -2671,6 +2722,8 @@ const HUB_ICONOS = {
   programacion: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 11h18"/>',
   documental:   '<path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/>',
   vfd:          '<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>',
+  optimizacion: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+  instalacion:  '<rect x="3" y="8" width="18" height="9" rx="1.6"/><path d="M7 8V5M17 8V5M3 12.5h18"/>',
   proximo:      '<path d="M12 5v14M5 12h14"/>',
 };
 
@@ -2817,6 +2870,10 @@ function hubPintar(c) {
       e: c.maquinas != null ? `${n(c.maquinas)} máquinas · IEEE 43` : "Aislamiento y resistencia" },
     { k: "predictivo",   t: "Monitoreo de condición",
       e: "Pozos BES, HPUM y UBH" },
+    { k: "optimizacion", t: "Optimización energética",
+      e: "Propuestas de cambio de TAP" },
+    { k: "instalacion",  t: "Instalación y cálculo de TAP",
+      e: "Diseño eléctrico de unidades ESP" },
     { k: "programacion", t: "Programación de actividades",
       e: "Plan diario, avances y órdenes" },
     { k: "documental",   t: "Gestión documental",
@@ -2855,7 +2912,8 @@ function aplicarModulo(modulo, irVistaDefault = true) {
   const navbar = document.getElementById("navbar-principal");
   navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental",
                           "modulo-ensayos", "modulo-programacion", "modulo-vfd",
-                          "modulo-predictivo", "modulo-hub");
+                          "modulo-predictivo", "modulo-optimizacion",
+                          "modulo-instalacion", "modulo-hub");
   navbar.classList.add("modulo-" + modulo);
   document.getElementById("selector-modulo").value = modulo;
 
@@ -2868,6 +2926,8 @@ function aplicarModulo(modulo, irVistaDefault = true) {
   const app = document.getElementById("app");
   app.classList.toggle("modulo-vfd", modulo === "vfd");
   app.classList.toggle("modulo-predictivo", modulo === "predictivo");
+  app.classList.toggle("modulo-optimizacion", modulo === "optimizacion");
+  app.classList.toggle("modulo-instalacion", modulo === "instalacion");
   if (modulo === "hub") {
     app.classList.add("modulo-completo");
     document.querySelector('[data-tab="hub"]').classList.add("active");
@@ -2908,6 +2968,18 @@ function aplicarModulo(modulo, irVistaDefault = true) {
     document.querySelector('[data-tab="predictivo"]').classList.add("active");
     abrirPanel("panel-predictivo");
     abrirPredictivo();
+  } else if (modulo === "optimizacion") {
+    app.classList.add("modulo-completo");
+    app.classList.add("modulo-optimizacion");
+    document.querySelector('[data-tab="optimizacion"]').classList.add("active");
+    abrirPanel("panel-optimizacion");
+    abrirOptimizacion();
+  } else if (modulo === "instalacion") {
+    app.classList.add("modulo-completo");
+    app.classList.add("modulo-instalacion");
+    document.querySelector('[data-tab="instalacion"]').classList.add("active");
+    abrirPanel("panel-instalacion");
+    abrirInstalacion();
   }
 }
 
@@ -2944,6 +3016,37 @@ function abrirPredictivo() {
 
 function predPantallaCompleta() {
   const cont = document.querySelector("#panel-predictivo .panel-body");
+  if (!cont) return;
+  if (document.fullscreenElement) { document.exitFullscreen(); return; }
+  const pedir = cont.requestFullscreen || cont.webkitRequestFullscreen;
+  if (!pedir) { toast("Este navegador no permite pantalla completa"); return; }
+  Promise.resolve(pedir.call(cont)).catch(() => toast("El navegador bloqueó la pantalla completa"));
+}
+
+/* Optimizacion e Instalacion siguen el mismo criterio: el iframe se apunta
+   la primera vez que se abre el modulo y de ahi en adelante conserva su
+   estado, con los filtros y la seleccion que el usuario haya dejado. */
+function abrirOptimizacion() {
+  const marco = document.getElementById("opt-marco");
+  if (marco && !marco.src) marco.src = "optimizacion.html";
+}
+
+function optPantallaCompleta() {
+  const cont = document.querySelector("#panel-optimizacion .panel-body");
+  if (!cont) return;
+  if (document.fullscreenElement) { document.exitFullscreen(); return; }
+  const pedir = cont.requestFullscreen || cont.webkitRequestFullscreen;
+  if (!pedir) { toast("Este navegador no permite pantalla completa"); return; }
+  Promise.resolve(pedir.call(cont)).catch(() => toast("El navegador bloqueó la pantalla completa"));
+}
+
+function abrirInstalacion() {
+  const marco = document.getElementById("inst-marco");
+  if (marco && !marco.src) marco.src = "instalacion.html";
+}
+
+function instPantallaCompleta() {
+  const cont = document.querySelector("#panel-instalacion .panel-body");
   if (!cont) return;
   if (document.fullscreenElement) { document.exitFullscreen(); return; }
   const pedir = cont.requestFullscreen || cont.webkitRequestFullscreen;
@@ -12671,6 +12774,9 @@ const ASIS_MODULOS = {
   documental: "Gestión Documental",
   ensayos: "Ensayos Eléctricos",
   programacion: "Programación de mantenimiento",
+  predictivo: "Monitoreo de Condición",
+  optimizacion: "Optimización Energética",
+  instalacion: "Instalación y Cálculo de TAP",
 };
 
 /* Describe en una frase que esta viendo el usuario. Este texto se le manda
