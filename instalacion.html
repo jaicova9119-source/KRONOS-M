@@ -192,6 +192,26 @@ async function kiCargarUnidades(){
   }));
 }
 
+/* La flota entera, tenga o no diseno registrado. Es lo que permite
+   dar de alta un pozo de Put Sur: sin esto el modulo solo conoce lo
+   que alguien ya cargo, y no habria por donde empezar. Se lee con
+   dp_bes_lista, la misma fuente de Monitoreo de Condicion. */
+async function kiCargarFlota(){
+  try {
+    const { data, error } = await kiCliente().rpc('dp_bes_lista');
+    if (error) throw new Error(error.message);
+    return (data || []).filter(r => r && r.pozo).map(r => ({
+      pozo: r.pozo,
+      campo: r.campo || '\u2014',
+      pad: r.pad || '\u2014',
+      marca: r.marca_variador || ''
+    }));
+  } catch(e){
+    console.warn('[Kronos-M] Flota no disponible:', e.message);
+    return [];
+  }
+}
+
 async function kiCargarParametros(){
   const { data, error } = await kiCliente().rpc('opt_parametros');
   if (error) throw new Error(error.message);
@@ -248,7 +268,7 @@ let KI_CVD = {
 let KI_TCF = [[140,1.13],[149,1.15],[158,1.17],[167,1.19],[176,1.21],[185,1.23],
               [194,1.25],[203,1.27],[212,1.29],[221,1.31],[230,1.33]];
 
-const kiCfg = { vNom: 480, kFiltro: 1.07 };
+const kiCfg = { vNom: 480, kFiltro: 1.07, tempDefecto: 193 };
 
 /* Las tablas y los factores son los mismos que usa Optimizacion.
    Vienen de opt_parametro para que no haya dos versiones. */
@@ -256,11 +276,13 @@ function kiAplicarParametros(p){
   const n = k => (p[k] == null ? null : Number(p[k]));
   if (n('k_filtro') != null) kiCfg.kFiltro = n('k_filtro');
   if (n('v_nom') != null)    kiCfg.vNom = n('v_nom');
+  if (n('temp_pozo_f_default') != null) kiCfg.tempDefecto = n('temp_pozo_f_default');
   if (p.tabla_cvd && typeof p.tabla_cvd === 'object') KI_CVD = p.tabla_cvd;
   if (Array.isArray(p.tabla_tcf) && p.tabla_tcf.length) KI_TCF = p.tabla_tcf;
 }
-let kiE = null;    /* entradas de trabajo */
-let kiRef = null;  /* unidad de referencia cargada, o null si es nueva */
+let kiE = null;     /* entradas de trabajo */
+let kiRef = null;   /* unidad cargada, o null si es una instalacion suelta */
+let KI_FLOTA = [];  /* pozos de la flota, con o sin diseno */
 
 function kiInterp(t, x){
   if (x == null || !isFinite(x)) return null;
@@ -278,7 +300,14 @@ function kiCalc(){
   const tabla = KI_CVD[e.awg] || KI_CVD[String(e.awg)];
   r.tablaFalta = !tabla;
   r.cvd = tabla ? kiInterp(tabla, e.i_placa) : null;
-  r.tcf = kiInterp(KI_TCF, e.temp_f);
+
+  /* La temperatura casi nunca esta cargada por unidad. Se usa el
+     valor por defecto de los parametros para no dejar el calculo
+     parado, pero se marca de donde salio: quien firme el diseno
+     tiene que saber que ese numero no se midio en ese pozo. */
+  r.tempPropia = e.temp_f != null;
+  r.temp = r.tempPropia ? e.temp_f : kiCfg.tempDefecto;
+  r.tcf = kiInterp(KI_TCF, r.temp);
 
   if (r.cvd != null && r.tcf != null && e.long_ft != null)
     r.cl = e.long_ft * r.cvd / 1000 * r.tcf;
@@ -393,13 +422,24 @@ function kiSalida(r){
   h += '<div class="ki-card"><div class="ct"><b>1. P&eacute;rdida de tensi&oacute;n en el cable</b>'
     + '<span>Entrada del m&oacute;dulo de optimizaci&oacute;n</span></div><div class="ki-grid">'
     + p('', 'CVD', 'tabla(' + nn(kiE.i_placa, 0) + ' A)', nn(r.cvd, 1), 'V/1000ft')
-    + p('', 'TCF', 'tabla(' + nn(kiE.temp_f, 0) + ' \u00b0F)', nn(r.tcf, 3), '')
+    + p('', 'TCF', 'tabla(' + nn(r.temp, 0) + ' \u00b0F'
+        + (r.tempPropia ? '' : ', por defecto') + ')', nn(r.tcf, 3), '')
     + p('g', 'Ca&iacute;da en el cable', 'long x CVD / 1000 x TCF', nn(r.cl, 1), 'V')
     + '</div>';
   if (r.tablaFalta){
     h += '<div class="ki-av">Sin tabla CVD para el calibre #'
       + (kiE.awg != null ? kiE.awg : '\u2014') + '. La ca&iacute;da no se puede calcular '
       + 'hasta cargar la tabla de ese calibre.</div>';
+  } else if (r.cl == null){
+    const f = [];
+    if (kiE.i_placa == null) f.push('corriente de placa');
+    if (kiE.long_ft == null) f.push('longitud del cable');
+    if (f.length) h += '<div class="ki-av">Falta ' + f.join(' y ')
+      + ' para calcular la ca&iacute;da.</div>';
+  } else if (!r.tempPropia){
+    h += '<div class="ki-av">La unidad no tiene temperatura de pozo registrada. '
+      + 'Se us&oacute; ' + kiCfg.tempDefecto + ' \u00b0F por defecto; '
+      + 'an&oacute;tela arriba si conoce la real.</div>';
   }
   h += '</div>';
 
@@ -428,7 +468,8 @@ function kiSalida(r){
     h += '<div class="ki-grid">'
       + p('', 'TAP escogido', 'anotado en sitio', nn(kiE.tap, 0), 'V')
       + p(cls, 'Diferencia contra la requerida', 'TAP - requerida',
-          (r.dTap > 0 ? '+' : '') + r.dTap.toFixed(0), 'V')
+          r.dTap == null ? '\u2014'
+                         : (r.dTap > 0 ? '+' : '') + r.dTap.toFixed(0), 'V')
       + p('', 'Relaci&oacute;n de transformaci&oacute;n', 'TAP / ' + kiCfg.vNom, nn(r.rt, 3), '')
       + p('', 'Tensi&oacute;n @ 60 Hz salida SUT', 'TAP x 60 / F m&aacute;x', nn(r.v60Sut, 0), 'V')
       + '</div></div>';
@@ -472,14 +513,25 @@ function kiSalida(r){
    plataforma: el diseno queda registrado y el modulo de
    Optimizacion lo usa sin que nadie vuelva a teclearlo. */
 function kiGuardarPanel(r){
-  return '<div class="ki-card"><div class="ct"><b>Guardar en Kronos-M</b>'
-    + '<span>' + koEscI(kiRef.pozo) + '</span></div>'
-    + '<p class="ki-nota" style="margin:0 0 10px">Queda como diseno electrico de la '
-    + 'unidad. El modulo de Optimizaci&oacute;n toma de aqu&iacute; el calibre, la '
-    + 'longitud, la temperatura, el TAP y el filtro seno para calcular la ca&iacute;da '
-    + 'de cable sin que haya que repetir el dato.</p>'
+  const nuevo = !!kiRef.nuevo;
+  const ubic = (kiRef.campo && kiRef.campo !== '\u2014')
+    ? kiRef.campo + (kiRef.pad && kiRef.pad !== '\u2014' ? ' \u00b7 ' + kiRef.pad : '')
+    : '';
+  return '<div class="ki-card"><div class="ct">'
+    + '<b>' + (nuevo ? 'Dar de alta en Kronos-M' : 'Guardar en Kronos-M') + '</b>'
+    + '<span>' + koEscI(kiRef.pozo) + (ubic ? ' \u00b7 ' + koEscI(ubic) : '') + '</span></div>'
+    + (nuevo
+        ? '<p class="ki-nota" style="margin:0 0 10px">Esta unidad todav&iacute;a no '
+          + 'tiene dise&ntilde;o el&eacute;ctrico registrado. Al guardarla aparece en '
+          + 'Optimizaci&oacute;n Energ&eacute;tica, que dir&aacute; qu&eacute; le falta '
+          + 'hasta que se pueda calcular la propuesta.</p>'
+        : '<p class="ki-nota" style="margin:0 0 10px">Queda como dise&ntilde;o '
+          + 'el&eacute;ctrico de la unidad. El m&oacute;dulo de Optimizaci&oacute;n toma '
+          + 'de aqu&iacute; el calibre, la longitud, la temperatura, el TAP y el filtro '
+          + 'seno para calcular la ca&iacute;da de cable sin repetir el dato.</p>')
     + '<div style="display:flex;gap:9px;flex-wrap:wrap;align-items:center">'
-    +   '<button class="ki-btn" id="kiGuardar">Guardar diseno</button>'
+    +   '<button class="ki-btn" id="kiGuardar">'
+    +     (nuevo ? 'Dar de alta' : 'Guardar dise\u00f1o') + '</button>'
     +   '<span class="ki-msg" id="kiMsg"></span>'
     + '</div></div>';
 }
@@ -508,8 +560,11 @@ async function kiGuardar(boton){
       v_nom_variador_v: kiCfg.vNom,
       filtro_seno: !!kiE.filtro
     });
+    const pozo = kiRef.pozo;
     KI_DATOS = await kiCargarUnidades();
-    kiRef = KI_DATOS.find(x => x.pozo === kiRef.pozo) || kiRef;
+    kiPoblarSelector();
+    document.getElementById('kiPozo').value = pozo;
+    kiRef = KI_DATOS.find(x => x.pozo === pozo) || kiRef;
     kiPintar();
     const m = document.getElementById('kiMsg');
     if (m){ m.textContent = 'Guardado.'; m.className = 'ki-msg ok'; }
@@ -558,22 +613,74 @@ function kiCargar(pozo){
     kiRef = null;
     kiE = { vsd:'', hp:null, v_placa:null, i_placa:null, f_max:60, awg:2,
             long_ft:null, temp_f:null, conf:'DELTA', filtro:false, tap:null };
-  } else {
-    const u = KI_DATOS.find(x => x.pozo === pozo);
+    kiPintar();
+    return;
+  }
+
+  const u = KI_DATOS.find(x => x.pozo === pozo);
+  if (u){
     kiRef = u;
     kiE = { vsd:u.vsd, hp:u.hp, v_placa:u.v_placa, i_placa:u.i_placa, f_max:u.f_max,
             awg:u.awg, long_ft:u.long_ft, temp_f:u.temp_f, conf:u.conf,
-            filtro:false, tap:u.tap };
+            filtro:u.filtro, tap:u.tap };
+    kiPintar();
+    return;
   }
+
+  /* Pozo de la flota sin diseno cargado. Se abre en blanco pero
+     asociado a esa unidad, para que al guardar quede en su registro
+     y no como una instalacion suelta. La marca del variador que ya
+     conoce la flota se usa como punto de partida. */
+  const f = KI_FLOTA.find(x => x.pozo === pozo);
+  kiRef = { pozo: pozo, campo: (f && f.campo) || '\u2014',
+            pad: (f && f.pad) || '\u2014', nuevo: true };
+  kiE = { vsd:(f && f.marca) || '', hp:null, v_placa:null, i_placa:null,
+          f_max:60, awg:2, long_ft:null, temp_f:null, conf:'DELTA',
+          filtro:false, tap:null };
   kiPintar();
 }
 
 const sel = document.getElementById('kiPozo');
 sel.onchange = e => kiCargar(e.target.value);
 
+/* Dos grupos: las unidades que ya tienen diseno y las que estan en
+   la flota pero todavia no. Separarlas dice de un vistazo cuanto
+   falta por cargar, que en Put Sur es todo. */
+function kiPoblarSelector(){
+  const con = KI_DATOS.map(u => u.pozo);
+  const sin = KI_FLOTA.filter(f => con.indexOf(f.pozo) < 0);
+
+  let h = '<option value="">Instalaci\u00f3n suelta (sin guardar)</option>';
+
+  if (KI_DATOS.length){
+    h += '<optgroup label="Con dise\u00f1o registrado (' + KI_DATOS.length + ')">'
+      + KI_DATOS.map(u => '<option value="' + koEscI(u.pozo) + '">'
+          + koEscI(u.pozo)
+          + (u.campo && u.campo !== '\u2014' ? ' \u00b7 ' + koEscI(u.campo) : '')
+          + '</option>').join('')
+      + '</optgroup>';
+  }
+  if (sin.length){
+    /* Agrupadas por campo: es como el usuario piensa la flota. */
+    const campos = [...new Set(sin.map(f => f.campo))].sort();
+    campos.forEach(c => {
+      h += '<optgroup label="Sin dise\u00f1o \u00b7 ' + koEscI(c) + ' ('
+        + sin.filter(f => f.campo === c).length + ')">'
+        + sin.filter(f => f.campo === c).map(f =>
+            '<option value="' + koEscI(f.pozo) + '">' + koEscI(f.pozo)
+            + (f.pad && f.pad !== '\u2014' ? ' \u00b7 ' + koEscI(f.pad) : '')
+            + '</option>').join('')
+        + '</optgroup>';
+    });
+  }
+  document.getElementById('kiPozo').innerHTML = h;
+}
+
 async function kiArrancar(){
   try { kiAplicarParametros(await kiCargarParametros()); }
   catch(e){ console.warn('[Kronos-M] Parametros no disponibles:', e.message); }
+
+  KI_FLOTA = await kiCargarFlota();
 
   try { KI_DATOS = await kiCargarUnidades(); }
   catch(e){
@@ -583,10 +690,7 @@ async function kiArrancar(){
     KI_DATOS = [];
   }
 
-  sel.innerHTML = '<option value="">Instalaci\u00f3n nueva (en blanco)</option>'
-    + KI_DATOS.map(u => '<option value="' + koEscI(u.pozo) + '">'
-        + koEscI(u.pozo) + (u.vsd ? ' \u00b7 ' + koEscI(u.vsd) : '')
-        + '</option>').join('');
+  kiPoblarSelector();
   kiCargar('');
 }
 
