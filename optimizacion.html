@@ -276,6 +276,16 @@ async function koCargarParametros(){
   return data || {};
 }
 
+/* Trae a opt_lectura la ultima ronda util de cada unidad. Es lo
+   que reemplaza la importacion desde Excel: se corre cuando entren
+   rondas nuevas y las propuestas quedan sobre lo medido. */
+async function koSincronizar(){
+  const { data, error } = await koCliente().rpc('opt_sincronizar_lecturas');
+  if (error) throw new Error(error.message);
+  if (data && data.ok === false) throw new Error(data.error || 'No se pudo sincronizar');
+  return data || {};
+}
+
 async function koEnviarPropuesta(p){
   const { data, error } = await koCliente().rpc('opt_guardar_propuesta', {
     p_pozo: p.pozo, p_f_max: p.f_max, p_tap: p.tap,
@@ -401,6 +411,8 @@ function koFBase(u){
 
 function koCalcular(u){
   const r = { pozo: u.pozo, u: u, ok: false };
+  if (u.carga == null && u.i_mot != null && u.i_placa)
+    u.carga = u.i_mot / u.i_placa;
   /* Prioridad de la frecuencia propuesta: lo que el usuario edita
      ahora, luego la propuesta ya guardada, y si no hay ninguna, el
      tope actual de la unidad. */
@@ -533,6 +545,8 @@ function koBarra(amb, rs){
     +   koSelectores(rs)
     +   '<input class="ko-bus" id="koBus" placeholder="Buscar unidad o variador" value="'
     +     koEsc(koBusca) + '">'
+    +   '<button class="ko-chip" id="koSync" title="Trae la ultima ronda de cada unidad">'
+    +     'Actualizar desde rondas</button>'
     +   '<button class="ko-chip" id="koMarcarTodas">Marcar las ' + amb.length
     +     ' visibles</button>'
     +   (marcadas ? '<button class="ko-chip on" id="koLimpiar">'
@@ -870,6 +884,33 @@ function koPintarDetalle(){
   koEnlazar();
 }
 
+/* Sincronizar y recargar. Se informa cuantas lecturas entraron y
+   cuantas unidades quedaron sin carga por no tener corriente de
+   placa registrada, que es el faltante que mas se repite. */
+async function koActualizar(boton){
+  const previo = boton.textContent;
+  boton.disabled = true;
+  boton.textContent = 'Actualizando\u2026';
+  try {
+    const r = await koSincronizar();
+    KO_DATOS = await koCargarUnidades();
+    koPintar();
+    const m = document.getElementById('koGuardarMsg');
+    const txt = (r.lecturas || 0) + ' lecturas actualizadas'
+      + (r.sin_diseno ? ' \u00b7 ' + r.sin_diseno + ' con ronda pero sin dise\u00f1o' : '')
+      + (r.sin_carga ? ' \u00b7 ' + r.sin_carga + ' sin carga por falta de placa' : '');
+    if (m) m.textContent = txt;
+    else console.info('[Kronos-M] ' + txt);
+  } catch(e){
+    boton.disabled = false;
+    boton.textContent = previo;
+    const v = document.getElementById('koVista');
+    if (v) v.insertAdjacentHTML('afterbegin',
+      '<div class="ko-card"><div class="ko-vacio">No se pudo actualizar.<br>'
+      + koEsc(e.message) + '</div></div>');
+  }
+}
+
 /* Registrar es un acto, no un dibujo: se bloquea el boton, se
    informa cuantas quedaron y se recargan las unidades para que la
    pantalla muestre la propuesta vigente real y no la que se supone
@@ -940,6 +981,9 @@ function koEnlazar(){
       if (n){ n.focus(); n.setSelectionRange(pos, pos); }
     };
   }
+  const sy = document.getElementById('koSync');
+  if (sy) sy.onclick = () => koActualizar(sy);
+
   const mt = document.getElementById('koMarcarTodas');
   if (mt) mt.onclick = () => {
     koAmbito(KO_DATOS.map(koCalcular)).forEach(r => koMarca.add(r.pozo));
@@ -996,8 +1040,9 @@ async function koArrancar(){
   }
   if (!KO_DATOS.length){
     v.innerHTML = '<div class="ko-card"><div class="ko-vacio">'
-      + 'No hay unidades con diseno registrado. Cargue primero el diseno '
-      + 'electrico desde el modulo de Instalacion.</div></div>';
+      + 'No hay unidades con dise&ntilde;o registrado.<br>Cargue primero el '
+      + 'dise&ntilde;o el&eacute;ctrico desde el m&oacute;dulo de Instalaci&oacute;n '
+      + 'y C&aacute;lculo de TAP.</div></div>';
     return;
   }
   koPintar();
