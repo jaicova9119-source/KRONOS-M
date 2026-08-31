@@ -696,5 +696,25 @@ async function kiArrancar(){
 
 kiArrancar();
 </script>
+
+<script>
+/* Reporte de scroll al contenedor de Kronos-M.
+   Este archivo tambien se abre en pestana aparte; ahi no hay padre a quien
+   avisar y el bloque no hace nada. Solo sirve cuando corre dentro del
+   iframe: el boton del asistente vive en la pagina padre y sin este aviso
+   no se entera de que aqui adentro se esta bajando. */
+(function () {
+  if (window.parent === window) return;
+  var ultimo = 0;
+  window.addEventListener("scroll", function () {
+    var y = window.scrollY || document.documentElement.scrollTop || 0;
+    if (Math.abs(y - ultimo) < 4) return;
+    ultimo = y;
+    try { window.parent.postMessage({ tipo: "kx-scroll", y: y }, "*"); }
+    catch (e) { /* origen distinto: se ignora */ }
+  }, { passive: true });
+})();
+</script>
+
 </body>
 </html>
