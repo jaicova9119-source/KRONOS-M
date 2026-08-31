@@ -88,6 +88,35 @@ input.ko-f{background:var(--ko-card2);border:1px solid var(--ko-line);color:#fff
 input.ko-f:focus{outline:none;border-color:var(--ko-teal)}
 input.ko-f.ed{border-color:var(--ko-teal);color:#7fd0dd}
 
+.ko-bar{background:var(--ko-card);border:1px solid var(--ko-line);border-radius:9px;
+  padding:11px 13px;margin-bottom:14px}
+.ko-chips{display:flex;gap:6px;flex-wrap:wrap}
+.ko-bar2{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:9px}
+.ko-chip{background:rgba(255,255,255,.06);border:1px solid var(--ko-line);
+  color:var(--ko-t2);border-radius:6px;padding:5px 11px;font-size:12.5px;cursor:pointer;
+  font-family:inherit;white-space:nowrap}
+.ko-chip:hover{background:rgba(255,255,255,.13);color:#fff}
+.ko-chip.on{background:linear-gradient(100deg,var(--ko-teal),var(--ko-green));
+  border-color:transparent;color:#fff;font-weight:600}
+.ko-chip s{text-decoration:none;color:var(--ko-t3);font-size:11px;margin-left:3px}
+.ko-chip.on s{color:rgba(255,255,255,.75)}
+.ko-sel2{background:var(--ko-card2);border:1px solid var(--ko-line);color:#fff;
+  border-radius:6px;padding:6px 9px;font-size:13px;font-family:inherit;cursor:pointer;
+  max-width:190px}
+.ko-sel2:focus{outline:none;border-color:var(--ko-teal)}
+.ko-bus{background:var(--ko-card2);border:1px solid var(--ko-line);color:#fff;
+  border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;
+  flex:1 1 190px;min-width:0}
+.ko-bus:focus{outline:none;border-color:var(--ko-teal)}
+.ko-hint{font-size:11.5px;color:var(--ko-t3)}
+td.ko-mk,th.ko-mk{width:26px;padding-left:0!important;text-align:left!important}
+td.ko-mk input{accent-color:var(--ko-teal);width:15px;height:15px;cursor:pointer;
+  vertical-align:-2px}
+table.ko-t tr.mk td{background:rgba(18,165,184,.10)}
+.ko-pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;
+  color:var(--ko-t2);background:var(--ko-card2);border:1px solid var(--ko-line);
+  border-radius:7px;padding:11px 12px;margin:0;overflow-x:auto;line-height:1.7;
+  white-space:pre}
 .ko-leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:11px;font-size:11.5px;
   color:var(--ko-t3)}
 .ko-leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;
@@ -124,49 +153,222 @@ input.ko-f.ed{border-color:var(--ko-teal);color:#7fd0dd}
   <button class="ko-back" id="koBack">&larr; Volver al listado</button>
 </div>
 
-<div class="ko-wrap" id="koVista"></div>
+<div class="ko-wrap" id="koVista">
+  <div class="ko-card"><div class="ko-vacio">Cargando&hellip;</div></div>
+</div>
 
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 /* ============================================================
-   OPTIMIZACION ENERGETICA  ·  prototipo de validacion
-   ------------------------------------------------------------
-   Motor de calculo extraido de la hoja OPTIMIZATION del libro
-   PREDICTIVE_DATA_UNITS_ESP_CYC-2026. Los 32 registros embebidos
-   son las entradas de esa hoja, no resultados: todo lo que se
-   muestra se recalcula aqui. La columna "hoja" de cada registro
-   guarda el resultado original para poder compararlo.
-
-   La cadena es:
-     f_carga  = tabla(% carga motor)
-     v_opt60  = V placa motor x f_carga
-     v_sup60  = v_opt60 + caida de cable
-     tap_opt  = v_sup60 x f_max_propuesta / 60
-     v_opt_op = v_sup60 x f_op / 60
-     tap_new  = tap_opt x k_filtro   (solo si hay filtro seno)
-     rt_new   = tap_new / V nominal del variador
-     delta_A  = A variador - rt_new x A motor
-     reduccion = raiz(3) x delta_A x V nominal x FP / 1000
-
-   Cambiar la frecuencia maxima propuesta recalcula tap_opt, y con
-   el la relacion de transformacion, la corriente proyectada y la
-   reduccion. No cambia v_opt_op: la tension optima a la frecuencia
-   de operacion depende del V/Hz, no del tope del variador.
+   CONEXION
+   Las credenciales se heredan de Kronos-M: este archivo corre en
+   un iframe del mismo origen. Al abrirse en pestana aparte el
+   padre es window.opener. Es el mismo patron de condicion.html,
+   para que la sesion sea una sola y no aparezca el aviso de
+   multiples instancias de GoTrue.
    ============================================================ */
+function koCredencial(nombre){
+  var f = [];
+  try { if (window.parent && window.parent !== window) f.push(window.parent); } catch(e){}
+  try { if (window.opener) f.push(window.opener); } catch(e){}
+  for (var i = 0; i < f.length; i++){
+    try {
+      var v = f[i][nombre];
+      if (v && String(v).indexOf('PEGAR_AQUI') !== 0) return v;
+    } catch(e){}
+  }
+  return null;
+}
 
-const KO_DATOS = [{"pozo":"CYC-01","vsd":"AK06-MM-1K4-310231-480","modo":"FRE SET","f_op":58.5,"f_max":60,"f_prop":60,"v_placa":4140,"i_placa":141,"tap":4569,"v_out":424,"i_vsd":1140,"v_sut":3890,"i_mot":117.7,"carga":0.8347517730496454,"v_nom":440,"cable":280,"filtro":true,"k_filtro":1.09,"hoja":{"tap_opt":4213,"v_opt":4107.675,"d_tap":356,"d_vol":217.67500000000018,"tap_new":4213,"d_amp":106.93729166666662,"red":59.22442097513776}},{"pozo":"CYC-04","vsd":"4500-4-GCS-12P","modo":"FRE SET","f_op":50.8,"f_max":50.8,"f_prop":50,"v_placa":3173,"i_placa":46,"tap":2911,"v_out":471,"i_vsd":199,"v_sut":2672,"i_mot":36.8,"carga":0.7999999999999999,"v_nom":480,"cable":140,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2628.625,"v_opt":2670.683,"d_tap":282.375,"d_vol":1.3170000000000073,"tap_new":2628.625,"d_amp":-2.5279166666666697,"red":-1.4000205028888093}},{"pozo":"CYC-08","vsd":"4500-4-GCS-12P","modo":"FRE SET","f_op":52,"f_max":52.5,"f_prop":52.5,"v_placa":3305,"i_placa":93,"tap":3187,"v_out":468,"i_vsd":600,"v_sut":2973,"i_mot":85.4,"carga":0.9182795698924732,"v_nom":480,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2965.2875,"v_opt":2937.046666666666,"d_tap":221.7125000000001,"d_vol":35.95333333333383,"tap_new":2965.2875,"d_amp":72.42593229166664,"red":40.11120757507955}},{"pozo":"CYC-09","vsd":"8700-4-ADV-12P","modo":"FRE SET","f_op":55,"f_max":56,"f_prop":56,"v_placa":3940,"i_placa":125,"tap":3804,"v_out":504,"i_vsd":764,"v_sut":3734,"i_mot":97.6,"carga":0.7807999999999999,"v_nom":480,"cable":200,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":3680.133333333333,"v_opt":3614.4166666666665,"d_tap":123.86666666666679,"d_vol":119.58333333333348,"tap_new":3680.133333333333,"d_amp":15.706222222222323,"red":8.698480224442681}},{"pozo":"CYC-11","vsd":"8700-4-ADV-12P-FPWM","modo":"FRE SET","f_op":null,"f_max":null,"f_prop":null,"v_placa":3940,"i_placa":125,"tap":3628,"v_out":null,"i_vsd":null,"v_sut":null,"i_mot":null,"carga":null,"v_nom":460,"cable":150,"filtro":true,"k_filtro":1.04,"hoja":{"tap_opt":null,"v_opt":null,"d_tap":null,"d_vol":null,"tap_new":null,"d_amp":null,"red":null}},{"pozo":"CYC-16","vsd":"4500-4-ADV-12P","modo":"FRE SET","f_op":54,"f_max":56,"f_prop":56,"v_placa":2440,"i_placa":88,"tap":2470,"v_out":466,"i_vsd":453,"v_sut":2326,"i_mot":86.8,"carga":0.9863636363636363,"v_nom":480,"cable":240,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2455.7866666666664,"v_opt":2368.0799999999995,"d_tap":14.213333333333594,"d_vol":42.07999999999947,"tap_new":2455.7866666666664,"d_amp":8.91191111111118,"red":4.935628788717281}},{"pozo":"CYC-18","vsd":"4350-4-GCS-12P","modo":"PID","f_op":40.7,"f_max":44,"f_prop":44,"v_placa":3175,"i_placa":70,"tap":2378,"v_out":444,"i_vsd":217,"v_sut":2154,"i_mot":42.7,"carga":0.61,"v_nom":480,"cable":171,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2314.0333333333333,"v_opt":2140.4808333333335,"d_tap":63.9666666666667,"d_vol":13.519166666666479,"tap_new":2314.0333333333333,"d_amp":11.147451388888896,"red":6.17372427864873}},{"pozo":"CYC-24","vsd":"Vp-930A","modo":"FRE SET","f_op":null,"f_max":null,"f_prop":null,"v_placa":3940,"i_placa":125,"tap":4157,"v_out":null,"i_vsd":null,"v_sut":null,"i_mot":null,"carga":null,"v_nom":460,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":null,"v_opt":null,"d_tap":null,"d_vol":null,"tap_new":null,"d_amp":null,"red":null}},{"pozo":"CYC-25","vsd":"4500-4-GCS-12P","modo":"FRE SET","f_op":50,"f_max":52,"f_prop":52,"v_placa":3830,"i_placa":88,"tap":3279,"v_out":455,"i_vsd":392,"v_sut":3028,"i_mot":54.8,"carga":0.6227272727272727,"v_nom":480,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":3250.173333333333,"v_opt":3125.1666666666665,"d_tap":28.826666666666824,"d_vol":97.16666666666652,"tap_new":3250.173333333333,"d_amp":20.93854444444446,"red":11.596264983499237}},{"pozo":"CYC-26","vsd":"4500-4-ADV-12P","modo":"FRE SET","f_op":38,"f_max":60,"f_prop":60,"v_placa":2440,"i_placa":88,"tap":2613,"v_out":306,"i_vsd":239,"v_sut":1602,"i_mot":40.9,"carga":0.4647727272727273,"v_nom":480,"cable":241,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2559,"v_opt":1620.7,"d_tap":54,"d_vol":18.700000000000045,"tap_new":2559,"d_amp":20.951875,"red":11.603647762899662}},{"pozo":"CYC-31","vsd":"4500-4-ADV-12P","modo":"FRE SET","f_op":42.2,"f_max":45,"f_prop":45,"v_placa":2440,"i_placa":88,"tap":1947,"v_out":447,"i_vsd":197,"v_sut":1743,"i_mot":43.4,"carga":0.49318181818181817,"v_nom":480,"cable":210,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":1896,"v_opt":1778.0266666666669,"d_tap":51,"d_vol":35.02666666666687,"tap_new":1896,"d_amp":25.569999999999993,"red":14.161275460900004}},{"pozo":"CYC-32","vsd":"4500-4-ADV-12P","modo":"FRE SET","f_op":null,"f_max":52,"f_prop":52,"v_placa":3305,"i_placa":93,"tap":3002,"v_out":478,"i_vsd":598,"v_sut":2870,"i_mot":81.1,"carga":0.8720430107526881,"v_nom":480,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2937.046666666667,"v_opt":null,"d_tap":64.95333333333292,"d_vol":null,"tap_new":2937.046666666667,"d_amp":101.76149027777774,"red":56.35793880075512}},{"pozo":"CYC-33","vsd":"AK07-480-12-11","modo":"FRE SET","f_op":null,"f_max":null,"f_prop":55,"v_placa":3450,"i_placa":2,"tap":3550,"v_out":null,"i_vsd":null,"v_sut":null,"i_mot":null,"carga":null,"v_nom":480,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2983.75,"v_opt":null,"d_tap":566.25,"d_vol":null,"tap_new":2983.75,"d_amp":null,"red":null}},{"pozo":"CYC-39","vsd":"8700-4-GCS-12P","modo":"FRE SET","f_op":39,"f_max":57,"f_prop":57,"v_placa":3940,"i_placa":125,"tap":3804,"v_out":333,"i_vsd":492,"v_sut":2555,"i_mot":60.7,"carga":0.48560000000000003,"v_nom":480,"cable":300,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":3953.14,"v_opt":2704.7799999999997,"d_tap":-149.13999999999987,"d_vol":149.77999999999975,"tap_new":3953.14,"d_amp":-7.907495833333371,"red":-4.379359667647747}},{"pozo":"CYC-40","vsd":"4500-4-GCS-12P","modo":"FRE SET","f_op":49.2,"f_max":50,"f_prop":50,"v_placa":3830,"i_placa":88,"tap":3176,"v_out":468,"i_vsd":296,"v_sut":3057,"i_mot":41.5,"carga":0.4715909090909091,"v_nom":480,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":3125.1666666666665,"v_opt":3075.164,"d_tap":50.833333333333485,"d_vol":18.164000000000215,"tap_new":3125.1666666666665,"d_amp":25.80329861111113,"red":14.29048179240529}},{"pozo":"CYC-42","vsd":"4500-4-ADV-12P","modo":"FRE SET","f_op":53.2,"f_max":55,"f_prop":55,"v_placa":3720,"i_placa":74,"tap":3372,"v_out":472,"i_vsd":384,"v_sut":3236,"i_mot":53,"carga":0.7162162162162162,"v_nom":480,"cable":200,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":3388.7333333333327,"v_opt":3277.829333333333,"d_tap":-16.733333333332666,"d_vol":41.829333333333125,"tap_new":3388.7333333333327,"d_amp":9.827361111111202,"red":5.442626818466252}},{"pozo":"CYC-43","vsd":"4500-4-GCS-12P","modo":"FRE SET","f_op":47.8,"f_max":50,"f_prop":50,"v_placa":3027,"i_placa":59,"tap":2820,"v_out":461,"i_vsd":344,"v_sut":2664,"i_mot":57,"carga":0.8142857142857143,"v_nom":480,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2496.1499999999996,"v_opt":2386.3193999999994,"d_tap":323.85000000000036,"d_vol":277.6806000000006,"tap_new":2496.1499999999996,"d_amp":47.58218750000003,"red":26.35214955884605}},{"pozo":"CYC-44","vsd":"4500-4-GCS-12P","modo":"FRE SET","f_op":57,"f_max":57,"f_prop":57,"v_placa":2537,"i_placa":36,"tap":2468,"v_out":480,"i_vsd":204,"v_sut":2429,"i_mot":38.7,"carga":1.0750000000000002,"v_nom":480,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2552.65,"v_opt":2552.65,"d_tap":-84.65000000000009,"d_vol":123.65000000000009,"tap_new":2552.65,"d_amp":-1.8074062500000139,"red":-1.0009846607744426}},{"pozo":"CYC-45","vsd":"4500-4-ADV-12P","modo":"FRE SET","f_op":46,"f_max":46.2,"f_prop":46.2,"v_placa":2440,"i_placa":88,"tap":1879,"v_out":502,"i_vsd":253,"v_sut":1952,"i_mot":59.3,"carga":0.6738636363636363,"v_nom":480,"cable":160,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":1889.2720000000002,"v_opt":1881.0933333333332,"d_tap":-10.272000000000162,"d_vol":70.90666666666675,"tap_new":1889.2720000000002,"d_amp":19.596188333333316,"red":10.852836174110601}},{"pozo":"CYC-46","vsd":"630-480-12-131","modo":"FRE SET","f_op":48,"f_max":48,"f_prop":48,"v_placa":2563,"i_placa":41,"tap":2175,"v_out":428,"i_vsd":142,"v_sut":1993,"i_mot":30.1,"carga":0.485483870967742,"v_nom":450,"cable":230,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2029.3600000000001,"v_opt":2029.36,"d_tap":145.63999999999987,"d_vol":36.3599999999999,"tap_new":2029.3600000000001,"d_amp":14.74221666666665,"red":8.164590970705419}},{"pozo":"CYC-48","vsd":"4500-4-ADV-12P","modo":"FRE SET","f_op":47.7,"f_max":50.3,"f_prop":50.3,"v_placa":2560,"i_placa":44,"tap":2194,"v_out":473,"i_vsd":137,"v_sut":2128,"i_mot":26.9,"carga":0.30568181818181817,"v_nom":480,"cable":180,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2082.42,"v_opt":1974.7800000000002,"d_tap":111.57999999999993,"d_vol":153.2199999999998,"tap_new":2082.42,"d_amp":20.297712500000003,"red":11.241356978437754}},{"pozo":"CYC-51","vsd":"675-480-12-131","modo":"FRE SET","f_op":66,"f_max":66,"f_prop":66,"v_placa":2505,"i_placa":61,"tap":2933,"v_out":433,"i_vsd":325,"v_sut":2600,"i_mot":52,"carga":0.8524590163934426,"v_nom":460,"cable":150,"filtro":true,"k_filtro":1.07,"hoja":{"tap_opt":2782.725,"v_opt":2782.725,"d_tap":150.2750000000001,"d_vol":182.7249999999999,"tap_new":2977.51575,"d_amp":2.435793750000016,"red":1.3490006358892779}},{"pozo":"CYC-52","vsd":"8700-4-ADV-12P","modo":"FRE SET","f_op":54.8,"f_max":56,"f_prop":56,"v_placa":3940,"i_placa":125,"tap":3703,"v_out":473,"i_vsd":723,"v_sut":3507,"i_mot":91.8,"carga":0.7343999999999999,"v_nom":480,"cable":250,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":3837.12,"v_opt":3754.8959999999997,"d_tap":-134.1199999999999,"d_vol":247.89599999999973,"tap_new":3837.12,"d_amp":-10.849199999999996,"red":-6.008545550660786}},{"pozo":"CYC-54","vsd":"630-310231-480","modo":"FRE SET","f_op":49.9,"f_max":53,"f_prop":53,"v_placa":3830,"i_placa":88,"tap":3563,"v_out":308,"i_vsd":330,"v_sut":2881,"i_mot":44.8,"carga":0.509090909090909,"v_nom":450,"cable":150,"filtro":true,"k_filtro":1.07,"hoja":{"tap_opt":3312.6766666666663,"v_opt":3118.9163333333327,"d_tap":250.32333333333372,"d_vol":237.91633333333266,"tap_new":3312.6766666666663,"d_amp":20.816844444444484,"red":11.52886462277999}},{"pozo":"CYC-55","vsd":"11201-4202-1001021075","modo":"FRE SET","f_op":null,"f_max":43,"f_prop":43,"v_placa":3151,"i_placa":78,"tap":2537,"v_out":400,"i_vsd":271,"v_sut":2094,"i_mot":49.7,"carga":0.6371794871794872,"v_nom":450,"cable":150,"filtro":true,"k_filtro":1.07,"hoja":{"tap_opt":2230.2236666666668,"v_opt":null,"d_tap":306.77633333333324,"d_vol":null,"tap_new":2230.2236666666668,"d_amp":40.078924513888865,"red":22.196663676879076}},{"pozo":"CYC-56","vsd":"8700-4-ADV-12P-FPWM","modo":"FRE SET","f_op":50.3,"f_max":52.3,"f_prop":52.3,"v_placa":3027,"i_placa":59,"tap":3377,"v_out":402,"i_vsd":335,"v_sut":2774,"i_mot":45.7,"carga":0.6528571428571429,"v_nom":450,"cable":150,"filtro":true,"k_filtro":null,"hoja":{"tap_opt":2637.3582499999998,"v_opt":2536.5032499999998,"d_tap":739.6417500000002,"d_vol":237.49675000000025,"tap_new":2637.3582499999998,"d_amp":83.90151661458333,"red":46.466659693640715}},{"pozo":"CYC-57","vsd":"8700-4-ADV-12P-FPWM","modo":"FRE SET","f_op":50.8,"f_max":53,"f_prop":53,"v_placa":2547,"i_placa":37,"tap":2550,"v_out":424,"i_vsd":147,"v_sut":2232,"i_mot":26.5,"carga":0.7162162162162162,"v_nom":450,"cable":150,"filtro":true,"k_filtro":1.07,"hoja":{"tap_opt":2269.8575,"v_opt":2175.637,"d_tap":280.1424999999999,"d_vol":56.36299999999983,"tap_new":2269.8575,"d_amp":21.684950520833326,"red":12.009642459190763}},{"pozo":"CYC-58","vsd":"8700-4-ADV-12P-FPWM","modo":"FRE SET","f_op":53.3,"f_max":55,"f_prop":55,"v_placa":3830,"i_placa":88,"tap":3715,"v_out":437,"i_vsd":500,"v_sut":3385,"i_mot":60.9,"carga":0.6920454545454545,"v_nom":450,"cable":150,"filtro":true,"k_filtro":1.07,"hoja":{"tap_opt":3472.7916666666665,"v_opt":3365.450833333333,"d_tap":242.20833333333348,"d_vol":19.549166666667134,"tap_new":3472.7916666666665,"d_amp":59.38955729166668,"red":32.89135237810693}},{"pozo":"CYC-59","vsd":"675-480-12-131","modo":"FRE SET","f_op":43.7,"f_max":46,"f_prop":46,"v_placa":3830,"i_placa":88,"tap":4134,"v_out":420,"i_vsd":277,"v_sut":2668,"i_mot":39,"carga":0.4431818181818182,"v_nom":450,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2875.153333333333,"v_opt":2731.395666666667,"d_tap":1258.8466666666668,"d_vol":63.395666666666784,"tap_new":2875.153333333333,"d_amp":43.39379166666669,"red":24.032516115939544}},{"pozo":"CYC-63","vsd":"8700-4-ADV-12P-FPWM","modo":"FRE SET","f_op":54.6,"f_max":55,"f_prop":55,"v_placa":3830,"i_placa":88,"tap":3715,"v_out":440,"i_vsd":542,"v_sut":3334,"i_mot":68.3,"carga":0.7761363636363636,"v_nom":450,"cable":150,"filtro":true,"k_filtro":1.07,"hoja":{"tap_opt":3472.7916666666665,"v_opt":3447.535,"d_tap":242.20833333333348,"d_vol":113.53499999999985,"tap_new":3472.7916666666665,"d_amp":47.85068576388892,"red":26.50085029704331}},{"pozo":"CYC-64","vsd":"4500-4-ADV-12P","modo":"FRE SET","f_op":49.4,"f_max":50.3,"f_prop":50.3,"v_placa":2440,"i_placa":88,"tap":2194,"v_out":442,"i_vsd":243,"v_sut":1977,"i_mot":52.2,"carga":0.5931818181818183,"v_nom":450,"cable":150,"filtro":false,"k_filtro":null,"hoja":{"tap_opt":2048.5513333333333,"v_opt":2011.8973333333333,"d_tap":145.44866666666667,"d_vol":34.897333333333336,"tap_new":2048.5513333333333,"d_amp":20.220042500000005,"red":11.198341481173456}},{"pozo":"CYC-65","vsd":"8700-4-ADV-12P-FPWM","modo":"FRE SET","f_op":50.4,"f_max":51,"f_prop":51,"v_placa":3250,"i_placa":119,"tap":3023,"v_out":429,"i_vsd":576,"v_sut":2643,"i_mot":89.4,"carga":0.7152000000000001,"v_nom":450,"cable":150,"filtro":true,"k_filtro":null,"hoja":{"tap_opt":2751.875,"v_opt":2719.5,"d_tap":271.125,"d_vol":76.5,"tap_new":2751.875,"d_amp":63.46328124999991,"red":35.14747780343446}}];
+let koSb = null;
+function koCliente(){
+  if (koSb) return koSb;
+  var f = [];
+  try { if (window.parent && window.parent !== window) f.push(window.parent); } catch(e){}
+  try { if (window.opener) f.push(window.opener); } catch(e){}
+  for (var i = 0; i < f.length; i++){
+    try { if (f[i].sb && f[i].sb.rpc) { koSb = f[i].sb; return koSb; } } catch(e){}
+  }
+  const url = koCredencial('SUPABASE_URL');
+  const key = koCredencial('SUPABASE_ANON_KEY');
+  if (!url || !key)
+    throw new Error('No se pudo tomar la conexion de Kronos-M. '
+      + 'Recarga con Ctrl+Shift+R; si window.sb sigue en undefined, '
+      + 'el index.html desplegado es anterior a este modulo.');
+  koSb = window.supabase.createClient(url, key);
+  return koSb;
+}
 
-/* Tabla de la hoja: % carga del motor -> factor de tension optima. */
-const KO_TABLA = [[0.50,0.87],[0.60,0.90],[0.70,0.94],[0.80,0.95],[0.90,0.98],[1.00,1.00]];
+/* ============================================================
+   CAPA DE DATOS
+   Unico punto que toca la base.
+   ============================================================ */
+/* El campo y el PAD vienen de la flota, no de opt_unidades. Se
+   cruzan por codigo de pozo aqui y no en SQL: dp_bes_lista() no
+   expone columnas nombradas a un join, pero desde el navegador
+   entrega objetos con campo y pad, que es como ya la consume
+   Monitoreo de Condicion. Si falla, el modulo sigue funcionando
+   sin los dos filtros en lugar de quedarse en blanco. */
+async function koCargarFlota(){
+  try {
+    const { data, error } = await koCliente().rpc('dp_bes_lista');
+    if (error) throw new Error(error.message);
+    const m = {};
+    (data || []).forEach(r => {
+      if (r && r.pozo) m[r.pozo] = {
+        campo: r.campo || '\u2014',
+        pad:   r.pad   || '\u2014',
+        marca: r.marca_variador || null
+      };
+    });
+    return m;
+  } catch(e){
+    console.warn('[Kronos-M] Flota no disponible:', e.message);
+    return {};
+  }
+}
+
+async function koCargarUnidades(){
+  const [flota, res] = await Promise.all([
+    koCargarFlota(),
+    koCliente().rpc('opt_unidades')
+  ]);
+  const { data, error } = res;
+  if (error) throw new Error(error.message);
+  return (data || []).map(r => {
+    const f = flota[r.pozo] || {};
+    return {
+    pozo:   r.pozo,
+    campo:  f.campo || '\u2014',
+    pad:    f.pad   || '\u2014',
+    vsd:    r.vsd || f.marca || '\u2014',
+    /* Del diseno */
+    v_placa: koNum(r.v_placa_v),
+    i_placa: koNum(r.i_placa_a),
+    tap:     koNum(r.tap_sut_v),
+    v_nom:   koNum(r.v_nom_variador_v),
+    awg:     koNum(r.awg),
+    long_ft: koNum(r.longitud_ft),
+    temp_f:  koNum(r.temp_pozo_f),
+    filtro:  !!r.filtro_seno,
+    k_filtro: koNum(r.k_filtro),
+    /* La caida medida en campo manda sobre la calculada. */
+    cable_medido: koNum(r.caida_cable_v),
+    /* De la lectura mas reciente */
+    fecha:   r.lectura_fecha || null,
+    fuente:  r.lectura_fuente || null,
+    f_op:    koNum(r.f_op_hz),
+    f_max:   koNum(r.f_max_hz) != null ? koNum(r.f_max_hz) : koNum(r.f_max_diseno_hz),
+    carga:   koNum(r.carga_motor),
+    i_vsd:   koNum(r.i_vsd_a),
+    i_mot:   koNum(r.i_motor_a),
+    v_sut:   koNum(r.v_sut_v),
+    /* Propuesta vigente, si hay */
+    prop_f_max: koNum(r.propuesta_f_max),
+    prop_estado: r.propuesta_estado || null
+    };
+  });
+}
+
+async function koCargarParametros(){
+  const { data, error } = await koCliente().rpc('opt_parametros');
+  if (error) throw new Error(error.message);
+  return data || {};
+}
+
+async function koEnviarPropuesta(p){
+  const { data, error } = await koCliente().rpc('opt_guardar_propuesta', {
+    p_pozo: p.pozo, p_f_max: p.f_max, p_tap: p.tap,
+    p_reduccion: p.red, p_nota: p.nota || null
+  });
+  if (error) throw new Error(error.message);
+  if (data && data.ok === false) throw new Error(data.error || 'No se pudo guardar');
+  return data;
+}
+
+/* Un cero medido es un dato; una cadena vacia no. */
+function koNum(v){
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return isFinite(n) ? n : null;
+}
+
+/* ============================================================
+   MOTOR DE CALCULO
+   ============================================================ */
+/* Las tablas y los umbrales vienen de opt_parametro. Estos valores
+   solo cubren el instante entre que abre la pantalla y llega la
+   respuesta; en cuanto llega, se reemplazan. */
+let KO_TABLA = [[0.50,0.87],[0.60,0.90],[0.70,0.94],[0.80,0.95],[0.90,0.98],[1.00,1.00]];
+let KO_CVD   = {2:[[40,11],[50,14],[60,16],[70,19],[80,22],[90,25],[100,27],[110,30],
+                   [120,33],[130,36],[140,39]]};
+let KO_TCF   = [[140,1.13],[149,1.15],[158,1.17],[167,1.19],[176,1.21],[185,1.23],
+                [194,1.25],[203,1.27],[212,1.29],[221,1.31],[230,1.33]];
 
 const koCfg = {
   modo:    'interp',   /* interp | banda */
   kFiltro: 1.07,       /* perdida de tension del filtro seno */
   fp:      0.80,       /* factor de potencia para pasar A a kW */
-  raiz:    'sqrt3'     /* sqrt3 | hoja  (la hoja usa 3^(1/3)) */
+  vNom:    480,        /* nominal por defecto del variador */
+  raiz:    'sqrt3',    /* sqrt3 | hoja  (la hoja usaba 3^(1/3)) */
+  uTap:    100,
+  uVolA:   80,
+  uVolC:   150,
+  escalaCable: true   /* true: como la hoja de optimizacion */
 };
 
-let koSel = null;   /* pozo abierto en detalle */
-let koProp = {};    /* pozo -> frecuencia maxima propuesta editada */
+let KO_DATOS = [];
+
+/* Aplica lo que trae opt_parametros sobre la configuracion local,
+   sin perder los valores por defecto si falta alguna clave. */
+function koAplicarParametros(p){
+  const n = k => (p[k] == null ? null : Number(p[k]));
+  if (n('k_filtro') != null) koCfg.kFiltro = n('k_filtro');
+  if (n('fp') != null)       koCfg.fp = n('fp');
+  if (n('u_tap') != null)    koCfg.uTap = n('u_tap');
+  if (n('u_vol_atencion') != null) koCfg.uVolA = n('u_vol_atencion');
+  if (n('u_vol_alerta') != null)   koCfg.uVolC = n('u_vol_alerta');
+  if (p.modo_factor_carga) koCfg.modo = String(p.modo_factor_carga);
+  if (p.caida_escala_frecuencia != null)
+    koCfg.escalaCable = !!p.caida_escala_frecuencia;
+  if (Array.isArray(p.tabla_carga) && p.tabla_carga.length) KO_TABLA = p.tabla_carga;
+  if (Array.isArray(p.tabla_tcf) && p.tabla_tcf.length)     KO_TCF = p.tabla_tcf;
+  if (p.tabla_cvd && typeof p.tabla_cvd === 'object')       KO_CVD = p.tabla_cvd;
+}
+
+/* Interpolacion lineal con recorte a los extremos de la tabla. */
+function koInterp(t, x){
+  if (x == null || !isFinite(x)) return null;
+  if (x <= t[0][0]) return t[0][1];
+  if (x >= t[t.length-1][0]) return t[t.length-1][1];
+  for (let i = 0; i < t.length - 1; i++){
+    const [a, va] = t[i], [b, vb] = t[i+1];
+    if (x >= a && x <= b) return va + (vb - va) * (x - a) / (b - a);
+  }
+  return null;
+}
+
+/* La caida de tension en el cable no se escala con la frecuencia:
+   depende de la corriente. Se calcula del calibre, la longitud y la
+   temperatura, salvo que la unidad tenga una caida medida en campo,
+   que siempre manda sobre la calculada. */
+function koCaidaCable(u){
+  if (u.cable_medido != null) return {v:u.cable_medido, origen:'medida en campo'};
+  const tabla = KO_CVD[u.awg] || KO_CVD[String(u.awg)];
+  if (!tabla || u.long_ft == null || u.i_placa == null)
+    return {v:null, origen:'sin calibre, longitud o corriente de placa'};
+  const cvd = koInterp(tabla, u.i_placa);
+  const tcf = koInterp(KO_TCF, u.temp_f);
+  if (cvd == null || tcf == null)
+    return {v:null, origen:'sin temperatura del pozo'};
+  return {v: u.long_ft * cvd / 1000 * tcf, origen:'calculada', cvd:cvd, tcf:tcf};
+}
+
+let koSel   = null;         /* pozo abierto en detalle */
+let koProp  = {};           /* pozo -> frecuencia maxima propuesta editada */
+let koBusca = '';           /* texto del buscador */
+let koFiltro = 'all';       /* all | tap | vol | ahorro | filtro | sin */
+let koMarca = new Set();    /* pozos escogidos para la propuesta */
 
 /* ---------- motor de calculo ---------- */
 
@@ -191,29 +393,60 @@ function koFactorCarga(carga){
   return null;
 }
 
+/* Frecuencia de partida de una unidad: la propuesta ya registrada
+   si existe, y si no el tope actual. */
+function koFBase(u){
+  return u.prop_f_max != null ? u.prop_f_max : u.f_max;
+}
+
 function koCalcular(u){
   const r = { pozo: u.pozo, u: u, ok: false };
-  r.fProp = koProp[u.pozo] != null ? koProp[u.pozo] : u.f_prop;
-  if (u.carga == null || u.v_placa == null || u.f_op == null || !r.fProp) return r;
+  /* Prioridad de la frecuencia propuesta: lo que el usuario edita
+     ahora, luego la propuesta ya guardada, y si no hay ninguna, el
+     tope actual de la unidad. */
+  r.fProp = koProp[u.pozo] != null ? koProp[u.pozo]
+          : (u.prop_f_max != null ? u.prop_f_max : u.f_max);
+
+  const cab = koCaidaCable(u);
+  r.cable = cab.v;
+  r.cableOrigen = cab.origen;
+  r.cvd = cab.cvd; r.tcf = cab.tcf;
+
+  if (u.carga == null || u.v_placa == null || u.f_op == null || !r.fProp
+      || r.cable == null) return r;
 
   r.fCarga  = koFactorCarga(u.carga);
   r.vOpt60  = u.v_placa * r.fCarga;
-  r.vSup60  = r.vOpt60 + (u.cable || 0);
-  r.tapOpt  = r.vSup60 * r.fProp / 60;
-  r.vOptOp  = r.vSup60 * u.f_op / 60;
+  /* Dos criterios sobre la caida de cable, y la diferencia no es
+     menor. La hoja de optimizacion la sumaba antes de escalar por
+     frecuencia; la de instalacion la suma despues. Fisicamente la
+     caida depende de la corriente y no de la velocidad, asi que
+     "sin escalar" es lo correcto, pero se deja como parametro
+     mientras se confirma contra campo. */
+  if (koCfg.escalaCable){
+    r.vSup60 = r.vOpt60 + r.cable;
+    r.tapOpt = r.vSup60 * r.fProp / 60;
+    r.vOptOp = r.vSup60 * u.f_op / 60;
+  } else {
+    r.vSup60 = r.vOpt60 + r.cable;
+    r.tapOpt = r.vOpt60 * r.fProp / 60 + r.cable;
+    r.vOptOp = r.vOpt60 * u.f_op / 60 + r.cable;
+  }
 
-  r.kFiltro = u.filtro ? koCfg.kFiltro : 1;
+  r.kFiltro = u.filtro ? (u.k_filtro != null ? u.k_filtro : koCfg.kFiltro) : 1;
   r.tapNew  = r.tapOpt * r.kFiltro;
 
   r.dTap = u.tap != null ? u.tap - r.tapOpt : null;
   r.dVol = u.v_sut != null ? Math.abs(u.v_sut - r.vOptOp) : null;
 
-  if (u.v_nom && u.i_mot != null && u.i_vsd != null){
-    r.rtAct = u.tap / u.v_nom;
-    r.rtNew = r.tapNew / u.v_nom;
+  const vNom = u.v_nom != null ? u.v_nom : koCfg.vNom;
+  if (vNom && u.i_mot != null && u.i_vsd != null){
+    r.vNom  = vNom;
+    r.rtAct = u.tap != null ? u.tap / vNom : null;
+    r.rtNew = r.tapNew / vNom;
     r.dAmp  = u.i_vsd - r.rtNew * u.i_mot;
     const k = koCfg.raiz === 'sqrt3' ? Math.sqrt(3) : Math.pow(3, 1/3);
-    r.red   = k * r.dAmp * u.v_nom * koCfg.fp / 1000;
+    r.red   = k * r.dAmp * vNom * koCfg.fp / 1000;
   }
   r.ok = true;
   return r;
@@ -224,15 +457,114 @@ function koCalcular(u){
    la frecuencia de operacion. */
 function koSemTap(d){
   if (d == null) return 'null';
-  return Math.abs(d) >= 100 ? 'crit' : 'ok';
+  return Math.abs(d) >= koCfg.uTap ? 'crit' : 'ok';
 }
 function koSemVol(d){
   if (d == null) return 'null';
-  if (d >= 150) return 'crit';
-  if (d >= 80)  return 'warn';
+  if (d >= koCfg.uVolC) return 'crit';
+  if (d >= koCfg.uVolA) return 'warn';
   return 'ok';
 }
 const KO_HEX = {ok:'#35a853', warn:'#e0a230', crit:'#d6584a', 'null':'#5f7d94'};
+
+/* El alcance es el buscador mas el filtro de estado. La seleccion es
+   otra cosa: sobre el alcance visible se marcan las unidades que van
+   a entrar en una propuesta concreta, y los indicadores pasan a
+   contar solo esas. Sin marcas, cuentan todo el alcance. */
+function koAmbito(rs){
+  const q = koBusca.trim().toUpperCase();
+  return rs.filter(r => {
+    if (koCampo !== 'all' && r.u.campo !== koCampo) return false;
+    if (koPad   !== 'all' && r.u.pad   !== koPad)   return false;
+    if (q && r.pozo.toUpperCase().indexOf(q) < 0
+          && String(r.u.vsd || '').toUpperCase().indexOf(q) < 0) return false;
+    if (koFiltro === 'tap')    return r.ok && koSemTap(r.dTap) === 'crit';
+    if (koFiltro === 'vol')    return r.ok && koSemVol(r.dVol) === 'crit';
+    if (koFiltro === 'ahorro') return r.ok && r.red != null && r.red > 0;
+    if (koFiltro === 'filtro') return !!r.u.filtro;
+    if (koFiltro === 'sin')    return !r.ok;
+    return true;
+  });
+}
+
+const KO_FILTROS = [
+  ['all',    'Todas'],
+  ['tap',    'TAP fuera de rango'],
+  ['vol',    'Tensi\u00f3n en alerta'],
+  ['ahorro', 'Con ahorro'],
+  ['filtro', 'Con filtro seno'],
+  ['sin',    'Sin datos']
+];
+
+let koCampo = 'all';
+let koPad   = 'all';
+
+/* Los campos y los PAD salen de los datos, no de una lista fija. */
+function koSelectores(rs){
+  const campos = [...new Set(rs.map(r => r.u.campo)
+    .filter(c => c && c !== '\u2014'))].sort();
+  const pads = [...new Set(rs
+    .filter(r => koCampo === 'all' || r.u.campo === koCampo)
+    .map(r => r.u.pad).filter(p => p && p !== '\u2014'))].sort();
+  if (pads.indexOf(koPad) < 0) koPad = 'all';
+
+  const op = (v, t, sel) => '<option value="' + koEsc(v) + '"'
+    + (sel === v ? ' selected' : '') + '>' + koEsc(t) + '</option>';
+
+  return '<select class="ko-sel2" id="koCampoSel">'
+    + op('all', 'Todos los campos', koCampo)
+    + campos.map(c => op(c, c, koCampo)).join('') + '</select>'
+    + '<select class="ko-sel2" id="koPadSel">'
+    + op('all', 'Todos los PAD', koPad)
+    + pads.map(p => op(p, p, koPad)).join('') + '</select>';
+}
+
+function koBarra(amb, rs){
+  const chips = KO_FILTROS.map(([k, t]) => {
+    const n = k === 'all' ? rs.length : koAmbitoCuenta(rs, k);
+    return '<button class="ko-chip' + (koFiltro === k ? ' on' : '') + '" data-f="' + k
+      + '">' + t + ' <s>' + n + '</s></button>';
+  }).join('');
+
+  const marcadas = koMarca.size;
+  return '<div class="ko-bar">'
+    + '<div class="ko-chips">' + chips + '</div>'
+    + '<div class="ko-bar2">'
+    +   koSelectores(rs)
+    +   '<input class="ko-bus" id="koBus" placeholder="Buscar unidad o variador" value="'
+    +     koEsc(koBusca) + '">'
+    +   '<button class="ko-chip" id="koMarcarTodas">Marcar las ' + amb.length
+    +     ' visibles</button>'
+    +   (marcadas ? '<button class="ko-chip on" id="koLimpiar">'
+        + marcadas + ' marcada' + (marcadas === 1 ? '' : 's') + ' \u00b7 limpiar</button>'
+        : '<span class="ko-hint">Marque unidades para armar una propuesta</span>')
+    + '</div></div>';
+}
+
+/* Decir "sin datos" no ayuda a nadie: hay que decir cual falta,
+   porque cada faltante se resuelve en un lugar distinto. */
+function koFalta(r){
+  const u = r.u, f = [];
+  if (u.f_op == null)    f.push('frecuencia de operacion');
+  if (u.carga == null)   f.push('carga del motor');
+  if (u.v_placa == null) f.push('tension de placa del motor');
+  if (u.i_vsd == null)   f.push('corriente del variador');
+  if (u.i_mot == null)   f.push('corriente del motor');
+  if (r.cable == null)   f.push('caida de cable (' + r.cableOrigen + ')');
+  if (!f.length) return 'Sin datos suficientes';
+  return 'Falta ' + f.join(', ') + '.';
+}
+
+function koAmbitoCuenta(rs, k){
+  const g = koFiltro; koFiltro = k;
+  const n = koAmbito(rs).length; koFiltro = g;
+  return n;
+}
+
+function koEsc(t){
+  return String(t == null ? '' : t).replace(/[&<>"]/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
 
 /* ---------- vistas ---------- */
 
@@ -245,8 +577,13 @@ function koPintar(){
     'Propuesta de cambio de TAP por condici&oacute;n de operaci&oacute;n';
 
   const rs  = KO_DATOS.map(koCalcular);
-  const con = rs.filter(r => r.ok);
-  const sin = rs.length - con.length;
+  const amb = koAmbito(rs);
+  /* Los indicadores siguen a la seleccion cuando hay marcas; si no,
+     al alcance visible. Un total que no corresponde a lo que se esta
+     mirando es peor que no tenerlo. */
+  const base = koMarca.size ? rs.filter(r => koMarca.has(r.pozo)) : amb;
+  const con = base.filter(r => r.ok);
+  const sin = base.length - con.length;
 
   const kw    = con.filter(r => r.red != null && r.red > 0)
                    .reduce((a, r) => a + r.red, 0);
@@ -259,13 +596,16 @@ function koPintar(){
     + (u ? '<small>' + u + '</small>' : '') + '</div>'
     + (r2 ? '<div class="r2">' + r2 + '</div>' : '') + '</div>';
 
-  let h = koConfig();
+  let h = koConfig() + koBarra(amb, rs);
+
+  const alc = koMarca.size ? 'de las marcadas'
+            : (koFiltro === 'all' && !koBusca.trim() ? 'de la flota' : 'del alcance');
 
   h += '<div class="ko-hero">'
     + tile('',  'Unidades evaluadas', String(con.length), '',
            sin ? sin + ' sin datos suficientes' : 'todas con datos')
     + tile('g', 'Reducci&oacute;n estimada', kw.toFixed(0), 'kW',
-           'suma de las unidades con ahorro')
+           'suma ' + alc + ' con ahorro')
     + tile(tapAl ? 'r' : 'g', 'TAP fuera de rango', String(tapAl), '',
            'diferencia de 100 V o m&aacute;s')
     + tile(volAl ? 'w' : 'g', 'Tensi&oacute;n en alerta', String(volAl), '',
@@ -274,15 +614,20 @@ function koPintar(){
            'factor ' + koCfg.kFiltro.toFixed(2) + ' sobre el TAP')
     + '</div>';
 
-  const filas = rs.map(r => {
+  const filas = amb.map(r => {
     const u = r.u;
+    const mk = '<td class="ko-mk" onclick="event.stopPropagation()">'
+      + '<input type="checkbox" data-m="' + u.pozo + '"'
+      + (koMarca.has(u.pozo) ? ' checked' : '') + '></td>';
+
     if (!r.ok){
-      return '<tr><td class="pz">' + u.pozo + '</td>'
-        + '<td colspan="10" style="text-align:left" class="sd">'
-        + 'Sin lectura reciente de frecuencia o carga en la hoja de la unidad</td></tr>';
+      return '<tr>' + mk + '<td class="pz">' + u.pozo + '</td>'
+        + '<td colspan="12" style="text-align:left" class="sd">'
+        + koEsc(koFalta(r)) + '</td></tr>';
     }
-    const edit = koProp[u.pozo] != null && koProp[u.pozo] !== u.f_prop;
-    return '<tr class="cl" data-p="' + u.pozo + '">'
+    const edit = koProp[u.pozo] != null && koProp[u.pozo] !== koFBase(u);
+    return '<tr class="cl' + (koMarca.has(u.pozo) ? ' mk' : '') + '" data-p="' + u.pozo + '">'
+      + mk
       + '<td class="pz">' + u.pozo
       +   (u.filtro ? '<span class="ko-fl">FILTRO</span>' : '') + '</td>'
       + '<td>' + u.f_op.toFixed(1) + '</td>'
@@ -308,10 +653,18 @@ function koPintar(){
       + '</tr>';
   }).join('');
 
+  if (!amb.length){
+    h += '<div class="ko-card"><div class="ko-vacio">'
+      + 'Ninguna unidad coincide con el filtro.</div></div>';
+    document.getElementById('koVista').innerHTML = h;
+    return koEnlazar();
+  }
+
   h += '<div class="ko-card"><div class="ct"><b>Unidades</b>'
-    + '<span>Toque una fila para ver la cadena de c&aacute;lculo</span></div>'
+    + '<span>' + amb.length + ' de ' + rs.length
+    + ' &middot; toque una fila para ver la cadena</span></div>'
     + '<div class="ko-scroll"><table class="ko-t"><thead><tr>'
-    + '<th>Unidad</th><th>F&nbsp;ope</th><th>F&nbsp;m&aacute;x</th>'
+    + '<th class="ko-mk"></th><th>Unidad</th><th>F&nbsp;ope</th><th>F&nbsp;m&aacute;x</th>'
     + '<th>F&nbsp;m&aacute;x prop.</th><th>Carga</th><th>Factor</th>'
     + '<th>TAP actual</th><th>TAP &oacute;ptimo</th><th>TAP nuevo</th>'
     + '<th>&Delta;&nbsp;TAP</th><th>&Delta;&nbsp;Vol</th><th>&Delta;&nbsp;A</th>'
@@ -326,8 +679,45 @@ function koPintar(){
     + '&oacute;ptima a la frecuencia de operaci&oacute;n: bajo 80 V es normal, entre 80 y '
     + '150 V es regular, 150 V o m&aacute;s es alerta.</p></div>';
 
+  if (koMarca.size) h += koPropuesta(rs);
+
   v.innerHTML = h;
   koEnlazar();
+}
+
+/* Lo que se marca sirve para pedir algo concreto: un cambio de TAP
+   por unidad. El resumen se deja en texto plano para copiarlo a un
+   correo o a un aviso sin volver a teclear cifras. */
+function koPropuesta(rs){
+  const sel = rs.filter(r => koMarca.has(r.pozo) && r.ok);
+  if (!sel.length){
+    return '<div class="ko-card"><div class="ct"><b>Propuesta</b></div>'
+      + '<div class="ko-vacio">Las unidades marcadas no tienen datos suficientes.</div></div>';
+  }
+  const kw = sel.filter(r => r.red > 0).reduce((a, r) => a + r.red, 0);
+  const li = sel.slice().sort((a, b) => (b.red || 0) - (a.red || 0)).map(r =>
+    r.pozo.padEnd(8) + ' TAP ' + r.u.tap.toFixed(0).padStart(5)
+    + ' \u2192 ' + r.tapNew.toFixed(0).padStart(5) + ' V'
+    + (r.u.filtro ? ' (con filtro)' : '')
+    + '   F m\u00e1x ' + r.fProp.toFixed(1) + ' Hz'
+    + '   ' + (r.red != null ? (r.red > 0 ? '+' : '') + r.red.toFixed(1) + ' kW' : '')
+  ).join('\n');
+
+  const yaGuardadas = sel.filter(r => r.u.prop_estado).length;
+  return '<div class="ko-card"><div class="ct"><b>Propuesta</b><span>'
+    + sel.length + ' unidad' + (sel.length === 1 ? '' : 'es') + ' &middot; '
+    + kw.toFixed(0) + ' kW</span></div>'
+    + '<pre class="ko-pre">' + koEsc(li) + '</pre>'
+    + '<div class="ko-bar2" style="margin-top:11px">'
+    +   '<button class="ko-chip on" id="koGuardar">Registrar en Kronos-M</button>'
+    +   '<span class="ko-hint" id="koGuardarMsg">'
+    +     (yaGuardadas ? yaGuardadas + ' de estas unidades ya tienen una propuesta '
+                       + 'vigente; registrarlas de nuevo reemplaza la anterior.'
+                      : 'Queda registrada por unidad, con su frecuencia y su TAP.')
+    +   '</span>'
+    + '</div>'
+    + '<p class="ko-nota">Tensiones a frecuencia m&aacute;xima propuesta. La derivaci&oacute;n '
+    + 'la escoge el t&eacute;cnico contra la tabla del SUT instalado.</p></div>';
 }
 
 function koConfig(){
@@ -342,13 +732,19 @@ function koConfig(){
     +   '<input id="koK" type="number" step="0.01" value="' + koCfg.kFiltro + '"></div>'
     + '<div class="g"><label>FP para kW</label>'
     +   '<input id="koFp" type="number" step="0.01" value="' + koCfg.fp + '"></div>'
+    + '<div class="g"><label>Ca&iacute;da de cable</label>'
+    +   '<select id="koEsc">'
+    +   '<option value="1"' + (koCfg.escalaCable ? ' selected' : '')
+    +     '>Escala con la frecuencia</option>'
+    +   '<option value="0"' + (koCfg.escalaCable ? '' : ' selected')
+    +     '>Constante</option></select></div>'
     + '<div class="g"><label>Constante trif&aacute;sica</label>'
     +   '<select id="koRaiz">'
     +   '<option value="sqrt3"' + (koCfg.raiz === 'sqrt3' ? ' selected' : '')
     +     '>&radic;3 = 1.7321</option>'
     +   '<option value="hoja"' + (koCfg.raiz === 'hoja' ? ' selected' : '')
     +     '>3^(1/3) = 1.4422 (hoja)</option></select></div>'
-    + '<p class="nota">Los cuatro controles afectan el c&aacute;lculo de todas las '
+    + '<p class="nota">Los controles afectan el c&aacute;lculo de todas las '
     + 'unidades. La constante trif&aacute;sica est&aacute; aqu&iacute; solo para '
     + 'comparar contra la hoja; el valor correcto es &radic;3.</p>'
     + '</div>';
@@ -363,7 +759,9 @@ function koPintarDetalle(){
   document.getElementById('koBack').style.display = 'block';
   document.getElementById('koTitulo').textContent = u.pozo;
   document.getElementById('koSub').textContent =
-    u.vsd + ' \u00b7 ' + u.modo + (u.filtro ? ' \u00b7 con filtro seno' : '');
+    u.vsd + ' \u00b7 ' + u.campo
+    + (u.pad && u.pad !== '\u2014' ? ' \u00b7 ' + u.pad : '')
+    + (u.filtro ? ' \u00b7 con filtro seno' : '');
 
   const p = (n, f, res, un) => '<div class="ko-p"><div class="n">' + n + '</div>'
     + '<div class="f">' + f + '</div><div class="r">' + res
@@ -372,9 +770,9 @@ function koPintarDetalle(){
   let h = koConfig();
 
   if (!r.ok){
-    h += '<div class="ko-card"><div class="ko-vacio">'
-      + 'La unidad no tiene lectura reciente de frecuencia o de carga del motor. '
-      + 'Sin esas dos entradas la propuesta de TAP no se puede calcular.</div></div>';
+    h += '<div class="ko-card"><div class="ko-vacio">' + koEsc(koFalta(r))
+      + '<br><br>El diseno electrico se completa en el modulo de Instalacion; '
+      + 'las lecturas entran por la captura de campo.</div></div>';
     v.innerHTML = h;
     return koEnlazar();
   }
@@ -385,9 +783,15 @@ function koPintarDetalle(){
     ['Carga del motor', (u.carga * 100).toFixed(0) + ' %'],
     ['Tensi&oacute;n de placa del motor', u.v_placa + ' V'],
     ['Corriente de placa', u.i_placa + ' A'],
-    ['TAP del SUT instalado', u.tap.toFixed(0) + ' V'],
-    ['Tensi&oacute;n nominal del variador', u.v_nom + ' V'],
-    ['Ca&iacute;da de tensi&oacute;n en cable', (u.cable || 0) + ' V'],
+    ['TAP del SUT instalado', u.tap != null ? u.tap.toFixed(0) + ' V' : '\u2014'],
+    ['Tensi&oacute;n nominal del variador', (r.vNom || koCfg.vNom) + ' V'],
+    ['Ca&iacute;da de tensi&oacute;n en cable',
+      r.cable.toFixed(0) + ' V (' + r.cableOrigen + ')'],
+    ['Cable', (u.awg != null ? 'calibre #' + u.awg : 'calibre sin registrar')
+      + (u.long_ft != null ? ' \u00b7 ' + u.long_ft.toFixed(0) + ' ft' : '')
+      + (u.temp_f != null ? ' \u00b7 ' + u.temp_f.toFixed(0) + ' \u00b0F' : '')],
+    ['Lectura', (u.fecha || 'sin fecha')
+      + (u.fuente ? ' \u00b7 ' + u.fuente : '')],
     ['Corriente en el variador', u.i_vsd + ' A'],
     ['Corriente del motor', u.i_mot + ' A'],
     ['Tensi&oacute;n medida en el SUT', u.v_sut + ' V']
@@ -437,40 +841,63 @@ function koPintarDetalle(){
         : '')
     + '</div>';
 
-  /* La comparacion contra la hoja es lo que permite confiar en el
-     motor: si los dos coinciden, el traslado fue fiel. Donde no
-     coinciden hay una decision pendiente, no un error de captura. */
-  const hj = u.hoja || {};
-  const cmp = [
-    ['TAP &oacute;ptimo', hj.tap_opt, r.tapOpt],
-    ['Tensi&oacute;n &oacute;ptima @ F ope', hj.v_opt, r.vOptOp],
-    ['Diferencia de TAP', hj.d_tap, r.dTap],
-    ['Desviaci&oacute;n de tensi&oacute;n', hj.d_vol, r.dVol],
-    ['TAP a solicitar', hj.tap_new, r.tapNew],
-    ['Corriente liberada', hj.d_amp, r.dAmp],
-    ['Reducci&oacute;n', hj.red, r.red]
-  ].filter(x => x[1] != null && x[2] != null).map(x => {
-    const d = x[2] - x[1];
-    const igual = Math.abs(d) < 0.6;
-    return '<tr><td style="text-align:left">' + x[0] + '</td>'
-      + '<td>' + x[1].toFixed(1) + '</td>'
-      + '<td style="color:#fff">' + x[2].toFixed(1) + '</td>'
-      + '<td style="color:' + (igual ? 'var(--ko-ok)' : 'var(--ko-warn)') + '">'
-      + (igual ? 'igual' : (d > 0 ? '+' : '') + d.toFixed(1)) + '</td></tr>';
-  }).join('');
+  /* De donde salio la caida de cable. Es la entrada menos visible
+     del calculo y la que mas mueve el resultado, asi que se muestra
+     desarmada en vez de como un numero suelto. */
+  h += '<div class="ko-card"><div class="ct"><b>Ca&iacute;da de tensi&oacute;n en el cable</b>'
+    + '<span>' + koEsc(r.cableOrigen) + '</span></div><div class="ko-cad">'
+    + (r.cvd != null
+        ? p('CVD', 'tabla(' + u.i_placa.toFixed(0) + ' A, calibre #' + u.awg + ')',
+            r.cvd.toFixed(1), 'V/1000ft') : '')
+    + (r.tcf != null
+        ? p('TCF', 'tabla(' + u.temp_f.toFixed(0) + ' \u00b0F)', r.tcf.toFixed(3), '') : '')
+    + p('Ca&iacute;da', r.cvd != null ? 'longitud x CVD / 1000 x TCF' : 'valor registrado',
+        r.cable.toFixed(0), 'V')
+    + '</div>'
+    + '<p class="ko-nota">No se escala con la frecuencia: depende de la corriente, '
+    + 'no de la velocidad.</p></div>';
 
-  h += '<div class="ko-card"><div class="ct"><b>Contra la hoja de c&aacute;lculo</b>'
-    + '<span>Frecuencia propuesta original ' + u.f_prop + ' Hz</span></div>'
-    + '<table class="ko-t"><thead><tr><th>Resultado</th><th>Hoja</th>'
-    + '<th>Kronos-M</th><th>Diferencia</th></tr></thead><tbody>' + cmp
-    + '</tbody></table>'
-    + '<p class="ko-nota">Las diferencias aparecen cuando la hoja y este motor no '
-    + 'toman la misma decisi&oacute;n: el factor de carga le&iacute;do a mano frente al '
-    + 'interpolado, el factor del filtro aplicado o no a la relaci&oacute;n de '
-    + 'transformaci&oacute;n, y la constante trif&aacute;sica.</p></div>';
+  const pr = r.u.prop_estado
+    ? '<div class="ko-card"><div class="ct"><b>Propuesta vigente</b><span>'
+      + koEsc(r.u.prop_estado) + '</span></div>'
+      + '<p class="ko-nota" style="margin:0">Registrada para '
+      + (r.u.prop_f_max != null ? r.u.prop_f_max.toFixed(1) + ' Hz' : 'sin frecuencia')
+      + '. Marque la unidad en el listado para volver a registrarla con otros valores.</p></div>'
+    : '';
+  h += pr;
 
   v.innerHTML = h;
   koEnlazar();
+}
+
+/* Registrar es un acto, no un dibujo: se bloquea el boton, se
+   informa cuantas quedaron y se recargan las unidades para que la
+   pantalla muestre la propuesta vigente real y no la que se supone
+   que quedo. */
+async function koRegistrar(boton){
+  const msg = document.getElementById('koGuardarMsg');
+  const sel = KO_DATOS.map(koCalcular).filter(r => koMarca.has(r.pozo) && r.ok);
+  if (!sel.length){
+    if (msg) msg.textContent = 'No hay unidades con datos suficientes para registrar.';
+    return;
+  }
+  boton.disabled = true;
+  boton.textContent = 'Registrando\u2026';
+  let ok = 0;
+  const fallas = [];
+  for (const r of sel){
+    try {
+      await koEnviarPropuesta({pozo:r.pozo, f_max:Number(r.fProp.toFixed(1)),
+        tap:Number(r.tapNew.toFixed(0)),
+        red:(r.red != null ? Number(r.red.toFixed(1)) : null)});
+      ok += 1;
+    } catch(e){ fallas.push(r.pozo + ': ' + e.message); }
+  }
+  try { KO_DATOS = await koCargarUnidades(); } catch(e){}
+  koPintar();
+  const m2 = document.getElementById('koGuardarMsg');
+  if (m2) m2.textContent = ok + ' de ' + sel.length + ' registradas'
+    + (fallas.length ? '. Fallaron: ' + fallas.join(' \u00b7 ') : '.');
 }
 
 /* ---------- eventos ---------- */
@@ -490,8 +917,47 @@ function koEnlazar(){
     if (isFinite(n) && n > 0 && n <= 1) koCfg.fp = n;
     koPintar();
   };
+  const ec = document.getElementById('koEsc');
+  if (ec) ec.onchange = e => { koCfg.escalaCable = e.target.value === '1'; koPintar(); };
   const rz = document.getElementById('koRaiz');
   if (rz) rz.onchange = e => { koCfg.raiz = e.target.value; koPintar(); };
+
+  const cs = document.getElementById('koCampoSel');
+  if (cs) cs.onchange = e => { koCampo = e.target.value; koPad = 'all'; koPintar(); };
+  const ps = document.getElementById('koPadSel');
+  if (ps) ps.onchange = e => { koPad = e.target.value; koPintar(); };
+
+  document.querySelectorAll('.ko-chip[data-f]').forEach(b => {
+    b.onclick = () => { koFiltro = b.dataset.f; koPintar(); };
+  });
+  const bs = document.getElementById('koBus');
+  if (bs){
+    bs.oninput = e => {
+      koBusca = e.target.value;
+      const pos = e.target.selectionStart;
+      koPintar();
+      const n = document.getElementById('koBus');
+      if (n){ n.focus(); n.setSelectionRange(pos, pos); }
+    };
+  }
+  const mt = document.getElementById('koMarcarTodas');
+  if (mt) mt.onclick = () => {
+    koAmbito(KO_DATOS.map(koCalcular)).forEach(r => koMarca.add(r.pozo));
+    koPintar();
+  };
+  const lp = document.getElementById('koLimpiar');
+  if (lp) lp.onclick = () => { koMarca.clear(); koPintar(); };
+
+  const gb = document.getElementById('koGuardar');
+  if (gb) gb.onclick = () => koRegistrar(gb);
+
+  document.querySelectorAll('input[data-m]').forEach(cb => {
+    cb.onchange = e => {
+      const p = e.target.dataset.m;
+      if (e.target.checked) koMarca.add(p); else koMarca.delete(p);
+      koPintar();
+    };
+  });
 
   document.querySelectorAll('tr.cl').forEach(tr => {
     tr.onclick = () => { koSel = tr.dataset.p; window.scrollTo(0, 0); koPintar(); };
@@ -503,14 +969,41 @@ function koEnlazar(){
       const u = KO_DATOS.find(x => x.pozo === pz);
       /* Un tope fuera de 30-70 Hz no es una propuesta, es un dedazo. */
       if (isFinite(n) && n >= 30 && n <= 70) koProp[pz] = n;
-      else koProp[pz] = u.f_prop;
+      else delete koProp[pz];
       koPintar();
     };
   });
 }
 
 document.getElementById('koBack').onclick = () => { koSel = null; koPintar(); };
-koPintar();
+
+async function koArrancar(){
+  const v = document.getElementById('koVista');
+  try {
+    const par = await koCargarParametros();
+    koAplicarParametros(par);
+  } catch(e){
+    /* Sin parametros el modulo sigue sirviendo con los valores por
+       defecto; lo que no puede es quedarse en blanco. */
+    console.warn('[Kronos-M] Parametros de optimizacion no disponibles:', e.message);
+  }
+  try {
+    KO_DATOS = await koCargarUnidades();
+  } catch(e){
+    v.innerHTML = '<div class="ko-card"><div class="ko-vacio">'
+      + 'No se pudieron cargar las unidades.<br>' + koEsc(e.message) + '</div></div>';
+    return;
+  }
+  if (!KO_DATOS.length){
+    v.innerHTML = '<div class="ko-card"><div class="ko-vacio">'
+      + 'No hay unidades con diseno registrado. Cargue primero el diseno '
+      + 'electrico desde el modulo de Instalacion.</div></div>';
+    return;
+  }
+  koPintar();
+}
+
+koArrancar();
 </script>
 </body>
 </html>
