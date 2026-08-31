@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C&aacute;lculo de TAP e Instalaci&oacute;n</title>
+<style>
+:root{
+  --ki-teal:#12a5b8; --ki-green:#35a853;
+  --ki-bg:#081724; --ki-card:#0f2739; --ki-card2:#143349;
+  --ki-line:rgba(255,255,255,.09); --ki-line2:rgba(255,255,255,.06);
+  --ki-t1:#eef4f9; --ki-t2:#a7bccd; --ki-t3:#7f9bb2;
+  --ki-ok:#35a853; --ki-warn:#e0a230; --ki-crit:#d6584a; --ki-null:#5f7d94;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ki-bg);color:var(--ki-t1);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px}
+
+.ki-top{background:linear-gradient(100deg,var(--ki-teal),var(--ki-green));color:#fff;
+  padding:14px 20px;display:flex;justify-content:space-between;align-items:center;
+  gap:14px;flex-wrap:wrap}
+.ki-top h1{margin:0;font-size:20px;font-weight:600}
+.ki-top .sub{margin:3px 0 0;font-size:13px;opacity:.9}
+
+.ki-wrap{padding:18px 20px;max-width:1400px;margin:0 auto}
+.ki-cols{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:14px;
+  align-items:start}
+@media(max-width:940px){.ki-cols{grid-template-columns:1fr}}
+
+.ki-card{background:var(--ki-card);border:1px solid var(--ki-line);border-radius:9px;
+  padding:13px 15px;margin-bottom:14px}
+.ki-card:last-child{margin-bottom:0}
+.ki-card .ct{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  margin-bottom:12px;flex-wrap:wrap}
+.ki-card .ct b{font-size:13px;font-weight:600;color:#fff}
+.ki-card .ct span{font-size:10.5px;color:var(--ki-t3);letter-spacing:.4px;
+  text-transform:uppercase}
+
+.ki-f{display:flex;justify-content:space-between;align-items:center;gap:10px;
+  padding:5px 0;border-bottom:1px solid var(--ki-line2)}
+.ki-f:last-child{border-bottom:none}
+.ki-f label{font-size:12.5px;color:var(--ki-t2);flex:1 1 auto;min-width:0}
+.ki-f label i{font-style:normal;color:var(--ki-t3);font-size:11px;display:block}
+.ki-f input,.ki-f select{background:var(--ki-card2);border:1px solid var(--ki-line);
+  color:#fff;border-radius:5px;padding:5px 7px;font-size:13px;font-family:inherit;
+  width:96px;text-align:right}
+.ki-f select{width:120px;text-align:left}
+.ki-f input:focus,.ki-f select:focus{outline:none;border-color:var(--ki-teal)}
+.ki-sel{width:100%!important;margin-bottom:12px;text-align:left!important}
+
+.ki-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:9px}
+.ki-p{background:var(--ki-card2);border:1px solid var(--ki-line);border-radius:7px;
+  padding:9px 11px;position:relative;overflow:hidden}
+.ki-p:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--ki-teal)}
+.ki-p.g:before{background:var(--ki-green)}
+.ki-p.w:before{background:var(--ki-warn)}
+.ki-p.r:before{background:var(--ki-crit)}
+.ki-p .n{font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--ki-t3)}
+.ki-p .fr{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;
+  color:#7fa8c4;margin:3px 0 4px;word-break:break-word}
+.ki-p .r2{font-size:18px;font-weight:600;color:#fff;letter-spacing:-.4px}
+.ki-p .r2 small{font-size:11px;font-weight:400;color:var(--ki-t2);margin-left:3px;
+  letter-spacing:0}
+
+table.ki-t{width:100%;border-collapse:collapse;font-size:12px;color:var(--ki-t2)}
+table.ki-t th{text-align:right;font-weight:600;color:var(--ki-t3);font-size:10px;
+  letter-spacing:.5px;text-transform:uppercase;padding:0 0 7px 9px;
+  border-bottom:1px solid var(--ki-line);white-space:nowrap}
+table.ki-t th:first-child,table.ki-t td:first-child{text-align:left;padding-left:0}
+table.ki-t td{text-align:right;padding:6px 0 6px 9px;
+  border-bottom:1px solid var(--ki-line2);white-space:nowrap}
+table.ki-t tr:last-child td{border-bottom:none}
+table.ki-t .ok{color:var(--ki-ok)}
+table.ki-t .df{color:var(--ki-warn)}
+.ki-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+.ki-tab{display:grid;grid-template-columns:repeat(auto-fit,minmax(38px,1fr));gap:4px;
+  margin-top:4px}
+.ki-tab div{background:var(--ki-card2);border:1px solid var(--ki-line);border-radius:4px;
+  padding:5px 2px;text-align:center;font-size:10.5px;color:var(--ki-t3);line-height:1.35}
+.ki-tab div b{display:block;color:var(--ki-t2);font-size:11px;font-weight:600}
+.ki-tab div.on{border-color:var(--ki-teal);background:rgba(18,165,184,.16)}
+.ki-tab div.on b{color:#7fd0dd}
+
+.ki-nota{font-size:11.5px;color:var(--ki-t3);line-height:1.55;margin:12px 0 0}
+.ki-nota b{color:var(--ki-t2);font-weight:600}
+.ki-nota .al{color:var(--ki-warn)}
+.ki-av{background:rgba(224,162,48,.10);border:1px solid rgba(224,162,48,.35);
+  border-radius:7px;padding:9px 11px;font-size:12px;color:#e8c07a;line-height:1.5;
+  margin-top:11px}
+</style>
+</head>
+<body>
+
+<div class="ki-top">
+  <div>
+    <h1>C&aacute;lculo de TAP e Instalaci&oacute;n</h1>
+    <p class="sub">Dise&ntilde;o el&eacute;ctrico de unidad ESP y p&eacute;rdida de tensi&oacute;n en cable</p>
+  </div>
+</div>
+
+<div class="ki-wrap">
+  <div class="ki-cols">
+    <div>
+      <div class="ki-card">
+        <div class="ct"><b>Datos de instalaci&oacute;n</b><span>Editables</span></div>
+        <select class="ki-sel" id="kiPozo"></select>
+        <div id="kiForm"></div>
+      </div>
+      <div class="ki-card">
+        <div class="ct"><b>Tablas de referencia</b><span>CVD y TCF</span></div>
+        <div id="kiTablas"></div>
+      </div>
+    </div>
+    <div id="kiSalida"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   CALCULO DE TAP E INSTALACION  ·  prototipo de validacion
+   ------------------------------------------------------------
+   Traslado de la hoja TAP_CALCULATION_ESP_UNITS_PUT-NORTH. Sirve
+   para dos cosas distintas:
+
+   1. Disenar una instalacion nueva: con la placa del motor, el
+      cable y la temperatura del pozo sale la tension que debe
+      entregar el SUT, el TAP a seleccionar, la relacion de
+      transformacion y los limites de corriente del variador.
+
+   2. Calcular la perdida de tension en el cable, que es la
+      entrada que le faltaba al modulo de optimizacion. Ahi la
+      caida estaba escrita a mano como una constante por pozo;
+      aqui se calcula de la longitud, el calibre y la temperatura.
+
+   Cadena:
+     CVD = tabla(corriente del motor)      V por cada 1000 ft
+     TCF = tabla(temperatura del pozo)     factor por temperatura
+     CL  = longitud x CVD / 1000 x TCF
+     V SUT @ F max = V placa x F max / 60 + CL
+     V SUT con filtro = V SUT x 1.07
+     RT  = TAP / V nominal del variador
+   ============================================================ */
+
+const KI_DATOS = [{"pozo":"CYC-01","vsd":"TRIOL UMKA 03","hp":880,"v_placa":4140,"i_placa":141,"f_max":56,"awg":2,"long_ft":7000,"temp_f":193,"conf":"DELTA","sw1":3,"sw2":2,"tap":4416,"hoja":{"cvd":32,"tcf":1.25,"cl":280,"v_esp":4144,"v_pwm":4434.08,"rt":9.2,"v60_sut":4731.428571428572,"v60_drive":514.2857142857143,"kva":1077.1948799999998,"ctrl":1297.1999999999998,"vclamp":480.00000000000006,"torque":1339.640579710145,"i_run":1232.3399999999997,"i_sync":1621.4999999999998,"i_over":1297.1999999999998,"i_nom":1297.1999999999998,"i_mag":389.15999999999997}},{"pozo":"CYC-04","vsd":"CENTRILIFT BH GCS","hp":210,"v_placa":3173,"i_placa":46,"f_max":50,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":2,"sw2":5,"tap":2800,"hoja":{"cvd":13,"tcf":1.25,"cl":136.5,"v_esp":2780.6666666666665,"v_pwm":2975.3133333333335,"rt":5.833333333333333,"v60_sut":3360,"v60_drive":576,"kva":222.824,"ctrl":268.3333333333333,"vclamp":480,"torque":319.68695652173915,"i_run":254.91666666666663,"i_sync":335.41666666666663,"i_over":268.3333333333333,"i_nom":268.3333333333333,"i_mag":80.49999999999999}},{"pozo":"CYC-08","vsd":"CENTRILIFT BH GCS","hp":500,"v_placa":3305,"i_placa":93,"f_max":52.5,"awg":2,"long_ft":8000,"temp_f":193,"conf":"DELTA","sw1":3,"sw2":5,"tap":3187,"hoja":{"cvd":26,"tcf":1.25,"cl":260,"v_esp":3151.875,"v_pwm":3372.5062500000004,"rt":6.639583333333333,"v60_sut":3642.285714285714,"v60_drive":548.5714285714286,"kva":512.75643,"ctrl":617.48125,"vclamp":480,"torque":761.1594202898551,"i_run":586.6071875,"i_sync":771.8515625,"i_over":617.48125,"i_nom":617.48125,"i_mag":185.244375}},{"pozo":"CYC-09","vsd":"CENTRILIFT BH ADV","hp":800,"v_placa":3940,"i_placa":125,"f_max":57,"awg":2,"long_ft":6900,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":1,"tap":3703,"hoja":{"cvd":34,"tcf":1.25,"cl":293.25,"v_esp":4036.25,"v_pwm":4318.7875,"rt":7.714583333333334,"v60_sut":3897.8947368421054,"v60_drive":505.2631578947368,"kva":800.77375,"ctrl":964.3229166666667,"vclamp":480,"torque":1217.855072463768,"i_run":916.1067708333334,"i_sync":1205.4036458333333,"i_over":964.3229166666667,"i_nom":964.3229166666667,"i_mag":289.296875}},{"pozo":"CYC-11","vsd":"CENTRILIFT BH ADV","hp":800,"v_placa":3940,"i_placa":125,"f_max":54,"awg":2,"long_ft":5500,"temp_f":193,"conf":"DELTA","sw1":3,"sw2":5,"tap":3981,"hoja":{"cvd":23,"tcf":1.25,"cl":158.125,"v_esp":3704.125,"v_pwm":3963.41375,"rt":8.29375,"v60_sut":4423.333333333333,"v60_drive":533.3333333333334,"kva":860.89125,"ctrl":1036.71875,"vclamp":480.00000000000006,"torque":1217.855072463768,"i_run":984.8828124999999,"i_sync":1295.8984375,"i_over":1036.71875,"i_nom":1036.71875,"i_mag":311.015625}},{"pozo":"CYC-16","vsd":"CENTRILIFT BH ADV","hp":350,"v_placa":2440,"i_placa":88,"f_max":57,"awg":2,"long_ft":7950,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":4,"tap":2570,"hoja":{"cvd":23,"tcf":1.25,"cl":228.5625,"v_esp":2546.5625,"v_pwm":2724.821875,"rt":5.354166666666667,"v60_sut":2705.2631578947367,"v60_drive":505.26315789473676,"kva":391.2568,"ctrl":471.1666666666667,"vclamp":479.99999999999994,"torque":532.8115942028985,"i_run":447.60833333333335,"i_sync":588.9583333333334,"i_over":471.1666666666667,"i_nom":471.1666666666667,"i_mag":141.35}},{"pozo":"CYC-18","vsd":"CENTRILIFT BH GCS","hp":350,"v_placa":2440,"i_placa":88,"f_max":53,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":2,"sw2":3,"tap":2456,"hoja":{"cvd":17,"tcf":1.25,"cl":178.5,"v_esp":2333.8333333333335,"v_pwm":2497.201666666667,"rt":5.116666666666666,"v60_sut":2780.377358490566,"v60_drive":543.3962264150944,"kva":373.90144,"ctrl":450.26666666666665,"vclamp":480,"torque":532.8115942028985,"i_run":427.7533333333333,"i_sync":562.8333333333333,"i_over":450.26666666666665,"i_nom":450.26666666666665,"i_mag":135.07999999999998}},{"pozo":"CYC-24","vsd":"YASKAWA VP","hp":800,"v_placa":3940,"i_placa":125,"f_max":60,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":2,"tap":4157,"hoja":{"cvd":16,"tcf":1.25,"cl":168,"v_esp":4108,"v_pwm":4395.56,"rt":8.660416666666666,"v60_sut":4157,"v60_drive":480,"kva":898.95125,"ctrl":1082.5520833333333,"vclamp":480,"torque":1217.855072463768,"i_run":1028.4244791666667,"i_sync":1353.1901041666667,"i_over":1082.5520833333333,"i_nom":1082.5520833333333,"i_mag":324.765625}},{"pozo":"CYC-25","vsd":"CENTRILIFT BH GCS","hp":550,"v_placa":3830,"i_placa":88,"f_max":58,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":4,"tap":3556,"hoja":{"cvd":16,"tcf":1.27,"cl":170.68800000000002,"v_esp":3873.0213333333336,"v_pwm":4144.132826666667,"rt":7.408333333333333,"v60_sut":3678.6206896551726,"v60_drive":496.55172413793105,"kva":541.3654399999999,"ctrl":651.9333333333333,"vclamp":480,"torque":837.2753623188406,"i_run":619.3366666666666,"i_sync":814.9166666666666,"i_over":651.9333333333333,"i_nom":651.9333333333333,"i_mag":195.57999999999998}},{"pozo":"CYC-26","vsd":"CENTRILIFT BH ADV","hp":350,"v_placa":2440,"i_placa":88,"f_max":60,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":5,"tap":2600,"hoja":{"cvd":23,"tcf":1.25,"cl":241.5,"v_esp":2681.5,"v_pwm":2869.2050000000004,"rt":5.416666666666667,"v60_sut":2600,"v60_drive":480,"kva":395.824,"ctrl":476.6666666666667,"vclamp":480,"torque":532.8115942028985,"i_run":452.8333333333333,"i_sync":595.8333333333334,"i_over":476.6666666666667,"i_nom":476.6666666666667,"i_mag":143}},{"pozo":"CYC-31","vsd":"CENTRILIFT BH ADV","hp":350,"v_placa":2440,"i_placa":88,"f_max":50,"awg":2,"long_ft":6300,"temp_f":193,"conf":"DELTA","sw1":1,"sw2":4,"tap":2194,"hoja":{"cvd":15,"tcf":1.25,"cl":118.125,"v_esp":2151.458333333333,"v_pwm":2302.0604166666667,"rt":4.570833333333334,"v60_sut":2632.8,"v60_drive":576,"kva":334.01456,"ctrl":402.23333333333335,"vclamp":480,"torque":532.8115942028985,"i_run":382.12166666666667,"i_sync":502.7916666666667,"i_over":402.23333333333335,"i_nom":402.23333333333335,"i_mag":120.67}},{"pozo":"CYC-32","vsd":"CENTRILIFT BH ADV","hp":485,"v_placa":3436,"i_placa":82,"f_max":55,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":5,"tap":3279,"hoja":{"cvd":16,"tcf":1.27,"cl":170.68800000000002,"v_esp":3320.3546666666666,"v_pwm":3552.7794933333334,"rt":6.83125,"v60_sut":3485,"v60_drive":510.1555352241537,"kva":465.15894000000003,"ctrl":560.1625,"vclamp":467.64257395547423,"torque":738.3246376811594,"i_run":532.154375,"i_sync":700.203125,"i_over":560.1625,"i_nom":null,"i_mag":null}},{"pozo":"CYC-33","vsd":"TRIOL UMKA-07","hp":700,"v_placa":3400,"i_placa":125,"f_max":55,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":1,"sw2":5,"tap":3118,"hoja":{"cvd":16,"tcf":1.27,"cl":170.68800000000002,"v_esp":3287.3546666666666,"v_pwm":3517.4694933333335,"rt":6.495833333333334,"v60_sut":3401.4545454545455,"v60_drive":523.6363636363636,"kva":674.2675,"ctrl":811.9791666666667,"vclamp":480,"torque":1065.623188405797,"i_run":771.3802083333334,"i_sync":1014.9739583333334,"i_over":811.9791666666667,"i_nom":811.9791666666667,"i_mag":243.59375}},{"pozo":"CYC-39","vsd":"CENTRILIFT BH ADV","hp":800,"v_placa":3940,"i_placa":125,"f_max":57,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":3,"sw2":4,"tap":3880,"hoja":{"cvd":27,"tcf":1.27,"cl":288.036,"v_esp":4031.036,"v_pwm":4313.20852,"rt":8.083333333333334,"v60_sut":4084.2105263157896,"v60_drive":505.2631578947368,"kva":839.05,"ctrl":1010.4166666666667,"vclamp":480,"torque":1217.855072463768,"i_run":959.8958333333334,"i_sync":1263.0208333333335,"i_over":1010.4166666666667,"i_nom":1010.4166666666667,"i_mag":303.125}},{"pozo":"CYC-40","vsd":"CENTRILIFT BH GCS","hp":550,"v_placa":3830,"i_placa":88,"f_max":55,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":5,"sw2":1,"tap":3493,"hoja":{"cvd":24,"tcf":1.27,"cl":256.032,"v_esp":3766.8653333333336,"v_pwm":4030.545906666667,"rt":7.277083333333334,"v60_sut":3810.5454545454545,"v60_drive":523.6363636363636,"kva":531.77432,"ctrl":640.3833333333333,"vclamp":480,"torque":837.2753623188406,"i_run":608.3641666666666,"i_sync":800.4791666666667,"i_over":640.3833333333333,"i_nom":640.3833333333333,"i_mag":192.115}},{"pozo":"CYC-42","vsd":"CENTRILIFT BH ADV","hp":450,"v_placa":3720,"i_placa":73.5,"f_max":55,"awg":2,"long_ft":7400,"temp_f":193,"conf":"DELTA","sw1":5,"sw2":2,"tap":3824,"hoja":{"cvd":22,"tcf":1.25,"cl":203.5,"v_esp":3613.5,"v_pwm":3866.445,"rt":7.966666666666667,"v60_sut":4171.636363636364,"v60_drive":523.6363636363636,"kva":486.24071999999995,"ctrl":585.55,"vclamp":480,"torque":685.0434782608696,"i_run":556.2725,"i_sync":731.9375,"i_over":585.55,"i_nom":585.55,"i_mag":175.66500000000002}},{"pozo":"CYC-43","vsd":"CENTRILIFT BH GCS","hp":500,"v_placa":3485,"i_placa":88,"f_max":52,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":3,"sw2":5,"tap":2820,"hoja":{"cvd":16,"tcf":1.27,"cl":170.68800000000002,"v_esp":3191.0213333333336,"v_pwm":3414.392826666667,"rt":5.875,"v60_sut":3253.846153846154,"v60_drive":553.8461538461538,"kva":429.3168,"ctrl":517,"vclamp":480,"torque":761.1594202898551,"i_run":491.15,"i_sync":646.25,"i_over":517,"i_nom":517,"i_mag":155.1}},{"pozo":"CYC-44","vsd":"CENTRILIFT BH GCS","hp":180,"v_placa":2646,"i_placa":42,"f_max":58,"awg":2,"long_ft":7992,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":4,"tap":2702,"hoja":{"cvd":12,"tcf":1.27,"cl":121.79808,"v_esp":2679.59808,"v_pwm":2867.1699456000006,"rt":5.629166666666666,"v60_sut":2795.1724137931033,"v60_drive":496.55172413793105,"kva":196.32732000000001,"ctrl":236.42499999999998,"vclamp":480,"torque":274.0173913043478,"i_run":224.60375,"i_sync":295.53125,"i_over":236.42499999999998,"i_nom":236.42499999999998,"i_mag":70.9275}},{"pozo":"CYC-45","vsd":"CENTRILIFT BH ADV","hp":350,"v_placa":2440,"i_placa":88,"f_max":45,"awg":2,"long_ft":8300,"temp_f":193,"conf":"DELTA","sw1":3,"sw2":2,"tap":2110,"hoja":{"cvd":24,"tcf":1.27,"cl":252.98399999999998,"v_esp":2082.984,"v_pwm":2228.79288,"rt":4.395833333333333,"v60_sut":2813.3333333333335,"v60_drive":640.0000000000001,"kva":321.2264,"ctrl":386.8333333333333,"vclamp":480.00000000000006,"torque":532.8115942028985,"i_run":367.4916666666666,"i_sync":483.54166666666663,"i_over":386.8333333333333,"i_nom":386.8333333333333,"i_mag":116.04999999999998}},{"pozo":"CYC-46","vsd":"TRIOL UMKA-03","hp":180,"v_placa":3088,"i_placa":41,"f_max":48,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":2,"sw2":4,"tap":2640,"hoja":{"cvd":11,"tcf":1.27,"cl":117.34800000000001,"v_esp":2587.748,"v_pwm":2768.8903600000003,"rt":5.5,"v60_sut":3300,"v60_drive":600,"kva":187.2552,"ctrl":225.5,"vclamp":480,"torque":274.0173913043478,"i_run":214.22499999999997,"i_sync":281.875,"i_over":225.5,"i_nom":225.5,"i_mag":67.64999999999999}},{"pozo":"CYC-48","vsd":"CENTRILIFT BH ADV","hp":500,"v_placa":2560,"i_placa":44,"f_max":50,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":3,"sw2":1,"tap":2270,"hoja":{"cvd":13,"tcf":1.27,"cl":138.684,"v_esp":2272.0173333333337,"v_pwm":2431.058546666667,"rt":4.729166666666667,"v60_sut":2724,"v60_drive":576,"kva":172.7924,"ctrl":208.08333333333334,"vclamp":480,"torque":761.1594202898551,"i_run":197.67916666666667,"i_sync":260.1041666666667,"i_over":208.08333333333334,"i_nom":208.08333333333334,"i_mag":62.425}},{"pozo":"CYC-51","vsd":"TRIOL UMKA-07","hp":250,"v_placa":2505,"i_placa":61,"f_max":55,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":5,"tap":2379,"hoja":{"cvd":14,"tcf":1.27,"cl":149.352,"v_esp":2445.602,"v_pwm":2616.79414,"rt":4.95625,"v60_sut":2595.2727272727275,"v60_drive":523.6363636363637,"kva":251.05587,"ctrl":302.33125,"vclamp":480.0000000000001,"torque":380.57971014492756,"i_run":287.21468749999997,"i_sync":377.9140625,"i_over":302.33125,"i_nom":302.33125,"i_mag":90.699375}},{"pozo":"CYC-52","vsd":"CENTRILIFT BH ADV","hp":800,"v_placa":3940,"i_placa":125,"f_max":55,"awg":2,"long_ft":8600,"temp_f":193,"conf":"DELTA","sw1":3,"sw2":4,"tap":3880,"hoja":{"cvd":25,"tcf":1.27,"cl":273.05,"v_esp":3884.7166666666667,"v_pwm":4156.646833333333,"rt":8.083333333333334,"v60_sut":4232.727272727273,"v60_drive":523.6363636363636,"kva":839.05,"ctrl":1010.4166666666667,"vclamp":480,"torque":1217.855072463768,"i_run":959.8958333333334,"i_sync":1263.0208333333335,"i_over":1010.4166666666667,"i_nom":1010.4166666666667,"i_mag":303.125}},{"pozo":"CYC-54","vsd":"TRIOL UMKA-03","hp":350,"v_placa":2440,"i_placa":88,"f_max":55,"awg":2,"long_ft":8400,"temp_f":193,"conf":"DELTA","sw1":1,"sw2":1,"tap":2494,"hoja":{"cvd":25,"tcf":1.27,"cl":266.7,"v_esp":2503.3666666666663,"v_pwm":2678.6023333333333,"rt":5.195833333333334,"v60_sut":2720.7272727272725,"v60_drive":523.6363636363635,"kva":379.68656,"ctrl":457.23333333333335,"vclamp":479.9999999999999,"torque":532.8115942028985,"i_run":434.37166666666667,"i_sync":571.5416666666667,"i_over":457.23333333333335,"i_nom":457.23333333333335,"i_mag":137.17000000000002}},{"pozo":"CYC-55","vsd":"TRIOL SPECTRUM ADV","hp":400,"v_placa":3151,"i_placa":78,"f_max":48,"awg":2,"long_ft":8600,"temp_f":193,"conf":"DELTA","sw1":1,"sw2":5,"tap":2872,"hoja":{"cvd":25,"tcf":1.27,"cl":273.05,"v_esp":2793.8500000000004,"v_pwm":2989.4195000000004,"rt":5.983333333333333,"v60_sut":3590,"v60_drive":600,"kva":387.54768,"ctrl":466.7,"vclamp":480,"torque":608.927536231884,"i_run":443.36499999999995,"i_sync":583.375,"i_over":466.7,"i_nom":466.7,"i_mag":140.01}},{"pozo":"CYC-56","vsd":"CENTRILIFT BH ADV","hp":880,"v_placa":4140,"i_placa":141,"f_max":56,"awg":2,"long_ft":7000,"temp_f":193,"conf":"DELTA","sw1":3,"sw2":2,"tap":4416,"hoja":{"cvd":32,"tcf":1.27,"cl":284.48,"v_esp":4148.48,"v_pwm":4438.8736,"rt":9.2,"v60_sut":4731.428571428572,"v60_drive":514.2857142857143,"kva":1077.1948799999998,"ctrl":1297.1999999999998,"vclamp":480.00000000000006,"torque":1339.640579710145,"i_run":1232.3399999999997,"i_sync":1621.4999999999998,"i_over":1297.1999999999998,"i_nom":1297.1999999999998,"i_mag":389.15999999999997}},{"pozo":"CYC-57","vsd":"CENTRILIFT BH ADV","hp":240,"v_placa":2810,"i_placa":53,"f_max":70,"awg":2,"long_ft":8754,"temp_f":193,"conf":"DELTA","sw1":2,"sw2":4,"tap":3455,"hoja":{"cvd":16,"tcf":1.27,"cl":177.88128,"v_esp":3456.2146133333335,"v_pwm":3698.149636266667,"rt":7.197916666666667,"v60_sut":2961.4285714285716,"v60_drive":411.42857142857144,"kva":316.78895,"ctrl":381.48958333333337,"vclamp":480,"torque":365.3565217391304,"i_run":362.41510416666665,"i_sync":476.8619791666667,"i_over":381.48958333333337,"i_nom":381.48958333333337,"i_mag":114.44687499999999}},{"pozo":"CYC-58","vsd":"CENTRILIFT BH ADV","hp":880,"v_placa":4140,"i_placa":141,"f_max":56,"awg":2,"long_ft":700,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":4,"tap":2505,"hoja":{"cvd":32,"tcf":1.27,"cl":28.447999999999997,"v_esp":3892.448,"v_pwm":4164.91936,"rt":5.21875,"v60_sut":2683.9285714285716,"v60_drive":514.2857142857143,"kva":611.04465,"ctrl":735.84375,"vclamp":480.00000000000006,"torque":1339.640579710145,"i_run":699.0515624999999,"i_sync":919.8046875,"i_over":735.84375,"i_nom":735.84375,"i_mag":220.75312499999998}},{"pozo":"CYC-59","vsd":"CENTRILIFT BH ADV","hp":880,"v_placa":4140,"i_placa":141,"f_max":56,"awg":2,"long_ft":700,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":4,"tap":2505,"hoja":{"cvd":32,"tcf":1.27,"cl":28.447999999999997,"v_esp":3892.448,"v_pwm":4164.91936,"rt":5.21875,"v60_sut":2683.9285714285716,"v60_drive":514.2857142857143,"kva":611.04465,"ctrl":735.84375,"vclamp":480.00000000000006,"torque":1339.640579710145,"i_run":699.0515624999999,"i_sync":919.8046875,"i_over":735.84375,"i_nom":735.84375,"i_mag":220.75312499999998}},{"pozo":"CYC-63","vsd":"CENTRILIFT BH ADV","hp":880,"v_placa":4140,"i_placa":141,"f_max":56,"awg":2,"long_ft":700,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":4,"tap":2505,"hoja":{"cvd":32,"tcf":1.27,"cl":28.447999999999997,"v_esp":3892.448,"v_pwm":4164.91936,"rt":5.21875,"v60_sut":2683.9285714285716,"v60_drive":514.2857142857143,"kva":611.04465,"ctrl":735.84375,"vclamp":480.00000000000006,"torque":1339.640579710145,"i_run":699.0515624999999,"i_sync":919.8046875,"i_over":735.84375,"i_nom":735.84375,"i_mag":220.75312499999998}},{"pozo":"CYC-64","vsd":"CENTRILIFT BH ADV","hp":880,"v_placa":4140,"i_placa":141,"f_max":56,"awg":2,"long_ft":700,"temp_f":193,"conf":"DELTA","sw1":4,"sw2":4,"tap":2505,"hoja":{"cvd":32,"tcf":1.27,"cl":28.447999999999997,"v_esp":3892.448,"v_pwm":4164.91936,"rt":5.21875,"v60_sut":2683.9285714285716,"v60_drive":514.2857142857143,"kva":611.04465,"ctrl":735.84375,"vclamp":480.00000000000006,"torque":1339.640579710145,"i_run":699.0515624999999,"i_sync":919.8046875,"i_over":735.84375,"i_nom":735.84375,"i_mag":220.75312499999998}}];
+
+/* Tabla CVD de la hoja CALCULATIONS. Solo esta cargado el calibre
+   #2, el unico que usa la hoja. Los demas calibres quedan
+   pendientes de las tablas del fabricante del cable. */
+const KI_CVD = {
+  2: [[40,11],[50,14],[60,16],[70,19],[80,22],[90,25],[100,27],[110,30],[120,33],[130,36],[140,39]]
+};
+const KI_TCF = [[140,1.13],[149,1.15],[158,1.17],[167,1.19],[176,1.21],[185,1.23],
+                [194,1.25],[203,1.27],[212,1.29],[221,1.31],[230,1.33]];
+
+const kiCfg = { vNom: 480, kFiltro: 1.07 };
+let kiE = null;    /* entradas de trabajo */
+let kiRef = null;  /* unidad de referencia cargada, o null si es nueva */
+
+function kiInterp(t, x){
+  if (x == null || !isFinite(x)) return null;
+  if (x <= t[0][0]) return t[0][1];
+  if (x >= t[t.length-1][0]) return t[t.length-1][1];
+  for (let i = 0; i < t.length - 1; i++){
+    const [a, va] = t[i], [b, vb] = t[i+1];
+    if (x >= a && x <= b) return va + (vb - va) * (x - a) / (b - a);
+  }
+  return null;
+}
+
+function kiCalc(){
+  const e = kiE, r = {};
+  const tabla = KI_CVD[e.awg];
+  r.tablaFalta = !tabla;
+  r.cvd = tabla ? kiInterp(tabla, e.i_placa) : null;
+  r.tcf = kiInterp(KI_TCF, e.temp_f);
+
+  if (r.cvd != null && r.tcf != null && e.long_ft != null)
+    r.cl = e.long_ft * r.cvd / 1000 * r.tcf;
+
+  if (e.v_placa != null && e.f_max && r.cl != null){
+    r.vEsp = e.v_placa * e.f_max / 60 + r.cl;
+    r.vPwm = r.vEsp * kiCfg.kFiltro;
+  }
+  r.vReq = e.filtro ? r.vPwm : r.vEsp;
+
+  if (e.tap != null && kiCfg.vNom){
+    r.rt      = e.tap / kiCfg.vNom;
+    r.v60Sut  = e.f_max ? e.tap * 60 / e.f_max : null;
+    r.v60Drv  = r.rt ? (r.v60Sut != null ? r.v60Sut / r.rt : null) : null;
+    r.kva     = e.i_placa != null ? e.tap * e.i_placa * 1.73 / 1000 : null;
+    r.ctrl    = e.i_placa != null ? e.i_placa * r.rt : null;
+    r.vClamp  = r.v60Drv != null && e.f_max ? r.v60Drv * e.f_max / 60 : null;
+    r.iRun    = e.i_placa != null ? e.i_placa * 0.95 * r.rt : null;
+    r.iSync   = e.i_placa != null ? e.i_placa * 1.25 * r.rt : null;
+    r.iOver   = r.ctrl;
+    r.iNom    = r.ctrl;
+    r.iMag    = e.i_placa != null ? 0.3 * e.i_placa * r.rt : null;
+    if (r.vReq != null) r.dTap = e.tap - r.vReq;
+  }
+  r.torque = e.hp != null ? e.hp * 5252 / 3450 : null;
+  return r;
+}
+
+/* ---------- formulario ---------- */
+
+const KI_CAMPOS = [
+  ['vsd',      'Variador',                   'texto'],
+  ['hp',       'Potencia del motor',         'num', 'HP'],
+  ['v_placa',  'Tensi\u00f3n de placa',      'num', 'V'],
+  ['i_placa',  'Corriente de placa',         'num', 'A'],
+  ['f_max',    'Frecuencia m\u00e1xima',     'num', 'Hz'],
+  ['awg',      'Calibre del cable',          'num', 'AWG'],
+  ['long_ft',  'Longitud del cable',         'num', 'ft'],
+  ['temp_f',   'Temperatura del pozo',       'num', '\u00b0F'],
+  ['conf',     'Conexi\u00f3n del motor',    'conf'],
+  ['filtro',   'Filtro seno instalado',      'si'],
+  ['tap',      'TAP escogido en el SUT',     'num', 'V (opcional)']
+];
+
+function kiForm(){
+  const h = KI_CAMPOS.map(c => {
+    const [k, et, tipo, un] = c;
+    let ctrl;
+    if (tipo === 'conf'){
+      ctrl = '<select data-k="' + k + '">'
+        + ['WYE','DELTA'].map(o => '<option' + (kiE.conf === o ? ' selected' : '')
+            + '>' + o + '</option>').join('') + '</select>';
+    } else if (tipo === 'si'){
+      ctrl = '<select data-k="' + k + '">'
+        + '<option value="0"' + (kiE.filtro ? '' : ' selected') + '>No</option>'
+        + '<option value="1"' + (kiE.filtro ? ' selected' : '') + '>S\u00ed</option></select>';
+    } else if (tipo === 'texto'){
+      ctrl = '<input data-k="' + k + '" type="text" style="width:130px;text-align:left" '
+        + 'value="' + (kiE[k] || '') + '">';
+    } else {
+      ctrl = '<input data-k="' + k + '" type="number" step="any" value="'
+        + (kiE[k] != null ? kiE[k] : '') + '">';
+    }
+    return '<div class="ki-f"><label>' + et
+      + (un ? '<i>' + un + '</i>' : '') + '</label>' + ctrl + '</div>';
+  }).join('');
+
+  return h
+    + '<div class="ki-f"><label>Tensi\u00f3n nominal del variador<i>V</i></label>'
+    + '<input data-k="vNom" type="number" step="any" value="' + kiCfg.vNom + '"></div>'
+    + '<div class="ki-f"><label>Factor del filtro seno</label>'
+    + '<input data-k="kFiltro" type="number" step="0.01" value="' + kiCfg.kFiltro + '"></div>';
+}
+
+function kiTablas(r){
+  const cvd = KI_CVD[kiE.awg];
+  let h = '<div style="font-size:11px;color:var(--ki-t3);letter-spacing:.5px;'
+    + 'text-transform:uppercase;margin-bottom:2px">CVD calibre #'
+    + (kiE.awg != null ? kiE.awg : '\u2014') + ' &middot; V por 1000 ft</div>';
+  if (!cvd){
+    h += '<p class="ki-nota" style="margin-top:4px">No hay tabla cargada para este '
+      + 'calibre. La hoja original solo trae el calibre #2.</p>';
+  } else {
+    h += '<div class="ki-tab">' + cvd.map(([a, f]) => {
+      const on = r.cvd != null && kiE.i_placa != null
+        && Math.abs(kiE.i_placa - a) <= 5;
+      return '<div class="' + (on ? 'on' : '') + '">' + a + ' A<b>' + f + '</b></div>';
+    }).join('') + '</div>';
+  }
+  h += '<div style="font-size:11px;color:var(--ki-t3);letter-spacing:.5px;'
+    + 'text-transform:uppercase;margin:12px 0 2px">TCF &middot; factor por temperatura</div>'
+    + '<div class="ki-tab">' + KI_TCF.map(([t, f]) => {
+        const on = kiE.temp_f != null && Math.abs(kiE.temp_f - t) <= 4.5;
+        return '<div class="' + (on ? 'on' : '') + '">' + t + '\u00b0<b>' + f + '</b></div>';
+      }).join('') + '</div>'
+    + '<p class="ki-nota">Los dos factores se interpolan entre puntos de la tabla. '
+    + 'La celda resaltada es el punto m&aacute;s cercano, no el valor usado.</p>';
+  return h;
+}
+
+/* ---------- salida ---------- */
+
+function kiSalida(r){
+  const p = (cls, n, f, val, un) => '<div class="ki-p ' + cls + '">'
+    + '<div class="n">' + n + '</div>'
+    + (f ? '<div class="fr">' + f + '</div>' : '')
+    + '<div class="r2">' + val + (un ? '<small>' + un + '</small>' : '') + '</div></div>';
+  const nn = (v, d) => v == null ? '\u2014' : v.toFixed(d == null ? 1 : d);
+
+  let h = '';
+
+  h += '<div class="ki-card"><div class="ct"><b>1. P&eacute;rdida de tensi&oacute;n en el cable</b>'
+    + '<span>Entrada del m&oacute;dulo de optimizaci&oacute;n</span></div><div class="ki-grid">'
+    + p('', 'CVD', 'tabla(' + nn(kiE.i_placa, 0) + ' A)', nn(r.cvd, 1), 'V/1000ft')
+    + p('', 'TCF', 'tabla(' + nn(kiE.temp_f, 0) + ' \u00b0F)', nn(r.tcf, 3), '')
+    + p('g', 'Ca&iacute;da en el cable', 'long x CVD / 1000 x TCF', nn(r.cl, 1), 'V')
+    + '</div>';
+  if (r.tablaFalta){
+    h += '<div class="ki-av">Sin tabla CVD para el calibre #'
+      + (kiE.awg != null ? kiE.awg : '\u2014') + '. La ca&iacute;da no se puede calcular '
+      + 'hasta cargar la tabla de ese calibre.</div>';
+  }
+  h += '</div>';
+
+  h += '<div class="ki-card"><div class="ct"><b>2. Tensi&oacute;n requerida en el SUT</b>'
+    + '<span>A frecuencia m&aacute;xima</span></div><div class="ki-grid">'
+    + p('', 'Sin filtro', 'V placa x F m&aacute;x / 60 + CL', nn(r.vEsp, 0), 'V')
+    + p('', 'Con filtro seno', 'anterior x ' + kiCfg.kFiltro.toFixed(2), nn(r.vPwm, 0), 'V')
+    + p('g', 'Requerida en esta unidad',
+        kiE.filtro ? 'con filtro' : 'sin filtro', nn(r.vReq, 0), 'V')
+    + '</div>'
+    + '<p class="ki-nota">Esta es la tensi&oacute;n que debe entregar el SUT a frecuencia '
+    + 'm&aacute;xima. La derivaci&oacute;n se escoge en sitio contra la tabla del SUT '
+    + 'instalado.</p></div>';
+
+  const cls = r.dTap == null ? '' : (Math.abs(r.dTap) <= 50 ? 'g'
+              : (Math.abs(r.dTap) <= 150 ? 'w' : 'r'));
+  h += '<div class="ki-card"><div class="ct"><b>3. Verificaci&oacute;n del TAP escogido</b>'
+    + '<span>' + kiE.conf + '</span></div>';
+  if (kiE.tap == null){
+    h += '<p class="ki-nota" style="margin:0">La tensi&oacute;n requerida es el resultado '
+      + 'del punto 2. La derivaci&oacute;n se escoge en sitio con la tabla del SUT '
+      + 'instalado, que cambia de un modelo a otro. Al anotar aqu&iacute; el TAP escogido '
+      + 'se calculan la relaci&oacute;n de transformaci&oacute;n, los ajustes del variador '
+      + 'y los l&iacute;mites de corriente.</p></div>';
+  } else {
+    h += '<div class="ki-grid">'
+      + p('', 'TAP escogido', 'anotado en sitio', nn(kiE.tap, 0), 'V')
+      + p(cls, 'Diferencia contra la requerida', 'TAP - requerida',
+          (r.dTap > 0 ? '+' : '') + r.dTap.toFixed(0), 'V')
+      + p('', 'Relaci&oacute;n de transformaci&oacute;n', 'TAP / ' + kiCfg.vNom, nn(r.rt, 3), '')
+      + p('', 'Tensi&oacute;n @ 60 Hz salida SUT', 'TAP x 60 / F m&aacute;x', nn(r.v60Sut, 0), 'V')
+      + '</div></div>';
+  }
+
+  if (r.rt == null){
+    h += '<div class="ki-card"><div class="ct"><b>4. Ajustes del variador</b>'
+      + '<span>Requieren el TAP</span></div>'
+      + '<p class="ki-nota" style="margin:0">Los ajustes de puesta en servicio y los '
+      + 'l&iacute;mites de corriente se refieren a superficie a trav&eacute;s de la '
+      + 'relaci&oacute;n de transformaci&oacute;n, as&iacute; que salen una vez escogida '
+      + 'la derivaci&oacute;n. El torque no depende del TAP: '
+      + nn(r.torque, 0) + ' lb-ft.</p></div>';
+    if (kiRef) h += kiComparar(r);
+    return h;
+  }
+
+  h += '<div class="ki-card"><div class="ct"><b>4. Ajustes del variador</b>'
+    + '<span>Puesta en servicio</span></div><div class="ki-grid">'
+    + p('', 'Tensi&oacute;n del variador @ 60 Hz', 'V60 SUT / RT', nn(r.v60Drv, 1), 'V')
+    + p('', 'V-clamp', 'anterior x F m&aacute;x / 60', nn(r.vClamp, 1), 'V')
+    + p('', 'kVA requerido @ F m&aacute;x', 'TAP x A placa x 1.73 / 1000', nn(r.kva, 1), 'kVA')
+    + p('', 'Dimensionamiento del controlador', 'A placa x RT', nn(r.ctrl, 1), 'A')
+    + p('', 'Torque', 'HP x 5252 / 3450', nn(r.torque, 0), 'lb-ft')
+    + '</div></div>';
+
+  h += '<div class="ki-card"><div class="ct"><b>5. L&iacute;mites de corriente</b>'
+    + '<span>Referidos a superficie</span></div><div class="ki-grid">'
+    + p('', 'Run Ilimit', 'A placa x 0.95 x RT', nn(r.iRun, 1), 'A')
+    + p('', 'Sync Ilimit', 'A placa x 1.25 x RT', nn(r.iSync, 1), 'A')
+    + p('', 'Overload', 'A placa x RT', nn(r.iOver, 1), 'A')
+    + p('', 'Corriente de placa referida', 'A placa x RT', nn(r.iNom, 1), 'A')
+    + p('', 'Corriente de magnetizaci&oacute;n', '0.3 x A placa x RT', nn(r.iMag, 1), 'A')
+    + '</div></div>';
+
+  if (kiRef) h += kiComparar(r);
+  return h;
+}
+
+/* La comparacion contra la hoja es lo que permite confiar en el
+   traslado. Donde no coincide hay una decision pendiente. */
+function kiComparar(r){
+  const hj = kiRef.hoja || {};
+  const fil = [
+    ['CVD', hj.cvd, r.cvd, 1],
+    ['TCF', hj.tcf, r.tcf, 3],
+    ['Ca&iacute;da en el cable', hj.cl, r.cl, 1],
+    ['Tensi&oacute;n SUT sin filtro', hj.v_esp, r.vEsp, 0],
+    ['Tensi&oacute;n SUT con filtro', hj.v_pwm, r.vPwm, 0],
+    ['Relaci&oacute;n de transformaci&oacute;n', hj.rt, r.rt, 3],
+    ['Tensi&oacute;n @ 60 Hz salida SUT', hj.v60_sut, r.v60Sut, 0],
+    ['Tensi&oacute;n variador @ 60 Hz', hj.v60_drive, r.v60Drv, 1],
+    ['kVA requerido', hj.kva, r.kva, 1],
+    ['Dimensionamiento del controlador', hj.ctrl, r.ctrl, 1],
+    ['V-clamp', hj.vclamp, r.vClamp, 1],
+    ['Torque', hj.torque, r.torque, 0],
+    ['Run Ilimit', hj.i_run, r.iRun, 1],
+    ['Sync Ilimit', hj.i_sync, r.iSync, 1],
+    ['Overload', hj.i_over, r.iOver, 1],
+    ['Magnetizaci&oacute;n', hj.i_mag, r.iMag, 1]
+  ].filter(x => x[1] != null && x[2] != null).map(x => {
+    const d = x[2] - x[1];
+    const ig = Math.abs(d) < Math.max(0.05, Math.abs(x[1]) * 0.005);
+    return '<tr><td>' + x[0] + '</td><td>' + x[1].toFixed(x[3]) + '</td>'
+      + '<td style="color:#fff">' + x[2].toFixed(x[3]) + '</td>'
+      + '<td class="' + (ig ? 'ok' : 'df') + '">'
+      + (ig ? 'igual' : (d > 0 ? '+' : '') + d.toFixed(x[3])) + '</td></tr>';
+  }).join('');
+
+  return '<div class="ki-card"><div class="ct"><b>Contra la hoja de c&aacute;lculo</b>'
+    + '<span>' + kiRef.pozo + '</span></div>'
+    + '<div class="ki-scroll"><table class="ki-t"><thead><tr><th>Resultado</th>'
+    + '<th>Hoja</th><th>Kronos-M</th><th>Diferencia</th></tr></thead><tbody>'
+    + fil + '</tbody></table></div>'
+    + '<p class="ki-nota">El CVD y el TCF de la hoja est&aacute;n escritos a mano; '
+    + 'aqu&iacute; se interpolan de la tabla. Donde no coinciden, todo lo que sigue '
+    + 'hereda la diferencia.</p></div>';
+}
+
+/* ---------- ciclo ---------- */
+
+function kiPintar(){
+  const r = kiCalc();
+  document.getElementById('kiForm').innerHTML = kiForm();
+  document.getElementById('kiTablas').innerHTML = kiTablas(r);
+  document.getElementById('kiSalida').innerHTML = kiSalida(r);
+
+  document.querySelectorAll('#kiForm [data-k]').forEach(el => {
+    el.onchange = ev => {
+      const k = ev.target.dataset.k;
+      const v = ev.target.value;
+      if (k === 'vNom' || k === 'kFiltro'){
+        const n = Number(v);
+        if (isFinite(n) && n > 0) kiCfg[k] = n;
+      } else if (k === 'vsd'){
+        kiE.vsd = v;
+      } else if (k === 'conf'){
+        kiE.conf = v;
+      } else if (k === 'filtro'){
+        kiE.filtro = v === '1';
+      } else {
+        const n = Number(v);
+        kiE[k] = (v === '' || !isFinite(n)) ? null : n;
+      }
+      kiPintar();
+    };
+  });
+}
+
+function kiCargar(pozo){
+  if (pozo === ''){
+    kiRef = null;
+    kiE = { vsd:'', hp:null, v_placa:null, i_placa:null, f_max:60, awg:2,
+            long_ft:null, temp_f:null, conf:'DELTA', filtro:false, tap:null };
+  } else {
+    const u = KI_DATOS.find(x => x.pozo === pozo);
+    kiRef = u;
+    kiE = { vsd:u.vsd, hp:u.hp, v_placa:u.v_placa, i_placa:u.i_placa, f_max:u.f_max,
+            awg:u.awg, long_ft:u.long_ft, temp_f:u.temp_f, conf:u.conf,
+            filtro:false, tap:u.tap };
+  }
+  kiPintar();
+}
+
+const sel = document.getElementById('kiPozo');
+sel.innerHTML = '<option value="">Instalaci\u00f3n nueva (en blanco)</option>'
+  + KI_DATOS.map(u => '<option value="' + u.pozo + '">' + u.pozo + ' \u00b7 '
+      + u.vsd + '</option>').join('');
+sel.onchange = e => kiCargar(e.target.value);
+kiCargar('CYC-40');
+sel.value = 'CYC-40';
+</script>
+</body>
+</html>
