@@ -4,6 +4,23 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <title>KRONOS·M</title>
+
+<!-- Paleta y tipografia: fuente unica para toda la plataforma. -->
+<link rel="stylesheet" href="tokens.css">
+
+<script>
+/* Se ejecuta antes de pintar. Si el tema se aplicara desde el final del
+   documento, la pagina destellaria en claro antes de pasar a oscuro. */
+(function () {
+  var t;
+  try { t = localStorage.getItem("kx_tema"); } catch (e) { t = null; }
+  if (t !== "claro" && t !== "oscuro") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "oscuro" : "claro";
+  }
+  document.documentElement.setAttribute("data-tema", t);
+})();
+</script>
 <link rel="manifest" href="./manifest.json">
 <meta name="theme-color" content="#134B70">
 
@@ -1026,6 +1043,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <div class="kronos-brand">KRONOS<span class="kronos-dot">·</span>M</div>
   <div class="kronos-derecha">
     <div class="sync-badge" id="sync-badge"><span class="dot"></span><span id="sync-text">Conectado</span></div>
+
+    <button id="btn-tema" class="tema-btn" type="button" title="Cambiar entre claro y oscuro" aria-label="Cambiar entre claro y oscuro">
+      <svg class="ico-oscuro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.6A8.6 8.6 0 0 1 9.4 3.5a8.6 8.6 0 1 0 11.1 11.1z"/></svg>
+      <svg class="ico-claro" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M4.2 4.2l1.7 1.7M18.1 18.1l1.7 1.7M2 12h2.4M19.6 12H22M4.2 19.8l1.7-1.7M18.1 5.9l1.7-1.7"/></svg>
+    </button>
     <button id="btn-usuario-topbar" class="kronos-usuario">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c0-3.4 3.2-5.2 7-5.2s7 1.8 7 5.2"/></svg>
       <span id="usuario-topbar-texto">Sin identificar</span>
@@ -3090,6 +3112,63 @@ function aplicarModulo(modulo, irVistaDefault = true) {
 document.getElementById("selector-modulo").addEventListener("change", (e) => {
   aplicarModulo(e.target.value);
 });
+
+/* ============================================================
+   Interruptor de tema
+   ============================================================
+   El tema ya quedo aplicado por el script del <head>; aqui solo
+   se cablea el cambio y se propaga.
+
+   Los submodulos corren en iframes del mismo origen, asi que
+   comparten localStorage y arrancan con el tema correcto solos.
+   El postMessage es para el otro caso: que el usuario cambie de
+   tema con un iframe ya abierto. */
+(function () {
+  var btn = document.getElementById("btn-tema");
+  if (!btn) return;
+
+  function difundir(tema) {
+    document.querySelectorAll("iframe").forEach(function (f) {
+      try { f.contentWindow.postMessage({ tipo: "kx-tema", tema: tema }, "*"); }
+      catch (e) { /* aun sin cargar o de otro origen */ }
+    });
+  }
+
+  function aplicar(tema, guardar) {
+    document.documentElement.setAttribute("data-tema", tema);
+    if (guardar) { try { localStorage.setItem("kx_tema", tema); } catch (e) { /* cuota */ } }
+    difundir(tema);
+  }
+
+  btn.onclick = function () {
+    var actual = document.documentElement.getAttribute("data-tema");
+    aplicar(actual === "oscuro" ? "claro" : "oscuro", true);
+  };
+
+  /* Un iframe que termina de cargar despues de un cambio de tema se
+     pone al dia solo. */
+  document.querySelectorAll("iframe").forEach(function (f) {
+    f.addEventListener("load", function () {
+      var t = document.documentElement.getAttribute("data-tema");
+      try { f.contentWindow.postMessage({ tipo: "kx-tema", tema: t }, "*"); }
+      catch (e) { /* otro origen */ }
+    });
+  });
+
+  /* Si nunca se eligio tema a mano, se sigue al sistema operativo. */
+  if (window.matchMedia) {
+    var mqTema = window.matchMedia("(prefers-color-scheme: dark)");
+    var alCambiarSO = function (e) {
+      var elegido = null;
+      try { elegido = localStorage.getItem("kx_tema"); } catch (err) { /* ok */ }
+      if (elegido !== "claro" && elegido !== "oscuro") {
+        aplicar(e.matches ? "oscuro" : "claro", false);
+      }
+    };
+    if (mqTema.addEventListener) mqTema.addEventListener("change", alCambiarSO);
+    else if (mqTema.addListener) mqTema.addListener(alCambiarSO);
+  }
+})();
 
 /* ============================================================
    Navegacion en la barra superior (escritorio)

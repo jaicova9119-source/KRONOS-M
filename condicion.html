@@ -4,10 +4,36 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Monitoreo de Condici&oacute;n</title>
+
+<!-- Paleta compartida con el resto de Kronos-M. -->
+<link rel="stylesheet" href="tokens.css">
+
+<script>
+/* Mismo origen que el contenedor: se lee el tema ya elegido y se aplica
+   antes de pintar, asi el iframe no destella al abrirse. Vale igual si
+   este archivo se abre en pestana aparte. */
+(function () {
+  var t;
+  try { t = localStorage.getItem("kx_tema"); } catch (e) { t = null; }
+  if (t !== "claro" && t !== "oscuro") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "oscuro" : "claro";
+  }
+  document.documentElement.setAttribute("data-tema", t);
+
+  /* El contenedor avisa cuando se cambia de tema con este panel abierto. */
+  window.addEventListener("message", function (ev) {
+    var d = ev.data;
+    if (d && d.tipo === "kx-tema" && (d.tema === "claro" || d.tema === "oscuro")) {
+      document.documentElement.setAttribute("data-tema", d.tema);
+    }
+  });
+})();
+</script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
 :root{
-  --kp-teal:#12a5b8; --kp-green:#35a853;
+  --kp-teal:#12a5b8; --kp-green:var(--ok);
   --kp-ink:#1c1c1e; --kp-ink2:#6b6b70; --kp-ink3:#94949a;
   --kp-line:#e3e3e6; --kp-page:#f5f6f7; --kp-card:#fff;
   --kp-ok:#2ea44f; --kp-warn:#c77700; --kp-crit:#c0392b; --kp-null:#9a9aa0;
@@ -18,19 +44,19 @@ html,body{margin:0;padding:0}
 body{background:var(--kp-page);color:var(--kp-ink);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px}
 
-.kp-top{background:linear-gradient(100deg,var(--kp-teal),var(--kp-green));color:#fff;
+.kp-top{background:var(--brand);color:#fff;border-bottom:1px solid var(--line);
   padding:14px 20px;display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
 .kp-top h1{margin:0;font-size:20px;font-weight:600}
 .kp-top .sub{margin:3px 0 0;font-size:13px;opacity:.9}
 .kp-back{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);color:#fff;
   border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer}
 
-.kp-bar{background:#fff;border-bottom:1px solid var(--kp-line);padding:10px 20px;
+.kp-bar{background:var(--kp-card);border-bottom:1px solid var(--kp-line);padding:10px 20px;
   display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .kp-bar .lb{font-size:13px;color:var(--kp-ink2);margin-right:2px}
-.kp-chip{border:1px solid var(--kp-line);background:#fff;border-radius:6px;padding:5px 13px;
+.kp-chip{border:1px solid var(--kp-line);background:var(--kp-card);border-radius:6px;padding:5px 13px;
   font-size:13px;cursor:pointer;color:var(--kp-ink)}
-.kp-chip.on{background:#2f9fd4;border-color:#2f9fd4;color:#fff}
+.kp-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
 
 .kp-wrap{padding:18px 20px;max-width:1180px;margin:0 auto}
 
@@ -49,15 +75,15 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-wrap .hint{margin:0 0 14px;font-size:13px;color:var(--kp-ink2)}
 
 .kp-stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(108px,1fr));gap:10px;margin-bottom:16px}
-.kp-stat{background:#fff;border:1px solid var(--kp-line);border-radius:8px;padding:10px 14px}
+.kp-stat{background:var(--kp-card);border:1px solid var(--kp-line);border-radius:8px;padding:10px 14px}
 .kp-stat .k{font-size:11px;color:var(--kp-ink3);text-transform:uppercase;letter-spacing:.7px}
 .kp-stat .v{font-size:22px;font-weight:600;margin-top:3px}
 
-.kp-list{background:#fff;border:1px solid var(--kp-line);border-radius:8px;overflow:hidden}
+.kp-list{background:var(--kp-card);border:1px solid var(--kp-line);border-radius:8px;overflow:hidden}
 .kp-row{display:flex;gap:12px;align-items:center;padding:12px 15px;
   border-bottom:1px solid var(--kp-line);cursor:pointer}
 .kp-row:last-child{border-bottom:none}
-.kp-row:hover{background:#fafafb}
+.kp-row:hover{background:var(--surface-2)}
 .kp-row .nm{font-size:15px;font-weight:600}
 .kp-row .sys{font-size:11px;color:var(--kp-ink3);border:1px solid var(--kp-line);
   padding:1px 7px;border-radius:4px}
@@ -67,14 +93,14 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-pill{font-size:11px;padding:3px 10px;border-radius:4px;white-space:nowrap;font-weight:500}
 .kp-pill.ok{background:var(--kp-ok-bg);color:#1d6b32}
 .kp-pill.warn{background:var(--kp-warn-bg);color:#8a5300}
-.kp-pill.crit{background:var(--kp-crit-bg);color:#8f2a1f}
+.kp-pill.crit{background:var(--kp-crit-bg);color:var(--crit)}
 .kp-pill.none{background:var(--kp-null-bg);color:#5f5f66;border:1px solid var(--kp-line)}
 
-.kp-card{background:#fff;border:1px solid var(--kp-line);border-radius:8px;
+.kp-card{background:var(--kp-card);border:1px solid var(--kp-line);border-radius:8px;
   padding:16px;margin-bottom:14px}
 .kp-card:last-child{margin-bottom:0}
 .kp-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
-.kp-kpi{background:#fff;border:1px solid var(--kp-line);border-left:4px solid var(--kp-ok);
+.kp-kpi{background:var(--kp-card);border:1px solid var(--kp-line);border-left:4px solid var(--kp-ok);
   border-radius:8px;padding:12px 14px}
 .kp-kpi.warn{border-left-color:var(--kp-warn)}
 .kp-kpi.crit{border-left-color:var(--kp-crit)}
@@ -84,7 +110,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-kpi .v small{font-size:12px;font-weight:400;color:var(--kp-ink2);margin-left:3px}
 .kp-kpi .r{font-size:12px;color:var(--kp-ink2);margin-bottom:8px}
 
-.kp-grp{padding:8px 15px;background:#fafafb;border-bottom:1px solid var(--kp-line);
+.kp-grp{padding:8px 15px;background:var(--surface-2);border-bottom:1px solid var(--kp-line);
   font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--kp-ink3)}
 .kp-rule{padding:12px 15px;border-bottom:1px solid var(--kp-line);display:flex;
   justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
@@ -110,10 +136,10 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-leg i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
 
 .kp-msg{padding:26px 18px;text-align:center;color:var(--kp-ink2);font-size:14px}
-.kp-chip{border:1px solid var(--kp-line);background:#fff;border-radius:6px;padding:5px 12px;
+.kp-chip{border:1px solid var(--kp-line);background:var(--kp-card);border-radius:6px;padding:5px 12px;
   font-size:12.5px;cursor:pointer;color:var(--kp-ink)}
-.kp-chip.on{background:#2f9fd4;border-color:#2f9fd4;color:#fff}
-.kp-demo{background:#fff6d9;border:1px solid #e8d08a;color:#6b5410;
+.kp-chip.on{background:var(--accent);border-color:var(--accent);color:#fff}
+.kp-demo{background:var(--warn-bg);border:1px solid var(--warn);color:var(--warn);
   padding:8px 20px;font-size:12.5px}
 /* ── Estructura de secciones ─────────────────────────────────────
    Cada bloque es una tarjeta con su encabezado. En movil el ancho
@@ -143,7 +169,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-nav::-webkit-scrollbar{display:none}
 .kp-nav a{flex:none;font:600 12px inherit;color:var(--kp-ink2);text-decoration:none;
   border:1px solid var(--kp-line);border-radius:16px;padding:5px 11px;background:var(--kp-card)}
-.kp-nav a:active{background:#eef3f5}
+.kp-nav a:active{background:var(--surface-2)}
 
 .kp-chip{white-space:nowrap}
 
@@ -166,7 +192,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
    cadena ya dice; estas caben en dos filas y no repiten nada. */
 .kp-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:6px}
 .kp-dato{border:1px solid var(--kp-line);border-radius:7px;padding:7px 11px;
-  background:#fff;min-width:78px}
+  background:var(--surface);min-width:78px}
 .kp-dato .k{font-size:10px;letter-spacing:.6px;text-transform:uppercase;
   color:var(--kp-ink3);white-space:nowrap}
 .kp-dato .v{font-size:15px;font-weight:600;margin-top:2px;
@@ -182,8 +208,8 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-aviso{padding:10px 13px;border-radius:7px;border-left:3px solid var(--kp-warn);
   background:var(--kp-warn-bg)}
 .kp-aviso.crit{border-left-color:var(--kp-crit);background:var(--kp-crit-bg)}
-.kp-aviso .q{font-size:13.5px;font-weight:600;color:#7a4a00}
-.kp-aviso.crit .q{color:#8f2a1f}
+.kp-aviso .q{font-size:13.5px;font-weight:600;color:var(--warn)}
+.kp-aviso.crit .q{color:var(--crit)}
 .kp-aviso .d{font-size:12px;color:var(--kp-ink2);margin-top:2px}
 
 .kp-rep .ext{display:flex;justify-content:space-between;font-size:13px;
@@ -222,12 +248,12 @@ body{background:var(--kp-page);color:var(--kp-ink);
 /* Plegado del bloque completo: se oculta todo menos su encabezado. */
 .kp-list.kp-plegada > *:not(.kp-cab){display:none}
 .kp-cab{cursor:pointer;display:flex;align-items:center;gap:7px;user-select:none}
-.kp-cab:hover{background:#f2f6f7}
+.kp-cab:hover{background:var(--surface-2)}
 .kp-cab .tw{font-size:11px;opacity:.5;width:10px;flex:none}
 .kp-mas{display:block;width:100%;border:none;border-top:1px solid var(--kp-line);
-  background:#fafafb;color:var(--kp-teal);font:600 12.5px inherit;
+  background:var(--surface-2);color:var(--kp-teal);font:600 12.5px inherit;
   padding:11px;cursor:pointer;text-align:center}
-.kp-mas:hover{background:#f2f6f7}
+.kp-mas:hover{background:var(--surface-2)}
 
 .kp-etapas{display:flex;flex-direction:column}
 .kp-etapa{display:grid;grid-template-columns:104px 78px 74px minmax(90px,1fr);
@@ -266,7 +292,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
 
    Los dos juegos de controles comparten estado; kpSincronizar() los
    deja siempre diciendo lo mismo. */
-.kp-fbar{background:#fff;border-bottom:1px solid var(--kp-line);
+.kp-fbar{background:var(--kp-card);border-bottom:1px solid var(--kp-line);
   padding:9px 14px;display:none;flex-direction:column;gap:7px}
 .kp-fsel{display:flex;gap:6px}
 .kp-fsel select{flex:1 1 0;min-width:0;max-width:none;
@@ -351,7 +377,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
    pregunta, con su propia pantalla. El boton informa plegado y
    promete lo que hay detras. */
 .kp-dem-btn{width:100%;display:flex;align-items:center;gap:14px;text-align:left;
-  background:linear-gradient(102deg,#0d2438 0%,#123f5e 55%,#0f5f66 100%);
+  background:linear-gradient(102deg,var(--brand) 0%,#1D3A4F 55%,#22485C 100%);
   border:none;border-radius:10px;padding:0;margin:0 0 14px;cursor:pointer;
   color:#fff;font-family:inherit;overflow:hidden}
 .kp-dem-btn:hover{filter:brightness(1.12)}
@@ -369,7 +395,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-dem-btn .vl span{display:block;font-size:11px;color:rgba(255,255,255,.72)}
 .kp-dem-btn .fw{flex:0 0 auto;padding:0 16px 0 14px;font-size:15px;
   color:rgba(255,255,255,.72)}
-.kp-dem-btn.nd{background:#fff;border:1px solid var(--kp-line);color:var(--kp-ink2);
+.kp-dem-btn.nd{background:var(--kp-card);border:1px solid var(--kp-line);color:var(--kp-ink2);
   cursor:default}
 .kp-dem-btn.nd .ic{background:var(--kp-null-bg);color:var(--kp-null)}
 .kp-dem-btn.nd .t2,.kp-dem-btn.nd .vl span{color:var(--kp-ink3)}
@@ -379,7 +405,7 @@ body{background:var(--kp-page);color:var(--kp-ink);
 }
 
 /* ── Optimizacion energetica: puerta y capa ──────────────────── */
-.kp-opt-btn{background:linear-gradient(102deg,#123f5e 0%,#1d5f4a 55%,#2f7a3c 100%)}
+.kp-opt-btn{background:linear-gradient(102deg,var(--accent) 0%,#2F7A6B 100%)}
 .kp-opt-btn .ic{font-size:17px}
 
 #kpOptCapa{position:fixed;inset:0;z-index:60;background:#081724;
@@ -410,19 +436,19 @@ body.kp-oscuro{background:#081724}
   color:#bcd2e3;border-radius:6px;padding:4px 11px;font-size:12.5px;cursor:pointer;
   font-family:inherit}
 .kd-mig button:hover{background:rgba(255,255,255,.14);color:#fff}
-.kd-mig .aq{background:linear-gradient(100deg,#12a5b8,#35a853);border-color:transparent;
+.kd-mig .aq{background:var(--accent);border-color:transparent;
   color:#fff;font-weight:600;cursor:default}
 .kd-mig .sep{color:#5c7590;font-size:11px}
 
 .kd-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
   gap:10px;margin:0 0 14px}
-.kd-h{background:#0f2739;border:1px solid rgba(255,255,255,.09);border-radius:9px;
+.kd-h{background:var(--surface);border:1px solid rgba(255,255,255,.09);border-radius:9px;
   padding:11px 13px;position:relative;overflow:hidden}
 .kd-h:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
-  background:#12a5b8}
-.kd-h.g:before{background:#35a853}
-.kd-h.w:before{background:#e0a230}
-.kd-h.r:before{background:#d6584a}
+  background:var(--accent)}
+.kd-h.g:before{background:var(--ok)}
+.kd-h.w:before{background:var(--warn)}
+.kd-h.r:before{background:var(--crit)}
 .kd-h .k{font-size:9.5px;letter-spacing:.9px;text-transform:uppercase;color:#7f9bb2}
 .kd-h .v{font-size:25px;font-weight:600;letter-spacing:-.6px;margin:3px 0 0;
   color:#fff;line-height:1.05}
@@ -433,7 +459,7 @@ body.kp-oscuro{background:#081724}
 .kd-grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(0,1fr);
   gap:14px;margin-bottom:14px}
 @media(max-width:900px){.kd-grid{grid-template-columns:1fr}}
-.kd-card{background:#0f2739;border:1px solid rgba(255,255,255,.09);
+.kd-card{background:var(--surface);border:1px solid rgba(255,255,255,.09);
   border-radius:9px;padding:13px 15px}
 .kd-card .ct{display:flex;justify-content:space-between;align-items:baseline;
   gap:10px;margin-bottom:12px}
@@ -453,7 +479,7 @@ body.kp-oscuro{background:#081724}
 .kd-bar .lb em s{text-decoration:none;color:#7f9bb2;font-weight:400;font-size:11px}
 .kd-bar .tk{height:15px;background:rgba(255,255,255,.06);border-radius:4px;
   overflow:hidden}
-.kd-bar .fl{height:100%;background:linear-gradient(90deg,#12a5b8,#35a853);
+.kd-bar .fl{height:100%;background:linear-gradient(90deg,var(--accent),var(--ok));
   border-radius:0 4px 4px 0;min-width:2px}
 .kd-bar.cl:hover .fl{filter:brightness(1.18)}
 .kd-bar.cl:hover .lb i{color:#fff}
@@ -476,7 +502,7 @@ body.kp-oscuro{background:#081724}
 
 .kd-nota{font-size:11.5px;color:#7f9bb2;line-height:1.55;margin:12px 0 0}
 .kd-nota b{color:#a7bccd;font-weight:600}
-.kd-nota .al{color:#e0a230}
+.kd-nota .al{color:var(--warn)}
 
 .kd-tabla{width:100%;border-collapse:collapse;font-size:12px;color:#c3d6e5}
 .kd-tabla th{text-align:right;font-weight:600;color:#7f9bb2;font-size:10.5px;
@@ -488,7 +514,7 @@ body.kp-oscuro{background:#081724}
 .kd-tabla tr:last-child td{border-bottom:none}
 .kd-tabla .pz{font-weight:600;color:#fff;cursor:pointer}
 .kd-tabla .pz:hover{color:#4ecbdd}
-.kd-tabla .vj{color:#e0a230}
+.kd-tabla .vj{color:var(--warn)}
 .kd-tabla .ba{color:#e88a7d}
 .kd-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 
@@ -1209,7 +1235,7 @@ let kpEnDemanda   = false;
 let kpDemPozo     = null;   /* hoja de la jerarquia: unidad individual */
 let kpVistaActual = 'flota';
 
-const KD_HEX = ['#12a5b8','#35a853','#3f8fd0','#c9a227','#8e6fd0','#d6584a','#5f7d94'];
+const KD_HEX = ['#12a5b8','var(--ok)','#3f8fd0','#c9a227','#8e6fd0','var(--crit)','#5f7d94'];
 
 /* El boton informa plegado: quien no entre al tablero igual se lleva
    el total del alcance que esta mirando. */
@@ -1543,9 +1569,9 @@ function kpDemFP(con){
   if (!fps.length) return '<div class="kd-vacio">Sin factor de potencia medido</div>';
 
   const cajones = [
-    { t: '< 0.85',      f: v => v <  0.85,             c: '#d6584a' },
-    { t: '0.85 - 0.90', f: v => v >= 0.85 && v < 0.90, c: '#e0a230' },
-    { t: '0.90 - 0.95', f: v => v >= 0.90 && v < 0.95, c: '#35a853' },
+    { t: '< 0.85',      f: v => v <  0.85,             c: 'var(--crit)' },
+    { t: '0.85 - 0.90', f: v => v >= 0.85 && v < 0.90, c: 'var(--warn)' },
+    { t: '0.90 - 0.95', f: v => v >= 0.90 && v < 0.95, c: 'var(--ok)' },
     { t: '\u2265 0.95', f: v => v >= 0.95,             c: '#12a5b8' }
   ].map(c => Object.assign(c, { n: fps.filter(c.f).length }));
 
