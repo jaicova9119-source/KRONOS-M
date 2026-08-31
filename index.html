@@ -881,6 +881,91 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   .navbar .nav-item-separador{border-top:1px solid var(--line);margin-top:10px;padding-top:20px;}
 }
 
+/* ==========================================================================
+   Navegacion dentro de la barra superior (solo escritorio)
+   ==========================================================================
+   El riel lateral de 84 px y la barra de acciones del iframe se comian
+   ancho y alto que el contenido necesita. En escritorio los botones del
+   riel suben a la franja azul, que ya ocupaba 46 px sin usarlos, y el
+   desplegable de modulos desaparece: el Inicio con sus tarjetas es el
+   selector de modulo.
+
+   En movil no cambia nada. Ahi la barra inferior es la unica navegacion
+   posible y el desplegable sigue siendo la forma mas rapida de saltar
+   entre modulos con una sola mano.
+   ========================================================================== */
+
+/* La barra de acciones del iframe no existe fuera de escritorio. */
+#topbar-iframe{display:none;}
+
+@media (min-width: 860px){
+
+  #kronos-topbar{padding:0 10px 0 14px;gap:10px;}
+  .kronos-brand{flex-shrink:0;}
+
+  /* Ranura central donde aterriza el riel. */
+  #topbar-nav{
+    flex:1;min-width:0;height:100%;display:flex;justify-content:center;
+  }
+
+  /* El mismo #navbar-principal, en horizontal y sobre fondo azul. */
+  #kronos-topbar .navbar{
+    position:static;flex-direction:row;align-items:stretch;
+    width:auto;max-width:none;height:100%;margin:0;padding:0;gap:0;
+    background:transparent;border:none;z-index:auto;
+    overflow-x:auto;scrollbar-width:none;
+  }
+  #kronos-topbar .navbar::-webkit-scrollbar{display:none;}
+
+  #kronos-topbar .navbar .nav-item{
+    flex:0 0 auto;width:auto;margin:0;padding:0 13px;border-radius:0;
+    flex-direction:row;align-items:center;gap:7px;
+    font-size:12.5px;white-space:nowrap;
+    color:rgba(255,255,255,.72);background:transparent;
+    border-bottom:2px solid transparent;
+    transition:color .15s ease,background .15s ease;
+  }
+  #kronos-topbar .navbar .nav-item svg{width:17px;height:17px;}
+  #kronos-topbar .navbar .nav-item:hover{color:#fff;background:rgba(255,255,255,.09);}
+  #kronos-topbar .navbar .nav-item.active{
+    color:#fff;background:transparent;border-bottom-color:var(--accent);
+  }
+  /* En columna el separador era una linea arriba; en fila es una a la izquierda. */
+  #kronos-topbar .navbar .nav-item-separador{
+    border-top:none;padding-top:0;margin-top:0;
+    border-left:1px solid rgba(255,255,255,.2);
+    margin-left:8px;padding-left:16px;
+  }
+
+  /* El desplegable sobra: la navegacion esta a la vista. */
+  #kronos-topbar #selector-modulo{display:none;}
+
+  /* Sin riel lateral no hay que reservarle ancho. */
+  #app{padding-left:0 !important;}
+
+  /* Estas reglas escondian el riel en los modulos de iframe. Ya no aplican
+     porque el riel salio de #app, pero se neutralizan por si acaso. */
+  #app.modulo-vfd .navbar,
+  #app.modulo-predictivo .navbar{display:flex;}
+
+  /* Los dos botones de espacio suben a la barra y su fila propia se va. */
+  #panel-vfd .panel-header,
+  #panel-predictivo .panel-header,
+  #panel-optimizacion .panel-header,
+  #panel-instalacion .panel-header{display:none;}
+
+  #topbar-iframe{align-items:center;gap:2px;flex-shrink:0;}
+  #topbar-iframe.ver{display:flex;}
+  .tb-ico{
+    background:none;border:none;color:rgba(255,255,255,.8);cursor:pointer;
+    width:32px;height:32px;border-radius:8px;padding:0;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .tb-ico svg{width:17px;height:17px;}
+  .tb-ico:hover{background:rgba(255,255,255,.14);color:#fff;}
+  .tb-ico:focus-visible{outline:2px solid rgba(255,255,255,.6);outline-offset:-2px;}
+}
+
 </style>
 <script src="fo016-logo.js"></script>
 <script src="fo016.js"></script>
@@ -957,6 +1042,18 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <option value="optimizacion">Optimización Energética</option>
     <option value="instalacion">Instalación y Cálculo de TAP</option>
     </select>
+
+    <!-- Controles de espacio de los modulos que corren en iframe. Antes
+         vivian en una barra propia dentro del panel, que costaba ~32 px de
+         alto en la pantalla mas apretada. Aqui no cuestan nada. -->
+    <div id="topbar-iframe">
+      <button class="tb-ico" id="tb-fullscreen" type="button" title="Pantalla completa" aria-label="Pantalla completa">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M16 3h3a2 2 0 0 1 2 2v3"/><path d="M8 21H5a2 2 0 0 1-2-2v-3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+      </button>
+      <button class="tb-ico" id="tb-nuevatab" type="button" title="Abrir en pestaña aparte" aria-label="Abrir en pestaña aparte">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4h6v6"/><path d="M20 4l-8.5 8.5"/><path d="M19 14v5a1.8 1.8 0 0 1-1.8 1.8H5.8A1.8 1.8 0 0 1 4 19V7.8A1.8 1.8 0 0 1 5.8 6H11"/></svg>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -2913,6 +3010,9 @@ function aplicarModulo(modulo, irVistaDefault = true) {
      iframe con barra propia. Se apaga ahi y se prende en el resto. */
   if (window.asistenteVisibleEn) window.asistenteVisibleEn(modulo);
 
+  /* Los controles de pantalla completa solo aplican a modulos en iframe. */
+  if (window.topbarIframeAcciones) window.topbarIframeAcciones(modulo);
+
   const navbar = document.getElementById("navbar-principal");
   navbar.classList.remove("modulo-activos", "modulo-materiales", "modulo-documental",
                           "modulo-ensayos", "modulo-programacion", "modulo-vfd",
@@ -2990,6 +3090,74 @@ function aplicarModulo(modulo, irVistaDefault = true) {
 document.getElementById("selector-modulo").addEventListener("change", (e) => {
   aplicarModulo(e.target.value);
 });
+
+/* ============================================================
+   Navegacion en la barra superior (escritorio)
+   ============================================================
+   No se duplica el riel: se mueve el mismo #navbar-principal a
+   la franja azul y se devuelve a su sitio si la ventana se
+   angosta. Asi los onclick ya enlazados siguen funcionando y no
+   hay dos copias que mantener sincronizadas. */
+(function () {
+  var topbar = document.getElementById("kronos-topbar");
+  var navbar = document.getElementById("navbar-principal");
+  var derecha = topbar && topbar.querySelector(".kronos-derecha");
+  if (!topbar || !navbar || !derecha) return;
+
+  /* Marca el lugar original para poder devolverlo tal cual. */
+  var ancla = document.createComment("navbar-principal");
+  navbar.parentNode.insertBefore(ancla, navbar);
+
+  var ranura = document.createElement("div");
+  ranura.id = "topbar-nav";
+  topbar.insertBefore(ranura, derecha);
+
+  var mq = window.matchMedia("(min-width: 860px)");
+
+  function colocar() {
+    if (mq.matches) {
+      if (navbar.parentNode !== ranura) ranura.appendChild(navbar);
+    } else if (navbar.parentNode === ranura) {
+      ancla.parentNode.insertBefore(navbar, ancla.nextSibling);
+    }
+  }
+
+  colocar();
+  if (mq.addEventListener) mq.addEventListener("change", colocar);
+  else if (mq.addListener) mq.addListener(colocar);
+})();
+
+/* Controles de espacio de los modulos en iframe, ahora en la barra.
+   Cada modulo declara su funcion de pantalla completa y su archivo. */
+var TOPBAR_IFRAME = {
+  vfd:          { completa: "vfdPantallaCompleta",  archivo: "analizador-vfd.html" },
+  predictivo:   { completa: "predPantallaCompleta", archivo: "condicion.html" },
+  optimizacion: { completa: "optPantallaCompleta",  archivo: "optimizacion.html" },
+  instalacion:  { completa: "instPantallaCompleta", archivo: "instalacion.html" },
+};
+
+(function () {
+  var caja = document.getElementById("topbar-iframe");
+  var bFull = document.getElementById("tb-fullscreen");
+  var bTab = document.getElementById("tb-nuevatab");
+  if (!caja || !bFull || !bTab) return;
+
+  bFull.onclick = function () {
+    var cfg = TOPBAR_IFRAME[moduloActivo];
+    if (cfg && typeof window[cfg.completa] === "function") window[cfg.completa]();
+  };
+  bTab.onclick = function () {
+    var cfg = TOPBAR_IFRAME[moduloActivo];
+    if (cfg) window.open(cfg.archivo, "_blank");
+  };
+
+  /* Llamada desde aplicarModulo(). */
+  window.topbarIframeAcciones = function (modulo) {
+    caja.classList.toggle("ver", !!TOPBAR_IFRAME[modulo]);
+  };
+
+  if (typeof moduloActivo !== "undefined") window.topbarIframeAcciones(moduloActivo);
+})();
 
 /* El analizador pesa lo suyo y no lo usa todo el mundo: el iframe se apunta
    la primera vez que se abre el modulo y de ahi en adelante conserva su
