@@ -168,9 +168,7 @@ table.ko-t tr.mk td{background:rgba(18,165,184,.10)}
    multiples instancias de GoTrue.
    ============================================================ */
 function koCredencial(nombre){
-  var f = [];
-  try { if (window.parent && window.parent !== window) f.push(window.parent); } catch(e){}
-  try { if (window.opener) f.push(window.opener); } catch(e){}
+  const f = koVentanas();
   for (var i = 0; i < f.length; i++){
     try {
       var v = f[i][nombre];
@@ -180,14 +178,32 @@ function koCredencial(nombre){
   return null;
 }
 
+/* Ventanas donde puede estar el cliente ya autenticado. Importa el
+   orden y que suba varios niveles: este modulo se abre tanto como
+   iframe directo de Kronos-M como dentro de la capa de Monitoreo de
+   Condicion, que a su vez es otro iframe. */
+function koVentanas(){
+  const v = [];
+  let w = window;
+  for (let i = 0; i < 4; i++){
+    try {
+      if (w.parent && w.parent !== w){ w = w.parent; v.push(w); }
+      else break;
+    } catch(e){ break; }
+  }
+  try { if (window.opener) v.push(window.opener); } catch(e){}
+  try { if (window.top && v.indexOf(window.top) < 0) v.push(window.top); } catch(e){}
+  return v;
+}
+
 let koSb = null;
 function koCliente(){
   if (koSb) return koSb;
-  var f = [];
-  try { if (window.parent && window.parent !== window) f.push(window.parent); } catch(e){}
-  try { if (window.opener) f.push(window.opener); } catch(e){}
+  const f = koVentanas();
   for (var i = 0; i < f.length; i++){
-    try { if (f[i].sb && f[i].sb.rpc) { koSb = f[i].sb; return koSb; } } catch(e){}
+    for (const n of ['sb', 'kpSb', 'supabaseClient']){
+      try { if (f[i][n] && f[i][n].rpc) { koSb = f[i][n]; return koSb; } } catch(e){}
+    }
   }
   const url = koCredencial('SUPABASE_URL');
   const key = koCredencial('SUPABASE_ANON_KEY');
@@ -1021,7 +1037,21 @@ function koEnlazar(){
 
 document.getElementById('koBack').onclick = () => { koSel = null; koPintar(); };
 
+/* Cuando se abre desde Monitoreo de Condicion llegan campo y PAD en
+   la direccion. Se aplican antes del primer pintado para que la
+   pantalla no parpadee mostrando toda la flota. */
+function koAplicarUrl(){
+  try {
+    const p = new URLSearchParams(window.location.search);
+    const c = p.get('campo');
+    const d = p.get('pad');
+    if (c) koCampo = c;
+    if (d) koPad = d;
+  } catch(e){}
+}
+
 async function koArrancar(){
+  koAplicarUrl();
   const v = document.getElementById('koVista');
   try {
     const par = await koCargarParametros();

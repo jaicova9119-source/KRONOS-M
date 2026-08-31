@@ -378,6 +378,23 @@ body{background:var(--kp-page);color:var(--kp-ink);
   .kp-dem-btn .fw{padding:0 12px 0 8px}
 }
 
+/* ── Optimizacion energetica: puerta y capa ──────────────────── */
+.kp-opt-btn{background:linear-gradient(102deg,#123f5e 0%,#1d5f4a 55%,#2f7a3c 100%)}
+.kp-opt-btn .ic{font-size:17px}
+
+#kpOptCapa{position:fixed;inset:0;z-index:60;background:#081724;
+  display:none;flex-direction:column}
+#kpOptCapa.abierta{display:flex}
+.kp-opt-barra{flex:0 0 auto;display:flex;align-items:center;gap:12px;
+  padding:8px 12px;background:#0d2438;border-bottom:1px solid rgba(255,255,255,.10)}
+.kp-opt-barra button{background:rgba(255,255,255,.10);
+  border:1px solid rgba(255,255,255,.20);color:#dce8f2;border-radius:6px;
+  padding:6px 13px;font-size:13px;cursor:pointer;font-family:inherit}
+.kp-opt-barra button:hover{background:rgba(255,255,255,.18);color:#fff}
+.kp-opt-barra span{font-size:12px;color:#7f9bb2}
+#kpOptMarco{flex:1 1 auto;width:100%;border:0;display:block;background:#081724}
+body.kp-sin-scroll{overflow:hidden}
+
 /* ── Demanda energetica: tablero ─────────────────────────────────
    Fondo oscuro porque la pantalla se dedica a esto: la cifra tiene
    que leerse desde lejos, en una reunion o en un telefono al sol.
@@ -1220,6 +1237,43 @@ function kpBotonDemanda(ambito){
     + '<span class="fw">&rsaquo;</span></button>';
 }
 
+/* Optimizacion no es una vista de esta pantalla: lee sus propias
+   tablas y produce una propuesta que se registra y se sigue. Por eso
+   vive en su archivo y aqui solo hay la puerta. Se abre encima, con
+   el campo y el PAD que el usuario ya tenga puestos, para que no
+   tenga que volver a filtrar lo mismo. */
+function kpBotonOptimizacion(){
+  return '<button class="kp-dem-btn kp-opt-btn" onclick="kpAbrirOptimizacion()">'
+    + '<span class="ic">&#9881;</span>'
+    + '<span class="tx"><span class="t1">Optimizaci&oacute;n energ&eacute;tica</span>'
+    +   '<span class="t2">Propuesta de cambio de TAP por condici&oacute;n de operaci&oacute;n</span></span>'
+    + '<span class="fw">&rsaquo;</span></button>';
+}
+
+function kpAbrirOptimizacion(){
+  const cap = document.getElementById('kpOptCapa');
+  const marco = document.getElementById('kpOptMarco');
+  const q = [];
+  if (kpCampo !== 'all') q.push('campo=' + encodeURIComponent(kpCampo));
+  if (kpPad   !== 'all') q.push('pad='   + encodeURIComponent(kpPad));
+  /* Se apunta cada vez: el alcance de la pantalla de atras pudo
+     cambiar entre una apertura y otra. */
+  marco.src = 'optimizacion.html' + (q.length ? '?' + q.join('&') : '');
+  document.getElementById('kpOptCtx').textContent =
+    (kpCampo === 'all' ? 'Toda la flota' : kpCampo)
+    + (kpPad === 'all' ? '' : ' \u00b7 ' + kpPad);
+  cap.classList.add('abierta');
+  document.body.classList.add('kp-sin-scroll');
+}
+
+function kpCerrarOptimizacion(){
+  document.getElementById('kpOptCapa').classList.remove('abierta');
+  document.body.classList.remove('kp-sin-scroll');
+  /* Se libera el iframe para que no siga consumiendo ni conserve
+     una sesion de trabajo a medias que confunda al reabrir. */
+  document.getElementById('kpOptMarco').src = 'about:blank';
+}
+
 /* Total del conjunto. La aparente se recompone de la activa y la
    reactiva sumadas: sumar kVA individuales da de mas siempre que los
    factores de potencia difieran, que es el caso normal en campo. */
@@ -1692,6 +1746,7 @@ function kpPintarFlota(){
     +  '</div></div></div>';
 
   h += kpBotonDemanda(ambito);
+  h += kpBotonOptimizacion();
 
   if (!d.length){
     h += '<div class="kp-list"><div class="kp-msg">'
@@ -3120,5 +3175,17 @@ else kpMQ.addListener(kpUbicarControles);
 
 kpVerFlota();
 </script>
+
+<!-- Capa de Optimizacion Energetica. Vive fuera del flujo de la
+     pantalla y solo aparece al pedirla, igual que el tablero de
+     demanda pero con su propio archivo detras. -->
+<div id="kpOptCapa">
+  <div class="kp-opt-barra">
+    <button onclick="kpCerrarOptimizacion()">&larr; Volver a condici&oacute;n</button>
+    <span id="kpOptCtx"></span>
+  </div>
+  <iframe id="kpOptMarco" title="Optimizaci&oacute;n Energ&eacute;tica"></iframe>
+</div>
+
 </body>
 </html>
