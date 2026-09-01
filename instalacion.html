@@ -4,6 +4,265 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>C&aacute;lculo de TAP e Instalaci&oacute;n</title>
+
+<!-- Tipografia. Carga diferida a proposito: media="print" hace que el
+     navegador la baje sin bloquear el primer pintado, y onload la habilita.
+     Sin senal en el PAD la interfaz cae al stack del sistema y sigue bien. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style id="kx-tokens">
+/* ═══════════════════════════════════════════════════════════════════════
+   KRONOS·M — SISTEMA DE TEMA  ·  paleta Termografia  ·  v3
+   ───────────────────────────────────────────────────────────────────────
+   Este bloque va INCRUSTADO en cada archivo, no en un CSS aparte.
+   Razon: el service worker sirve los archivos externos desde cache y
+   dejaba la hoja de tema sin cargar, con lo que el boton quedaba crudo
+   y la paleta no aplicaba. Incrustado no hay peticion que se pueda
+   perder, y el modulo abierto en pestana aparte tambien queda tematizado.
+
+   Si cambias un color, cambialo en los cuatro archivos: el bloque es
+   identico en todos y va delimitado por estos mismos comentarios.
+
+   Regla de la paleta: el azul de marca identifica, el gris grafito
+   sostiene, y la rampa calida (ambar - naranja - rojo) se reserva
+   para severidad. Ningun color se usa como adorno.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ---------- CLARO ---------- */
+html[data-tema="claro"]{
+  color-scheme:light;
+
+  --bg:#F1F3F4;          /* fondo de pagina */
+  --surface:#FFFFFF;     /* tarjeta, panel, fila */
+  --surface-2:#E9ECEE;   /* campo, cabecera de tabla, chip */
+  --surface-3:#DDE1E4;   /* realce, barra de progreso */
+  --line:#C8CDD1;
+  --line-soft:#E3E6E9;
+
+  --t1:#1B1F23;          /* texto principal y cifras */
+  --t2:#545C63;          /* texto secundario */
+  --t3:#7D858C;          /* rotulo, unidad, apoyo */
+
+  --brand:#134B70;       /* barra superior */
+  --brand-t:#FFFFFF;
+  --accent:#2F6EA8;      /* interaccion: enlace, foco, seleccion */
+  --accent-soft:#E4EDF6;
+  --accent-line:#B9D0E5;
+  --on-accent:#FFFFFF;
+
+  --ok:#356951;    --ok-bg:#E4EFE9;
+  --warn:#96590F;  --warn-bg:#F7EBD8;
+  --crit:#AC3329;  --crit-bg:#F7E3E1;
+  --alto:#C79312;  --alto-bg:#F8F0D9;   /* extremo de la rampa */
+  --null:#787F85;  --null-bg:#ECEEF0;
+
+
+  --serie-1:#1E4E7A; --serie-2:#2F6EA8; --serie-3:#4C89BE; --serie-4:#6FA3CE;
+  --serie-5:#93BCDD; --serie-6:#B6D0E8; --serie-7:#8B9298;
+  --sombra:0 1px 2px rgba(20,26,32,.07), 0 6px 18px rgba(20,26,32,.06);
+  --sombra-alta:0 10px 32px rgba(20,26,32,.16);
+  --velo:rgba(20,26,32,.42);
+}
+
+/* ---------- OSCURO ---------- */
+html[data-tema="oscuro"]{
+  color-scheme:dark;
+
+  --bg:#181B1F;
+  --surface:#212529;
+  --surface-2:#2A2F35;
+  --surface-3:#343A42;
+  --line:#3B424A;
+  --line-soft:#2B3037;
+
+  --t1:#E7EAED;
+  --t2:#A4ABB3;
+  --t3:#767E86;
+
+  --brand:#0E2436;
+  --brand-t:#E7EAED;
+  --accent:#74A9DC;
+  --accent-soft:#1E2E3D;
+  --accent-line:#2F4A63;
+  --on-accent:#0E1418;
+
+  --ok:#6FA88A;    --ok-bg:#1D2A24;
+  --warn:#E0913F;  --warn-bg:#332614;
+  --crit:#E0685A;  --crit-bg:#331E1B;
+  --alto:#EFC04E;  --alto-bg:#332B14;
+  --null:#767E86;  --null-bg:#262A2F;
+
+
+  --serie-1:#A7C9E8; --serie-2:#74A9DC; --serie-3:#5A87B4; --serie-4:#47708F;
+  --serie-5:#3A5B73; --serie-6:#2E4757; --serie-7:#767E86;
+  --sombra:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.34);
+  --sombra-alta:0 10px 32px rgba(0,0,0,.55);
+  --velo:rgba(0,0,0,.62);
+}
+/* ---------- Tipografia ----------
+   IBM Plex Sans para interfaz, IBM Plex Mono para toda cifra medida:
+   sus numeros son de ancho fijo, asi que las columnas de TAP, carga y
+   factor se alinean sin ayuda. Si la fuente no llega (PAD sin senal)
+   cae al stack del sistema y la interfaz sigue correcta. */
+html[data-tema]{
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  --mono:'IBM Plex Mono','SF Mono',Consolas,'Roboto Mono',monospace;
+}
+
+/* ---------- Alias de los nombres antiguos ----------
+   Las reglas existentes de cada archivo no se tocaron: siguen pidiendo
+   --bg-0, --kp-card, --ki-t1, --ko-line. Aqui esos nombres se redefinen
+   apuntando a los tokens de arriba, y quedan tematizados solos.
+   html[data-tema] gana en especificidad sobre el :root de cada archivo. */
+html[data-tema]{
+  /* index.html */
+  --bg-0:var(--surface);
+  --bg-1:var(--bg);
+  --bg-2:var(--surface-2);
+  --bg-3:var(--surface-3);
+  --text-0:var(--t1);
+  --text-1:var(--t2);
+  --text-2:var(--t3);
+  --accent-dim:var(--accent-line);
+  --accent-bg:var(--accent-soft);
+  --jac-blue:var(--brand);
+  --danger:var(--crit);
+  --danger-bg:var(--crit-bg);
+
+  /* condicion.html */
+  --kp-teal:var(--accent);
+  --kp-green:var(--ok);
+  --kp-ink:var(--t1);
+  --kp-ink2:var(--t2);
+  --kp-ink3:var(--t3);
+  --kp-line:var(--line);
+  --kp-page:var(--bg);
+  --kp-card:var(--surface);
+  --kp-ok:var(--ok);      --kp-ok-bg:var(--ok-bg);
+  --kp-warn:var(--warn);  --kp-warn-bg:var(--warn-bg);
+  --kp-crit:var(--crit);  --kp-crit-bg:var(--crit-bg);
+  --kp-null:var(--null);  --kp-null-bg:var(--null-bg);
+
+  /* instalacion.html */
+  --ki-teal:var(--accent);
+  --ki-green:var(--ok);
+  --ki-bg:var(--bg);
+  --ki-card:var(--surface);
+  --ki-card2:var(--surface-2);
+  --ki-line:var(--line);
+  --ki-line2:var(--line-soft);
+  --ki-t1:var(--t1);
+  --ki-t2:var(--t2);
+  --ki-t3:var(--t3);
+  --ki-ok:var(--ok);
+  --ki-warn:var(--warn);
+  --ki-crit:var(--crit);
+  --ki-null:var(--null);
+
+  /* optimizacion.html */
+  --ko-teal:var(--accent);
+  --ko-green:var(--ok);
+  --ko-bg:var(--bg);
+  --ko-card:var(--surface);
+  --ko-card2:var(--surface-2);
+  --ko-line:var(--line);
+  --ko-line2:var(--line-soft);
+  --ko-t1:var(--t1);
+  --ko-t2:var(--t2);
+  --ko-t3:var(--t3);
+  --ko-ok:var(--ok);
+  --ko-warn:var(--warn);
+  --ko-crit:var(--crit);
+  --ko-null:var(--null);
+}
+
+html[data-tema]{background:var(--bg);}
+html[data-tema] body{background:var(--bg);color:var(--t1);font-family:var(--sans);}
+
+/* Los controles nativos (select, input, checkbox) siguen a color-scheme,
+   pero el borde y el fondo hay que decirselos. */
+html[data-tema] select,
+html[data-tema] input,
+html[data-tema] textarea{font-family:inherit;}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DOCUMENTOS QUE SE IMPRIMEN Y SE FIRMAN
+   El informe de ensayos y el formato GTEC-MT-FO-016 no son interfaz:
+   son hojas. Se les fuerza papel blanco con tinta negra aunque la
+   aplicacion este en oscuro, para que la vista previa coincida con lo
+   que sale de la impresora.
+   ═══════════════════════════════════════════════════════════════════════ */
+#ee-informe, #ot-doc, #print-root{
+  --bg:#FFFFFF;       --bg-0:#FFFFFF;     --bg-1:#FFFFFF;
+  --surface:#FFFFFF;  --surface-2:#F2F2F2;
+  --bg-2:#F2F2F2;     --bg-3:#E8E8E8;     --surface-3:#E8E8E8;
+  --line:#999999;     --line-soft:#CCCCCC;
+  --t1:#000000;       --text-0:#000000;
+  --t2:#555555;       --text-1:#555555;
+  --t3:#666666;       --text-2:#666666;
+  --ok:#2E7D32;       --warn:#E08600;
+  --crit:#C62828;     --danger:#C62828;
+  --kp-ink:#000000;   --kp-card:#FFFFFF;  --kp-page:#FFFFFF;
+  background:#FFFFFF; color:#000000; color-scheme:light;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   INTERRUPTOR DE TEMA
+   El icono anuncia a donde vas, no donde estas: en claro se ve la luna
+   (tocar = oscuro), en oscuro se ve el sol (tocar = claro).
+   Estos estilos son propios y no dependen de ninguna hoja externa, para
+   que el boton no vuelva a quedar crudo si algo falla al cargar.
+   ═══════════════════════════════════════════════════════════════════════ */
+.tema-btn{
+  -webkit-appearance:none;appearance:none;
+  background:none;border:0;margin:0;padding:0;cursor:pointer;line-height:0;
+  width:32px;height:32px;border-radius:8px;flex:0 0 32px;
+  display:inline-flex;align-items:center;justify-content:center;
+  color:rgba(255,255,255,.82);
+  transition:background .15s,color .15s;
+}
+.tema-btn svg{width:18px;height:18px;display:block;}
+.tema-btn:hover{background:rgba(255,255,255,.14);color:#fff;}
+.tema-btn:active{background:rgba(255,255,255,.22);}
+.tema-btn:focus-visible{outline:2px solid rgba(255,255,255,.65);outline-offset:-2px;}
+
+/* Un solo icono visible. El estado por defecto (sin atributo aun) muestra
+   la luna, que es lo correcto porque el arranque sin preferencia es claro. */
+.tema-btn .ico-claro{display:none;}
+.tema-btn .ico-oscuro{display:block;}
+html[data-tema="oscuro"] .tema-btn .ico-claro{display:block;}
+html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
+
+/* El cambio de tema no deberia notarse como animacion. */
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important;animation:none !important;}
+}
+</style>
+
+<script>
+/* Se ejecuta antes de pintar. Si el tema se aplicara desde el final del
+   documento, la pagina destellaria en claro antes de pasar a oscuro. */
+(function () {
+  var t;
+  try { t = localStorage.getItem("kx_tema"); } catch (e) { t = null; }
+  if (t !== "claro" && t !== "oscuro") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "oscuro" : "claro";
+  }
+  document.documentElement.setAttribute("data-tema", t);
+
+  /* El contenedor avisa cuando se cambia de tema con este panel abierto. */
+  window.addEventListener("message", function (ev) {
+    var d = ev.data;
+    if (d && d.tipo === "kx-tema" && (d.tema === "claro" || d.tema === "oscuro")) {
+      document.documentElement.setAttribute("data-tema", d.tema);
+    }
+  });
+})();
+</script>
 <style>
 :root{
   --ki-teal:#12a5b8; --ki-green:#35a853;
@@ -17,7 +276,7 @@ html,body{margin:0;padding:0}
 body{background:var(--ki-bg);color:var(--ki-t1);
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;font-size:14px}
 
-.ki-top{background:linear-gradient(100deg,var(--ki-teal),var(--ki-green));color:#fff;
+.ki-top{background:var(--brand);color:var(--brand-t);
   padding:14px 20px;display:flex;justify-content:space-between;align-items:center;
   gap:14px;flex-wrap:wrap}
 .ki-top h1{margin:0;font-size:20px;font-weight:600}
@@ -33,7 +292,7 @@ body{background:var(--ki-bg);color:var(--ki-t1);
 .ki-card:last-child{margin-bottom:0}
 .ki-card .ct{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
   margin-bottom:12px;flex-wrap:wrap}
-.ki-card .ct b{font-size:13px;font-weight:600;color:#fff}
+.ki-card .ct b{font-size:13px;font-weight:600;color:var(--t1)}
 .ki-card .ct span{font-size:10.5px;color:var(--ki-t3);letter-spacing:.4px;
   text-transform:uppercase}
 
@@ -43,7 +302,7 @@ body{background:var(--ki-bg);color:var(--ki-t1);
 .ki-f label{font-size:12.5px;color:var(--ki-t2);flex:1 1 auto;min-width:0}
 .ki-f label i{font-style:normal;color:var(--ki-t3);font-size:11px;display:block}
 .ki-f input,.ki-f select{background:var(--ki-card2);border:1px solid var(--ki-line);
-  color:#fff;border-radius:5px;padding:5px 7px;font-size:13px;font-family:inherit;
+  color:var(--t1);border-radius:5px;padding:5px 7px;font-size:13px;font-family:inherit;
   width:96px;text-align:right}
 .ki-f select{width:120px;text-align:left}
 .ki-f input:focus,.ki-f select:focus{outline:none;border-color:var(--ki-teal)}
@@ -59,8 +318,8 @@ body{background:var(--ki-bg);color:var(--ki-t1);
 .ki-p.r:before{background:var(--ki-crit)}
 .ki-p .n{font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--ki-t3)}
 .ki-p .fr{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;
-  color:#7fa8c4;margin:3px 0 4px;word-break:break-word}
-.ki-p .r2{font-size:18px;font-weight:600;color:#fff;letter-spacing:-.4px}
+  color:var(--t3);margin:3px 0 4px;word-break:break-word}
+.ki-p .r2{font-size:18px;font-weight:600;color:var(--t1);letter-spacing:-.4px}
 .ki-p .r2 small{font-size:11px;font-weight:400;color:var(--ki-t2);margin-left:3px;
   letter-spacing:0}
 
@@ -81,11 +340,11 @@ table.ki-t .df{color:var(--ki-warn)}
 .ki-tab div{background:var(--ki-card2);border:1px solid var(--ki-line);border-radius:4px;
   padding:5px 2px;text-align:center;font-size:10.5px;color:var(--ki-t3);line-height:1.35}
 .ki-tab div b{display:block;color:var(--ki-t2);font-size:11px;font-weight:600}
-.ki-tab div.on{border-color:var(--ki-teal);background:rgba(18,165,184,.16)}
-.ki-tab div.on b{color:#7fd0dd}
+.ki-tab div.on{border-color:var(--ki-teal);background:var(--accent-soft)}
+.ki-tab div.on b{color:var(--accent)}
 
-.ki-btn{background:linear-gradient(100deg,var(--ki-teal),var(--ki-green));border:none;
-  color:#fff;border-radius:7px;padding:9px 18px;font-size:13px;font-weight:600;
+.ki-btn{background:var(--accent);border:none;
+  color:var(--on-accent);border-radius:7px;padding:9px 18px;font-size:13px;font-weight:600;
   cursor:pointer;font-family:inherit}
 .ki-btn:hover{filter:brightness(1.12)}
 .ki-btn:disabled{opacity:.6;cursor:default;filter:none}
@@ -95,8 +354,8 @@ table.ki-t .df{color:var(--ki-warn)}
 .ki-nota{font-size:11.5px;color:var(--ki-t3);line-height:1.55;margin:12px 0 0}
 .ki-nota b{color:var(--ki-t2);font-weight:600}
 .ki-nota .al{color:var(--ki-warn)}
-.ki-av{background:rgba(224,162,48,.10);border:1px solid rgba(224,162,48,.35);
-  border-radius:7px;padding:9px 11px;font-size:12px;color:#e8c07a;line-height:1.5;
+.ki-av{background:var(--warn-bg);border:1px solid var(--warn);
+  border-radius:7px;padding:9px 11px;font-size:12px;color:var(--warn);line-height:1.5;
   margin-top:11px}
 </style>
 </head>

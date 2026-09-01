@@ -5,8 +5,242 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
 <title>KRONOS·M</title>
 
-<!-- Paleta y tipografia: fuente unica para toda la plataforma. -->
-<link rel="stylesheet" href="tokens.css">
+<!-- Tipografia. Carga diferida a proposito: media="print" hace que el
+     navegador la baje sin bloquear el primer pintado, y onload la habilita.
+     Sin senal en el PAD la interfaz cae al stack del sistema y sigue bien. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style id="kx-tokens">
+/* ═══════════════════════════════════════════════════════════════════════
+   KRONOS·M — SISTEMA DE TEMA  ·  paleta Termografia  ·  v3
+   ───────────────────────────────────────────────────────────────────────
+   Este bloque va INCRUSTADO en cada archivo, no en un CSS aparte.
+   Razon: el service worker sirve los archivos externos desde cache y
+   dejaba la hoja de tema sin cargar, con lo que el boton quedaba crudo
+   y la paleta no aplicaba. Incrustado no hay peticion que se pueda
+   perder, y el modulo abierto en pestana aparte tambien queda tematizado.
+
+   Si cambias un color, cambialo en los cuatro archivos: el bloque es
+   identico en todos y va delimitado por estos mismos comentarios.
+
+   Regla de la paleta: el azul de marca identifica, el gris grafito
+   sostiene, y la rampa calida (ambar - naranja - rojo) se reserva
+   para severidad. Ningun color se usa como adorno.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ---------- CLARO ---------- */
+html[data-tema="claro"]{
+  color-scheme:light;
+
+  --bg:#F1F3F4;          /* fondo de pagina */
+  --surface:#FFFFFF;     /* tarjeta, panel, fila */
+  --surface-2:#E9ECEE;   /* campo, cabecera de tabla, chip */
+  --surface-3:#DDE1E4;   /* realce, barra de progreso */
+  --line:#C8CDD1;
+  --line-soft:#E3E6E9;
+
+  --t1:#1B1F23;          /* texto principal y cifras */
+  --t2:#545C63;          /* texto secundario */
+  --t3:#7D858C;          /* rotulo, unidad, apoyo */
+
+  --brand:#134B70;       /* barra superior */
+  --brand-t:#FFFFFF;
+  --accent:#2F6EA8;      /* interaccion: enlace, foco, seleccion */
+  --accent-soft:#E4EDF6;
+  --accent-line:#B9D0E5;
+  --on-accent:#FFFFFF;
+
+  --ok:#356951;    --ok-bg:#E4EFE9;
+  --warn:#96590F;  --warn-bg:#F7EBD8;
+  --crit:#AC3329;  --crit-bg:#F7E3E1;
+  --alto:#C79312;  --alto-bg:#F8F0D9;   /* extremo de la rampa */
+  --null:#787F85;  --null-bg:#ECEEF0;
+
+
+  --serie-1:#1E4E7A; --serie-2:#2F6EA8; --serie-3:#4C89BE; --serie-4:#6FA3CE;
+  --serie-5:#93BCDD; --serie-6:#B6D0E8; --serie-7:#8B9298;
+  --sombra:0 1px 2px rgba(20,26,32,.07), 0 6px 18px rgba(20,26,32,.06);
+  --sombra-alta:0 10px 32px rgba(20,26,32,.16);
+  --velo:rgba(20,26,32,.42);
+}
+
+/* ---------- OSCURO ---------- */
+html[data-tema="oscuro"]{
+  color-scheme:dark;
+
+  --bg:#181B1F;
+  --surface:#212529;
+  --surface-2:#2A2F35;
+  --surface-3:#343A42;
+  --line:#3B424A;
+  --line-soft:#2B3037;
+
+  --t1:#E7EAED;
+  --t2:#A4ABB3;
+  --t3:#767E86;
+
+  --brand:#0E2436;
+  --brand-t:#E7EAED;
+  --accent:#74A9DC;
+  --accent-soft:#1E2E3D;
+  --accent-line:#2F4A63;
+  --on-accent:#0E1418;
+
+  --ok:#6FA88A;    --ok-bg:#1D2A24;
+  --warn:#E0913F;  --warn-bg:#332614;
+  --crit:#E0685A;  --crit-bg:#331E1B;
+  --alto:#EFC04E;  --alto-bg:#332B14;
+  --null:#767E86;  --null-bg:#262A2F;
+
+
+  --serie-1:#A7C9E8; --serie-2:#74A9DC; --serie-3:#5A87B4; --serie-4:#47708F;
+  --serie-5:#3A5B73; --serie-6:#2E4757; --serie-7:#767E86;
+  --sombra:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.34);
+  --sombra-alta:0 10px 32px rgba(0,0,0,.55);
+  --velo:rgba(0,0,0,.62);
+}
+/* ---------- Tipografia ----------
+   IBM Plex Sans para interfaz, IBM Plex Mono para toda cifra medida:
+   sus numeros son de ancho fijo, asi que las columnas de TAP, carga y
+   factor se alinean sin ayuda. Si la fuente no llega (PAD sin senal)
+   cae al stack del sistema y la interfaz sigue correcta. */
+html[data-tema]{
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  --mono:'IBM Plex Mono','SF Mono',Consolas,'Roboto Mono',monospace;
+}
+
+/* ---------- Alias de los nombres antiguos ----------
+   Las reglas existentes de cada archivo no se tocaron: siguen pidiendo
+   --bg-0, --kp-card, --ki-t1, --ko-line. Aqui esos nombres se redefinen
+   apuntando a los tokens de arriba, y quedan tematizados solos.
+   html[data-tema] gana en especificidad sobre el :root de cada archivo. */
+html[data-tema]{
+  /* index.html */
+  --bg-0:var(--surface);
+  --bg-1:var(--bg);
+  --bg-2:var(--surface-2);
+  --bg-3:var(--surface-3);
+  --text-0:var(--t1);
+  --text-1:var(--t2);
+  --text-2:var(--t3);
+  --accent-dim:var(--accent-line);
+  --accent-bg:var(--accent-soft);
+  --jac-blue:var(--brand);
+  --danger:var(--crit);
+  --danger-bg:var(--crit-bg);
+
+  /* condicion.html */
+  --kp-teal:var(--accent);
+  --kp-green:var(--ok);
+  --kp-ink:var(--t1);
+  --kp-ink2:var(--t2);
+  --kp-ink3:var(--t3);
+  --kp-line:var(--line);
+  --kp-page:var(--bg);
+  --kp-card:var(--surface);
+  --kp-ok:var(--ok);      --kp-ok-bg:var(--ok-bg);
+  --kp-warn:var(--warn);  --kp-warn-bg:var(--warn-bg);
+  --kp-crit:var(--crit);  --kp-crit-bg:var(--crit-bg);
+  --kp-null:var(--null);  --kp-null-bg:var(--null-bg);
+
+  /* instalacion.html */
+  --ki-teal:var(--accent);
+  --ki-green:var(--ok);
+  --ki-bg:var(--bg);
+  --ki-card:var(--surface);
+  --ki-card2:var(--surface-2);
+  --ki-line:var(--line);
+  --ki-line2:var(--line-soft);
+  --ki-t1:var(--t1);
+  --ki-t2:var(--t2);
+  --ki-t3:var(--t3);
+  --ki-ok:var(--ok);
+  --ki-warn:var(--warn);
+  --ki-crit:var(--crit);
+  --ki-null:var(--null);
+
+  /* optimizacion.html */
+  --ko-teal:var(--accent);
+  --ko-green:var(--ok);
+  --ko-bg:var(--bg);
+  --ko-card:var(--surface);
+  --ko-card2:var(--surface-2);
+  --ko-line:var(--line);
+  --ko-line2:var(--line-soft);
+  --ko-t1:var(--t1);
+  --ko-t2:var(--t2);
+  --ko-t3:var(--t3);
+  --ko-ok:var(--ok);
+  --ko-warn:var(--warn);
+  --ko-crit:var(--crit);
+  --ko-null:var(--null);
+}
+
+html[data-tema]{background:var(--bg);}
+html[data-tema] body{background:var(--bg);color:var(--t1);font-family:var(--sans);}
+
+/* Los controles nativos (select, input, checkbox) siguen a color-scheme,
+   pero el borde y el fondo hay que decirselos. */
+html[data-tema] select,
+html[data-tema] input,
+html[data-tema] textarea{font-family:inherit;}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DOCUMENTOS QUE SE IMPRIMEN Y SE FIRMAN
+   El informe de ensayos y el formato GTEC-MT-FO-016 no son interfaz:
+   son hojas. Se les fuerza papel blanco con tinta negra aunque la
+   aplicacion este en oscuro, para que la vista previa coincida con lo
+   que sale de la impresora.
+   ═══════════════════════════════════════════════════════════════════════ */
+#ee-informe, #ot-doc, #print-root{
+  --bg:#FFFFFF;       --bg-0:#FFFFFF;     --bg-1:#FFFFFF;
+  --surface:#FFFFFF;  --surface-2:#F2F2F2;
+  --bg-2:#F2F2F2;     --bg-3:#E8E8E8;     --surface-3:#E8E8E8;
+  --line:#999999;     --line-soft:#CCCCCC;
+  --t1:#000000;       --text-0:#000000;
+  --t2:#555555;       --text-1:#555555;
+  --t3:#666666;       --text-2:#666666;
+  --ok:#2E7D32;       --warn:#E08600;
+  --crit:#C62828;     --danger:#C62828;
+  --kp-ink:#000000;   --kp-card:#FFFFFF;  --kp-page:#FFFFFF;
+  background:#FFFFFF; color:#000000; color-scheme:light;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   INTERRUPTOR DE TEMA
+   El icono anuncia a donde vas, no donde estas: en claro se ve la luna
+   (tocar = oscuro), en oscuro se ve el sol (tocar = claro).
+   Estos estilos son propios y no dependen de ninguna hoja externa, para
+   que el boton no vuelva a quedar crudo si algo falla al cargar.
+   ═══════════════════════════════════════════════════════════════════════ */
+.tema-btn{
+  -webkit-appearance:none;appearance:none;
+  background:none;border:0;margin:0;padding:0;cursor:pointer;line-height:0;
+  width:32px;height:32px;border-radius:8px;flex:0 0 32px;
+  display:inline-flex;align-items:center;justify-content:center;
+  color:rgba(255,255,255,.82);
+  transition:background .15s,color .15s;
+}
+.tema-btn svg{width:18px;height:18px;display:block;}
+.tema-btn:hover{background:rgba(255,255,255,.14);color:#fff;}
+.tema-btn:active{background:rgba(255,255,255,.22);}
+.tema-btn:focus-visible{outline:2px solid rgba(255,255,255,.65);outline-offset:-2px;}
+
+/* Un solo icono visible. El estado por defecto (sin atributo aun) muestra
+   la luna, que es lo correcto porque el arranque sin preferencia es claro. */
+.tema-btn .ico-claro{display:none;}
+.tema-btn .ico-oscuro{display:block;}
+html[data-tema="oscuro"] .tema-btn .ico-claro{display:block;}
+html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
+
+/* El cambio de tema no deberia notarse como animacion. */
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important;animation:none !important;}
+}
+</style>
 
 <script>
 /* Se ejecuta antes de pintar. Si el tema se aplicara desde el final del
@@ -223,8 +457,8 @@ html,body{height:100%;margin:0;}
 }
 #panel-instalacion .panel-body:fullscreen{background:var(--bg-0)}
 .ee-pill{display:inline-block;padding:1px 7px;border-radius:9px;font-size:11px;font-weight:600;margin:0 3px}
-.ee-ok{background:#E8F5E9;color:#2E7D32}.ee-warn{background:#FFF3E0;color:#E08600}
-.ee-bad{background:#FFEBEE;color:#C62828}.ee-na{background:#F2F2F2;color:#666}
+.ee-ok{background:var(--ok-bg);color:var(--ok)}.ee-warn{background:var(--warn-bg);color:var(--warn)}
+.ee-bad{background:var(--crit-bg);color:var(--crit)}.ee-na{background:var(--null-bg);color:var(--null)}
 .ee-fila{padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
 .ee-in{width:100%;min-width:64px;padding:5px 6px;border:1px solid var(--line);border-radius:6px;font-size:13px}
 .tabla-ficha{width:100%;border-collapse:collapse;font-size:13px}
@@ -437,11 +671,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 .topbar{
   flex-shrink:0;padding:14px 16px 10px;border-bottom:1px solid var(--line);
   display:flex;justify-content:space-between;align-items:center;
-  background:linear-gradient(90deg,var(--jac-blue) 0%,var(--accent) 100%);
+  background:var(--brand);
 }
 .topbar .brand{display:flex;flex-direction:column;gap:2px;}
-.topbar .brand b{font-size:16px;font-weight:600;color:#fff;}
-.topbar .brand span{font-size:12px;font-family:var(--mono);color:#fff;opacity:.85;}
+.topbar .brand b{font-size:16px;font-weight:600;color:var(--brand-t);}
+.topbar .brand span{font-size:12px;font-family:var(--mono);color:var(--brand-t);opacity:.82;}
 .sync-badge{
   display:flex;align-items:center;gap:6px;font-size:12px;padding:5px 10px;border-radius:20px;
   background:var(--ok-bg);color:var(--ok);white-space:nowrap;border:1px solid transparent;
@@ -698,7 +932,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 .asis-msg{max-width:88%;font-size:13.5px;line-height:1.55;padding:10px 12px;border-radius:12px}
 .asis-msg.yo{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:4px}
 .asis-msg.ia{align-self:flex-start;background:var(--bg-2);border:1px solid var(--line);border-bottom-left-radius:4px}
-.asis-msg.err{align-self:flex-start;background:#fdecea;border:1px solid #f5c6c2;color:#8a1f16}
+.asis-msg.err{align-self:flex-start;background:var(--crit-bg);border:1px solid var(--crit);color:var(--crit)}
 .asis-fuente{font-size:10.5px;opacity:.6;margin-top:6px;font-family:ui-monospace,monospace}
 .asis-acciones{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
 .asis-acciones button{
@@ -2792,7 +3026,7 @@ function fechaEspejo(reg) {
 
 /* Aviso uniforme para cuando se esta viendo una copia local. */
 function bannerEspejo(reg, queEs) {
-  return '<div class="empty" style="border-left:3px solid #B26A00;text-align:left;">'
+  return '<div class="empty" style="border-left:3px solid var(--warn);text-align:left;">'
     + '<b>Sin conexi\u00f3n</b><br>Mostrando ' + queEs + ' guardados en este dispositivo el '
     + fechaEspejo(reg) + '. Pueden estar desactualizados.</div>';
 }
@@ -5015,7 +5249,7 @@ function filasConsumoTramite(m) {
       ${c.dias_desde_ultimo_consumo != null
         ? `<br><span style="font-size:11px;opacity:.7">último movimiento hace ${c.dias_desde_ultimo_consumo} días</span>` : ""}
       ${meses != null
-        ? `<br><span style="font-size:11px;${meses > 36 ? "color:#c62828" : "opacity:.7"}">el máximo cubre ${meses} meses</span>` : ""}
+        ? `<br><span style="font-size:11px;${meses > 36 ? "color:var(--crit)" : "opacity:.7"}">el máximo cubre ${meses} meses</span>` : ""}
       </td></tr>`;
   } else {
     /* Ausencia de fila NO es consumo cero: es que el material no venia en el
@@ -5033,7 +5267,7 @@ function filasConsumoTramite(m) {
     out += `<tr><td>Ya solicitado<br><span style="font-weight:400;opacity:.6;font-size:11px">${m.centro}</span></td>
       <td><b>${Number(t.cantidad_en_tramite) || 0} und</b> en trámite
       <br><span style="font-size:11px;opacity:.7">SOLPED ${t.solicitudes || "—"} · hace ${dias} días</span>
-      ${alerta ? `<br><span style="font-size:11px;color:#c62828">${alerta}</span>` : ""}
+      ${alerta ? `<br><span style="font-size:11px;color:var(--crit)">${alerta}</span>` : ""}
       </td></tr>`;
   }
   return out;
@@ -6614,9 +6848,9 @@ function eeTendencia() {
       <div style="margin-bottom:10px">
         <div class="mat-stock"><b>${g}</b> · último ${EE_num(p[p.length - 1].v)} MΩ @40°C · mínimo ${min} MΩ</div>
         <svg viewBox="0 0 ${W} ${H}" style="width:100%;max-width:420px;height:auto">
-          <line x1="0" y1="${yMin}" x2="${W}" y2="${yMin}" stroke="#C62828" stroke-dasharray="4 3" stroke-width="1"/>
+          <line x1="0" y1="${yMin}" x2="${W}" y2="${yMin}" style="stroke:var(--crit)" stroke-dasharray="4 3" stroke-width="1"/>
           <polyline points="${linea}" fill="none" stroke="#0C5292" stroke-width="2"/>
-          ${vals.map((v, i) => `<circle cx="${px(i)}" cy="${py(v)}" r="3" fill="${p[i].v < min ? "#C62828" : "#359E68"}"/>`).join("")}
+          ${vals.map((v, i) => `<circle cx="${px(i)}" cy="${py(v)}" r="3" style="fill:${p[i].v < min ? "var(--crit)" : "var(--ok)"}"/>`).join("")}
         </svg>
         <div class="mat-stock">${p[0].fecha} → ${p[p.length - 1].fecha} · escala logarítmica</div>
       </div>`;
@@ -7916,13 +8150,13 @@ function equivFilaCodigo(codigo, nombre, stock, minimo, proveedor, idPar, marcad
   const obs = esObsoleto(codigo);
   const vig = obs ? codigosObsoletos.get(String(codigo)).codigo_vigente : null;
   return `
-    <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid ${obs ? "#c62828" : "var(--line)"};border-radius:9px;margin-bottom:6px;cursor:${obs ? "not-allowed" : "pointer"};background:var(--bg-2);opacity:${obs ? ".72" : "1"}">
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:9px 10px;border:1px solid ${obs ? "var(--crit)" : "var(--line)"};border-radius:9px;margin-bottom:6px;cursor:${obs ? "not-allowed" : "pointer"};background:var(--bg-2);opacity:${obs ? ".72" : "1"}">
       <input type="radio" name="pref-${idPar}" value="${codigo}" ${marcado && !obs ? "checked" : ""} ${obs ? "disabled" : ""} style="margin-top:3px;flex-shrink:0"/>
       <span style="min-width:0;flex:1">
         <span class="mat-code">${codigo}</span>
         <span class="mat-desc" style="white-space:normal">${nombre || "(sin nombre técnico)"}</span>
         <span class="mat-stock">Existencia ${Number(stock) || 0} · Mínimo configurado ${Number(minimo) || 0} · ${proveedor || "Sin proveedor"}</span>
-        ${obs ? `<span class="mat-stock" style="color:#c62828"><b>SAP lo declara obsoleto${vig ? " — usar " + vig : ""}</b>. No puede quedar como código preferente.</span>` : ""}
+        ${obs ? `<span class="mat-stock" style="color:var(--crit)"><b>SAP lo declara obsoleto${vig ? " — usar " + vig : ""}</b>. No puede quedar como código preferente.</span>` : ""}
       </span>
     </label>`;
 }
@@ -7934,10 +8168,10 @@ function renderEquivalencias() {
   /* 1. Alerta: grupos que estan dirigiendo las compras a un codigo muerto.
         Va de primero porque es un defecto activo, no una sugerencia. */
   if (equivMalApuntados.length) {
-    html += `<div class="section-label" style="color:#c62828">Requiere corrección (${equivMalApuntados.length})</div>`;
+    html += `<div class="section-label" style="color:var(--crit)">Requiere corrección (${equivMalApuntados.length})</div>`;
     equivMalApuntados.forEach(g => {
       html += `
-      <div style="border:1px solid #c62828;border-radius:12px;padding:12px;margin-bottom:12px;background:var(--bg-1)">
+      <div style="border:1px solid var(--crit);border-radius:12px;padding:12px;margin-bottom:12px;background:var(--bg-1)">
         <span class="badge badge-CRITICO">CÓDIGO PREFERENTE OBSOLETO</span>
         <div class="mat-desc" style="white-space:normal;margin-top:6px">
           El grupo pide con <b>${g.codigo_preferente}</b>, que SAP dio de baja.
@@ -7947,7 +8181,7 @@ function renderEquivalencias() {
           <button class="btn-primary" style="margin-top:9px"
             onclick="corregirPreferenteObsoleto('${g.id}','${g.codigo_vigente_sugerido}')">
             Cambiar preferente a ${g.codigo_vigente_sugerido}</button>`
-          : `<div class="mat-stock" style="color:#c62828">No se pudo leer el código vigente en la nota. Corregir a mano.</div>`}
+          : `<div class="mat-stock" style="color:var(--crit)">No se pudo leer el código vigente en la nota. Corregir a mano.</div>`}
       </div>`;
     });
   }
@@ -7977,7 +8211,7 @@ function renderEquivalencias() {
         <div class="mat-stock">Nombre técnico: ${p.nombre_vigente || "(sin registrar)"}</div>
         <div class="mat-stock">Mín-máx configurado: ${p.params_obsoleto} centro(s) en el obsoleto · ${p.params_vigente} en el vigente</div>
         ${parcial
-          ? `<div class="mat-stock" style="color:#c62828;margin-top:6px">Uno de los dos ya pertenece a otro grupo. Revísalo en la lista de grupos aprobados antes de unirlos.</div>`
+          ? `<div class="mat-stock" style="color:var(--crit);margin-top:6px">Uno de los dos ya pertenece a otro grupo. Revísalo en la lista de grupos aprobados antes de unirlos.</div>`
           : `<button class="btn-secondary" style="margin-top:9px" onclick="agruparParObsoleto(${i})">Agrupar con ${p.codigo_vigente} como preferente</button>`}
       </div>`;
     });
@@ -9350,12 +9584,12 @@ function pintarResumenPreparacion() {
   let p = null;
   try { p = JSON.parse(kmAlmacen.getItem(PREP_KEY) || "null"); } catch (e) {}
   if (!p) {
-    caja.innerHTML = '<span style="color:#C62828;font-weight:600">Este dispositivo no est\u00e1 preparado.</span>'
+    caja.innerHTML = '<span style="color:var(--crit);font-weight:600">Este dispositivo no est\u00e1 preparado.</span>'
       + '<br>Sin descargar, en campo solo funciona lo que hayas abierto antes con se\u00f1al.';
     return;
   }
   const dias = Math.floor((Date.now() - new Date(p.ts).getTime()) / 86400000);
-  const color = dias >= 7 ? "#C62828" : (dias >= 3 ? "#B26A00" : "#1B7F4B");
+  const color = dias >= 7 ? "var(--crit)" : (dias >= 3 ? "var(--warn)" : "var(--ok)");
   caja.innerHTML = '<span style="color:' + color + ';font-weight:600">\u00daltima descarga: '
     + new Date(p.ts).toLocaleString("es-CO", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
     + (dias > 0 ? " (hace " + dias + (dias === 1 ? " d\u00eda" : " d\u00edas") + ")" : "") + "</span><br>"
@@ -9475,9 +9709,9 @@ async function ejecutarPrepararCampo() {
   pintarResumenPreparacion();
 
   est.innerHTML = fallidas.length
-    ? '<span style="color:#C62828"><b>Incompleto.</b> No se pudo descargar: ' + fallidas.join("; ")
+    ? '<span style="color:var(--crit)"><b>Incompleto.</b> No se pudo descargar: ' + fallidas.join("; ")
       + '. Eso no va a estar disponible en campo.</span>'
-    : '<span style="color:#1B7F4B"><b>Listo.</b> ' + detalle + " guardados en este dispositivo.</span>";
+    : '<span style="color:var(--ok)"><b>Listo.</b> ' + detalle + " guardados en este dispositivo.</span>";
 }
 
 async function cargarPanelPerfil() {
@@ -10320,7 +10554,7 @@ async function abrirCargaSap() {
       const dias = Math.floor((Date.now() - new Date(u.created_at)) / 86400000);
       return `<tr><td><b>${t}</b></td>
         <td>${u.filas} filas · ${u.fecha_desde || "?"} a ${u.fecha_hasta || "?"}</td>
-        <td style="text-align:right;${dias > 30 ? "color:#c62828" : ""}">hace ${dias} d</td></tr>`;
+        <td style="text-align:right;${dias > 30 ? "color:var(--crit)" : ""}">hace ${dias} d</td></tr>`;
     }).join("");
     cont.innerHTML = `<div class="section-label">Última carga</div>
       <table class="tabla-ficha" style="font-size:12px">${filas}</table>`;
@@ -10466,14 +10700,14 @@ function confirmarMapeoSap() {
       (Date.now() - new Date(f.fecha_solicitud)) / 86400000 > 540).length;
     extra = chip("Unidades en trámite", und.toLocaleString("es-CO"))
           + chip("Más antigua", fs[0] || "—")
-          + (viejas ? chip("Con más de 18 meses", viejas, "#c62828") : "");
+          + (viejas ? chip("Con más de 18 meses", viejas, "var(--crit)") : "");
   }
   document.getElementById("csap-resumen").innerHTML =
     chip("Filas a cargar", csapNormalizadas.length) + chip("Materiales", cods.size) + extra;
 
   const avisos = [];
   if (descartadas.length) {
-    avisos.push('<p class="hint-box" style="border-left-color:#c62828"><b>' + descartadas.length +
+    avisos.push('<p class="hint-box" style="border-left-color:var(--crit)"><b>' + descartadas.length +
       " filas se van a descartar</b><br>" + descartadas.slice(0, 6).join("<br>") +
       (descartadas.length > 6 ? "<br>…" : "") + "</p>");
   }
@@ -13597,7 +13831,7 @@ async function dpAbrirDialogo(msg) {
              Detectado de «${msg.unidad}»${comoSalio === "NUMERO" ? " por el número" : ""}.
              Verifica que sea el pozo correcto antes de guardar.</p>`
         : (msg.unidad
-            ? `<p style="margin:0 0 12px;color:#b06a1a;font-size:12px">
+            ? `<p style="margin:0 0 12px;color:var(--warn);font-size:12px">
                  No se pudo identificar el pozo de «${msg.unidad}»: elígelo a mano.</p>`
             : "")}
 
