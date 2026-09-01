@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Seguimiento de Propuestas</title>
+
+<!-- Tipografia. Carga diferida a proposito: media="print" hace que el
+     navegador la baje sin bloquear el primer pintado, y onload la habilita.
+     Sin senal en el PAD la interfaz cae al stack del sistema y sigue bien. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style id="kx-tokens">
+/* ═══════════════════════════════════════════════════════════════════════
+   KRONOS·M — SISTEMA DE TEMA  ·  paleta Termografia  ·  v3
+   ───────────────────────────────────────────────────────────────────────
+   Este bloque va INCRUSTADO en cada archivo, no en un CSS aparte.
+   Razon: el service worker sirve los archivos externos desde cache y
+   dejaba la hoja de tema sin cargar, con lo que el boton quedaba crudo
+   y la paleta no aplicaba. Incrustado no hay peticion que se pueda
+   perder, y el modulo abierto en pestana aparte tambien queda tematizado.
+
+   Si cambias un color, cambialo en los cuatro archivos: el bloque es
+   identico en todos y va delimitado por estos mismos comentarios.
+
+   Regla de la paleta: el azul de marca identifica, el gris grafito
+   sostiene, y la rampa calida (ambar - naranja - rojo) se reserva
+   para severidad. Ningun color se usa como adorno.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ---------- CLARO ---------- */
+html[data-tema="claro"]{
+  color-scheme:light;
+
+  --bg:#F1F3F4;          /* fondo de pagina */
+  --surface:#FFFFFF;     /* tarjeta, panel, fila */
+  --surface-2:#E9ECEE;   /* campo, cabecera de tabla, chip */
+  --surface-3:#DDE1E4;   /* realce, barra de progreso */
+  --line:#C8CDD1;
+  --line-soft:#E3E6E9;
+
+  --t1:#1B1F23;          /* texto principal y cifras */
+  --t2:#545C63;          /* texto secundario */
+  --t3:#7D858C;          /* rotulo, unidad, apoyo */
+
+  --brand:#134B70;       /* barra superior */
+  --brand-t:#FFFFFF;
+  --accent:#2F6EA8;      /* interaccion: enlace, foco, seleccion */
+  --accent-soft:#E4EDF6;
+  --accent-line:#B9D0E5;
+  --on-accent:#FFFFFF;
+
+  --ok:#356951;    --ok-bg:#E4EFE9;
+  --warn:#96590F;  --warn-bg:#F7EBD8;
+  --crit:#AC3329;  --crit-bg:#F7E3E1;
+  --alto:#C79312;  --alto-bg:#F8F0D9;   /* extremo de la rampa */
+  --null:#787F85;  --null-bg:#ECEEF0;
+
+
+  --serie-1:#1E4E7A; --serie-2:#2F6EA8; --serie-3:#4C89BE; --serie-4:#6FA3CE;
+  --serie-5:#93BCDD; --serie-6:#B6D0E8; --serie-7:#8B9298;
+  --sombra:0 1px 2px rgba(20,26,32,.07), 0 6px 18px rgba(20,26,32,.06);
+  --sombra-alta:0 10px 32px rgba(20,26,32,.16);
+  --velo:rgba(20,26,32,.42);
+}
+
+/* ---------- OSCURO ---------- */
+html[data-tema="oscuro"]{
+  color-scheme:dark;
+
+  --bg:#181B1F;
+  --surface:#212529;
+  --surface-2:#2A2F35;
+  --surface-3:#343A42;
+  --line:#3B424A;
+  --line-soft:#2B3037;
+
+  --t1:#E7EAED;
+  --t2:#A4ABB3;
+  --t3:#767E86;
+
+  --brand:#0E2436;
+  --brand-t:#E7EAED;
+  --accent:#74A9DC;
+  --accent-soft:#1E2E3D;
+  --accent-line:#2F4A63;
+  --on-accent:#0E1418;
+
+  --ok:#6FA88A;    --ok-bg:#1D2A24;
+  --warn:#E0913F;  --warn-bg:#332614;
+  --crit:#E0685A;  --crit-bg:#331E1B;
+  --alto:#EFC04E;  --alto-bg:#332B14;
+  --null:#767E86;  --null-bg:#262A2F;
+
+
+  --serie-1:#A7C9E8; --serie-2:#74A9DC; --serie-3:#5A87B4; --serie-4:#47708F;
+  --serie-5:#3A5B73; --serie-6:#2E4757; --serie-7:#767E86;
+  --sombra:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.34);
+  --sombra-alta:0 10px 32px rgba(0,0,0,.55);
+  --velo:rgba(0,0,0,.62);
+}
+/* ---------- Tipografia ----------
+   IBM Plex Sans para interfaz, IBM Plex Mono para toda cifra medida:
+   sus numeros son de ancho fijo, asi que las columnas de TAP, carga y
+   factor se alinean sin ayuda. Si la fuente no llega (PAD sin senal)
+   cae al stack del sistema y la interfaz sigue correcta. */
+html[data-tema]{
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  --mono:'IBM Plex Mono','SF Mono',Consolas,'Roboto Mono',monospace;
+}
+
+/* ---------- Alias de los nombres antiguos ----------
+   Las reglas existentes de cada archivo no se tocaron: siguen pidiendo
+   --bg-0, --kp-card, --ki-t1, --ko-line. Aqui esos nombres se redefinen
+   apuntando a los tokens de arriba, y quedan tematizados solos.
+   html[data-tema] gana en especificidad sobre el :root de cada archivo. */
+html[data-tema]{
+  /* index.html */
+  --bg-0:var(--surface);
+  --bg-1:var(--bg);
+  --bg-2:var(--surface-2);
+  --bg-3:var(--surface-3);
+  --text-0:var(--t1);
+  --text-1:var(--t2);
+  --text-2:var(--t3);
+  --accent-dim:var(--accent-line);
+  --accent-bg:var(--accent-soft);
+  --jac-blue:var(--brand);
+  --danger:var(--crit);
+  --danger-bg:var(--crit-bg);
+
+  /* condicion.html */
+  --kp-teal:var(--accent);
+  --kp-green:var(--ok);
+  --kp-ink:var(--t1);
+  --kp-ink2:var(--t2);
+  --kp-ink3:var(--t3);
+  --kp-line:var(--line);
+  --kp-page:var(--bg);
+  --kp-card:var(--surface);
+  --kp-ok:var(--ok);      --kp-ok-bg:var(--ok-bg);
+  --kp-warn:var(--warn);  --kp-warn-bg:var(--warn-bg);
+  --kp-crit:var(--crit);  --kp-crit-bg:var(--crit-bg);
+  --kp-null:var(--null);  --kp-null-bg:var(--null-bg);
+
+  /* instalacion.html */
+  --ki-teal:var(--accent);
+  --ki-green:var(--ok);
+  --ki-bg:var(--bg);
+  --ki-card:var(--surface);
+  --ki-card2:var(--surface-2);
+  --ki-line:var(--line);
+  --ki-line2:var(--line-soft);
+  --ki-t1:var(--t1);
+  --ki-t2:var(--t2);
+  --ki-t3:var(--t3);
+  --ki-ok:var(--ok);
+  --ki-warn:var(--warn);
+  --ki-crit:var(--crit);
+  --ki-null:var(--null);
+
+  /* optimizacion.html */
+  --ko-teal:var(--accent);
+  --ko-green:var(--ok);
+  --ko-bg:var(--bg);
+  --ko-card:var(--surface);
+  --ko-card2:var(--surface-2);
+  --ko-line:var(--line);
+  --ko-line2:var(--line-soft);
+  --ko-t1:var(--t1);
+  --ko-t2:var(--t2);
+  --ko-t3:var(--t3);
+  --ko-ok:var(--ok);
+  --ko-warn:var(--warn);
+  --ko-crit:var(--crit);
+  --ko-null:var(--null);
+}
+
+html[data-tema]{background:var(--bg);}
+html[data-tema] body{background:var(--bg);color:var(--t1);font-family:var(--sans);}
+
+/* Los controles nativos (select, input, checkbox) siguen a color-scheme,
+   pero el borde y el fondo hay que decirselos. */
+html[data-tema] select,
+html[data-tema] input,
+html[data-tema] textarea{font-family:inherit;}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DOCUMENTOS QUE SE IMPRIMEN Y SE FIRMAN
+   El informe de ensayos y el formato GTEC-MT-FO-016 no son interfaz:
+   son hojas. Se les fuerza papel blanco con tinta negra aunque la
+   aplicacion este en oscuro, para que la vista previa coincida con lo
+   que sale de la impresora.
+   ═══════════════════════════════════════════════════════════════════════ */
+#ee-informe, #ot-doc, #print-root{
+  --bg:#FFFFFF;       --bg-0:#FFFFFF;     --bg-1:#FFFFFF;
+  --surface:#FFFFFF;  --surface-2:#F2F2F2;
+  --bg-2:#F2F2F2;     --bg-3:#E8E8E8;     --surface-3:#E8E8E8;
+  --line:#999999;     --line-soft:#CCCCCC;
+  --t1:#000000;       --text-0:#000000;
+  --t2:#555555;       --text-1:#555555;
+  --t3:#666666;       --text-2:#666666;
+  --ok:#2E7D32;       --warn:#E08600;
+  --crit:#C62828;     --danger:#C62828;
+  --kp-ink:#000000;   --kp-card:#FFFFFF;  --kp-page:#FFFFFF;
+  background:#FFFFFF; color:#000000; color-scheme:light;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   INTERRUPTOR DE TEMA
+   El icono anuncia a donde vas, no donde estas: en claro se ve la luna
+   (tocar = oscuro), en oscuro se ve el sol (tocar = claro).
+   Estos estilos son propios y no dependen de ninguna hoja externa, para
+   que el boton no vuelva a quedar crudo si algo falla al cargar.
+   ═══════════════════════════════════════════════════════════════════════ */
+.tema-btn{
+  -webkit-appearance:none;appearance:none;
+  background:none;border:0;margin:0;padding:0;cursor:pointer;line-height:0;
+  width:32px;height:32px;border-radius:8px;flex:0 0 32px;
+  display:inline-flex;align-items:center;justify-content:center;
+  color:rgba(255,255,255,.82);
+  transition:background .15s,color .15s;
+}
+.tema-btn svg{width:18px;height:18px;display:block;}
+.tema-btn:hover{background:rgba(255,255,255,.14);color:#fff;}
+.tema-btn:active{background:rgba(255,255,255,.22);}
+.tema-btn:focus-visible{outline:2px solid rgba(255,255,255,.65);outline-offset:-2px;}
+
+/* Un solo icono visible. El estado por defecto (sin atributo aun) muestra
+   la luna, que es lo correcto porque el arranque sin preferencia es claro. */
+.tema-btn .ico-claro{display:none;}
+.tema-btn .ico-oscuro{display:block;}
+html[data-tema="oscuro"] .tema-btn .ico-claro{display:block;}
+html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
+
+/* El cambio de tema no deberia notarse como animacion. */
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important;animation:none !important;}
+}
+</style>
+
+<script>
+/* Se ejecuta antes de pintar. Si el tema se aplicara desde el final del
+   documento, la pagina destellaria en claro antes de pasar a oscuro. */
+(function () {
+  var t;
+  try { t = localStorage.getItem("kx_tema"); } catch (e) { t = null; }
+  if (t !== "claro" && t !== "oscuro") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "oscuro" : "claro";
+  }
+  document.documentElement.setAttribute("data-tema", t);
+
+  /* El contenedor avisa cuando se cambia de tema con este panel abierto. */
+  window.addEventListener("message", function (ev) {
+    var d = ev.data;
+    if (d && d.tipo === "kx-tema" && (d.tema === "claro" || d.tema === "oscuro")) {
+      document.documentElement.setAttribute("data-tema", d.tema);
+    }
+  });
+})();
+</script>
+<style>
+:root{
+  --ko-teal:#12a5b8; --ko-green:#35a853;
+  --ko-bg:#081724; --ko-card:#0f2739; --ko-card2:#143349;
+  --ko-line:rgba(255,255,255,.09); --ko-line2:rgba(255,255,255,.06);
+  --ko-t1:#eef4f9; --ko-t2:#a7bccd; --ko-t3:#7f9bb2;
+  --ko-ok:#35a853; --ko-warn:#e0a230; --ko-crit:#d6584a; --ko-null:#5f7d94;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--ko-bg);color:var(--ko-t1);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  font-size:14px}
+
+.ko-top{background:var(--brand);color:var(--brand-t);
+  padding:14px 20px;display:flex;justify-content:space-between;align-items:center;
+  gap:14px;flex-wrap:wrap}
+.ko-top h1{margin:0;font-size:20px;font-weight:600}
+.ko-top .sub{margin:3px 0 0;font-size:13px;opacity:.9}
+.ko-back{background:rgba(255,255,255,.18);border:1px solid rgba(255,255,255,.35);
+  color:var(--brand-t);border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer;
+  font-family:inherit;display:none}
+
+.ko-wrap{padding:18px 20px;max-width:1400px;margin:0 auto}
+
+.ko-cfg{background:var(--ko-card);border:1px solid var(--ko-line);border-radius:9px;
+  padding:12px 14px;margin-bottom:14px;display:flex;gap:18px;flex-wrap:wrap;
+  align-items:flex-end}
+.ko-cfg .g{display:flex;flex-direction:column;gap:5px}
+.ko-cfg label{font-size:10px;letter-spacing:.8px;text-transform:uppercase;color:var(--ko-t3)}
+.ko-cfg select,.ko-cfg input{background:var(--ko-card2);border:1px solid var(--ko-line);
+  color:var(--ko-t1);border-radius:6px;padding:6px 9px;font-size:13px;font-family:inherit}
+.ko-cfg input{width:78px;text-align:right}
+.ko-cfg .nota{flex:1 1 200px;font-size:11px;color:var(--ko-t3);line-height:1.5;min-width:0}
+
+.ko-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+  gap:10px;margin-bottom:14px}
+.ko-h{background:var(--ko-card);border:1px solid var(--ko-line);border-radius:9px;
+  padding:11px 13px;position:relative;overflow:hidden}
+.ko-h:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--ko-teal)}
+.ko-h.g:before{background:var(--ko-green)}
+.ko-h.w:before{background:var(--ko-warn)}
+.ko-h.r:before{background:var(--ko-crit)}
+.ko-h.n:before{background:var(--ko-null)}
+.ko-h .k{font-size:9.5px;letter-spacing:.9px;text-transform:uppercase;color:var(--ko-t3)}
+.ko-h .v{font-size:25px;font-weight:600;letter-spacing:-.6px;margin:3px 0 0;
+  color:var(--t1);line-height:1.05}
+.ko-h .v small{font-size:11.5px;font-weight:400;color:var(--ko-t2);margin-left:3px;
+  letter-spacing:0}
+.ko-h .r2{font-size:11px;color:var(--ko-t3);margin-top:3px}
+
+.ko-card{background:var(--ko-card);border:1px solid var(--ko-line);border-radius:9px;
+  padding:13px 15px;margin-bottom:14px}
+.ko-card .ct{display:flex;justify-content:space-between;align-items:baseline;gap:10px;
+  margin-bottom:12px;flex-wrap:wrap}
+.ko-card .ct b{font-size:13px;font-weight:600;color:var(--t1)}
+.ko-card .ct span{font-size:10.5px;color:var(--ko-t3);letter-spacing:.4px;
+  text-transform:uppercase}
+
+.ko-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.ko-t{width:100%;border-collapse:collapse;font-size:12px;color:var(--ko-t2)}
+table.ko-t th{text-align:right;font-weight:600;color:var(--ko-t3);font-size:10px;
+  letter-spacing:.5px;text-transform:uppercase;padding:0 0 7px 9px;
+  border-bottom:1px solid var(--ko-line);white-space:nowrap}
+table.ko-t th:first-child,table.ko-t td:first-child{text-align:left;padding-left:0}
+table.ko-t td{text-align:right;padding:6px 0 6px 9px;
+  border-bottom:1px solid var(--ko-line2);white-space:nowrap}
+table.ko-t tr:last-child td{border-bottom:none}
+table.ko-t tr.cl{cursor:pointer}
+table.ko-t tr.cl:hover td{background:var(--surface-2)}
+table.ko-t .pz{font-weight:600;color:var(--t1)}
+table.ko-t .sd{color:var(--ko-null)}
+table.ko-t .up{color:var(--accent)}
+table.ko-t .dn{color:var(--ko-warn)}
+.ko-fl{font-size:9px;letter-spacing:.5px;border:1px solid var(--line);
+  border-radius:3px;padding:0 4px;margin-left:6px;color:var(--accent);vertical-align:1px}
+.ko-sem{display:inline-block;width:9px;height:9px;border-radius:2px;margin-left:7px;
+  vertical-align:-1px}
+input.ko-f{background:var(--ko-card2);border:1px solid var(--ko-line);color:var(--t1);
+  border-radius:5px;padding:3px 5px;width:58px;text-align:right;font-size:12px;
+  font-family:inherit}
+input.ko-f:focus{outline:none;border-color:var(--ko-teal)}
+input.ko-f.ed{border-color:var(--ko-teal);color:var(--accent)}
+
+.ko-bar{background:var(--ko-card);border:1px solid var(--ko-line);border-radius:9px;
+  padding:11px 13px;margin-bottom:14px}
+.ko-chips{display:flex;gap:6px;flex-wrap:wrap}
+.ko-bar2{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:9px}
+.ko-chip{background:var(--surface-2);border:1px solid var(--ko-line);
+  color:var(--ko-t2);border-radius:6px;padding:5px 11px;font-size:12.5px;cursor:pointer;
+  font-family:inherit;white-space:nowrap}
+.ko-chip:hover{background:var(--surface-3);color:var(--t1)}
+.ko-chip.on{background:linear-gradient(100deg,var(--ko-teal),var(--ko-green));
+  border-color:transparent;color:var(--on-accent);font-weight:600}
+.ko-chip s{text-decoration:none;color:var(--ko-t3);font-size:11px;margin-left:3px}
+.ko-chip.on s{color:var(--on-accent);opacity:.75}
+.ko-sel2{background:var(--ko-card2);border:1px solid var(--ko-line);color:var(--t1);
+  border-radius:6px;padding:6px 9px;font-size:13px;font-family:inherit;cursor:pointer;
+  max-width:190px}
+.ko-sel2:focus{outline:none;border-color:var(--ko-teal)}
+.ko-bus{background:var(--ko-card2);border:1px solid var(--ko-line);color:var(--t1);
+  border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;
+  flex:1 1 190px;min-width:0}
+.ko-bus:focus{outline:none;border-color:var(--ko-teal)}
+.ko-hint{font-size:11.5px;color:var(--ko-t3)}
+td.ko-mk,th.ko-mk{width:26px;padding-left:0!important;text-align:left!important}
+td.ko-mk input{accent-color:var(--ko-teal);width:15px;height:15px;cursor:pointer;
+  vertical-align:-2px}
+table.ko-t tr.mk td{background:var(--accent-soft)}
+.ko-pre{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;
+  color:var(--ko-t2);background:var(--ko-card2);border:1px solid var(--ko-line);
+  border-radius:7px;padding:11px 12px;margin:0;overflow-x:auto;line-height:1.7;
+  white-space:pre}
+.ko-leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:11px;font-size:11.5px;
+  color:var(--ko-t3)}
+.ko-leg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;
+  vertical-align:-1px}
+.ko-nota{font-size:11.5px;color:var(--ko-t3);line-height:1.55;margin:12px 0 0}
+.ko-nota b{color:var(--ko-t2);font-weight:600}
+.ko-nota .al{color:var(--ko-warn)}
+
+.ko-cad{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:9px}
+.ko-p{background:var(--ko-card2);border:1px solid var(--ko-line);border-radius:7px;
+  padding:9px 11px}
+.ko-p .n{font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--ko-t3)}
+.ko-p .f{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10.5px;
+  color:var(--t3);margin:3px 0 4px;word-break:break-word}
+.ko-p .r{font-size:17px;font-weight:600;color:var(--t1)}
+.ko-p .r small{font-size:11px;font-weight:400;color:var(--ko-t2);margin-left:3px}
+.ko-vacio{padding:24px 14px;text-align:center;color:var(--ko-t3);font-size:13.5px}
+
+@media(max-width:640px){
+  .ko-wrap{padding:14px}
+  .ko-hero{grid-template-columns:repeat(2,1fr)}
+  .ko-h .v{font-size:22px}
+  .ko-cfg{gap:12px}
+}
+
+/* ---------- propio del seguimiento ---------- */
+.ks-est{display:inline-block;font-size:10px;letter-spacing:.6px;text-transform:uppercase;
+  font-weight:600;border-radius:4px;padding:2px 7px;white-space:nowrap;border:1px solid}
+.ks-est.p{color:var(--accent);background:var(--accent-soft);border-color:var(--accent-line)}
+.ks-est.a{color:var(--ko-ok);background:var(--ok-bg);border-color:var(--ko-ok)}
+.ks-est.e{color:var(--t1);background:var(--surface-3);border-color:var(--line)}
+.ks-est.d{color:var(--ko-null);background:var(--null-bg);border-color:var(--line)}
+
+.ks-det{background:var(--ko-card2);border:1px solid var(--ko-line);border-radius:8px;
+  padding:12px 13px;margin-top:10px}
+.ks-det h4{margin:0 0 9px;font-size:11px;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--ko-t3);font-weight:600}
+.ks-cmp{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.ks-c{background:var(--ko-card);border:1px solid var(--ko-line);border-radius:7px;
+  padding:8px 10px}
+.ks-c .n{font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;color:var(--ko-t3)}
+.ks-c .r{font-size:17px;font-weight:600;color:var(--t1);margin-top:2px;
+  font-family:var(--mono,ui-monospace),ui-monospace,monospace;letter-spacing:-.4px}
+.ks-c .r small{font-size:11px;font-weight:400;color:var(--ko-t2);margin-left:3px;
+  font-family:var(--sans);letter-spacing:0}
+.ks-c .r2{font-size:10.5px;color:var(--ko-t3);margin-top:3px}
+.ks-c.ok .r{color:var(--ko-ok)}
+.ks-c.wr .r{color:var(--ko-warn)}
+.ks-c.cr .r{color:var(--ko-crit)}
+
+.ks-flag{display:flex;gap:7px;align-items:flex-start;font-size:11.5px;line-height:1.5;
+  color:var(--ko-t2);margin-top:8px}
+.ks-flag i{flex:0 0 8px;width:8px;height:8px;border-radius:2px;margin-top:4px;
+  background:var(--ko-warn)}
+.ks-flag.n i{background:var(--ko-null)}
+.ks-flag.k i{background:var(--ko-ok)}
+
+.ks-acc{display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:11px}
+.ks-btn{background:var(--surface-2);border:1px solid var(--ko-line);color:var(--ko-t2);
+  border-radius:6px;padding:6px 12px;font-size:12.5px;cursor:pointer;font-family:inherit;
+  white-space:nowrap}
+.ks-btn:hover{background:var(--surface-3);color:var(--t1)}
+.ks-btn:disabled{opacity:.5;cursor:default}
+.ks-btn.ok{background:linear-gradient(100deg,var(--ko-teal),var(--ko-green));
+  border-color:transparent;color:var(--on-accent);font-weight:600}
+.ks-btn.no{border-color:var(--ko-crit);color:var(--ko-crit)}
+.ks-ta{background:var(--ko-card);border:1px solid var(--ko-line);color:var(--t1);
+  border-radius:6px;padding:7px 9px;font-size:12.5px;font-family:inherit;width:100%;
+  margin-top:9px;resize:vertical;min-height:38px}
+.ks-ta:focus{outline:none;border-color:var(--ko-teal)}
+.ks-fec{background:var(--ko-card);border:1px solid var(--ko-line);color:var(--t1);
+  border-radius:6px;padding:5px 8px;font-size:12.5px;font-family:inherit}
+.ks-msg{font-size:11.5px;color:var(--ko-t3);margin-top:8px;line-height:1.5}
+.ks-msg.err{color:var(--ko-crit)}
+</style>
+</head>
+<body>
+
+<div class="ko-top">
+  <div>
+    <h1>Seguimiento de Propuestas</h1>
+    <p class="sub">Qu&eacute; se propuso, qu&eacute; se aprob&oacute;, qu&eacute; se
+      ejecut&oacute; y cu&aacute;nto se recuper&oacute;</p>
+  </div>
+  <button class="ko-back" id="ksVolver" style="display:block">&larr; Optimizaci&oacute;n</button>
+</div>
+
+<div class="ko-wrap" id="ksVista">
+  <div class="ko-card"><div class="ko-vacio">Cargando&hellip;</div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* ============================================================
+   CONEXION
+   Mismo patron que optimizacion.html: la sesion se hereda de
+   Kronos-M, sea como iframe o abierto en pestana aparte, para que
+   no aparezca el aviso de multiples instancias de GoTrue.
+   ============================================================ */
+function ksVentanas(){
+  const v = [];
+  let w = window;
+  for (let i = 0; i < 4; i++){
+    try {
+      if (w.parent && w.parent !== w){ w = w.parent; v.push(w); }
+      else break;
+    } catch(e){ break; }
+  }
+  try { if (window.opener) v.push(window.opener); } catch(e){}
+  try { if (window.top && v.indexOf(window.top) < 0) v.push(window.top); } catch(e){}
+  return v;
+}
+
+function ksCredencial(nombre){
+  const f = ksVentanas();
+  for (var i = 0; i < f.length; i++){
+    try {
+      var v = f[i][nombre];
+      if (v && String(v).indexOf('PEGAR_AQUI') !== 0) return v;
+    } catch(e){}
+  }
+  return null;
+}
+
+let ksSb = null;
+function ksCliente(){
+  if (ksSb) return ksSb;
+  const f = ksVentanas();
+  for (var i = 0; i < f.length; i++){
+    for (const n of ['sb', 'kpSb', 'supabaseClient']){
+      try { if (f[i][n] && f[i][n].rpc) { ksSb = f[i][n]; return ksSb; } } catch(e){}
+    }
+  }
+  const url = ksCredencial('SUPABASE_URL');
+  const key = ksCredencial('SUPABASE_ANON_KEY');
+  if (!url || !key)
+    throw new Error('No se pudo tomar la conexion de Kronos-M. '
+      + 'Recarga con Ctrl+Shift+R; si window.sb sigue en undefined, '
+      + 'el index.html desplegado es anterior a este modulo.');
+  ksSb = window.supabase.createClient(url, key);
+  return ksSb;
+}
+
+/* ============================================================
+   CAPA DE DATOS
+   ============================================================ */
+function ksNum(v){
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return isFinite(n) ? n : null;
+}
+
+async function ksRpc(nombre, args){
+  const { data, error } = await ksCliente().rpc(nombre, args || {});
+  if (error) throw new Error(error.message);
+  return data;
+}
+
+async function ksCargarFlota(){
+  try {
+    const d = await ksRpc('dp_bes_lista');
+    const m = {};
+    (d || []).forEach(r => {
+      if (r && r.pozo) m[r.pozo] = { campo: r.campo || '\u2014', pad: r.pad || '\u2014' };
+    });
+    return m;
+  } catch(e){
+    console.warn('[Kronos-M] Flota no disponible:', e.message);
+    return {};
+  }
+}
+
+/* La tension nominal del variador sale del diseno, no de la
+   propuesta. Sin ella la potencia no se puede calcular y la fila
+   queda sin comparacion en vez de con una cifra inventada. */
+async function ksCargarDiseno(){
+  try {
+    const d = await ksRpc('opt_unidades');
+    const m = {};
+    (d || []).forEach(r => { m[r.pozo] = {
+      v_nom: ksNum(r.v_nom_variador_v),
+      vsd:   r.vsd || null,
+      filtro: !!r.filtro_seno
+    }; });
+    return m;
+  } catch(e){
+    console.warn('[Kronos-M] Diseno no disponible:', e.message);
+    return {};
+  }
+}
+
+/* ============================================================
+   MOTOR
+   Es el mismo de Optimizacion y no puede ser otro: si el estimado
+   sale de una formula y lo medido de otra, la diferencia entre los
+   dos no significa nada. Cada propuesta guardo los criterios con
+   que se calculo, y aqui se recalcula con esos, no con los que
+   esten vigentes hoy.
+   ============================================================ */
+const ksPar = { fp: 0.80, constante: 'sqrt3', vNom: 480 };
+
+function ksK(criterios){
+  const c = (criterios && criterios.constante) || ksPar.constante;
+  return c === 'sqrt3' ? Math.sqrt(3) : Math.pow(3, 1/3);
+}
+function ksFp(criterios){
+  const f = criterios ? ksNum(criterios.fp) : null;
+  return f != null ? f : ksPar.fp;
+}
+
+/* Potencia de entrada al variador, en kW. */
+function ksPotencia(i, vNom, criterios){
+  if (i == null || vNom == null) return null;
+  return ksK(criterios) * i * vNom * ksFp(criterios) / 1000;
+}
+
+/* Una comparacion solo es limpia si el pozo estaba haciendo lo
+   mismo antes y despues. Si la carga del motor o la frecuencia se
+   movieron, la diferencia de potencia ya no es atribuible al
+   cambio de TAP, y decir que si seria atribuirle al modulo un
+   ahorro que produjo el pozo. */
+function ksSalvedades(p){
+  const s = [];
+  const dI = (p.base_i_motor_a && p.post_i_motor_a)
+    ? Math.abs(p.post_i_motor_a - p.base_i_motor_a) / p.base_i_motor_a : null;
+  if (dI != null && dI > 0.05)
+    s.push('La corriente del motor cambi\u00f3 ' + (dI * 100).toFixed(0)
+      + ' % entre las dos lecturas. Parte de la diferencia es del pozo, no del TAP.');
+
+  const dF = (p.base_f_op_hz != null && p.post_f_op_hz != null)
+    ? Math.abs(p.post_f_op_hz - p.base_f_op_hz) : null;
+  if (dF != null && dF > 0.5)
+    s.push('La frecuencia de operaci\u00f3n pas\u00f3 de ' + p.base_f_op_hz.toFixed(1)
+      + ' a ' + p.post_f_op_hz.toFixed(1) + ' Hz. El punto de operaci\u00f3n no es el mismo.');
+
+  /* Evidencia de que el TAP se movio de verdad. La tension en el
+     SUT depende del TAP y de la frecuencia, asi que se compara la
+     relacion V/Hz de antes contra la de despues y se contrasta con
+     el cambio de derivacion que se pidio. */
+  if (p.base_v_sut_v && p.post_v_sut_v && p.base_f_op_hz && p.post_f_op_hz
+      && p.tap_previo_v && p.tap_solicitado_v){
+    const rBase = p.base_v_sut_v / p.base_f_op_hz;
+    const rPost = p.post_v_sut_v / p.post_f_op_hz;
+    const esperado = p.tap_solicitado_v / p.tap_previo_v;
+    const medido   = rPost / rBase;
+    if (Math.abs(esperado - 1) > 0.02
+        && Math.abs(medido - 1) < Math.abs(esperado - 1) * 0.5)
+      s.push('La tensi\u00f3n por hercio en el SUT casi no se movi\u00f3 ('
+        + ((medido - 1) * 100).toFixed(1) + ' % contra un '
+        + ((esperado - 1) * 100).toFixed(1) + ' % esperado). Puede que la derivaci\u00f3n '
+        + 'no se haya cambiado, o que se haya cambiado a otra distinta de la pedida.');
+  }
+  return s;
+}
+
+function ksCalcular(p, dis){
+  const r = Object.assign({}, p);
+  const d = dis[p.pozo] || {};
+  r.vNom   = d.v_nom != null ? d.v_nom : ksPar.vNom;
+  r.vsd    = d.vsd || null;
+  r.kwPost = (p.estado === 'ejecutada')
+    ? ksPotencia(p.post_i_vsd_a, r.vNom, p.criterios) : null;
+  r.ahorro = (p.kw_previo != null && r.kwPost != null) ? p.kw_previo - r.kwPost : null;
+  r.desvio = (r.ahorro != null && p.reduccion_kw != null && p.reduccion_kw !== 0)
+    ? (r.ahorro - p.reduccion_kw) / Math.abs(p.reduccion_kw) : null;
+  r.salvedades = (p.estado === 'ejecutada') ? ksSalvedades(p) : [];
+  return r;
+}
+
+/* ============================================================
+   ESTADO DE PANTALLA
+   ============================================================ */
+let KS = [];                 /* propuestas calculadas */
+let ksFlota = {};
+let ksPuedeAprobar = false;
+let ksRol = null;
+let ksFiltro = 'vigentes';   /* vigentes | propuesta | aprobada | ejecutada | descartada | all */
+let ksCampo = 'all';
+let ksBusca = '';
+let ksAbierta = null;        /* id de la propuesta desplegada */
+
+const KS_ESTADOS = {
+  propuesta:  ['p', 'Propuesta'],
+  aprobada:   ['a', 'Aprobada'],
+  ejecutada:  ['e', 'Ejecutada'],
+  descartada: ['d', 'Descartada']
+};
+
+const KS_FILTROS = [
+  ['vigentes',   'Abiertas'],
+  ['propuesta',  'Por aprobar'],
+  ['aprobada',   'Por ejecutar'],
+  ['ejecutada',  'Ejecutadas'],
+  ['descartada', 'Descartadas'],
+  ['all',        'Todas']
+];
+
+function ksEsc(t){
+  return String(t == null ? '' : t).replace(/[&<>"]/g, c =>
+    ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+function ksF(n, d){
+  return n == null ? '\u2014' : Number(n).toFixed(d == null ? 1 : d);
+}
+function ksFecha(t){
+  if (!t) return '\u2014';
+  const d = new Date(t);
+  if (isNaN(d)) return String(t).slice(0, 10);
+  return d.toISOString().slice(0, 10);
+}
+function ksHoy(){
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+}
+
+function ksCumple(r, f){
+  if (f === 'all') return true;
+  if (f === 'vigentes') return r.estado === 'propuesta' || r.estado === 'aprobada';
+  return r.estado === f;
+}
+
+function ksAmbito(){
+  const q = ksBusca.trim().toUpperCase();
+  return KS.filter(r => {
+    if (!ksCumple(r, ksFiltro)) return false;
+    if (ksCampo !== 'all' && (ksFlota[r.pozo] || {}).campo !== ksCampo) return false;
+    if (q && r.pozo.toUpperCase().indexOf(q) < 0) return false;
+    return true;
+  });
+}
+
+/* ============================================================
+   VISTAS
+   ============================================================ */
+function ksHero(){
+  const abiertas  = KS.filter(r => r.estado === 'propuesta');
+  const aprobadas = KS.filter(r => r.estado === 'aprobada');
+  const ejec      = KS.filter(r => r.estado === 'ejecutada');
+  const conMedida = ejec.filter(r => r.ahorro != null);
+  const kwComp = aprobadas.reduce((a, r) => a + (r.reduccion_kw > 0 ? r.reduccion_kw : 0), 0);
+  const kwReal = conMedida.reduce((a, r) => a + r.ahorro, 0);
+  const kwEst  = conMedida.reduce((a, r) => a + (r.reduccion_kw || 0), 0);
+
+  const h = (cls, k, v, un, r2) => '<div class="ko-h ' + cls + '"><div class="k">' + k
+    + '</div><div class="v">' + v + (un ? '<small>' + un + '</small>' : '')
+    + '</div><div class="r2">' + r2 + '</div></div>';
+
+  return '<div class="ko-hero">'
+    + h('', 'Por aprobar', abiertas.length, '',
+        abiertas.length ? 'la m\u00e1s vieja lleva '
+          + Math.max.apply(null, abiertas.map(r => r.dias_en_estado || 0)) + ' d\u00edas'
+          : 'nada pendiente')
+    + h('g', 'Por ejecutar', aprobadas.length, '',
+        kwComp ? ksF(kwComp, 0) + ' kW comprometidos' : 'sin aprobaciones vigentes')
+    + h('', 'Ejecutadas', ejec.length, '',
+        conMedida.length + ' con ronda posterior')
+    + h(kwReal >= kwEst ? 'g' : 'w', 'Recuperado medido', ksF(kwReal, 1), 'kW',
+        conMedida.length ? 'estimado ' + ksF(kwEst, 1) + ' kW'
+                         : 'a\u00fan sin ronda posterior')
+    + '</div>';
+}
+
+function ksBarra(){
+  const chips = KS_FILTROS.map(([k, t]) => {
+    const n = KS.filter(r => ksCumple(r, k)).length;
+    return '<button class="ko-chip' + (ksFiltro === k ? ' on' : '') + '" data-f="' + k
+      + '">' + t + ' <s>' + n + '</s></button>';
+  }).join('');
+
+  const campos = Array.from(new Set(KS.map(r => (ksFlota[r.pozo] || {}).campo)
+    .filter(c => c && c !== '\u2014'))).sort();
+  const sel = campos.length
+    ? '<select class="ko-sel2" id="ksCampoSel"><option value="all">Todos los campos</option>'
+      + campos.map(c => '<option value="' + ksEsc(c) + '"'
+          + (ksCampo === c ? ' selected' : '') + '>' + ksEsc(c) + '</option>').join('')
+      + '</select>'
+    : '';
+
+  return '<div class="ko-bar">'
+    + '<div class="ko-chips">' + chips + '</div>'
+    + '<div class="ko-bar2">' + sel
+    +   '<input class="ko-bus" id="ksBus" placeholder="Buscar unidad" value="'
+    +     ksEsc(ksBusca) + '">'
+    +   '<button class="ko-chip" id="ksRecargar">Recargar</button>'
+    +   (ksPuedeAprobar
+          ? '<span class="ko-hint">Puede aprobar' + (ksRol ? ' \u00b7 ' + ksEsc(ksRol) : '')
+            + '</span>'
+          : '<span class="ko-hint">Aprobar est\u00e1 reservado a administrador '
+            + 'o supervisor</span>')
+    + '</div></div>';
+}
+
+function ksFila(r){
+  const [cls, txt] = KS_ESTADOS[r.estado] || ['d', r.estado];
+  const ubic = (ksFlota[r.pozo] || {}).campo;
+  const ahorro = r.ahorro != null
+    ? '<span class="' + (r.ahorro > 0 ? 'up' : 'dn') + '">' + ksF(r.ahorro, 1) + '</span>'
+    : (r.estado === 'ejecutada' ? '<span class="sd">sin ronda</span>' : '<span class="sd">\u2014</span>');
+
+  return '<tr class="cl" data-id="' + r.id + '">'
+    + '<td class="pz">' + ksEsc(r.pozo)
+    +   (ubic && ubic !== '\u2014' ? ' <span class="ko-fl">' + ksEsc(ubic) + '</span>' : '')
+    + '</td>'
+    + '<td><span class="ks-est ' + cls + '">' + txt + '</span></td>'
+    + '<td>' + ksF(r.tap_previo_v, 0) + ' \u2192 ' + ksF(r.tap_solicitado_v, 0) + '</td>'
+    + '<td>' + ksF(r.f_max_propuesta, 1) + '</td>'
+    + '<td>' + ksF(r.reduccion_kw, 1) + '</td>'
+    + '<td>' + ahorro + '</td>'
+    + '<td>' + (r.dias_en_estado != null ? r.dias_en_estado : '\u2014') + '</td>'
+    + '</tr>';
+}
+
+function ksTarjetaComp(r){
+  const c = (cls, n, v, un, r2) => '<div class="ks-c ' + cls + '"><div class="n">' + n
+    + '</div><div class="r">' + v + (un ? '<small>' + un + '</small>' : '')
+    + '</div><div class="r2">' + r2 + '</div></div>';
+
+  let h = '<div class="ks-det"><h4>Comparaci&oacute;n</h4><div class="ks-cmp">';
+  h += c('', 'Potencia antes', ksF(r.kw_previo, 1), 'kW',
+         r.base_fecha ? 'lectura del ' + ksFecha(r.base_fecha) : 'sin base congelada');
+  h += c('', 'Potencia despu&eacute;s', ksF(r.kwPost, 1), 'kW',
+         r.post_fecha ? 'lectura del ' + ksFecha(r.post_fecha) : 'sin ronda posterior');
+  h += c('', 'Ahorro estimado', ksF(r.reduccion_kw, 1), 'kW', 'al emitir la propuesta');
+  h += c(r.ahorro == null ? '' : (r.ahorro > 0 ? 'ok' : 'cr'),
+         'Ahorro medido', ksF(r.ahorro, 1), 'kW',
+         r.desvio != null
+           ? (r.desvio >= 0 ? '+' : '') + (r.desvio * 100).toFixed(0) + ' % contra lo estimado'
+           : 'no medible todav\u00eda');
+  h += '</div>';
+
+  if (r.estado === 'ejecutada' && r.post_n === 0)
+    h += '<div class="ks-flag n"><i></i><span>A esta unidad no le han hecho ronda desde '
+       + 'que se ejecut\u00f3 el cambio. Sin lectura posterior no hay nada que medir: '
+       + 'el ahorro estimado sigue siendo una estimaci\u00f3n.</span></div>';
+
+  if (r.kw_previo == null)
+    h += '<div class="ks-flag n"><i></i><span>Esta propuesta se emiti\u00f3 antes de que '
+       + 'se guardara la l\u00ednea base, as\u00ed que no tiene contra qu\u00e9 compararse. '
+       + 'Al volver a emitirla desde Optimizaci\u00f3n queda con base.</span></div>';
+
+  r.salvedades.forEach(t => {
+    h += '<div class="ks-flag"><i></i><span>' + ksEsc(t) + '</span></div>';
+  });
+
+  if (r.estado === 'ejecutada' && r.ahorro != null && !r.salvedades.length)
+    h += '<div class="ks-flag k"><i></i><span>Carga y frecuencia se mantuvieron entre '
+       + 'las dos lecturas, as\u00ed que la diferencia es atribuible al cambio de '
+       + 'derivaci\u00f3n.</span></div>';
+
+  return h + '</div>';
+}
+
+function ksTarjetaDatos(r){
+  const cr = r.criterios || {};
+  const lin = [];
+  lin.push('Emitida        ' + ksFecha(r.creado_en));
+  if (r.aprobada_en)   lin.push('Aprobada       ' + ksFecha(r.aprobada_en));
+  if (r.ejecutada_en)  lin.push('Ejecutada      ' + ksFecha(r.ejecutada_en));
+  if (r.descartada_en) lin.push('Descartada     ' + ksFecha(r.descartada_en));
+  lin.push('');
+  lin.push('F max          ' + ksF(r.f_max_previa_hz, 1) + ' \u2192 '
+           + ksF(r.f_max_propuesta, 1) + ' Hz');
+  lin.push('TAP            ' + ksF(r.tap_previo_v, 0) + ' \u2192 '
+           + ksF(r.tap_solicitado_v, 0) + ' V');
+  lin.push('V nominal VSD  ' + ksF(r.vNom, 0) + ' V');
+  if (r.base_fecha)
+    lin.push('Base           ' + ksFecha(r.base_fecha) + '  ' + (r.base_fuente || '')
+      + '  I VSD ' + ksF(r.base_i_vsd_a, 1) + ' A  I mot ' + ksF(r.base_i_motor_a, 1) + ' A');
+  if (r.post_fecha)
+    lin.push('Posterior      ' + ksFecha(r.post_fecha) + '  ' + (r.post_fuente || '')
+      + '  I VSD ' + ksF(r.post_i_vsd_a, 1) + ' A  I mot ' + ksF(r.post_i_motor_a, 1) + ' A');
+  lin.push('');
+  lin.push('Criterios      ' + (Object.keys(cr).length
+    ? 'FP ' + (cr.fp != null ? cr.fp : '\u2014')
+      + '  k filtro ' + (cr.k_filtro != null ? cr.k_filtro : '\u2014')
+      + '  ' + (cr.constante === 'hoja' ? '3^(1/3)' : '\u221a3')
+      + '  carga ' + (cr.modo_factor_carga || '\u2014')
+    : 'no registrados'));
+  if (r.nota)   lin.push('Nota           ' + r.nota);
+  if (r.motivo) lin.push('Motivo         ' + r.motivo);
+
+  return '<div class="ks-det"><h4>Trazabilidad</h4>'
+    + '<pre class="ko-pre">' + ksEsc(lin.join('\n')) + '</pre></div>';
+}
+
+function ksAcciones(r){
+  const b = (id, cls, txt) => '<button class="ks-btn ' + cls + '" data-a="' + id
+    + '" data-id="' + r.id + '">' + txt + '</button>';
+  let h = '';
+
+  if (r.estado === 'propuesta'){
+    h += ksPuedeAprobar
+      ? b('aprobar', 'ok', 'Aprobar')
+      : '<span class="ko-hint">Pendiente de aprobaci\u00f3n de un administrador '
+        + 'o supervisor.</span>';
+    h += b('descartar', 'no', 'Descartar');
+  } else if (r.estado === 'aprobada'){
+    h += '<label class="ko-hint">Ejecutada el</label>'
+      +  '<input class="ks-fec" type="date" id="ksFec-' + r.id + '" value="' + ksHoy()
+      +  '" max="' + ksHoy() + '">'
+      +  b('ejecutar', 'ok', 'Marcar ejecutada');
+    if (ksPuedeAprobar) h += b('descartar', 'no', 'Descartar');
+  } else if (r.estado === 'ejecutada'){
+    h += '<label class="ko-hint">Corregir fecha</label>'
+      +  '<input class="ks-fec" type="date" id="ksFec-' + r.id + '" value="'
+      +  ksFecha(r.ejecutada_en) + '" max="' + ksHoy() + '">'
+      +  b('fecha', '', 'Guardar fecha');
+  } else {
+    h += ksPuedeAprobar ? b('reabrir', '', 'Reabrir como propuesta')
+                        : '<span class="ko-hint">Cerrada.</span>';
+  }
+
+  const pideMotivo = r.estado === 'propuesta' || r.estado === 'aprobada';
+  return '<div class="ks-acc">' + h + '</div>'
+    + (pideMotivo
+        ? '<textarea class="ks-ta" id="ksMot-' + r.id + '" placeholder="Motivo o '
+          + 'salvedad (opcional). Queda guardado con la decisi\u00f3n."></textarea>'
+        : '')
+    + '<div class="ks-msg" id="ksMsg-' + r.id + '"></div>';
+}
+
+function ksTabla(rs){
+  if (!rs.length)
+    return '<div class="ko-card"><div class="ko-vacio">No hay propuestas en este '
+      + 'filtro.</div></div>';
+
+  let h = '<div class="ko-card"><div class="ct"><b>Propuestas</b><span>'
+    + rs.length + ' de ' + KS.length + ' \u00b7 toque una fila para ver el detalle'
+    + '</span></div><div class="ko-scroll"><table class="ko-t">'
+    + '<thead><tr><th>Unidad</th><th>Estado</th><th>TAP V</th><th>F m&aacute;x</th>'
+    + '<th>kW est.</th><th>kW real</th><th>D&iacute;as</th></tr></thead><tbody>';
+
+  rs.forEach(r => {
+    h += ksFila(r);
+    if (ksAbierta === r.id){
+      h += '<tr><td colspan="7" style="padding:0 0 12px">'
+        + ksTarjetaComp(r) + ksTarjetaDatos(r) + ksAcciones(r) + '</td></tr>';
+    }
+  });
+
+  return h + '</tbody></table></div>'
+    + '<p class="ko-nota">El ahorro medido se calcula con los mismos criterios con que '
+    + 'se emiti&oacute; cada propuesta, no con los vigentes hoy. La potencia es la de '
+    + 'entrada al variador: &radic;3 &middot; I &middot; V nominal &middot; FP.</p></div>';
+}
+
+function ksPintar(){
+  const v = document.getElementById('ksVista');
+  v.innerHTML = ksHero() + ksBarra() + ksTabla(ksAmbito());
+  ksEnlazar();
+}
+
+/* ============================================================
+   ACCIONES
+   Mover un estado es un acto, no un dibujo: se bloquea el boton,
+   se recarga desde la base y se muestra lo que quedo, no lo que
+   se supone que quedo.
+   ============================================================ */
+async function ksAccion(a, id, boton){
+  const msg = document.getElementById('ksMsg-' + id);
+  const mot = document.getElementById('ksMot-' + id);
+  const fec = document.getElementById('ksFec-' + id);
+  const decir = (t, err) => {
+    if (!msg) return;
+    msg.textContent = t;
+    msg.className = 'ks-msg' + (err ? ' err' : '');
+  };
+
+  const previo = boton.textContent;
+  boton.disabled = true;
+  boton.textContent = 'Guardando\u2026';
+
+  try {
+    if (a === 'fecha'){
+      if (!fec || !fec.value) throw new Error('Falta la fecha');
+      const r = await ksRpc('opt_fecha_ejecucion', { p_id: id, p_fecha: fec.value });
+      if (r && r.ok === false) throw new Error(r.error);
+    } else {
+      const destino = a === 'aprobar' ? 'aprobada'
+                    : a === 'descartar' ? 'descartada'
+                    : a === 'ejecutar' ? 'ejecutada' : 'propuesta';
+      const r = await ksRpc('opt_estado_propuesta', {
+        p_id: id, p_estado: destino,
+        p_motivo: (mot && mot.value.trim()) ? mot.value.trim() : null
+      });
+      if (r && r.ok === false) throw new Error(r.error);
+
+      /* Al marcar ejecutada se fija de una vez la fecha real de la
+         intervencion. Si se deja la del registro, una lectura
+         anterior al cambio puede contarse como posterior. */
+      if (destino === 'ejecutada' && fec && fec.value && fec.value !== ksHoy()){
+        const f = await ksRpc('opt_fecha_ejecucion', { p_id: id, p_fecha: fec.value });
+        if (f && f.ok === false) throw new Error(f.error);
+      }
+    }
+    await ksCargar();
+    ksPintar();
+  } catch(e){
+    boton.disabled = false;
+    boton.textContent = previo;
+    decir('No se pudo guardar. ' + e.message, true);
+  }
+}
+
+function ksEnlazar(){
+  document.querySelectorAll('.ko-chip[data-f]').forEach(b => {
+    b.onclick = () => { ksFiltro = b.dataset.f; ksAbierta = null; ksPintar(); };
+  });
+  const cs = document.getElementById('ksCampoSel');
+  if (cs) cs.onchange = e => { ksCampo = e.target.value; ksPintar(); };
+
+  const bs = document.getElementById('ksBus');
+  if (bs) bs.oninput = e => {
+    ksBusca = e.target.value;
+    const pos = e.target.selectionStart;
+    ksPintar();
+    const n = document.getElementById('ksBus');
+    if (n){ n.focus(); n.setSelectionRange(pos, pos); }
+  };
+
+  const rc = document.getElementById('ksRecargar');
+  if (rc) rc.onclick = async () => {
+    rc.disabled = true; rc.textContent = 'Recargando\u2026';
+    try { await ksCargar(); } catch(e){}
+    ksPintar();
+  };
+
+  document.querySelectorAll('tr.cl').forEach(tr => {
+    tr.onclick = () => {
+      ksAbierta = (ksAbierta === tr.dataset.id) ? null : tr.dataset.id;
+      ksPintar();
+    };
+  });
+
+  /* Los controles del detalle viven dentro de una fila que abre y
+     cierra al tocarla. Sin detener la propagacion, escribir el
+     motivo o tocar un boton cerraria el detalle. */
+  document.querySelectorAll('.ks-btn, .ks-ta, .ks-fec').forEach(el => {
+    el.addEventListener('click', ev => ev.stopPropagation());
+  });
+  document.querySelectorAll('.ks-btn[data-a]').forEach(b => {
+    b.onclick = ev => { ev.stopPropagation(); ksAccion(b.dataset.a, b.dataset.id, b); };
+  });
+}
+
+/* ============================================================
+   ARRANQUE
+   ============================================================ */
+async function ksCargar(){
+  const [perm, props, dis, flota, par] = await Promise.all([
+    ksRpc('opt_permisos').catch(() => null),
+    ksRpc('opt_propuestas'),
+    ksCargarDiseno(),
+    ksCargarFlota(),
+    ksRpc('opt_parametros').catch(() => ({}))
+  ]);
+
+  if (par){
+    if (par.fp != null)    ksPar.fp = Number(par.fp);
+    if (par.v_nom != null) ksPar.vNom = Number(par.v_nom);
+  }
+  ksPuedeAprobar = !!(perm && perm.puede_aprobar);
+  ksRol = (perm && perm.rol) || null;
+  ksFlota = flota;
+
+  KS = (props || []).map(p => ksCalcular({
+    id: p.id, pozo: p.pozo, estado: p.estado,
+    f_max_propuesta: ksNum(p.f_max_propuesta),
+    tap_solicitado_v: ksNum(p.tap_solicitado_v),
+    reduccion_kw: ksNum(p.reduccion_kw),
+    kw_previo: ksNum(p.kw_previo),
+    f_max_previa_hz: ksNum(p.f_max_previa_hz),
+    tap_previo_v: ksNum(p.tap_previo_v),
+    criterios: p.criterios || null,
+    nota: p.nota || null, motivo: p.motivo || null,
+    creado_en: p.creado_en, aprobada_en: p.aprobada_en,
+    ejecutada_en: p.ejecutada_en, descartada_en: p.descartada_en,
+    dias_en_estado: p.dias_en_estado,
+    base_fecha: p.base_fecha, base_fuente: p.base_fuente,
+    base_f_op_hz: ksNum(p.base_f_op_hz), base_carga_motor: ksNum(p.base_carga_motor),
+    base_i_vsd_a: ksNum(p.base_i_vsd_a), base_i_motor_a: ksNum(p.base_i_motor_a),
+    base_v_sut_v: ksNum(p.base_v_sut_v),
+    post_fecha: p.post_fecha, post_fuente: p.post_fuente,
+    post_f_op_hz: ksNum(p.post_f_op_hz), post_carga_motor: ksNum(p.post_carga_motor),
+    post_i_vsd_a: ksNum(p.post_i_vsd_a), post_i_motor_a: ksNum(p.post_i_motor_a),
+    post_v_sut_v: ksNum(p.post_v_sut_v),
+    post_n: p.post_n == null ? 0 : Number(p.post_n)
+  }, dis));
+}
+
+document.getElementById('ksVolver').onclick = () => {
+  window.location.href = 'optimizacion.html';
+};
+
+async function ksArrancar(){
+  const v = document.getElementById('ksVista');
+  try {
+    await ksCargar();
+  } catch(e){
+    v.innerHTML = '<div class="ko-card"><div class="ko-vacio">'
+      + 'No se pudieron cargar las propuestas.<br>' + ksEsc(e.message)
+      + '</div></div>';
+    return;
+  }
+  if (!KS.length){
+    v.innerHTML = '<div class="ko-card"><div class="ko-vacio">'
+      + 'Todav&iacute;a no hay propuestas registradas.<br>Emita una desde '
+      + 'Optimizaci&oacute;n Energ&eacute;tica.</div></div>';
+    return;
+  }
+  ksPintar();
+}
+
+ksArrancar();
+</script>
+<script>
+/* Reporte de scroll al contenedor de Kronos-M. Sin padre no hace
+   nada. El boton del asistente vive en la pagina padre y sin este
+   aviso no se entera de que aqui se esta bajando. */
+(function () {
+  if (window.parent === window) return;
+  var ultimo = 0;
+  window.addEventListener("scroll", function () {
+    var y = window.scrollY || document.documentElement.scrollTop || 0;
+    if (Math.abs(y - ultimo) < 4) return;
+    ultimo = y;
+    try { window.parent.postMessage({ tipo: "kx-scroll", y: y }, "*"); }
+    catch (e) { /* origen distinto: se ignora */ }
+  }, { passive: true });
+})();
+</script>
+
+</body>
+</html>

@@ -561,14 +561,43 @@ async function koSincronizar(){
   return data || {};
 }
 
+/* La propuesta viaja con su linea base congelada. Sin la fecha de
+   la lectura, el TAP y la frecuencia que tenia la unidad, y el kW
+   que se calculo sobre ella, no hay contra que medir el ahorro
+   real: la lectura que sustento el calculo deja de ser la mas
+   reciente en cuanto entra la siguiente ronda.
+
+   Los criterios van tambien porque tres de ellos siguen sin
+   decidirse y son editables en pantalla. Una propuesta de hoy y
+   otra de dentro de tres meses solo son comparables si se sabe con
+   que criterio salio cada una. */
 async function koEnviarPropuesta(p){
   const { data, error } = await koCliente().rpc('opt_guardar_propuesta', {
-    p_pozo: p.pozo, p_f_max: p.f_max, p_tap: p.tap,
-    p_reduccion: p.red, p_nota: p.nota || null
+    p_pozo:         p.pozo,
+    p_f_max:        p.f_max,
+    p_tap:          p.tap,
+    p_reduccion:    p.red,
+    p_nota:         p.nota || null,
+    p_base_fecha:   p.base_fecha || null,
+    p_f_max_previa: p.f_max_previa,
+    p_tap_previo:   p.tap_previo,
+    p_kw_previo:    p.kw_previo,
+    p_criterios:    p.criterios || null
   });
   if (error) throw new Error(error.message);
   if (data && data.ok === false) throw new Error(data.error || 'No se pudo guardar');
   return data;
+}
+
+/* Retrato del motor al momento de emitir. */
+function koCriterios(){
+  return {
+    modo_factor_carga: koCfg.modo,
+    k_filtro:          koCfg.kFiltro,
+    fp:                koCfg.fp,
+    constante:         koCfg.raiz,
+    caida_escala_frecuencia: koCfg.escalaCable
+  };
 }
 
 /* Un cero medido es un dato; una cadena vacia no. */
@@ -734,6 +763,13 @@ function koCalcular(u){
     r.dAmp  = u.i_vsd - r.rtNew * u.i_mot;
     const k = koCfg.raiz === 'sqrt3' ? Math.sqrt(3) : Math.pow(3, 1/3);
     r.red   = k * r.dAmp * vNom * koCfg.fp / 1000;
+    /* La reduccion es una diferencia; para comparar contra campo
+       hace falta el absoluto. kwAct es lo que la unidad toma hoy y
+       kwProp lo que tomaria con el TAP propuesto. Por construccion
+       kwAct - kwProp es exactamente r.red, asi que el estimado y lo
+       que despues se mida salen del mismo criterio. */
+    r.kwAct  = k * u.i_vsd * vNom * koCfg.fp / 1000;
+    r.kwProp = k * r.rtNew * u.i_mot * vNom * koCfg.fp / 1000;
   }
   r.ok = true;
   return r;
@@ -822,6 +858,8 @@ function koBarra(amb, rs){
     +     koEsc(koBusca) + '">'
     +   '<button class="ko-chip" id="koSync" title="Trae la ultima ronda de cada unidad">'
     +     'Actualizar desde rondas</button>'
+    +   '<button class="ko-chip" id="koSeg" title="Que se propuso, que se aprobo y '
+    +     'que se recupero">Seguimiento</button>'
     +   '<button class="ko-chip" id="koMarcarTodas">Marcar las ' + amb.length
     +     ' visibles</button>'
     +   (marcadas ? '<button class="ko-chip on" id="koLimpiar">'
@@ -1203,9 +1241,17 @@ async function koRegistrar(boton){
   const fallas = [];
   for (const r of sel){
     try {
-      await koEnviarPropuesta({pozo:r.pozo, f_max:Number(r.fProp.toFixed(1)),
-        tap:Number(r.tapNew.toFixed(0)),
-        red:(r.red != null ? Number(r.red.toFixed(1)) : null)});
+      await koEnviarPropuesta({
+        pozo:         r.pozo,
+        f_max:        Number(r.fProp.toFixed(1)),
+        tap:          Number(r.tapNew.toFixed(0)),
+        red:          (r.red   != null ? Number(r.red.toFixed(1))   : null),
+        base_fecha:   r.u.fecha || null,
+        f_max_previa: (r.u.f_max != null ? Number(r.u.f_max) : null),
+        tap_previo:   (r.u.tap   != null ? Number(r.u.tap)   : null),
+        kw_previo:    (r.kwAct != null ? Number(r.kwAct.toFixed(2)) : null),
+        criterios:    koCriterios()
+      });
       ok += 1;
     } catch(e){ fallas.push(r.pozo + ': ' + e.message); }
   }
@@ -1258,6 +1304,12 @@ function koEnlazar(){
   }
   const sy = document.getElementById('koSync');
   if (sy) sy.onclick = () => koActualizar(sy);
+
+  /* Navegacion dentro del mismo marco. Sirve igual como iframe de
+     Kronos-M, dentro de la capa de Monitoreo y en pestana aparte,
+     porque no depende de que exista un padre al que pedirle nada. */
+  const sg = document.getElementById('koSeg');
+  if (sg) sg.onclick = () => { window.location.href = 'seguimiento.html'; };
 
   const mt = document.getElementById('koMarcarTodas');
   if (mt) mt.onclick = () => {
