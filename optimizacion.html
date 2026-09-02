@@ -335,6 +335,21 @@ table.ko-t tr.cl{cursor:pointer}
 table.ko-t tr.cl:hover td{background:var(--surface-2)}
 table.ko-t .pz{font-weight:600;color:var(--t1)}
 table.ko-t .sd{color:var(--ko-null)}
+/* Flecha y color como canales separados: la flecha dice hacia donde se
+   mueve la magnitud, el color si eso conviene. */
+.ko-d{display:inline-flex;align-items:center;gap:3px;font-weight:600;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
+.ko-d.bien{color:var(--ko-ok)}
+.ko-d.mal{color:var(--ko-crit)}
+.ko-d.ig{color:var(--ko-t3);font-weight:500}
+/* Fila cuyos datos operacionales son anteriores al equipo instalado. Se
+   atenua en lugar de esconderse: la unidad existe y hay que ir a
+   medirla, pero sus numeros no sirven. */
+table.ko-t tr.viejo td{opacity:.42}
+table.ko-t tr.viejo td.pz{opacity:1}
+.ko-adv{display:inline-block;font-size:9px;font-weight:700;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--ko-warn);border:1px solid var(--ko-warn);
+  border-radius:3px;padding:1px 4px;margin-left:5px;vertical-align:middle}
 table.ko-t .up{color:var(--accent)}
 table.ko-t .dn{color:var(--ko-warn)}
 .ko-fl{font-size:9px;letter-spacing:.5px;border:1px solid var(--line);
@@ -545,6 +560,44 @@ async function koCargarUnidades(){
   });
 }
 
+/* Fecha de instalacion del motor vigente, por unidad. Si la lectura es
+   anterior, los calculos corresponden a un motor que ya no esta: fue el
+   caso de CYC-16, que reportaba carga al 120% y una reduccion negativa
+   de 163 kW sobre un equipo que ya se habia cambiado.
+
+   Si la funcion no existe o falla, no se marca nada. El chequeo mejora
+   la lectura de los datos; no puede ser motivo de que el modulo no
+   abra. */
+let KO_VIGENCIA = {};
+
+async function koCargarVigencia(){
+  try {
+    const { data, error } = await koCliente().rpc('opt_vigencia_equipo');
+    if (error) throw new Error(error.message);
+    const m = {};
+    (data || []).forEach(r => {
+      if (r && r.pozo) m[r.pozo] = {
+        instalado: r.motor_instalado_el || null,
+        serial: r.motor_serial || null,
+        previos: r.motores_previos || 0
+      };
+    });
+    KO_VIGENCIA = m;
+  } catch(e){
+    console.warn('[Kronos-M] Vigencia de equipo no disponible:', e.message);
+    KO_VIGENCIA = {};
+  }
+}
+
+/* Devuelve la fecha de instalacion si la lectura es anterior a ella; si
+   no, null. Sin fecha de instalacion registrada no se puede comparar y
+   no se marca: en las unidades de inyeccion ese dato esta vacio. */
+function koDatoViejo(u){
+  const v = KO_VIGENCIA[u.pozo];
+  if (!v || !v.instalado || !u.fecha) return null;
+  return u.fecha < v.instalado ? v.instalado : null;
+}
+
 async function koCargarParametros(){
   const { data, error } = await koCliente().rpc('opt_parametros');
   if (error) throw new Error(error.message);
@@ -587,6 +640,52 @@ async function koEnviarPropuesta(p){
   if (error) throw new Error(error.message);
   if (data && data.ok === false) throw new Error(data.error || 'No se pudo guardar');
   return data;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   FLECHAS Y COLOR
+   ------------------------------------------------------------------
+   La confusion del + y - venia de mezclar dos cosas en un solo signo:
+   hacia donde se mueve la magnitud, y si eso conviene o no. Un ahorro
+   de 55 kW se mostraba como "-55.7" y una unidad subtensionada como
+   "-163.4", el mismo signo para lo bueno y para lo malo.
+
+   Aqui son dos canales separados:
+     la FLECHA dice que hace la magnitud fisica: sube o baja
+     el COLOR  dice si eso conviene: verde bien, ambar ojo, rojo mal
+
+   Asi "consumo ↓ 55.7 kW" en verde y "consumo ↑ 163.4 kW" en rojo se
+   leen sin tener que recordar ninguna convencion. */
+
+const KO_FLECHA = { sube: '\u2191', baja: '\u2193', igual: '\u2192' };
+
+function koDelta(valor, opts){
+  /* opts.mejor: 'baja' si lo deseable es que la magnitud baje.
+     opts.dec:   decimales. opts.umbral: por debajo se considera igual. */
+  if (valor == null) return '<span class="sd">\u2014</span>';
+  const dec = opts.dec != null ? opts.dec : 1;
+  const um  = opts.umbral != null ? opts.umbral : 0;
+  const abs = Math.abs(valor);
+
+  if (abs <= um)
+    return '<span class="ko-d ig">' + KO_FLECHA.igual + ' ' + abs.toFixed(dec) + '</span>';
+
+  const baja = valor > 0;                       /* el valor es la reduccion */
+  const conviene = (opts.mejor === 'baja') === baja;
+  return '<span class="ko-d ' + (conviene ? 'bien' : 'mal') + '">'
+       + (baja ? KO_FLECHA.baja : KO_FLECHA.sube) + ' ' + abs.toFixed(dec) + '</span>';
+}
+
+/* El TAP no se muestra como diferencia con signo sino como la accion a
+   ejecutar. "Subir 245 V" no necesita interpretacion; "-245" si. */
+function koAccionTap(dTap){
+  if (dTap == null) return '<span class="sd">\u2014</span>';
+  const abs = Math.abs(dTap);
+  if (abs < 1) return '<span class="ko-d ig">' + KO_FLECHA.igual + ' en punto</span>';
+  const sem = koSemTap(dTap);
+  return '<span class="ko-d" style="color:' + KO_HEX[sem] + '">'
+       + (dTap > 0 ? KO_FLECHA.baja + ' bajar ' : KO_FLECHA.sube + ' subir ')
+       + abs.toFixed(0) + ' V</span>';
 }
 
 /* Retrato del motor al momento de emitir. */
@@ -912,8 +1011,16 @@ function koPintar(){
   const con = base.filter(r => r.ok);
   const sin = base.length - con.length;
 
-  const kw    = con.filter(r => r.red != null && r.red > 0)
+  /* La suma de ahorro excluye las unidades cuya lectura es anterior al
+     motor instalado. Sumar esos kW seria prometer un ahorro calculado
+     sobre un equipo que ya no esta. */
+  const viejas = con.filter(r => koDatoViejo(r.u));
+  const kw    = con.filter(r => r.red != null && r.red > 0 && !koDatoViejo(r.u))
                    .reduce((a, r) => a + r.red, 0);
+  /* Unidades subtensionadas: el TAP esta por debajo del optimo. No son
+     oportunidad de ahorro sino correccion, y mezclarlas en la misma
+     cifra es lo que hacia aparecer reducciones negativas. */
+  const subT  = con.filter(r => r.dTap != null && r.dTap < -20 && !koDatoViejo(r.u));
   const tapAl = con.filter(r => koSemTap(r.dTap) === 'crit').length;
   const volAl = con.filter(r => koSemVol(r.dVol) === 'crit').length;
   const flt   = con.filter(r => r.u.filtro).length;
@@ -931,14 +1038,27 @@ function koPintar(){
   h += '<div class="ko-hero">'
     + tile('',  'Unidades evaluadas', String(con.length), '',
            sin ? sin + ' sin datos suficientes' : 'todas con datos')
-    + tile('g', 'Reducci&oacute;n estimada', kw.toFixed(0), 'kW',
-           'suma ' + alc + ' con ahorro')
+    /* La flecha en la cifra de ahorro dice lo que pasa con el consumo,
+       que es lo que interesa: baja. Antes el numero solo iba en verde y
+       habia que saber que verde significaba reduccion. */
+    + tile('g', 'Consumo si se ejecuta', '\u2193 ' + kw.toFixed(0), 'kW',
+           'suma de ' + alc + ' unidad' + (alc === 1 ? '' : 'es') + ' con ahorro')
+    /* Separada del ahorro a proposito. Una unidad con el TAP por debajo
+       del optimo no es una oportunidad de ahorro: es una correccion por
+       subtension, y ejecutarla puede costar energia y valer la pena
+       igual. Mezclarlas era lo que producia reducciones negativas. */
+    + tile(subT.length ? 'w' : 'g', 'Subtensionadas', String(subT.length), '',
+           subT.length ? 'el TAP est&aacute; por debajo del &oacute;ptimo'
+                       : 'ninguna por debajo del &oacute;ptimo')
     + tile(tapAl ? 'r' : 'g', 'TAP fuera de rango', String(tapAl), '',
            'diferencia de 100 V o m&aacute;s')
     + tile(volAl ? 'w' : 'g', 'Tensi&oacute;n en alerta', String(volAl), '',
            'desviaci&oacute;n de 150 V o m&aacute;s')
-    + tile('',  'Con filtro seno', String(flt), '',
-           'factor ' + koCfg.kFiltro.toFixed(2) + ' sobre el TAP')
+    + (viejas.length
+        ? tile('w', 'Datos previos al equipo', String(viejas.length), '',
+               'lectura anterior al motor instalado')
+        : tile('',  'Con filtro seno', String(flt), '',
+               'factor ' + koCfg.kFiltro.toFixed(2) + ' sobre el TAP'))
     + '</div>';
 
   const filas = amb.map(r => {
@@ -953,10 +1073,15 @@ function koPintar(){
         + koEsc(koFalta(r)) + '</td></tr>';
     }
     const edit = koProp[u.pozo] != null && koProp[u.pozo] !== koFBase(u);
-    return '<tr class="cl' + (koMarca.has(u.pozo) ? ' mk' : '') + '" data-p="' + u.pozo + '">'
+    const viejo = koDatoViejo(u);
+    return '<tr class="cl' + (koMarca.has(u.pozo) ? ' mk' : '')
+      +   (viejo ? ' viejo' : '') + '" data-p="' + u.pozo + '">'
       + mk
       + '<td class="pz">' + u.pozo
-      +   (u.filtro ? '<span class="ko-fl">FILTRO</span>' : '') + '</td>'
+      +   (u.filtro ? '<span class="ko-fl">FILTRO</span>' : '')
+      +   (viejo ? '<span class="ko-adv" title="La lectura es del '
+                 + u.fecha + ', anterior al motor instalado el '
+                 + viejo + '">dato previo al cambio</span>' : '') + '</td>'
       + '<td>' + u.f_op.toFixed(1) + '</td>'
       + '<td>' + u.f_max.toFixed(1) + '</td>'
       + '<td onclick="event.stopPropagation()">'
@@ -969,14 +1094,12 @@ function koPintar(){
       + '<td>' + (r.tapNew !== r.tapOpt
                     ? '<span class="up">' + r.tapNew.toFixed(0) + '</span>'
                     : r.tapNew.toFixed(0)) + '</td>'
-      + '<td>' + (r.dTap != null ? (r.dTap > 0 ? '+' : '') + r.dTap.toFixed(0) : '\u2014')
-      +   '<span class="ko-sem" style="background:' + KO_HEX[koSemTap(r.dTap)] + '"></span></td>'
+      + '<td>' + koAccionTap(r.dTap) + '</td>'
       + '<td>' + (r.dVol != null ? r.dVol.toFixed(0) : '\u2014')
       +   '<span class="ko-sem" style="background:' + KO_HEX[koSemVol(r.dVol)] + '"></span></td>'
-      + '<td class="' + (r.dAmp == null ? 'sd' : (r.dAmp > 0 ? 'up' : 'dn')) + '">'
-      +   (r.dAmp != null ? (r.dAmp > 0 ? '+' : '') + r.dAmp.toFixed(1) : '\u2014') + '</td>'
-      + '<td class="' + (r.red == null ? 'sd' : (r.red > 0 ? 'up' : 'dn')) + '">'
-      +   (r.red != null ? r.red.toFixed(1) : '\u2014') + '</td>'
+      /* Corriente del variador y consumo: lo deseable es que bajen. */
+      + '<td>' + koDelta(r.dAmp, { mejor:'baja', dec:1, umbral:0.5 }) + '</td>'
+      + '<td>' + koDelta(r.red,  { mejor:'baja', dec:1, umbral:0.5 }) + '</td>'
       + '</tr>';
   }).join('');
 
@@ -994,9 +1117,11 @@ function koPintar(){
     + '<th class="ko-mk"></th><th>Unidad</th><th>F&nbsp;ope</th><th>F&nbsp;m&aacute;x</th>'
     + '<th>F&nbsp;m&aacute;x prop.</th><th>Carga</th><th>Factor</th>'
     + '<th>TAP actual</th><th>TAP &oacute;ptimo</th><th>TAP nuevo</th>'
-    + '<th>&Delta;&nbsp;TAP</th><th>&Delta;&nbsp;Vol</th><th>&Delta;&nbsp;A</th>'
-    + '<th>kW red.</th></tr></thead><tbody>' + filas + '</tbody></table></div>'
+    + '<th>Acci&oacute;n TAP</th><th>&Delta;&nbsp;Vol</th>'
+    + '<th>Corriente VSD</th><th>Consumo</th></tr></thead><tbody>' + filas + '</tbody></table></div>'
     + '<div class="ko-leg">'
+    +   '<span><span class="ko-d bien">\u2193</span>&nbsp;baja y conviene</span>'
+    +   '<span><span class="ko-d mal">\u2191</span>&nbsp;sube y no conviene</span>'
     +   '<span><i style="background:#35a853"></i>Dentro de rango</span>'
     +   '<span><i style="background:#e0a230"></i>Desviaci&oacute;n de 80 a 150 V</span>'
     +   '<span><i style="background:#d6584a"></i>Alerta</span>'
@@ -1372,6 +1497,9 @@ async function koArrancar(){
        defecto; lo que no puede es quedarse en blanco. */
     console.warn('[Kronos-M] Parametros de optimizacion no disponibles:', e.message);
   }
+  /* En paralelo con las unidades: no depende de ellas y su fallo no
+     debe retrasar la pantalla. */
+  koCargarVigencia();
   try {
     KO_DATOS = await koCargarUnidades();
   } catch(e){
