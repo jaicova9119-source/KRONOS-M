@@ -64,6 +64,10 @@
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:var(--fondo);color:var(--texto);font:16px/1.45 var(--sans)}
   header{background:var(--azul);color:#fff;padding:13px 16px;position:sticky;top:0;z-index:10}
+  header .volver{display:inline-flex;align-items:center;gap:5px;background:none;border:none;
+    color:#fff;opacity:.85;font:600 13px var(--sans);padding:0 0 7px;cursor:pointer}
+  header .volver:active{opacity:1}
+  header .volver svg{width:17px;height:17px}
   header .marca{font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;opacity:.7}
   header h1{margin:2px 0 0;font-size:19px;font-weight:600}
   .barra{display:flex;align-items:center;gap:10px;margin-top:7px;font-size:12px;flex-wrap:wrap}
@@ -156,6 +160,11 @@
 <body>
 
 <header>
+  <button class="volver" type="button" onclick="volverACaptura()">
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M15 18l-6-6 6-6"
+      stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    Captura de campo
+  </button>
   <div class="marca">Kronos-M</div>
   <h1>Actualizar unidad</h1>
   <div class="barra">
@@ -520,6 +529,16 @@ function descargarEspejo(){
 /* Descarga deliberada de todo lo que hace falta en campo: el espejo de
    unidades y la placa de cada una. El cache por uso no alcanza, porque
    la unidad que se va a intervenir suele ser la que nunca se abrio. */
+/* A esta pantalla se llega con location.href desde la app de captura,
+   asi que history.back() normalmente sirve. Pero si el tecnico entro por
+   un enlace directo, recargo, o volvio a abrir la PWA aqui, no hay nada
+   atras y el boton no haria nada: quedaria encerrado. Por eso se
+   comprueba que haya historial y, si no, se va a la ruta fija. */
+function volverACaptura(){
+  if (document.referrer && history.length > 1) { history.back(); return; }
+  location.href = 'index.html';
+}
+
 /* Se muestra el icono de lo que se obtiene al tocar, no el del estado
    actual: es lo que la gente espera de un interruptor. */
 function alternarTema(){
