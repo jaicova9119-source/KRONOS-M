@@ -2287,6 +2287,22 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="hint-box" id="ee-aviso-campo" style="display:none"></div>
 
     <div class="section-label">Datos del ensayo</div>
+    <div class="field"><label>Qué se ensayó</label>
+      <select id="ee-e-componente" onchange="eeAvisoComponente()">
+        <option value="MOTOR">Motor en bornes</option>
+        <option value="MOTOR_CABLE">Motor + cable, desde superficie</option>
+        <option value="CABLE">Cable solo</option>
+        <option value="SUT">Transformador elevador (SUT)</option>
+        <option value="GENERADOR">Generador</option>
+      </select>
+      <div class="mat-stock" id="ee-e-comp-nota"></div>
+    </div>
+    <div class="field"><label>Alcance</label>
+      <select id="ee-e-alcance">
+        <option value="FORMAL">Ensayo formal</option>
+        <option value="RUTINA">Rutina de campo</option>
+      </select>
+    </div>
     <div class="field"><label>Fecha</label><input id="ee-e-fecha" type="date"/></div>
     <div class="field"><label>Técnico</label><input id="ee-e-tecnico"/></div>
     <div class="field"><label>Motivo</label>
@@ -6829,7 +6845,8 @@ async function cargarMaquinas() {
 function renderMaquinas() {
   const q = (document.getElementById("ee-buscar").value || "").toLowerCase().trim();
   const lista = eeMaquinas.filter(m => !q ||
-    [m.nombre_efectivo, m.sap_efectivo, m.serial_efectivo, m.marca_efectiva, m.ubicacion_efectiva]
+    [m.nombre_efectivo, m.sap_efectivo, m.serial_efectivo, m.marca_efectiva,
+     m.ubicacion_efectiva, m.unidad]
       .join(" ").toLowerCase().includes(q));
 
   const cont = document.getElementById("ee-lista");
@@ -6837,19 +6854,34 @@ function renderMaquinas() {
     cont.innerHTML = '<div class="empty">No hay máquinas con esa búsqueda.</div>';
     return;
   }
+  /* Orden por urgencia, no por fecha del último ensayo.
+     Antes, ordenar por último ensayo descendente mandaba al final a
+     las que nunca se han ensayado, porque su fecha es nula. Con 120
+     máquinas eso entierra justamente las que hay que atender: las
+     55 recién sembradas no tienen ni un ensayo. Ahora van primero
+     las que nunca se ensayaron y después las más atrasadas. */
   cont.innerHTML = lista
-    .sort((a, b) => (b.ultimo_ensayo || "").localeCompare(a.ultimo_ensayo || ""))
+    .sort((a, b) => {
+      const da = a.ultimo_ensayo ? 0 : 1, db = b.ultimo_ensayo ? 0 : 1;
+      if (da !== db) return db - da;
+      if (!a.ultimo_ensayo) return (a.nombre_efectivo || "").localeCompare(b.nombre_efectivo || "");
+      return (a.ultimo_ensayo || "").localeCompare(b.ultimo_ensayo || "");
+    })
     .map(m => `
       <div class="eq-card" onclick="abrirMaquina('${m.id}')">
         <div class="eq-top">
           <span class="eq-code">${m.sap_efectivo || m.serial_efectivo || "sin código"}</span>
+          ${m.unidad ? `<span class="badge badge-OK">${m.unidad}</span>` : ""}
           <span class="badge ${m.tipo_maquina === "GENERADOR" ? "badge-SOBRESTOCK" : "badge-OK"}">${m.tipo_maquina}</span>
           ${m.vinculado_a_activos ? "" : '<span class="badge badge-SIN">sin vincular</span>'}
         </div>
         <div class="eq-desc">${m.nombre_efectivo || "(sin nombre)"}</div>
         <div class="eq-loc">${m.ubicacion_efectiva || "Ubicación no registrada"}</div>
         <div class="mat-stock">${m.marca_efectiva || ""} ${m.modelo_efectivo || ""} · ${m.voltaje || "?"} V ·
-          ${m.total_ensayos} ensayo${m.total_ensayos === 1 ? "" : "s"}${m.ultimo_ensayo ? " · último " + m.ultimo_ensayo : ""}</div>
+          ${m.total_ensayos === 0 ? "sin ensayos"
+            : m.total_ensayos + " ensayo" + (m.total_ensayos === 1 ? "" : "s")
+              + (m.ultimo_ensayo ? " · último " + m.ultimo_ensayo
+                 + (m.dias_sin_ensayo != null ? " · hace " + m.dias_sin_ensayo + " d" : "") : "")}</div>
       </div>`).join("");
 }
 
@@ -7271,6 +7303,21 @@ function nuevoEnsayo() {
   });
   const uNuevo = document.getElementById("ee-e-unidad");
   if (uNuevo) uNuevo.value = "Mohm";
+
+  /* El componente por defecto lo decide la máquina, no un valor fijo.
+     Un generador se ensaya como generador. Y en un motor de fondo no
+     hay forma de medir en bornes: el megado se hace desde superficie y
+     arrastra el cable, así que ese es el valor honesto de arranque.
+     Se reconocen por la temperatura máxima de devanado, que en un ESP
+     es 180 °C, muy por encima de una máquina de superficie. */
+  const compSel = document.getElementById("ee-e-componente");
+  if (compSel) {
+    compSel.value = eeMaquinaActual.tipo_maquina === "GENERADOR" ? "GENERADOR"
+      : (eeMaquinaActual.temp_max_devanado_c >= 150 ? "MOTOR_CABLE" : "MOTOR");
+  }
+  const alcSel = document.getElementById("ee-e-alcance");
+  if (alcSel) alcSel.value = "FORMAL";
+  eeAvisoComponente();
   document.getElementById("ee-e-vsug").textContent =
     `Sugerido por IEEE 43 para ${eeMaquinaActual.voltaje} V: ${EE_vPruebaSugerida(eeMaquinaActual.voltaje)} VDC`;
   eePintarTablas();
@@ -7398,6 +7445,31 @@ function eeRecalcular() {
   eeGuardarBorrador();
 }
 
+/* El dictamen IEEE 43 no juzga igual un motor en bornes que uno medido a
+   traves de su cable: el cable aporta su propia fuga y empuja el indice
+   de polarizacion hacia abajo. Y en un ESP la correccion a 40 grados se
+   sale del rango definido de la curva, porque esos motores operan por
+   encima de 85 C. El aviso no bloquea nada: deja dicho con que salvedad
+   hay que leer el resultado, antes de medirlo y no despues. */
+function eeAvisoComponente() {
+  const c = document.getElementById("ee-e-componente");
+  const n = document.getElementById("ee-e-comp-nota");
+  if (!c || !n) return;
+  const m = eeMaquinaActual;
+  const esp = m && m.temp_max_devanado_c && m.temp_max_devanado_c >= 150;
+  const notas = {
+    MOTOR: "Medición en bornes, sin cable de por medio.",
+    MOTOR_CABLE: "El valor incluye la fuga del cable, así que sale por debajo del "
+      + "motor solo. Comparable únicamente contra otros ensayos del mismo tipo."
+      + (esp ? " En este motor, además, la temperatura de operación se sale del "
+             + "rango de la curva de corrección: el valor a 40 °C es extrapolado." : ""),
+    CABLE: "Solo el cable, con el motor desconectado.",
+    SUT: "Devanados del transformador elevador.",
+    GENERADOR: "Estator y devanado de campo."
+  };
+  n.textContent = notas[c.value] || "";
+}
+
 /* Borrador local: los ensayos se hacen en campo, muchas veces sin señal.
    Se guarda mientras escribes y se recupera al volver a abrir. */
 function eeGuardarBorrador() {
@@ -7449,6 +7521,8 @@ async function guardarEnsayo() {
       horas_paro: num("paro"), condicion: document.getElementById("ee-e-cond").value,
       v_prueba: num("vprueba"), megger: g("megger") || null, megger_serie: g("meggerserie") || null,
       megger_calibracion: g("cal") || null, marcacion: m.marcacion, n_bobinas: m.n_bobinas,
+      componente: document.getElementById("ee-e-componente").value,
+      alcance: document.getElementById("ee-e-alcance").value,
       temp_medicion_bobinas: num("trdev"), instrumento_bobinas: g("micro") || null,
       observaciones: g("obs") || null,
       firma_ejecutante: eeFirmaEjec || null,
