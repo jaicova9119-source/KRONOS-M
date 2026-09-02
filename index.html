@@ -6842,12 +6842,36 @@ async function cargarMaquinas() {
   }
 }
 
+/* Clave de comparacion: mayusculas, sin acentos, sin guiones ni espacios,
+   y sin ceros a la izquierda. Con esto "cyc16" y "16" encuentran CYC-16,
+   que es como se escribe cuando se tiene el megohmetro en la otra mano.
+   Es la misma regla del buscador de la app de captura: si las dos
+   pantallas emparejan distinto, se aprenden dos comportamientos para lo
+   mismo. */
+function eeClave(t) {
+  return String(t == null ? "" : t).toUpperCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^A-Z0-9]/g, "")
+    .replace(/\d+/g, d => String(parseInt(d, 10)));
+}
+
 function renderMaquinas() {
-  const q = (document.getElementById("ee-buscar").value || "").toLowerCase().trim();
-  const lista = eeMaquinas.filter(m => !q ||
-    [m.nombre_efectivo, m.sap_efectivo, m.serial_efectivo, m.marca_efectiva,
-     m.ubicacion_efectiva, m.unidad]
-      .join(" ").toLowerCase().includes(q));
+  const bruto = (document.getElementById("ee-buscar").value || "").trim();
+  const q  = bruto.toLowerCase();
+  const qc = eeClave(bruto);
+  const lista = eeMaquinas.filter(m => {
+    if (!bruto) return true;
+    const campos = [m.nombre_efectivo, m.sap_efectivo, m.serial_efectivo,
+                    m.marca_efectiva, m.ubicacion_efectiva,
+                    m.unidad, m.unidad_instalacion];
+    if (campos.join(" ").toLowerCase().includes(q)) return true;
+    /* Segunda pasada sobre las claves. El nombre y la unidad son los que
+       llevan guion; marca y ubicacion se quedan con la comparacion
+       literal, porque ahi los espacios separan palabras. */
+    return !!qc && [m.nombre_efectivo, m.unidad, m.unidad_instalacion,
+                    m.serial_efectivo, m.sap_efectivo]
+      .some(v => v && eeClave(v).includes(qc));
+  });
 
   const cont = document.getElementById("ee-lista");
   if (!lista.length) {
@@ -6871,7 +6895,12 @@ function renderMaquinas() {
       <div class="eq-card" onclick="abrirMaquina('${m.id}')">
         <div class="eq-top">
           <span class="eq-code">${m.sap_efectivo || m.serial_efectivo || "sin código"}</span>
-          ${m.unidad ? `<span class="badge badge-OK">${m.unidad}</span>` : ""}
+          ${(m.unidad_instalacion || m.unidad)
+              ? `<span class="badge ${m.estado_instalacion === "RETIRADA" ? "badge-SIN" : "badge-OK"}">${m.unidad_instalacion || m.unidad}</span>`
+              : ""}
+          ${m.estado_instalacion === "RETIRADA"
+              ? `<span class="badge badge-SOBRESTOCK">retirada${m.retirado_el ? " " + m.retirado_el : ""}</span>`
+              : ""}
           <span class="badge ${m.tipo_maquina === "GENERADOR" ? "badge-SOBRESTOCK" : "badge-OK"}">${m.tipo_maquina}</span>
           ${m.vinculado_a_activos ? "" : '<span class="badge badge-SIN">sin vincular</span>'}
         </div>
@@ -6911,6 +6940,12 @@ async function abrirMaquina(id) {
     ["Marcación / bobinas", m.marcacion + " · " + m.n_bobinas],
     ["Criticidad", m.criticidad],
     ["En Activos", m.vinculado_a_activos ? "Sí · " + (m.id_interno || "") : "No vinculada"],
+    ["Estado", m.estado_instalacion === "INSTALADA"
+        ? "Instalada" + (m.unidad_instalacion ? " en " + m.unidad_instalacion : "")
+      : m.estado_instalacion === "RETIRADA"
+        ? "Retirada" + (m.unidad_instalacion ? " de " + m.unidad_instalacion : "")
+          + (m.retirado_el ? " el " + m.retirado_el : "")
+      : ""],
   ].filter(([, v]) => v);
 
   try {
@@ -6922,7 +6957,8 @@ async function abrirMaquina(id) {
 
     cont.innerHTML = `
       <div style="display:flex;gap:8px;margin-bottom:12px">
-        <button class="btn-primary" style="flex:1" onclick="nuevoEnsayo()">Nuevo ensayo</button>
+        <button class="btn-primary" style="flex:1" id="ee-btn-nuevo-ensayo"
+          onclick="nuevoEnsayo()">Nuevo ensayo</button>
         <button class="btn-secondary" onclick="editarMaquina('${m.id}')">Editar datos</button>
       </div>
       ${m.notas ? `<p class="hint-box">${m.notas}</p>` : ""}
@@ -7292,6 +7328,27 @@ function eeSellarTecnico(ensayo) {
 
 function nuevoEnsayo() {
   if (!eeMaquinaActual) { toast("Elige primero una máquina"); return; }
+
+  /* Un motor retirado conserva su historial, y debe conservarlo: es lo que
+     permite comparar el antes y el despues de una reparacion. Lo que no
+     puede es recibir ensayos nuevos, porque ya no esta en operacion y el
+     dato quedaria colgado del equipo equivocado.
+
+     Quien decide esto es datapredictiva.instalaciones, que mantienen los
+     tecnicos desde la app de campo al registrar el cambio de equipo. El
+     modulo solo lo obedece. */
+  if (eeMaquinaActual.estado_instalacion === "RETIRADA") {
+    const u = eeMaquinaActual.unidad_instalacion;
+    alert("Esta máquina está registrada como retirada"
+      + (u ? " de " + u : "")
+      + (eeMaquinaActual.retirado_el ? " el " + eeMaquinaActual.retirado_el : "")
+      + ", así que no admite ensayos nuevos. Su historial se conserva.\n\n"
+      + (u ? "Para ensayar el equipo que está en operación, busca " + u
+             + " y elige el que aparece como instalado.\n\n" : "")
+      + "Si en realidad volvió a montarse, regístralo primero en Captura de "
+      + "datos de campo · Actualizar equipos de la unidad.");
+    return;
+  }
   eeEnsayoEditando = null;
   abrirPanel("panel-ee-ensayo");
   document.getElementById("ee-ens-titulo").textContent = "Nuevo ensayo";
