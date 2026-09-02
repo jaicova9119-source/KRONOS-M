@@ -1323,6 +1323,638 @@ function koPintar(){
   koEnlazar();
 }
 
+/* ══════════════════════════════════════════════════════════════════
+   EXPORTAR PROPUESTAS A EXCEL
+   ------------------------------------------------------------------
+   Tres hojas: Resumen para presentar, Detalle para pivotear, Metodo
+   para defender la cifra cuando alguien la cuestione.
+
+   LAS GRAFICAS VAN COMO IMAGEN, y hay que decirlo de entrada: ni
+   ExcelJS ni SheetJS pueden crear graficas nativas de Excel. Es una
+   carencia conocida de las dos librerias, no algo que se resuelva
+   con maña. Asi que se dibujan en canvas y se incrustan. Se ven
+   exactamente como se disenaron e imprimen bien; el precio es que no
+   se actualizan si alguien filtra la tabla. Por eso la hoja Detalle
+   va cruda y con autofiltro: quien quiera su propia grafica la hace
+   desde ahi.
+
+   LA TARIFA NO SE INVENTA. Va como celda de entrada, vacia, y el
+   ahorro en dinero es una FORMULA de Excel de verdad. Gerencia
+   cambia el numero y todo se recalcula. Poner una tarifa supuesta
+   seria darle a la cifra una precision que no tiene.
+
+   ExcelJS se carga solo al exportar. Este modulo se usa sin senal en
+   el PAD y una libreria de 900 KB desde un CDN no puede ser peso
+   muerto en cada apertura.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ---------- formatos con flecha y color ----------
+   El formato de numero personalizado de Excel tiene tres secciones
+   separadas por punto y coma: positivo, negativo y cero. Cada una
+   admite su color y su texto literal, asi que la flecha y el color
+   los aplica Excel segun el signo, sin pintar celda por celda.
+
+   Eso vale mas que el formato manual por tres razones: sobrevive al
+   filtrar y al ordenar, el valor sigue siendo numerico para pivotear
+   y graficar, y no hay que recorrer las filas para colorearlas.
+
+   Ojo con la seccion negativa: Excel formatea el valor ABSOLUTO, asi
+   que "\u2191 "#,##0 sobre un -55.7 muestra "\u2191 55.7" sin el signo.
+   Es justo lo que se quiere: la flecha ya dice la direccion y el signo
+   duplicado confunde.
+
+   Donde CERO es lo deseable no se usa flecha. En la desviacion de
+   tension ni sobrar ni faltar conviene, asi que ahi va escala de color
+   por magnitud y no direccion. */
+const KX_FMT = {
+  /* Positivo = la magnitud baja = conviene. Es la convencion del
+     modulo: r.red y r.dAmp son reducciones. */
+  bajaConviene: '[Green]"\u2193 "#,##0.0;[Red]"\u2191 "#,##0.0;[Color15]"\u2192 "0.0',
+  bajaConvieneEnt: '[Green]"\u2193 "#,##0;[Red]"\u2191 "#,##0;[Color15]"\u2192 "0',
+  /* Accion sobre el TAP: ni subir ni bajar es bueno o malo en si, asi
+     que un solo color y la flecha dice que hacer. */
+  accionTap: '[Blue]"\u2191 subir "#,##0" V";[Blue]"\u2193 bajar "#,##0" V";"\u2192 en punto"',
+  volts: '#,##0" V"',
+  voltsFirmado: '"+"#,##0;"-"#,##0;0',
+  amp: '#,##0" A"',
+  kw: '#,##0.0" kW"',
+  pct: '0"%"'
+};
+
+const KX_C = {
+  azul:   'FF0C5292', azul2: 'FF316CA1', blanco: 'FFFFFFFF',
+  verde:  'FF2E7D32', rojo:  'FFC62828', naranja: 'FFE08600',
+  gris:   'FF666666', gris2: 'FF999999',
+  fAzul:  'FFE3F2FD', fVerde: 'FFE8F5E9', fRojo: 'FFFFEBEE',
+  fNaranja:'FFFFF3E0', fGris: 'FFF2F2F2', linea: 'FFD9D9D9',
+  fAmar:  'FFFFF9E0'
+};
+
+/* ---------- carga diferida de ExcelJS ---------- */
+async function kxExcelJS(){
+  if (window.ExcelJS) return window.ExcelJS;
+  /* La aplicacion padre ya la trae cargada; reusarla ahorra la
+     descarga y funciona sin red. */
+  try { if (window.parent && window.parent !== window && window.parent.ExcelJS)
+    return window.parent.ExcelJS; } catch(e){}
+  await new Promise((ok, err) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    s.onload = ok;
+    s.onerror = () => err(new Error('No se pudo descargar ExcelJS. '
+      + 'La exportacion necesita conexion.'));
+    document.head.appendChild(s);
+  });
+  if (!window.ExcelJS) throw new Error('ExcelJS no quedo disponible');
+  return window.ExcelJS;
+}
+
+/* ---------- graficas en canvas ----------
+   Se dibujan al doble de resolucion y se reducen al insertarlas, o en
+   pantalla de alta densidad y al imprimir salen borrosas. */
+function kxLienzo(anchoPx, altoPx){
+  const e = 2;
+  const c = document.createElement('canvas');
+  c.width = anchoPx * e; c.height = altoPx * e;
+  const g = c.getContext('2d');
+  g.scale(e, e);
+  g.fillStyle = '#ffffff';
+  g.fillRect(0, 0, anchoPx, altoPx);
+  g.textBaseline = 'middle';
+  return { c, g, w: anchoPx, h: altoPx };
+}
+
+function kxHex(argb){ return '#' + argb.slice(2); }
+
+/* Barras horizontales, una por unidad, ordenadas. Horizontales y no
+   verticales porque las etiquetas son codigos de pozo: en vertical
+   habria que girarlas y se vuelven ilegibles al proyectar. */
+function kxGraficaBarras(datos, titulo, unidad){
+  const filas = datos.length;
+  const altoFila = 22, margenSup = 46, margenInf = 26;
+  const { c, g, w } = kxLienzo(560, margenSup + filas * altoFila + margenInf);
+  const izq = 76, der = 56;
+  const ancho = w - izq - der;
+  const max = Math.max(...datos.map(d => Math.abs(d.valor)), 1);
+
+  g.fillStyle = kxHex(KX_C.azul);
+  g.font = '600 14px Arial';
+  g.fillText(titulo, 12, 18);
+  g.fillStyle = kxHex(KX_C.gris2);
+  g.font = '11px Arial';
+  g.fillText(unidad, 12, 34);
+
+  datos.forEach((d, i) => {
+    const y = margenSup + i * altoFila;
+    const largo = Math.max(2, Math.abs(d.valor) / max * ancho);
+    g.fillStyle = kxHex(KX_C.gris);
+    g.font = '11px Arial';
+    g.textAlign = 'right';
+    g.fillText(d.nombre, izq - 8, y + altoFila / 2);
+    g.fillStyle = d.valor >= 0 ? kxHex(KX_C.verde) : kxHex(KX_C.rojo);
+    g.fillRect(izq, y + 4, largo, altoFila - 9);
+    g.font = '600 11px Arial';
+    g.textAlign = 'left';
+    g.fillText(d.valor.toFixed(1), izq + largo + 6, y + altoFila / 2);
+    g.textAlign = 'left';
+  });
+
+  g.strokeStyle = kxHex(KX_C.linea);
+  g.beginPath(); g.moveTo(izq, margenSup - 4);
+  g.lineTo(izq, margenSup + filas * altoFila); g.stroke();
+  return c.toDataURL('image/png');
+}
+
+/* Actual contra propuesto. Dos barras y nada mas: es la cifra de
+   portada y cualquier adorno le resta. */
+function kxGraficaAntesDespues(kwActual, kwPropuesto){
+  const { c, g, w, h } = kxLienzo(420, 240);
+  const base = h - 44, tope = 62;
+  const max = Math.max(kwActual, kwPropuesto, 1);
+  const bar = 92, x1 = 84, x2 = 236;
+
+  g.fillStyle = kxHex(KX_C.azul);
+  g.font = '600 14px Arial';
+  g.fillText('Consumo de la flota propuesta', 12, 20);
+  g.fillStyle = kxHex(KX_C.gris2);
+  g.font = '11px Arial';
+  g.fillText('kW en el punto de operacion actual', 12, 36);
+
+  [[x1, kwActual, 'Hoy', KX_C.gris2], [x2, kwPropuesto, 'Con el cambio', KX_C.verde]]
+    .forEach(([x, v, et, col]) => {
+      const alto = Math.max(3, (v / max) * (base - tope));
+      g.fillStyle = kxHex(col);
+      g.fillRect(x, base - alto, bar, alto);
+      g.fillStyle = kxHex(KX_C.azul);
+      g.font = '600 15px Arial';
+      g.textAlign = 'center';
+      g.fillText(Math.round(v).toLocaleString('es-CO'), x + bar / 2, base - alto - 14);
+      g.fillStyle = kxHex(KX_C.gris);
+      g.font = '11px Arial';
+      g.fillText(et, x + bar / 2, base + 16);
+      g.textAlign = 'left';
+    });
+
+  const dif = kwActual - kwPropuesto;
+  if (dif > 0){
+    g.fillStyle = kxHex(KX_C.verde);
+    g.font = '600 12px Arial';
+    g.textAlign = 'center';
+    g.fillText('\u2193 ' + dif.toFixed(0) + ' kW  ('
+      + (dif / kwActual * 100).toFixed(1) + ' %)', w / 2, h - 12);
+    g.textAlign = 'left';
+  }
+  return c.toDataURL('image/png');
+}
+
+/* ---------- el libro ----------
+   Funcion pura: recibe filas y devuelve el libro. Igual que
+   construirLibroReporte del modulo de materiales, para poder
+   reutilizarla desde una Edge Function si algun dia el reporte se
+   envia por correo. */
+function kxLibroPropuestas(ExcelJS, filas, meta){
+  const wb = new ExcelJS.Workbook();
+  /* Sin autor ni empresa. El nombre de la herramienta no va solo en el
+     pie visible: ExcelJS lo escribe tambien en las propiedades del
+     archivo, que es donde Excel muestra el autor y donde nadie lo mira
+     hasta que lo mira. Quitar el pie y dejar esto seria dejarlo
+     igualmente. */
+  wb.creator = '';
+  wb.lastModifiedBy = '';
+  wb.company = '';
+  wb.created = new Date();
+
+  const conAhorro = filas.filter(f => f.kw_red > 0);
+  const conAumento = filas.filter(f => f.kw_red < 0);
+  const kwBaja  = conAhorro.reduce((a, f) => a + f.kw_red, 0);
+  const kwSube  = conAumento.reduce((a, f) => a - f.kw_red, 0);
+  const kwActual = filas.reduce((a, f) => a + (f.kw_actual || 0), 0);
+
+  /* ══ RESUMEN ══ */
+  const rs = wb.addWorksheet('Resumen', {
+    pageSetup: { paperSize: 9, orientation: 'portrait', fitToPage: true,
+                 fitToWidth: 1, fitToHeight: 0, margins:
+                 { left:.4, right:.4, top:.5, bottom:.5, header:.2, footer:.2 } }
+  });
+  /* Ocho columnas: las cuatro tarjetas KPI se colocan en B, D, F y H,
+     y sin la octava definida la ultima salia sin ancho ni formato. */
+  rs.columns = [{ width: 3 }, { width: 26 }, { width: 16 }, { width: 18 },
+                { width: 16 }, { width: 16 }, { width: 16 }, { width: 16 }];
+
+  const tit = rs.getCell('B2');
+  tit.value = 'Optimizacion energetica · propuestas de cambio de TAP';
+  tit.font = { bold: true, size: 15, color: { argb: KX_C.azul } };
+  rs.mergeCells('B2:H2');
+  const sub = rs.getCell('B3');
+  sub.value = meta.subtitulo;
+  sub.font = { size: 10, color: { argb: KX_C.gris } };
+  rs.mergeCells('B3:H3');
+  rs.getRow(2).height = 22;
+
+  /* KPI. Cada tarjeta es titulo arriba y cifra abajo: al proyectar,
+     el ojo va primero al numero grande. */
+  let f = 5;
+  const kpi = [
+    ['Unidades propuestas', filas.length, '', KX_C.azul, KX_C.fAzul, '#,##0'],
+    /* La flecha va dentro del formato: dice que el consumo BAJA, que es
+       lo que la cifra significa. Un "196,5 kW" suelto se puede leer como
+       consumo y no como reduccion. */
+    ['Consumo que baja', kwBaja, 'kW', KX_C.verde, KX_C.fVerde,
+      '"\u2193 "#,##0.0" kW"'],
+    ['Consumo que sube', kwSube, 'kW', kwSube > 0 ? KX_C.naranja : KX_C.gris2,
+      kwSube > 0 ? KX_C.fNaranja : KX_C.fGris,
+      kwSube > 0 ? '"\u2191 "#,##0.0" kW"' : '"\u2192 "#,##0.0" kW"'],
+    ['Reduccion neta sobre el total', kwActual > 0 ? (kwBaja - kwSube) / kwActual : 0,
+      '%', KX_C.azul, KX_C.fAzul, '"\u2193 "0.0%']
+  ];
+  kpi.forEach((k, i) => {
+    const col = 2 + i * 1 + i;      /* B, D, F, H -> se usa merge de 2 */
+    const c1 = rs.getCell(f, col), c2 = rs.getCell(f + 1, col);
+    c1.value = k[0];
+    c1.font = { size: 8.5, bold: true, color: { argb: KX_C.gris } };
+    c1.alignment = { horizontal: 'left' };
+    c2.value = k[1];
+    c2.numFmt = k[5] || (k[2] === '%' ? '0.0%'
+                       : k[2] === 'kW' ? '#,##0.0" kW"' : '#,##0');
+    c2.font = { size: 16, bold: true, color: { argb: k[3] } };
+    [c1, c2].forEach(c => {
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: k[4] } };
+      c.border = { left: { style: 'thin', color: { argb: k[3] } } };
+    });
+  });
+  rs.getRow(f + 1).height = 24;
+  f += 3;
+
+  /* Entradas editables. Van marcadas en amarillo porque son lo unico
+     que se espera que alguien cambie. */
+  rs.getCell(f, 2).value = 'Valorizacion';
+  rs.getCell(f, 2).font = { bold: true, size: 11, color: { argb: KX_C.azul } };
+  f += 1;
+  const filaHoras = f, filaTarifa = f + 1, filaEnergia = f + 2, filaDinero = f + 3;
+
+  const ent = [
+    ['Horas de operacion al ano', 8760, '#,##0', true,
+      'Marcha continua. Ajustar por factor de servicio si aplica.'],
+    ['Costo de la energia (COP/kWh)', null, '#,##0', true,
+      'Sin valor no se calcula el ahorro en dinero. Lo pone quien conoce la tarifa.']
+  ];
+  ent.forEach((e, i) => {
+    const r = filaHoras + i;
+    rs.getCell(r, 2).value = e[0];
+    rs.getCell(r, 2).font = { size: 10 };
+    const c = rs.getCell(r, 3);
+    c.value = e[1];
+    c.numFmt = e[2];
+    c.font = { bold: true, size: 11 };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: KX_C.fAmar } };
+    c.border = { top:{style:'thin'}, left:{style:'thin'},
+                 bottom:{style:'thin'}, right:{style:'thin'} };
+    rs.getCell(r, 4).value = e[4];
+    rs.getCell(r, 4).font = { size: 9, italic: true, color: { argb: KX_C.gris2 } };
+    rs.mergeCells(r, 4, r, 8);
+  });
+
+  /* Formulas de verdad, con resultado precalculado: ExcelJS no evalua,
+     asi que sin result la celda sale vacia hasta que Excel recalcule. */
+  const kwhAno = kwBaja * 8760;
+  rs.getCell(filaEnergia, 2).value = 'Energia que se deja de consumir al ano';
+  rs.getCell(filaEnergia, 2).font = { size: 10 };
+  const cE = rs.getCell(filaEnergia, 3);
+  cE.value = { formula: kwBaja.toFixed(4) + '*C' + filaHoras, result: kwhAno };
+  cE.numFmt = '#,##0" kWh"';
+  cE.font = { bold: true, size: 11, color: { argb: KX_C.azul } };
+
+  rs.getCell(filaDinero, 2).value = 'Ahorro anual estimado';
+  rs.getCell(filaDinero, 2).font = { size: 10, bold: true };
+  const cD = rs.getCell(filaDinero, 3);
+  cD.value = { formula: 'IF(C' + filaTarifa + '="","",C' + filaEnergia
+               + '*C' + filaTarifa + ')', result: '' };
+  cD.numFmt = '"$"#,##0';
+  cD.font = { bold: true, size: 13, color: { argb: KX_C.verde } };
+  cD.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: KX_C.fVerde } };
+
+  f = filaDinero + 3;
+
+  /* Graficas */
+  const top = conAhorro.slice().sort((a, b) => b.kw_red - a.kw_red).slice(0, 15)
+    .map(x => ({ nombre: x.unidad, valor: x.kw_red }));
+
+  if (top.length){
+    const img1 = wb.addImage({ base64: kxGraficaBarras(top,
+      'Reduccion por unidad', 'kW · ' + (conAhorro.length > 15
+        ? 'las 15 mayores de ' + conAhorro.length : conAhorro.length + ' unidades')),
+      extension: 'png' });
+    rs.addImage(img1, { tl: { col: 1, row: f - 1 },
+      ext: { width: 560, height: 46 + top.length * 22 + 26 } });
+    f += Math.ceil((46 + top.length * 22 + 26) / 19) + 2;
+  }
+
+  if (kwActual > 0){
+    const img2 = wb.addImage({
+      base64: kxGraficaAntesDespues(kwActual, kwActual - kwBaja + kwSube),
+      extension: 'png' });
+    rs.addImage(img2, { tl: { col: 1, row: f - 1 },
+      ext: { width: 420, height: 240 } });
+    f += 14;
+  }
+
+  /* ══ DETALLE ══ */
+  const dt = wb.addWorksheet('Detalle', {
+    views: [{ state: 'frozen', ySplit: 1 }],
+    pageSetup: { paperSize: 9, orientation: 'landscape', fitToPage: true, fitToWidth: 1 }
+  });
+  const cols = [
+    ['unidad','Unidad',11], ['campo','Campo',14], ['pad','PAD',12],
+    ['f_op','F operacion (Hz)',13], ['f_max','F maxima (Hz)',13],
+    ['f_prop','F maxima propuesta (Hz)',16],
+    ['carga','Carga del motor',13], ['factor','Factor de carga',12],
+    ['tap_actual','TAP actual (V)',12], ['tap_optimo','TAP optimo (V)',12],
+    ['tap_nuevo','TAP a solicitar (V)',14],
+    ['accion_tap','Accion sobre el TAP (V)',16],
+    ['v_sut','V medida SUT (V)',14], ['v_sut_opt','V optima SUT (V)',14],
+    ['d_vol','Desviacion SUT (V)',14],
+    ['v_vsd','V salida VSD medida (V)',16],
+    ['v_vsd_esp','V salida VSD esperada (V)',17],
+    ['d_vsd','Desviacion salida VSD (V)',17],
+    ['i_vsd','I variador (A)',12], ['i_motor','I motor (A)',11],
+    ['d_amp','Cambio de I variador (A)',16],
+    ['kw_actual','Consumo actual (kW)',14],
+    ['kw_red','Cambio de consumo (kW)',16],
+    ['filtro','Filtro seno',10],
+    ['fecha','Fecha de la lectura',14], ['fuente','Origen',10],
+    ['aviso','Aviso',34]
+  ];
+  dt.columns = cols.map(c => ({ header: c[1], key: c[0], width: c[2] }));
+  const enc = dt.getRow(1);
+  enc.font = { bold: true, size: 9, color: { argb: KX_C.blanco } };
+  enc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: KX_C.azul } };
+  enc.alignment = { vertical: 'middle', wrapText: true };
+  enc.height = 30;
+
+  filas.forEach(x => {
+    const r = dt.addRow(x);
+    r.font = { size: 9.5 };
+    r.getCell('carga').numFmt = '0%';
+    ['tap_actual','tap_optimo','tap_nuevo','v_sut','v_sut_opt','v_vsd','v_vsd_esp']
+      .forEach(k => r.getCell(k).numFmt = KX_FMT.volts);
+    ['i_vsd','i_motor'].forEach(k => r.getCell(k).numFmt = KX_FMT.amp);
+    ['d_vol'].forEach(k => r.getCell(k).numFmt = KX_FMT.volts);
+    ['d_vsd'].forEach(k => r.getCell(k).numFmt = KX_FMT.voltsFirmado);
+    ['f_op','f_max','f_prop'].forEach(k => r.getCell(k).numFmt = '0.0" Hz"');
+    r.getCell('factor').numFmt = '0.000';
+    r.getCell('kw_actual').numFmt = KX_FMT.kw;
+
+    /* Las tres que llevan flecha. El formato hace el trabajo, asi que
+       no hay que pintar nada a mano. */
+    r.getCell('accion_tap').numFmt = KX_FMT.accionTap;
+    r.getCell('d_amp').numFmt      = KX_FMT.bajaConvieneEnt;
+    const c = r.getCell('kw_red');
+    c.numFmt = KX_FMT.bajaConviene;
+    c.font = { size: 9.5, bold: true };
+    /* El fondo se reserva para lo que hay que mirar: una unidad cuyo
+       consumo sube. La flecha roja lo dice, el fondo lo hace saltar al
+       ojo en una hoja de sesenta filas. */
+    if (x.kw_red < 0)
+      c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: KX_C.fRojo } };
+
+    if (x.aviso)
+      r.getCell('aviso').font = { size: 9, italic: true, color: { argb: KX_C.naranja } };
+  });
+  dt.autoFilter = { from: 'A1', to: { row: 1, column: cols.length } };
+
+  /* Leyenda. Una hoja que se manda por correo tiene que explicarse
+     sola: quien la abra no estuvo en esta conversacion. */
+  const fl = filas.length + 3;
+  dt.getCell(fl, 1).value = 'Como leer las flechas: ↓ la magnitud baja y eso '
+    + 'conviene · ↑ sube y no conviene · → sin cambio. '
+    + 'En las desviaciones de tension no hay flecha porque lo deseable es cero: '
+    + 'ahi el color va de verde en el centro a rojo en los extremos.';
+  dt.getCell(fl, 1).font = { size: 9, italic: true, color: { argb: KX_C.gris } };
+  dt.mergeCells(fl, 1, fl, Math.min(cols.length, 14));
+  dt.getRow(fl).height = 26;
+  dt.getCell(fl, 1).alignment = { wrapText: true, vertical: 'top' };
+
+  /* ---------- escalas de color ----------
+     Donde el cero es lo deseable no cabe flecha: ni sobrar ni faltar
+     tension conviene. Ahi la magnitud la dice el color, con verde en el
+     centro y rojo en los extremos. Se aplica como formato condicional
+     para que siga funcionando si alguien ordena o filtra. */
+  const ult = filas.length + 1;
+  if (filas.length){
+    const col = k => dt.getColumn(k).letter;
+
+    /* Desviacion en el SUT: siempre positiva, verde en cero y rojo
+       desde 150 V, los mismos umbrales de la pantalla. */
+    dt.addConditionalFormatting({
+      ref: col('d_vol') + '2:' + col('d_vol') + ult,
+      rules: [{ type: 'colorScale', priority: 1,
+        cfvo: [{ type: 'num', value: 0 }, { type: 'num', value: 80 },
+               { type: 'num', value: 150 }],
+        color: [{ argb: 'FF63BE7B' }, { argb: 'FFFFEB84' }, { argb: 'FFF8696B' }] }]
+    });
+
+    /* Desviacion de salida del variador: firmada, y las dos puntas son
+       malas. Verde en el centro. */
+    dt.addConditionalFormatting({
+      ref: col('d_vsd') + '2:' + col('d_vsd') + ult,
+      rules: [{ type: 'colorScale', priority: 2,
+        cfvo: [{ type: 'num', value: -40 }, { type: 'num', value: 0 },
+               { type: 'num', value: 40 }],
+        color: [{ argb: 'FFF8696B' }, { argb: 'FF63BE7B' }, { argb: 'FFF8696B' }] }]
+    });
+
+    /* Carga del motor: por debajo del 60 % hay margen de ahorro, por
+       encima del 100 % el motor esta sobrecargado. */
+    dt.addConditionalFormatting({
+      ref: col('carga') + '2:' + col('carga') + ult,
+      rules: [{ type: 'colorScale', priority: 3,
+        cfvo: [{ type: 'num', value: 0.5 }, { type: 'num', value: 0.85 },
+               { type: 'num', value: 1.1 }],
+        color: [{ argb: 'FFFFEB84' }, { argb: 'FF63BE7B' }, { argb: 'FFF8696B' }] }]
+    });
+
+    /* Barra de datos sobre el consumo actual: deja ver de un vistazo
+       cuales unidades pesan de verdad en la factura. */
+    dt.addConditionalFormatting({
+      ref: col('kw_actual') + '2:' + col('kw_actual') + ult,
+      rules: [{ type: 'dataBar', priority: 4,
+        cfvo: [{ type: 'min' }, { type: 'max' }],
+        color: { argb: 'FF9DC3E6' } }]
+    });
+  }
+
+  /* ══ METODO ══ */
+  const mt = wb.addWorksheet('Metodo y supuestos', {
+    pageSetup: { paperSize: 9, fitToPage: true, fitToWidth: 1 }
+  });
+  mt.columns = [{ width: 3 }, { width: 34 }, { width: 82 }];
+  mt.getCell('B2').value = 'Como se calcula y que hay que tener en cuenta';
+  mt.getCell('B2').font = { bold: true, size: 13, color: { argb: KX_C.azul } };
+  let fm = 4;
+  const bloques = [
+    ['TAP optimo',
+     'Se parte de la tension de placa del motor, se corrige por el factor de carga '
+     + 'segun la corriente medida, se suma la caida de tension en el cable y se '
+     + 'escala a la frecuencia maxima propuesta. En unidades con filtro seno se '
+     + 'aplica el factor del filtro sobre el TAP resultante.'],
+    ['Cambio de consumo',
+     'Raiz de tres por el cambio de corriente en el variador, por la tension '
+     + 'nominal, por el factor de potencia, dividido en mil. El cambio de corriente '
+     + 'es la corriente actual menos la que resultaria con la nueva relacion de '
+     + 'transformacion.'],
+    ['El estimado es optimista',
+     'El calculo mantiene constante la corriente del motor. Al reducir tension esa '
+     + 'corriente sube un poco, asi que la reduccion real siempre va a ser algo '
+     + 'menor que la estimada. En motores con poca carga la diferencia es pequena '
+     + 'porque domina la corriente de magnetizacion; en motores cargados no.'],
+    ['Unidades cuyo consumo sube',
+     'Son las que tienen el TAP por debajo del optimo: el motor esta subtensionado y '
+     + 'jala mas corriente de la que necesita. Subir el TAP corrige eso y puede '
+     + 'costar energia. Se listan aparte y NO se descuentan del ahorro, porque son '
+     + 'una accion correctiva y no una oportunidad de ahorro.'],
+    ['Desviacion de salida del variador',
+     'Tension medida en la salida del variador menos la esperada segun su patron '
+     + 'V/Hz, que es la tension maxima de salida por la frecuencia de operacion '
+     + 'dividida en la frecuencia maxima ajustada. Una desviacion grande no se '
+     + 'corrige con el TAP: apunta a parametrizacion del variador, caida en la '
+     + 'acometida o limitacion por corriente.'],
+    ['Vigencia de los datos',
+     'Las unidades cuya ultima lectura es anterior a la instalacion del motor que '
+     + 'tienen hoy quedan marcadas en la columna de aviso y fuera del total. Sus '
+     + 'numeros corresponden a un equipo que ya no esta.'],
+    ['Las graficas son imagenes',
+     'Excel no admite graficas creadas desde el navegador, asi que las de la hoja '
+     + 'Resumen se generaron como imagen y no se actualizan al filtrar. La hoja '
+     + 'Detalle va cruda y con autofiltro para armar graficas propias desde ahi.'],
+    ['La ejecucion la decide el tecnico',
+     'La derivacion que se instala se escoge contra la tabla real del SUT, que tiene '
+     + 'pasos discretos. El TAP a solicitar es el objetivo de calculo, no '
+     + 'necesariamente una derivacion disponible.']
+  ];
+  bloques.forEach(b => {
+    const c1 = mt.getCell(fm, 2), c2 = mt.getCell(fm, 3);
+    c1.value = b[0];
+    c1.font = { bold: true, size: 10, color: { argb: KX_C.azul2 } };
+    c1.alignment = { vertical: 'top' };
+    c2.value = b[1];
+    c2.font = { size: 9.5 };
+    c2.alignment = { vertical: 'top', wrapText: true };
+    mt.getRow(fm).height = Math.max(30, Math.ceil(b[1].length / 95) * 13 + 14);
+    fm += 1;
+  });
+
+  mt.getCell(fm + 1, 2).value = 'Fecha de emision: ' + meta.fechaTexto;
+  mt.getCell(fm + 1, 2).font = { size: 9, color: { argb: KX_C.gris2 } };
+
+  return wb;
+}
+
+/* ---------- accion de pantalla ---------- */
+async function koExportar(boton){
+  const rs = KO_DATOS.map(koCalcular);
+  const sel = rs.filter(r => koMarca.has(r.pozo) && r.ok);
+  const usar = sel.length ? sel : rs.filter(r => r.ok && r.red != null && r.red > 0);
+
+  if (!usar.length){
+    alert('No hay nada que exportar. Marque unidades o actualice las lecturas.');
+    return;
+  }
+  if (!sel.length && !confirm('No hay unidades marcadas.\n\n'
+      + 'Se exportan las ' + usar.length + ' que hoy muestran ahorro. '
+      + '\u00bfContinuar?')) return;
+
+  const previo = boton ? boton.textContent : '';
+  if (boton){ boton.disabled = true; boton.textContent = 'Generando\u2026'; }
+
+  try {
+    const ExcelJS = await kxExcelJS();
+    const k = koCfg.raiz === 'sqrt3' ? Math.sqrt(3) : Math.pow(3, 1/3);
+
+    const filas = usar.map(r => {
+      const u = r.u;
+      const vNom = u.v_nom != null ? u.v_nom : koCfg.vNom;
+      const viejo = koDatoViejo(u);
+      const avisos = [];
+      if (viejo) avisos.push('Lectura del ' + u.fecha + ', anterior al motor '
+        + 'instalado el ' + viejo + ': los numeros son de otro equipo.');
+      if (r.vVsdOrigen === 'implicada')
+        avisos.push('Salida del variador no medida; implicada por el SUT.');
+      if (r.vMaxOrigen !== 'unidad')
+        avisos.push('Sin tension maxima de salida registrada; se usa la nominal '
+          + 'del SUT.');
+      if (r.dVsdPatron != null && Math.abs(r.dVsdPatron) >= 25)
+        avisos.push('El variador esta ' + koEnt(Math.abs(r.dVsdPatron))
+          + ' V fuera de su patron V/Hz.');
+      return {
+        unidad: u.pozo, campo: u.campo || '', pad: u.pad || '',
+        f_op: u.f_op, f_max: u.f_max, f_prop: r.fProp,
+        carga: u.carga, factor: r.fCarga,
+        tap_actual: u.tap, tap_optimo: r.tapOpt, tap_nuevo: r.tapNew,
+        accion_tap: r.dTap != null ? -r.dTap : null,
+        v_sut: u.v_sut, v_sut_opt: r.vOptOp, d_vol: r.dVol,
+        v_vsd: r.vVsdMed, v_vsd_esp: r.vVsdPatron, d_vsd: r.dVsdPatron,
+        i_vsd: u.i_vsd, i_motor: u.i_mot, d_amp: r.dAmp,
+        kw_actual: (u.i_vsd != null) ? k * u.i_vsd * vNom * koCfg.fp / 1000 : null,
+        kw_red: r.red,
+        filtro: u.filtro ? 'Si' : 'No',
+        fecha: u.fecha || '', fuente: u.fuente || '',
+        /* Las unidades con lectura vieja se exportan con aviso y con
+           kw en cero, para que nadie las sume por error desde la hoja
+           de detalle. */
+        aviso: avisos.join(' ')
+      };
+    /* Las unidades con lectura anterior al equipo instalado se exportan
+       con aviso pero SIN cifras de consumo. Dejarles el consumo actual
+       inflaba la barra de "Hoy" en la grafica de portada con datos de un
+       motor que ya no esta, y esa es la cifra que mira gerencia. */
+    /* Unidades con lectura anterior al equipo instalado: se dejan las
+       MEDIDAS, que son hechos, y se vacian las CONCLUSIONES, que son
+       deducciones de datos que no corresponden al motor actual.
+
+       El TAP a solicitar es la que mas importa vaciar. Esta hoja se
+       manda por correo y alguien la puede ejecutar sin leer la columna
+       de aviso; una derivacion calculada sobre otro motor puede dejar
+       la unidad subtensionada. */
+    }).map(x => (x.aviso.indexOf('anterior al motor') >= 0)
+        ? Object.assign(x, { kw_red: null, kw_actual: null, tap_optimo: null,
+            tap_nuevo: null, accion_tap: null, d_amp: null, f_prop: null,
+            v_sut_opt: null, d_vol: null, v_vsd_esp: null, d_vsd: null })
+        : x);
+
+    const hoy = new Date();
+    const fechaISO = hoy.toISOString().slice(0, 10);
+    const ambito = [];
+    if (koCampo && koCampo !== 'all') ambito.push(koCampo);
+    if (koPad && koPad !== 'all') ambito.push('PAD ' + koPad);
+
+    const wb = kxLibroPropuestas(ExcelJS, filas, {
+      subtitulo: filas.length + ' unidad' + (filas.length === 1 ? '' : 'es')
+        + (ambito.length ? ' \u00b7 ' + ambito.join(' \u00b7 ') : ' \u00b7 toda la flota')
+        + ' \u00b7 ' + fechaISO
+        + ' \u00b7 FP ' + koCfg.fp.toFixed(2)
+        + ' \u00b7 factor de filtro ' + koCfg.kFiltro.toFixed(2),
+      fechaTexto: fechaISO
+    });
+
+    const buf = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buf],
+      { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'propuestas-optimizacion-' + fechaISO + '.xlsx';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+
+    if (boton){ boton.disabled = false; boton.textContent = previo; }
+    const m = document.getElementById('koGuardarMsg');
+    if (m) m.textContent = 'Exportadas ' + filas.length + ' unidades.';
+  } catch(e){
+    if (boton){ boton.disabled = false; boton.textContent = previo; }
+    alert('No se pudo exportar. ' + e.message);
+  }
+}
+
+
 /* Lo que se marca sirve para pedir algo concreto: un cambio de TAP
    por unidad. El resumen se deja en texto plano para copiarlo a un
    correo o a un aviso sin volver a teclear cifras. */
@@ -1360,6 +1992,7 @@ function koPropuesta(rs){
     + '<pre class="ko-pre">' + koEsc(li) + '</pre>'
     + '<div class="ko-bar2" style="margin-top:11px">'
     +   '<button class="ko-chip on" id="koGuardar">Registrar en Kronos-M</button>'
+    +   '<button class="ko-chip" id="koExcel">Exportar a Excel</button>'
     +   '<span class="ko-hint" id="koGuardarMsg">'
     +     (yaGuardadas ? yaGuardadas + ' de estas unidades ya tienen una propuesta '
                        + 'vigente; registrarlas de nuevo reemplaza la anterior.'
@@ -1681,6 +2314,9 @@ function koEnlazar(){
   /* Navegacion dentro del mismo marco. Sirve igual como iframe de
      Kronos-M, dentro de la capa de Monitoreo y en pestana aparte,
      porque no depende de que exista un padre al que pedirle nada. */
+  const xl = document.getElementById('koExcel');
+  if (xl) xl.onclick = () => koExportar(xl);
+
   const sg = document.getElementById('koSeg');
   if (sg) sg.onclick = () => { window.location.href = 'seguimiento.html'; };
 
