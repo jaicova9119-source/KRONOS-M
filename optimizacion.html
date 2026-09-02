@@ -1338,13 +1338,25 @@ function koPropuesta(rs){
     + ' \u2192 ' + r.tapNew.toFixed(0).padStart(5) + ' V'
     + (r.u.filtro ? ' (con filtro)' : '')
     + '   F m\u00e1x ' + r.fProp.toFixed(1) + ' Hz'
-    + '   ' + (r.red != null ? (r.red > 0 ? '+' : '') + r.red.toFixed(1) + ' kW' : '')
+    /* El resumen se copia a un correo o a un aviso, asi que no puede
+       depender de una convencion de signos que el lector no tenga a la
+       vista. "+33.8 kW" se lee como un aumento cuando es lo contrario.
+       Se dice la direccion con palabras: baja o sube. */
+    + '   ' + (r.red == null ? ''
+        : Math.abs(r.red) < 0.05 ? 'consumo igual'
+        : r.red > 0 ? 'consumo baja ' + r.red.toFixed(1) + ' kW'
+                    : 'consumo SUBE ' + Math.abs(r.red).toFixed(1) + ' kW')
   ).join('\n');
 
   const yaGuardadas = sel.filter(r => r.u.prop_estado).length;
+  /* Unidades marcadas cuyo consumo AUMENTA con el cambio. No es un
+     error marcarlas: subir el TAP de una unidad subtensionada puede
+     costar energia y valer la pena igual. Lo que no se puede es
+     sumarlas al ahorro ni dejarlas pasar sin decirlo. */
+  const suben = sel.filter(r => r.red != null && r.red < -0.05);
   return '<div class="ko-card"><div class="ct"><b>Propuesta</b><span>'
-    + sel.length + ' unidad' + (sel.length === 1 ? '' : 'es') + ' &middot; '
-    + kw.toFixed(0) + ' kW</span></div>'
+    + sel.length + ' unidad' + (sel.length === 1 ? '' : 'es')
+    + ' &middot; consumo \u2193 ' + kw.toFixed(0) + ' kW</span></div>'
     + '<pre class="ko-pre">' + koEsc(li) + '</pre>'
     + '<div class="ko-bar2" style="margin-top:11px">'
     +   '<button class="ko-chip on" id="koGuardar">Registrar en Kronos-M</button>'
@@ -1354,6 +1366,14 @@ function koPropuesta(rs){
                       : 'Queda registrada por unidad, con su frecuencia y su TAP.')
     +   '</span>'
     + '</div>'
+    + (suben.length
+        ? '<p class="ko-nota" style="color:var(--ko-warn)">'
+          + suben.length + ' de estas unidades aumentan su consumo con el cambio ('
+          + suben.map(r => r.pozo).join(', ') + '), porque su TAP est&aacute; por '
+          + 'debajo del &oacute;ptimo. Ejecutarlas corrige una subtensi&oacute;n y '
+          + 'puede valer la pena, pero no cuentan en los '
+          + kw.toFixed(0) + ' kW de arriba.</p>'
+        : '')
     + '<p class="ko-nota">Tensiones a frecuencia m&aacute;xima propuesta. La derivaci&oacute;n '
     + 'la escoge el t&eacute;cnico contra la tabla del SUT instalado.</p></div>';
 }
