@@ -572,6 +572,31 @@ async function koCargarUnidades(){
    abra. */
 let KO_VIGENCIA = {};
 
+/* Tension de salida del variador MEDIDA en la ronda. opt_unidades no la
+   expone, asi que se pide aparte. Antes se deducia del SUT, y deducir
+   un dato que se mide es perder justo lo que la medida aporta: el error
+   de regulacion real del variador. */
+let KO_SALIDA = {};
+
+async function koCargarSalidaVsd(){
+  try {
+    const { data, error } = await koCliente().rpc('opt_salida_vsd');
+    if (error) throw new Error(error.message);
+    const m = {};
+    (data || []).forEach(r => {
+      if (r && r.pozo) m[r.pozo] = {
+        v_vsd: koNum(r.v_salida_vsd),
+        v_sut: koNum(r.v_sut_v),
+        fecha: r.fecha || null
+      };
+    });
+    KO_SALIDA = m;
+  } catch(e){
+    console.warn('[Kronos-M] Salida del variador no disponible:', e.message);
+    KO_SALIDA = {};
+  }
+}
+
 async function koCargarVigencia(){
   try {
     const { data, error } = await koCliente().rpc('opt_vigencia_equipo');
@@ -714,6 +739,25 @@ function koAccionTap(dTap){
    pinza y sonda; por debajo no vale la pena llamarlo desviacion. */
 function koLecturaVsd(r){
   const t = [];
+
+  /* Va primero a proposito. Si las dos medidas no cuadran entre si, lo
+     que sigue se calcula sobre datos que no se sostienen y no vale la
+     pena leerlo hasta aclarar cual de los dos numeros es el bueno. */
+  if (r.dVsdImp != null && Math.abs(r.dVsdImp) > 15){
+    t.push('La salida medida del variador y la que implica el SUT '
+      + 'difieren en ' + koEnt(Math.abs(r.dVsdImp)) + ' V. Siendo el SUT un '
+      + 'transformador, deber&iacute;an coincidir: revise las dos medidas y '
+      + 'confirme que el TAP registrado ('
+      + (r.u && r.u.tap != null ? koEnt(r.u.tap) + ' V' : 'sin dato')
+      + ') es el que est&aacute; conectado. Lo de abajo se calcula con esos '
+      + 'mismos n&uacute;meros.');
+  }
+  if (r.vVsdOrigen === 'implicada'){
+    t.push('La salida del variador no viene medida en esta lectura: se '
+      + 'muestra la que implica el SUT. Al tomarla en la ronda, el '
+      + 'diagn&oacute;stico deja de depender de que el TAP registrado sea '
+      + 'exacto.');
+  }
   if (r.dVsdPatron != null && Math.abs(r.dVsdPatron) > 15){
     t.push(r.dVsdPatron < 0
       ? 'El variador entrega ' + koEnt(-r.dVsdPatron) + ' V menos de lo que '
@@ -920,10 +964,20 @@ function koCalcular(u){
      modulo no las separaba. */
   const vNomD = u.v_nom != null ? u.v_nom : koCfg.vNom;
   r.rtSut = (u.tap != null && vNomD) ? u.tap / vNomD : null;
-  if (r.rtSut){
-    r.vVsdMed = u.v_sut != null ? u.v_sut / r.rtSut : null;
-    r.vVsdNec = r.vOptOp / r.rtSut;
-  }
+
+  /* La salida del variador se MIDE en la ronda. La deduccion del SUT se
+     conserva pero solo como contraste: el SUT es un transformador, asi
+     que V sut / relacion deberia dar la misma cifra. Cuando no la da,
+     una de las dos medidas esta mal o el TAP registrado no es el
+     instalado, y eso hay que verlo antes de proponer nada. */
+  const sal = KO_SALIDA[u.pozo] || {};
+  r.vVsdImp = (r.rtSut && u.v_sut != null) ? u.v_sut / r.rtSut : null;
+  r.vVsdMed = sal.v_vsd != null ? sal.v_vsd : null;
+  r.vVsdOrigen = r.vVsdMed != null ? 'medida' : (r.vVsdImp != null ? 'implicada' : null);
+  if (r.vVsdMed == null) r.vVsdMed = r.vVsdImp;
+  r.dVsdImp = (sal.v_vsd != null && r.vVsdImp != null)
+              ? sal.v_vsd - r.vVsdImp : null;
+  if (r.rtSut) r.vVsdNec = r.vOptOp / r.rtSut;
   r.vVsdPatron = (vNomD && u.f_max) ? vNomD * u.f_op / u.f_max : null;
   r.dVsdPatron = (r.vVsdMed != null && r.vVsdPatron != null)
                  ? r.vVsdMed - r.vVsdPatron : null;
@@ -1334,9 +1388,11 @@ function koPintarDetalle(){
     ['Corriente del motor', koEnt(u.i_mot) + ' A'],
     ['Tensi&oacute;n medida en el SUT', koEnt(u.v_sut) + ' V'],
     ['Tensi&oacute;n de salida del variador',
-      r.vVsdMed != null
-        ? koEnt(r.vVsdMed) + ' V <span class="ko-der">deducida del SUT</span>'
-        : '\u2014']
+      r.vVsdMed == null ? '\u2014'
+        : koEnt(r.vVsdMed) + ' V'
+          + (r.vVsdOrigen === 'implicada'
+              ? ' <span class="ko-der">no medida &middot; implicada por el SUT</span>'
+              : '')]
   ].map(x => '<tr><td style="text-align:left;color:var(--ko-t3)">' + x[0]
     + '</td><td style="color:var(--t1);font-weight:600">' + x[1] + '</td></tr>').join('');
 
@@ -1371,8 +1427,14 @@ function koPintarDetalle(){
       + '<span>referida por el SUT, relaci&oacute;n '
       + (r.rtSut != null ? r.rtSut.toFixed(2) : '\u2014') + '</span></div>'
       + '<div class="ko-cad">'
-      + p('Entregada hoy', 'V medida SUT / relaci&oacute;n',
+      + p('Entregada hoy', r.vVsdOrigen === 'medida'
+            ? 'medida en la ronda'
+            : 'no medida &middot; V sut / relaci&oacute;n',
           koEnt(r.vVsdMed), 'V')
+      + (r.dVsdImp != null
+          ? p('Contraste con el SUT', 'medida - (V sut / relaci&oacute;n)',
+              koDelta(-r.dVsdImp, { mejor:'baja', dec:0, umbral:15 }), 'V')
+          : '')
       + p('Seg&uacute;n curva V/Hz', 'V nom x F ope / F m&aacute;x',
           koEnt(r.vVsdPatron), 'V')
       + p('Que necesita el motor', 'V &oacute;ptima @F ope / relaci&oacute;n',
@@ -1609,6 +1671,7 @@ async function koArrancar(){
   /* En paralelo con las unidades: no depende de ellas y su fallo no
      debe retrasar la pantalla. */
   koCargarVigencia();
+  koCargarSalidaVsd();
   try {
     KO_DATOS = await koCargarUnidades();
   } catch(e){
