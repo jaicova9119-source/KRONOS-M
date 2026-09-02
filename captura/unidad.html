@@ -27,7 +27,10 @@
   /* El tema se decide con data-tema en <html>, igual que en el resto de
      Kronos-M. color-scheme no es decorativo: sin el, el selector nativo
      y el teclado de Android salen en blanco sobre una app oscura. */
-  :root, html[data-tema="claro"]{
+  /* Solo :root. Encadenar html[data-tema="claro"] le da mas peso que
+     a un :root dentro de una media query, y esa rama le ganaria a
+     cualquier variable que se quiera ajustar por ancho de pantalla. */
+  :root{
     color-scheme:light;
     --azul:#14526b; --acento:#0f7d8c; --acento-osc:#0b616d;
     --fondo:#f2f5f6; --panel:#fff; --linea:#dce5e8;
@@ -36,6 +39,8 @@
     --ok:#1d6b4f; --ok-bg:#eef7f2; --ok-ln:#c8e3d5;
     --err:#8c2f2f; --err-bg:#fbeeee; --err-ln:#efd3d3;
     --toque:#eef3f5;          /* realce al pulsar una fila */
+    --campo:#ffffff;          /* fondo de campos y su desplegable */
+    --titulo-sec:#14526b;     /* --azul como TEXTO; en oscuro se invierte */
     --info-bg:#eaf2f5; --info-ln:#cfe0e6; --info-tx:#28454f;
     --punto-ok:#7fd6a6; --punto-off:#f0b46a;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
@@ -51,6 +56,8 @@
     --ok:#5fbf8f; --ok-bg:#16281f; --ok-ln:#265340;
     --err:#e08585; --err-bg:#32201f; --err-ln:#5c3130;
     --toque:#242c32;
+    --campo:#232a31;
+    --titulo-sec:#8ecbe4;
     --info-bg:#1e2a30; --info-ln:#33454e; --info-tx:#bdcbd3;
     --punto-ok:#5fbf8f; --punto-off:#d69a56;
   }
@@ -76,7 +83,11 @@
   main{padding:16px;max-width:720px;margin:0 auto}
 
   .campo{width:100%;padding:11px 12px;border:1px solid var(--linea);border-radius:8px;
-    font:15px var(--sans);background:#fff;color:var(--texto)}
+    font:15px var(--sans);background:var(--campo);color:var(--texto)}
+  /* El desplegable nativo lo dibuja el navegador y se cae a blanco. Con
+     el texto ya en color claro, las opciones quedaban invisibles. */
+  select.campo option,
+  select.campo optgroup{background:var(--campo);color:var(--texto)}
   .campo:focus{outline:2px solid var(--acento);outline-offset:1px;border-color:var(--acento)}
   .campo.mono{font-family:var(--mono)}
   label{display:block;font-size:11.5px;font-weight:700;color:var(--suave);
@@ -116,7 +127,7 @@
   button.b{border:0;border-radius:8px;padding:10px 14px;font:600 14px var(--sans);cursor:pointer}
   button.b.pri{background:var(--acento);color:#fff}
   button.b.pri:active{background:var(--acento-osc)}
-  button.b.sec{background:#fff;color:var(--azul);border:1px solid var(--linea)}
+  button.b.sec{background:var(--panel);color:var(--titulo-sec);border:1px solid var(--linea)}
   button.b:disabled{opacity:.5;cursor:default}
   button.b.ancho{width:100%;padding:13px}
 
@@ -132,7 +143,7 @@
   .hoja{padding:18px 16px calc(20px + env(safe-area-inset-bottom))}
   .hoja h4{margin:0 0 3px;font-size:17px}
   .hoja .sub{font-size:13px;color:var(--suave);margin:0}
-  .opcion{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--linea);
+  .opcion{display:block;width:100%;text-align:left;background:var(--panel);border:1px solid var(--linea);
     border-radius:10px;padding:13px 14px;margin-top:10px;font:inherit;color:inherit;cursor:pointer}
   .opcion:active{background:var(--toque)}
   .opcion .t{font-weight:600;display:block}

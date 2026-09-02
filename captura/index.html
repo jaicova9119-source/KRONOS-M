@@ -58,7 +58,10 @@
      Android y el teclado siguen saliendo en blanco sobre una app
      oscura, y este modulo se apoya en <select> nativos a proposito.
      ────────────────────────────────────────────────────────────── */
-  :root, html[data-tema="claro"]{
+  /* Solo :root, sin encadenar html[data-tema="claro"]. Esa forma pesa
+     mas que el :root de las media queries de mas abajo y le ganaba a
+     --maxw, dejando la app angosta en claro y ancha en oscuro. */
+  :root{
     color-scheme:light;
     /* Paleta tomada del :root de index.html de Kronos-M para que las
        dos aplicaciones se vean como una sola. --navy es el azul JAC
@@ -73,6 +76,7 @@
     --surface-3:#F3F4F6;      /* campos deshabilitados */
     --surface-4:#F7F8F9;      /* campos de solo lectura */
     --surface-5:#fbfbfc;      /* tarjetas seleccionables */
+    --campo:#ffffff;          /* fondo de inputs, selects y su desplegable */
     --bes:#1a9d63; --bes-bg:#e2f7ec;
     --hpum:#1B8E9E; --hpum-bg:#e2f3f5;
     --ubh:#b8790c; --ubh-bg:#fbf0d9;
@@ -102,6 +106,7 @@
     --surface-3:#262e35;
     --surface-4:#20272d;
     --surface-5:#20262b;
+    --campo:#232a31;
     --bes:#3fbf85; --bes-bg:#12291f;
     --hpum:#3ab8c8; --hpum-bg:#0f292d;
     --ubh:#d19b31; --ubh-bg:#2a2314;
@@ -211,10 +216,25 @@
   .field{margin-bottom:12px;}
   .field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:5px;}
   .field input,.field select,.field textarea{width:100%;padding:12px 13px;border:1.5px solid var(--line);
-    border-radius:11px;font-size:15px;background:#fff;color:var(--ink);font-family:'IBM Plex Sans';}
+    border-radius:11px;font-size:15px;background:var(--campo);color:var(--ink);font-family:'IBM Plex Sans';}
   .field input.mono-input{font-family:'IBM Plex Mono';font-weight:600;font-size:15.5px;}
   .field select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9'%3E%3Cpath d='M1 1l6 6 6-6' stroke='%235B6774' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 13px center;}
+  /* La flecha va dentro de un data URI, donde no entra una variable CSS.
+     En oscuro el gris original casi desaparece, asi que va otra copia
+     con el trazo aclarado. */
+  html[data-tema="oscuro"] .field select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9'%3E%3Cpath d='M1 1l6 6 6-6' stroke='%2393A3AD' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");}
+
+  /* El desplegable nativo lo dibuja el navegador y NO hereda el fondo del
+     select cuando este lleva appearance:none con una imagen de fondo: se
+     cae a blanco. Con el texto ya en color claro, los nombres de las
+     unidades quedaban invisibles sobre blanco.
+
+     Se pintan option y optgroup a mano. No es cosmetica: en el PAD este
+     es el unico control con el que se elige la unidad a medir. */
+  .field select option,
+  .field select optgroup{background:var(--campo);color:var(--ink);}
+  .field select optgroup{font-weight:700;color:var(--titulo);}
   .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--titulo);}
   .field input:disabled{background:var(--surface-3); color:var(--ink-soft); border-color:var(--line);}
   .field.readonly input{background:var(--surface-4); color:var(--ink-soft); font-family:'IBM Plex Mono'; font-weight:500;}
