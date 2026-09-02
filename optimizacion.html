@@ -587,6 +587,13 @@ async function koCargarSalidaVsd(){
       if (r && r.pozo) m[r.pozo] = {
         v_vsd: koNum(r.v_salida_vsd),
         v_sut: koNum(r.v_sut_v),
+        /* Maxima que el variador entrega a su frecuencia maxima. Es
+           distinta de la primaria nominal del SUT: en los PWM son 450
+           contra 480, y no es igual en todas las unidades. Vacia
+           significa que se cae a la nominal del SUT, que es lo que se
+           venia haciendo. */
+        v_max: koNum(r.v_max_salida_vsd_v),
+        v_nom: koNum(r.v_nom_variador_v),
         fecha: r.fecha || null
       };
     });
@@ -713,6 +720,16 @@ function koDelta(valor, opts){
 
 /* El TAP no se muestra como diferencia con signo sino como la accion a
    ejecutar. "Subir 245 V" no necesita interpretacion; "-245" si. */
+/* Desviacion de la salida del variador contra su patron V/Hz. Los
+   umbrales salen del comportamiento observado en la hoja de calculo:
+   hasta unos 10 V es dispersion normal de medida y ajuste, y a partir
+   de 25 V el variador esta claramente fuera de su curva. */
+function koSemSalida(d){
+  if (d == null) return 'none';
+  const a = Math.abs(d);
+  return a >= 25 ? 'crit' : a >= 10 ? 'warn' : 'ok';
+}
+
 function koAccionTap(dTap){
   if (dTap == null) return '<span class="sd">\u2014</span>';
   const abs = Math.abs(dTap);
@@ -751,6 +768,17 @@ function koLecturaVsd(r){
       + (r.u && r.u.tap != null ? koEnt(r.u.tap) + ' V' : 'sin dato')
       + ') es el que est&aacute; conectado. Lo de abajo se calcula con esos '
       + 'mismos n&uacute;meros.');
+  }
+  /* La maxima de salida del variador es la referencia de todo este
+     bloque. Si no esta registrada se usa la primaria nominal del SUT,
+     que en un PWM son 480 en lugar de 450: un 6,7 % de error que
+     siempre apunta en el mismo sentido. Decirlo evita perseguir una
+     desviacion que es del dato y no del equipo. */
+  if (r.vMaxOrigen !== 'unidad'){
+    t.push('Esta unidad no tiene registrada la tensi&oacute;n m&aacute;xima de '
+      + 'salida del variador, as&iacute; que se usa la primaria nominal del SUT '
+      + '(' + koEnt(r.vMaxSal) + ' V). En un variador PWM son 450 y no 480, y esa '
+      + 'diferencia se traslada entera a la desviaci&oacute;n de arriba.');
   }
   if (r.vVsdOrigen === 'implicada'){
     t.push('La salida del variador no viene medida en esta lectura: se '
@@ -978,9 +1006,15 @@ function koCalcular(u){
   r.dVsdImp = (sal.v_vsd != null && r.vVsdImp != null)
               ? sal.v_vsd - r.vVsdImp : null;
   if (r.rtSut) r.vVsdNec = r.vOptOp / r.rtSut;
-  r.vVsdPatron = (vNomD && u.f_max) ? vNomD * u.f_op / u.f_max : null;
-  r.dVsdPatron = (r.vVsdMed != null && r.vVsdPatron != null)
-                 ? r.vVsdMed - r.vVsdPatron : null;
+  /* La esperada segun el patron V/Hz del variador. La referencia es su
+     tension MAXIMA DE SALIDA, no la primaria nominal del SUT: usar la
+     segunda mete un error del 6,7 % en cada unidad de PWM, siempre en
+     el sentido de decir que entrega menos de lo que debe. */
+  r.vMaxSal = sal.v_max != null ? sal.v_max : vNomD;
+  r.vMaxOrigen = sal.v_max != null ? 'unidad' : 'nominal del SUT';
+  r.vVsdPatron = (r.vMaxSal && u.f_max) ? r.vMaxSal * u.f_op / u.f_max : null;
+  r.dVsdPatron = (sal.v_vsd != null && r.vVsdPatron != null)
+                 ? sal.v_vsd - r.vVsdPatron : null;
   r.dVsdNec    = (r.vVsdMed != null && r.vVsdNec != null)
                  ? r.vVsdMed - r.vVsdNec : null;
 
@@ -1231,8 +1265,18 @@ function koPintar(){
                     ? '<span class="up">' + r.tapNew.toFixed(0) + '</span>'
                     : r.tapNew.toFixed(0)) + '</td>'
       + '<td>' + koAccionTap(r.dTap) + '</td>'
-      + '<td>' + (r.dVol != null ? r.dVol.toFixed(0) : '\u2014')
+      + '<td>' + (r.dVol != null ? koEnt(r.dVol) : '\u2014')
       +   '<span class="ko-sem" style="background:' + KO_HEX[koSemVol(r.dVol)] + '"></span></td>'
+      /* Desviacion de la salida del variador contra su patron V/Hz. Es
+         la columna que se venia llevando a mano en la hoja de calculo.
+         No lleva flecha de conveniencia porque ni sobrar ni faltar
+         tension es deseable: lo bueno es estar en cero. */
+      + '<td>' + (r.dVsdPatron != null
+            ? (r.dVsdPatron > 0 ? '+' : '') + koEnt(r.dVsdPatron)
+            : '<span class="sd">\u2014</span>')
+      +   (r.dVsdPatron != null
+            ? '<span class="ko-sem" style="background:'
+              + KO_HEX[koSemSalida(r.dVsdPatron)] + '"></span>' : '') + '</td>'
       /* Corriente del variador y consumo: lo deseable es que bajen. */
       + '<td>' + koDelta(r.dAmp, { mejor:'baja', dec:1, umbral:0.5 }) + '</td>'
       + '<td>' + koDelta(r.red,  { mejor:'baja', dec:1, umbral:0.5 }) + '</td>'
@@ -1253,7 +1297,8 @@ function koPintar(){
     + '<th class="ko-mk"></th><th>Unidad</th><th>F&nbsp;ope</th><th>F&nbsp;m&aacute;x</th>'
     + '<th>F&nbsp;m&aacute;x prop.</th><th>Carga</th><th>Factor</th>'
     + '<th>TAP actual</th><th>TAP &oacute;ptimo</th><th>TAP nuevo</th>'
-    + '<th>Acci&oacute;n TAP</th><th>&Delta;&nbsp;Vol</th>'
+    + '<th>Acci&oacute;n TAP</th><th>&Delta;&nbsp;Vol SUT</th>'
+    + '<th>&Delta;&nbsp;salida VSD</th>'
     + '<th>Corriente VSD</th><th>Consumo</th></tr></thead><tbody>' + filas + '</tbody></table></div>'
     + '<div class="ko-leg">'
     +   '<span><span class="ko-d bien">\u2193</span>&nbsp;baja y conviene</span>'
@@ -1262,7 +1307,12 @@ function koPintar(){
     +   '<span><i style="background:#e0a230"></i>Desviaci&oacute;n de 80 a 150 V</span>'
     +   '<span><i style="background:#d6584a"></i>Alerta</span>'
     +   '<span><i style="background:#5f7d94"></i>Sin dato</span></div>'
-    + '<p class="ko-nota">El TAP se marca en alerta con 100 V o m&aacute;s de diferencia '
+    + '<p class="ko-nota">La desviaci&oacute;n de salida del VSD es la tensi&oacute;n '
+    + 'medida menos la esperada seg&uacute;n el patr&oacute;n del variador '
+    + '(V m&aacute;xima de salida &times; F operaci&oacute;n / F m&aacute;xima). '
+    + 'Negativa: entrega menos de lo que su curva indica. Positiva: m&aacute;s. '
+    + 'Ninguna de las dos se corrige con el TAP. '
+    + 'El TAP se marca en alerta con 100 V o m&aacute;s de diferencia '
     + 'contra el &oacute;ptimo. La tensi&oacute;n medida en el SUT se compara contra la '
     + '&oacute;ptima a la frecuencia de operaci&oacute;n: bajo 80 V es normal, entre 80 y '
     + '150 V es regular, 150 V o m&aacute;s es alerta.</p></div>';
@@ -1435,8 +1485,15 @@ function koPintarDetalle(){
           ? p('Contraste con el SUT', 'medida - (V sut / relaci&oacute;n)',
               koDelta(-r.dVsdImp, { mejor:'baja', dec:0, umbral:15 }), 'V')
           : '')
-      + p('Seg&uacute;n curva V/Hz', 'V nom x F ope / F m&aacute;x',
+      + p('Seg&uacute;n curva V/Hz',
+          koEnt(r.vMaxSal) + ' x ' + u.f_op.toFixed(1) + ' / ' + u.f_max.toFixed(1),
           koEnt(r.vVsdPatron), 'V')
+      + p('Desviaci&oacute;n contra el patr&oacute;n',
+          'medida - esperada',
+          (r.dVsdPatron != null
+            ? '<span class="ko-d" style="color:' + KO_HEX[koSemSalida(r.dVsdPatron)]
+              + '">' + (r.dVsdPatron > 0 ? '+' : '') + koEnt(r.dVsdPatron) + '</span>'
+            : '\u2014'), 'V')
       + p('Que necesita el motor', 'V &oacute;ptima @F ope / relaci&oacute;n',
           koEnt(r.vVsdNec), 'V')
       + '</div>'
