@@ -6898,9 +6898,12 @@ function renderMaquinas() {
           ${(m.unidad_instalacion || m.unidad)
               ? `<span class="badge ${m.estado_instalacion === "RETIRADA" ? "badge-SIN" : "badge-OK"}">${m.unidad_instalacion || m.unidad}</span>`
               : ""}
-          ${m.estado_instalacion === "RETIRADA"
+          ${m.retirada_manual
+              ? `<span class="badge badge-SOBRESTOCK">fuera de operación</span>`
+              : m.estado_instalacion === "RETIRADA"
               ? `<span class="badge badge-SOBRESTOCK">retirada${m.retirado_el ? " " + m.retirado_el : ""}</span>`
-              : ""}
+              : m.estado_instalacion === "CONFLICTO"
+              ? `<span class="badge badge-SIN">serial en conflicto</span>` : ""}
           <span class="badge ${m.tipo_maquina === "GENERADOR" ? "badge-SOBRESTOCK" : "badge-OK"}">${m.tipo_maquina}</span>
           ${m.vinculado_a_activos ? "" : '<span class="badge badge-SIN">sin vincular</span>'}
         </div>
@@ -6940,11 +6943,21 @@ async function abrirMaquina(id) {
     ["Marcación / bobinas", m.marcacion + " · " + m.n_bobinas],
     ["Criticidad", m.criticidad],
     ["En Activos", m.vinculado_a_activos ? "Sí · " + (m.id_interno || "") : "No vinculada"],
-    ["Estado", m.estado_instalacion === "INSTALADA"
+    ["Estado", m.retirada_manual
+        ? "Fuera de operación desde " + String(m.retirada_en || "").slice(0, 10)
+          + (m.unidad_instalacion ? " · estuvo en " + m.unidad_instalacion : "")
+          + (m.retirada_motivo ? " · " + m.retirada_motivo : "")
+      : m.estado_instalacion === "INSTALADA"
         ? "Instalada" + (m.unidad_instalacion ? " en " + m.unidad_instalacion : "")
       : m.estado_instalacion === "RETIRADA"
         ? "Retirada" + (m.unidad_instalacion ? " de " + m.unidad_instalacion : "")
           + (m.retirado_el ? " el " + m.retirado_el : "")
+      : m.estado_instalacion === "CONFLICTO"
+        ? "Serial en conflicto · "
+          + (m.unidades_con_este_serial > 1
+              ? "el mismo número aparece en " + m.unidades_con_este_serial + " unidades"
+              : "el nombre dice " + (m.unidad_segun_nombre || "?")
+                + " y la instalación dice " + (m.unidad_instalacion || "?"))
       : ""],
   ].filter(([, v]) => v);
 
@@ -6960,6 +6973,9 @@ async function abrirMaquina(id) {
         <button class="btn-primary" style="flex:1" id="ee-btn-nuevo-ensayo"
           onclick="nuevoEnsayo()">Nuevo ensayo</button>
         <button class="btn-secondary" onclick="editarMaquina('${m.id}')">Editar datos</button>
+        <button class="btn-secondary" onclick="${m.retirada_manual
+          ? `eeReactivarMaquina('${m.id}')` : `eeRetirarMaquina('${m.id}')`}">${
+          m.retirada_manual ? "Volver a operación" : "Marcar fuera de operación"}</button>
       </div>
       ${m.notas ? `<p class="hint-box">${m.notas}</p>` : ""}
       <div class="section-label">Datos de placa</div>
@@ -7326,6 +7342,48 @@ function eeSellarTecnico(ensayo) {
   inp.title = "Se toma de tu sesión y no es editable.";
 }
 
+/* Retirar es una decision, no un dato observado: el catalogo de campo
+   puede no tener el retiro registrado, o tenerlo mal, y aun asi el motor
+   ya salio. Por eso vive en el modulo y queda con autor y fecha.
+   No se borra nada: el historial de un motor retirado es lo que permite
+   comparar el antes y el despues de una reparacion. */
+async function eeRetirarMaquina(id) {
+  const m = eeMaquinas.find(x => x.id === id) || eeMaquinaActual;
+  const nom = (m && m.nombre_efectivo) || "esta máquina";
+  if (!confirm("Marcar " + nom + " como fuera de operación.\n\n"
+      + "No va a admitir ensayos nuevos. Los que ya tiene se conservan.")) return;
+  const motivo = prompt("Motivo (opcional). Por ejemplo: reemplazada por "
+    + "motor nuevo, en taller, dada de baja.", "") || null;
+  try {
+    const { data, error } = await sb.rpc("ee_retirar_maquina",
+      { p_id: id, p_motivo: motivo });
+    if (error) throw error;
+    if (data && data.ok === false) throw new Error(data.error);
+    toast("Marcada fuera de operación");
+    await cargarMaquinas();
+    eeMaquinaActual = eeMaquinas.find(x => x.id === id) || null;
+    if (eeMaquinaActual) abrirMaquina(id);
+  } catch (e) {
+    alert("No se pudo guardar. " + e.message);
+  }
+}
+
+async function eeReactivarMaquina(id) {
+  if (!confirm("Volver a poner esta máquina en operación.\n\n"
+      + "Va a admitir ensayos nuevos otra vez.")) return;
+  try {
+    const { data, error } = await sb.rpc("ee_reactivar_maquina", { p_id: id });
+    if (error) throw error;
+    if (data && data.ok === false) throw new Error(data.error);
+    toast("De vuelta en operación");
+    await cargarMaquinas();
+    eeMaquinaActual = eeMaquinas.find(x => x.id === id) || null;
+    if (eeMaquinaActual) abrirMaquina(id);
+  } catch (e) {
+    alert("No se pudo guardar. " + e.message);
+  }
+}
+
 function nuevoEnsayo() {
   if (!eeMaquinaActual) { toast("Elige primero una máquina"); return; }
 
@@ -7337,8 +7395,19 @@ function nuevoEnsayo() {
      Quien decide esto es datapredictiva.instalaciones, que mantienen los
      tecnicos desde la app de campo al registrar el cambio de equipo. El
      modulo solo lo obedece. */
-  if (eeMaquinaActual.estado_instalacion === "RETIRADA") {
+  const est = eeMaquinaActual.estado_instalacion;
+
+  if (est === "RETIRADA") {
     const u = eeMaquinaActual.unidad_instalacion;
+    if (eeMaquinaActual.retirada_manual) {
+      alert("Esta máquina está marcada como fuera de operación desde "
+        + String(eeMaquinaActual.retirada_en || "").slice(0, 10)
+        + (eeMaquinaActual.retirada_motivo ? "\n" + eeMaquinaActual.retirada_motivo : "")
+        + "\n\nNo admite ensayos nuevos y su historial se conserva."
+        + (u ? "\n\nEl equipo en operación está en " + u + "." : "")
+        + "\n\nSi volvió a montarse, usa \u0022Volver a operación\u0022 en su ficha.");
+      return;
+    }
     alert("Esta máquina está registrada como retirada"
       + (u ? " de " + u : "")
       + (eeMaquinaActual.retirado_el ? " el " + eeMaquinaActual.retirado_el : "")
@@ -7347,6 +7416,31 @@ function nuevoEnsayo() {
              + " y elige el que aparece como instalado.\n\n" : "")
       + "Si en realidad volvió a montarse, regístralo primero en Captura de "
       + "datos de campo · Actualizar equipos de la unidad.");
+    return;
+  }
+
+  /* Conflicto de datos: el serial de esta máquina aparece en más de una
+     unidad, o en una distinta de la que dice su nombre. No se puede saber
+     desde aquí cuál es la buena.
+
+     Se bloquea igual que si estuviera retirada, y a propósito. Ante dos
+     registros que se contradicen, dejar registrar significa colgar el
+     ensayo del equipo equivocado sin que nadie se entere; el dato queda
+     mal y la tendencia queda mal. Corregir el catálogo cuesta un minuto;
+     descubrir dentro de un año que una serie de megados era de otro motor
+     no se arregla. */
+  if (est === "CONFLICTO") {
+    const n = eeMaquinaActual.unidad_segun_nombre;
+    const i = eeMaquinaActual.unidad_instalacion;
+    alert("El número de serie de esta máquina está registrado de forma "
+      + "contradictoria en el catálogo de campo"
+      + (eeMaquinaActual.unidades_con_este_serial > 1
+          ? ": aparece en " + eeMaquinaActual.unidades_con_este_serial + " unidades"
+          : (n && i ? ": el nombre dice " + n + " y la instalación dice " + i : ""))
+      + ".\n\nNo se admiten ensayos nuevos hasta corregirlo, porque el "
+      + "resultado quedaría colgado del motor equivocado.\n\n"
+      + "Corrige el número de serie en Captura de datos de campo · "
+      + "Actualizar equipos de la unidad.");
     return;
   }
   eeEnsayoEditando = null;
