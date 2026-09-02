@@ -5,16 +5,54 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kronos-M · Actualizar unidad</title>
 <link rel="manifest" href="./manifest.json">
+<script>
+/* Se resuelve antes de pintar: si no, la pantalla destella en blanco
+   antes de pasar a oscuro. Misma clave dp_tema que la app de captura,
+   asi que las dos pantallas van juntas; la primera vez se hereda de
+   Kronos-M y despues cada aplicacion va por su lado. */
+(function () {
+  var t = null;
+  try { t = localStorage.getItem("dp_tema"); } catch (e) {}
+  if (t !== "claro" && t !== "oscuro") {
+    try { t = localStorage.getItem("kx_tema"); } catch (e) { t = null; }
+  }
+  if (t !== "claro" && t !== "oscuro") {
+    t = (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches)
+        ? "oscuro" : "claro";
+  }
+  document.documentElement.setAttribute("data-tema", t);
+})();
+</script>
 <style>
-  :root{
+  /* El tema se decide con data-tema en <html>, igual que en el resto de
+     Kronos-M. color-scheme no es decorativo: sin el, el selector nativo
+     y el teclado de Android salen en blanco sobre una app oscura. */
+  :root, html[data-tema="claro"]{
+    color-scheme:light;
     --azul:#14526b; --acento:#0f7d8c; --acento-osc:#0b616d;
     --fondo:#f2f5f6; --panel:#fff; --linea:#dce5e8;
     --texto:#1c2b30; --suave:#5f7278;
     --alerta:#8a5a1c; --alerta-bg:#fff6e9; --alerta-ln:#f2ddbe;
     --ok:#1d6b4f; --ok-bg:#eef7f2; --ok-ln:#c8e3d5;
     --err:#8c2f2f; --err-bg:#fbeeee; --err-ln:#efd3d3;
+    --toque:#eef3f5;          /* realce al pulsar una fila */
+    --info-bg:#eaf2f5; --info-ln:#cfe0e6; --info-tx:#28454f;
+    --punto-ok:#7fd6a6; --punto-off:#f0b46a;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+
+  html[data-tema="oscuro"]{
+    color-scheme:dark;
+    --azul:#0d3243; --acento:#2fa3b3; --acento-osc:#24818e;
+    --fondo:#14181c; --panel:#1c2126; --linea:#2e363d;
+    --texto:#dfe6ea; --suave:#93a3ad;
+    --alerta:#d9ae6c; --alerta-bg:#2a2318; --alerta-ln:#463920;
+    --ok:#5fbf8f; --ok-bg:#16281f; --ok-ln:#265340;
+    --err:#e08585; --err-bg:#32201f; --err-ln:#5c3130;
+    --toque:#242c32;
+    --info-bg:#1e2a30; --info-ln:#33454e; --info-tx:#bdcbd3;
+    --punto-ok:#5fbf8f; --punto-off:#d69a56;
   }
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   body{margin:0;background:var(--fondo);color:var(--texto);font:16px/1.45 var(--sans)}
@@ -22,9 +60,18 @@
   header .marca{font-size:10.5px;letter-spacing:.15em;text-transform:uppercase;opacity:.7}
   header h1{margin:2px 0 0;font-size:19px;font-weight:600}
   .barra{display:flex;align-items:center;gap:10px;margin-top:7px;font-size:12px;flex-wrap:wrap}
+  /* El boton se va al extremo derecho con margin-left auto, para que no
+     quede pegado a los chips de estado cuando la barra tiene pocos. */
+  .tema-btn{margin-left:auto;display:flex;align-items:center;justify-content:center;
+    width:32px;height:32px;flex-shrink:0;padding:0;border:none;border-radius:9px;
+    background:rgba(255,255,255,.10);color:#fff;cursor:pointer}
+  .tema-btn:active{background:rgba(255,255,255,.22)}
+  .tema-btn svg{width:18px;height:18px}
+  html[data-tema="claro"]  .tema-btn .ico-sol{display:none}
+  html[data-tema="oscuro"] .tema-btn .ico-luna{display:none}
   .punto{display:inline-flex;align-items:center;gap:5px;opacity:.9}
-  .punto i{width:7px;height:7px;border-radius:50%;background:#7fd6a6;display:inline-block}
-  .punto.off i{background:#f0b46a}
+  .punto i{width:7px;height:7px;border-radius:50%;background:var(--punto-ok);display:inline-block}
+  .punto.off i{background:var(--punto-off)}
   .pend{background:rgba(255,255,255,.16);border-radius:20px;padding:3px 10px;cursor:pointer}
   main{padding:16px;max-width:720px;margin:0 auto}
 
@@ -40,7 +87,7 @@
   .item{display:block;width:100%;text-align:left;background:none;border:0;
     border-bottom:1px solid var(--linea);padding:13px 14px;font:inherit;color:inherit;cursor:pointer}
   .item:last-child{border-bottom:0}
-  .item:active{background:#eef3f5}
+  .item:active{background:var(--toque)}
   .item .n{font-weight:600}
   .item .s{font-size:13px;color:var(--suave);margin-top:2px;display:block}
 
@@ -74,7 +121,7 @@
   button.b.ancho{width:100%;padding:13px}
 
   .aviso{border-radius:8px;padding:11px 12px;font-size:13px;margin-top:12px;
-    background:#eaf2f5;border:1px solid #cfe0e6;color:#28454f}
+    background:var(--info-bg);border:1px solid var(--info-ln);color:var(--info-tx)}
   .aviso.ok{background:var(--ok-bg);border-color:var(--ok-ln);color:var(--ok)}
   .aviso.err{background:var(--err-bg);border-color:var(--err-ln);color:var(--err)}
   .aviso.warn{background:var(--alerta-bg);border-color:var(--alerta-ln);color:var(--alerta)}
@@ -87,7 +134,7 @@
   .hoja .sub{font-size:13px;color:var(--suave);margin:0}
   .opcion{display:block;width:100%;text-align:left;background:#fff;border:1px solid var(--linea);
     border-radius:10px;padding:13px 14px;margin-top:10px;font:inherit;color:inherit;cursor:pointer}
-  .opcion:active{background:#eef3f5}
+  .opcion:active{background:var(--toque)}
   .opcion .t{font-weight:600;display:block}
   .opcion .d{font-size:12.5px;color:var(--suave);display:block;margin-top:3px}
   .cerrar{background:none;border:0;font:600 14px var(--sans);color:var(--suave);
@@ -106,6 +153,18 @@
     <span class="pend" id="prep" onclick="prepararCampo()" style="cursor:pointer">preparar</span>
     <span class="pend oculto" id="pend" onclick="sincronizar()"></span>
     <span class="pend oculto" id="sesion" onclick="cerrarSesion()"></span>
+    <button class="tema-btn" type="button" onclick="alternarTema()"
+            aria-label="Cambiar entre modo claro y oscuro" title="Modo claro u oscuro">
+      <svg class="ico-sol" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="2"/>
+        <path d="M12 2.4v2.4M12 19.2v2.4M2.4 12h2.4M19.2 12h2.4M5.2 5.2l1.7 1.7M17.1 17.1l1.7 1.7M18.8 5.2l-1.7 1.7M6.9 17.1l-1.7 1.7"
+              stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <svg class="ico-luna" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M20.5 14.6A8.6 8.6 0 1 1 9.4 3.5a6.9 6.9 0 0 0 11.1 11.1z"
+              stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+      </svg>
+    </button>
   </div>
 </header>
 
@@ -450,6 +509,15 @@ function descargarEspejo(){
 /* Descarga deliberada de todo lo que hace falta en campo: el espejo de
    unidades y la placa de cada una. El cache por uso no alcanza, porque
    la unidad que se va a intervenir suele ser la que nunca se abrio. */
+/* Se muestra el icono de lo que se obtiene al tocar, no el del estado
+   actual: es lo que la gente espera de un interruptor. */
+function alternarTema(){
+  var raiz = document.documentElement;
+  var t = raiz.getAttribute('data-tema') === 'oscuro' ? 'claro' : 'oscuro';
+  raiz.setAttribute('data-tema', t);
+  try { localStorage.setItem('dp_tema', t); } catch(e){}
+}
+
 function prepararCampo(){
   if(!sb || !SESION){ aviso($('aviso-inicio'), 'Entra con tu usuario antes de descargar.', 'err'); return; }
   if(!navigator.onLine){

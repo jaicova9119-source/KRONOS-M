@@ -4,6 +4,33 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <meta name="theme-color" content="#134B70">
+<script>
+/* ──────────────────────────────────────────────────────────────────
+   TEMA · se resuelve ANTES de pintar
+   Si el tema se aplicara desde el final del documento, la pantalla
+   destellaria en blanco antes de pasar a oscuro. De noche en un PAD
+   eso encandila.
+
+   La clave es dp_tema, propia de Captura, y NO kx_tema. Son dos
+   decisiones distintas: bajo sol directo el claro se lee mucho mejor,
+   y el tecnico puede querer Captura en claro con Kronos-M en oscuro.
+   La primera vez, si no hay preferencia propia, se hereda la de
+   Kronos-M; despues cada una va por su lado.
+   ────────────────────────────────────────────────────────────────── */
+(function () {
+  var t = null;
+  try { t = localStorage.getItem("dp_tema"); } catch (e) {}
+  if (t !== "claro" && t !== "oscuro") {
+    try { t = localStorage.getItem("kx_tema"); } catch (e) { t = null; }
+  }
+  if (t !== "claro" && t !== "oscuro") {
+    t = (window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches)
+        ? "oscuro" : "claro";
+  }
+  document.documentElement.setAttribute("data-tema", t);
+})();
+</script>
+
 <link rel="manifest" href="./manifest.json">
 <link rel="apple-touch-icon" href="./icons/captura-apple-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -16,18 +43,76 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700;800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
 <style>
-  :root{
+  /* ──────────────────────────────────────────────────────────────
+     TEMA
+     El tema se decide con el atributo data-tema en <html>, igual que
+     en Kronos-M, para que los dos se comporten igual.
+
+     --navy se usa como FONDO de la cabecera y como color de TEXTO de
+     los titulos. Son dos trabajos distintos: en oscuro el fondo tiene
+     que seguir siendo azul profundo y el texto tiene que aclararse. Por
+     eso el texto pasa a --titulo, que en claro vale lo mismo que
+     --navy y en oscuro se invierte.
+
+     color-scheme no es decorativo: sin el, el selector nativo de
+     Android y el teclado siguen saliendo en blanco sobre una app
+     oscura, y este modulo se apoya en <select> nativos a proposito.
+     ────────────────────────────────────────────────────────────── */
+  :root, html[data-tema="claro"]{
+    color-scheme:light;
     /* Paleta tomada del :root de index.html de Kronos-M para que las
        dos aplicaciones se vean como una sola. --navy es el azul JAC
        y --orange pasa a ser el teal de acento. */
     --navy:#134B70; --navy-2:#1a5c85; --orange:#1B8E9E; --orange-dim:#bfe3e8;
     --bg:#f7f9fa; --card:#ffffff; --line:#dde2e7; --ink:#134B70; --ink-soft:#4d7089;
+    --titulo:#134B70;
+    --ink-faint:#9AA5B1;      /* pies de pagina, chevrones */
+    --sobre-navy:#CBD6E6;     /* texto de apoyo dentro de la cabecera */
+    --sobre-navy-ok:#a6ecc6;  /* chip de conexion */
+    --surface-2:#EFF1F4;      /* recuadros de apoyo sobre la tarjeta */
+    --surface-3:#F3F4F6;      /* campos deshabilitados */
+    --surface-4:#F7F8F9;      /* campos de solo lectura */
+    --surface-5:#fbfbfc;      /* tarjetas seleccionables */
     --bes:#1a9d63; --bes-bg:#e2f7ec;
     --hpum:#1B8E9E; --hpum-bg:#e2f3f5;
     --ubh:#b8790c; --ubh-bg:#fbf0d9;
-    --danger:#d63b3b; --radius:14px;
+    --danger:#d63b3b; --danger-bg:#FDEDEA;
+    --warn:#7A5320; --warn-bg:#FFF6E9; --warn-line:#F2DDBE;
+    --warn-bg-2:#FFF7ED; --warn-line-2:#F0B27A; --warn-line-3:#FBE0C4;
+    --naranja-bg:#FFF3EA;
+    --ok:#2E7D32; --ok-bg:#E8F5E9;
+    --nota-lbl:#6B7680; --nota-txt:#37474F;
+    --grad-btn:#22a3b4;
+    --radius:14px;
     --shadow:0 1px 2px rgba(19,75,112,.06), 0 8px 24px rgba(19,75,112,.08);
     --maxw:520px;
+  }
+
+  html[data-tema="oscuro"]{
+    color-scheme:dark;
+    /* La cabecera conserva el azul de marca, solo mas profundo: es lo
+       unico que identifica la app de un vistazo bajo el sol. */
+    --navy:#0d2d43; --navy-2:#123f5b; --orange:#35b8c9; --orange-dim:#9fd7de;
+    --bg:#14181c; --card:#1c2126; --line:#2e363d; --ink:#dfe6ea; --ink-soft:#93a3ad;
+    --titulo:#8ecbe4;
+    --ink-faint:#6b7a84;
+    --sobre-navy:#B9C9DA;
+    --sobre-navy-ok:#6fd39c;
+    --surface-2:#232a30;
+    --surface-3:#262e35;
+    --surface-4:#20272d;
+    --surface-5:#20262b;
+    --bes:#3fbf85; --bes-bg:#12291f;
+    --hpum:#3ab8c8; --hpum-bg:#0f292d;
+    --ubh:#d19b31; --ubh-bg:#2a2314;
+    --danger:#e26a6a; --danger-bg:#32201f;
+    --warn:#d9ae6c; --warn-bg:#2a2318; --warn-line:#463920;
+    --warn-bg-2:#2a2318; --warn-line-2:#6b5228; --warn-line-3:#463920;
+    --naranja-bg:#2a2318;
+    --ok:#5fbf75; --ok-bg:#16281c;
+    --nota-lbl:#8b979f; --nota-txt:#c3ccd2;
+    --grad-btn:#2a94a3;
+    --shadow:0 1px 2px rgba(0,0,0,.35), 0 8px 24px rgba(0,0,0,.45);
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--ink);
@@ -56,10 +141,10 @@
   .brand-text .app-name em{color:var(--orange-dim);font-style:normal;}
   .tech-strip{display:flex;align-items:center;justify-content:space-between;
     margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,.14);}
-  .tech-strip .who{font-size:12.5px;color:#CBD6E6;}
+  .tech-strip .who{font-size:12.5px;color:var(--sobre-navy);}
   .tech-strip .who b{color:#fff;font-weight:600;}
-  .chip-online{display:flex;align-items:center;gap:6px;font-size:11px;color:#a6ecc6;font-weight:600;}
-  .chip-online .dot{width:7px;height:7px;border-radius:50%;background:#1a9d63;box-shadow:0 0 0 3px rgba(61,220,132,.22);}
+  .chip-online{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--sobre-navy-ok);font-weight:600;}
+  .chip-online .dot{width:7px;height:7px;border-radius:50%;background:var(--bes);box-shadow:0 0 0 3px rgba(61,220,132,.22);}
   .chip-online.offline{color:var(--orange-dim);}
   .chip-online.offline .dot{background:var(--danger);box-shadow:0 0 0 3px rgba(214,59,59,.22);}
 
@@ -67,7 +152,7 @@
   .hidden{display:none !important;}
 
   .screen-title{margin:2px 2px 14px;}
-  .screen-title h1{font-size:24px;margin:0 0 2px;color:var(--navy);}
+  .screen-title h1{font-size:24px;margin:0 0 2px;color:var(--titulo);}
   .screen-title p{margin:0;font-size:14px;color:var(--ink-soft);}
 
   .section-label{display:flex;align-items:center;gap:8px;font-size:11px;text-transform:uppercase;
@@ -83,25 +168,25 @@
     justify-content:center;flex-shrink:0;}
   .action-card .ic svg{width:24px;height:24px;}
   .action-card .body{flex:1;min-width:0;}
-  .action-card .ttl{font-family:'Barlow Condensed';font-weight:700;font-size:17px;color:var(--navy);line-height:1.15;}
+  .action-card .ttl{font-family:'Barlow Condensed';font-weight:700;font-size:17px;color:var(--titulo);line-height:1.15;}
   .action-card .sub{font-size:12.5px;color:var(--ink-soft);margin-top:1px;}
-  .action-card .chev{color:#B7C0CC;flex-shrink:0;}
+  .action-card .chev{color:var(--ink-faint);flex-shrink:0;}
   .action-card .chev svg{width:18px;height:18px;}
   .action-card.disabled{opacity:.5; pointer-events:none;}
   .action-card.disabled .ttl[data-nota]::after{content:" - " attr(data-nota); font-size:10.5px; color:var(--ink-soft); font-family:'IBM Plex Sans'; font-weight:600; text-transform:none;}
-  .home-aviso{background:#FFF6E9;border:1px solid #F2DDBE;border-radius:12px;padding:11px 13px;
-    font-size:12.5px;color:#7A5320;line-height:1.4;margin:0 0 14px;}
+  .home-aviso{background:var(--warn-bg);border:1px solid var(--warn-line);border-radius:12px;padding:11px 13px;
+    font-size:12.5px;color:var(--warn);line-height:1.4;margin:0 0 14px;}
 
   .card-medicion .ic{background:var(--bes-bg);color:var(--bes);}
-  .card-bitacora .ic{background:#FDEDEA;color:var(--danger);}
-  .card-setup .ic{background:#EFF1F4;color:var(--navy);}
-  .card-aislamiento .ic{background:#E8F5E9;color:#2E7D32;}
-  .card-nuevo .ic{background:#FFF3EA;color:var(--orange);}
+  .card-bitacora .ic{background:var(--danger-bg);color:var(--danger);}
+  .card-setup .ic{background:var(--surface-2);color:var(--titulo);}
+  .card-aislamiento .ic{background:var(--ok-bg);color:var(--ok);}
+  .card-nuevo .ic{background:var(--naranja-bg);color:var(--orange);}
   .card-hpum .ic{background:var(--hpum-bg);color:var(--hpum);}
   .card-ubh .ic{background:var(--ubh-bg);color:var(--ubh);}
 
   .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;
-    color:var(--navy);font-weight:600;font-size:14px;padding:8px 4px 8px 0;}
+    color:var(--titulo);font-weight:600;font-size:14px;padding:8px 4px 8px 0;}
   .back-btn svg{width:16px;height:16px;}
 
   .sys-banner{display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:16px;margin:8px 0 16px;}
@@ -111,17 +196,17 @@
   .sys-banner .t{font-family:'Barlow Condensed';font-weight:700;font-size:17px;line-height:1.1;}
   .sys-banner .s{font-size:11.5px;margin-top:2px;}
   .sys-banner.bes{background:var(--bes-bg);color:var(--bes);}
-  .sys-banner.evt{background:#FDEDEA;color:var(--danger);}
-  .sys-banner.setup{background:#EFF1F4;color:var(--navy);}
-  .sys-banner.nuevo{background:#FFF3EA;color:var(--orange);}
+  .sys-banner.evt{background:var(--danger-bg);color:var(--danger);}
+  .sys-banner.setup{background:var(--surface-2);color:var(--titulo);}
+  .sys-banner.nuevo{background:var(--naranja-bg);color:var(--orange);}
 
   fieldset{border:none;margin:0 0 20px;padding:0;}
-  legend{font-family:'Barlow Condensed';font-weight:700;font-size:14.5px;color:var(--navy);
+  legend{font-family:'Barlow Condensed';font-weight:700;font-size:14.5px;color:var(--titulo);
     text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px;padding:0;
     display:flex;align-items:center;gap:8px; width:100%;}
   legend::before{content:'';width:4px;height:15px;background:var(--orange);border-radius:2px;display:inline-block;flex-shrink:0;}
   legend .count{margin-left:auto; font-family:'IBM Plex Sans'; font-weight:600; font-size:10.5px;
-    color:var(--ink-soft); text-transform:none; letter-spacing:0; background:#EEF0F3; padding:2px 8px; border-radius:100px;}
+    color:var(--ink-soft); text-transform:none; letter-spacing:0; background:var(--surface-2); padding:2px 8px; border-radius:100px;}
 
   .field{margin-bottom:12px;}
   .field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink);margin-bottom:5px;}
@@ -130,9 +215,9 @@
   .field input.mono-input{font-family:'IBM Plex Mono';font-weight:600;font-size:15.5px;}
   .field select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9'%3E%3Cpath d='M1 1l6 6 6-6' stroke='%235B6774' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 13px center;}
-  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--navy);}
-  .field input:disabled{background:#F3F4F6; color:var(--ink-soft); border-color:var(--line);}
-  .field.readonly input{background:#F7F8F9; color:var(--ink-soft); font-family:'IBM Plex Mono'; font-weight:500;}
+  .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--titulo);}
+  .field input:disabled{background:var(--surface-3); color:var(--ink-soft); border-color:var(--line);}
+  .field.readonly input{background:var(--surface-4); color:var(--ink-soft); font-family:'IBM Plex Mono'; font-weight:500;}
   .field.editable label{color:var(--orange);}
   .field.editable input, .field.editable select{border-color:var(--orange-dim);}
 
@@ -146,23 +231,23 @@
   .group-card{background:var(--card); border:1px solid var(--line); border-radius:16px;
     padding:16px 14px 4px; margin-bottom:14px; box-shadow:var(--shadow);}
 
-  .readonly-note{display:flex;align-items:flex-start;gap:8px;background:#EFF1F4;color:var(--navy);
+  .readonly-note{display:flex;align-items:flex-start;gap:8px;background:var(--surface-2);color:var(--titulo);
     font-size:12px;padding:10px 12px;border-radius:10px;margin:6px 0 16px;line-height:1.4;}
   .readonly-note svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;}
-  .change-note-box{background:#FFF7ED;border:1.5px dashed #F0B27A;border-radius:14px;padding:14px;margin-top:4px;}
+  .change-note-box{background:var(--warn-bg-2);border:1.5px dashed var(--warn-line-2);border-radius:14px;padding:14px;margin-top:4px;}
   .change-note-box .lbl{font-family:'Barlow Condensed';font-weight:700;font-size:14px;color:var(--ubh);margin-bottom:8px;}
   .nota-anterior-box{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;}
-  .nota-anterior-box .lbl-anterior{font-family:'Barlow Condensed';font-weight:700;font-size:13px;color:#6B7680;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.02em;}
-  .nota-anterior-box .txt-anterior{font-size:14px;color:#37474F;white-space:pre-wrap;}
+  .nota-anterior-box .lbl-anterior{font-family:'Barlow Condensed';font-weight:700;font-size:13px;color:var(--nota-lbl);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.02em;}
+  .nota-anterior-box .txt-anterior{font-size:14px;color:var(--nota-txt);white-space:pre-wrap;}
 
-  .sync-note{display:flex;align-items:flex-start;gap:8px;background:#FFF7ED;border:1px solid #FBE0C4;
+  .sync-note{display:flex;align-items:flex-start;gap:8px;background:var(--warn-bg-2);border:1px solid var(--warn-line-3);
     color:var(--ubh);font-size:11.5px;padding:10px 12px;border-radius:10px;margin-bottom:12px;line-height:1.4;}
   .sync-note svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;}
 
   .submit-bar{position:sticky;bottom:0;background:linear-gradient(180deg, rgba(247,249,250,0) 0%, var(--bg) 32%);
     padding:16px 0 4px;margin-top:6px;}
   .btn-primary{width:100%;padding:15px 18px;border:none;border-radius:14px;
-    background:linear-gradient(180deg,#22a3b4 0%,var(--orange) 100%);color:#fff;
+    background:linear-gradient(180deg,var(--grad-btn) 0%,var(--orange) 100%);color:#fff;
     font-family:'Barlow Condensed';font-weight:700;font-size:17px;letter-spacing:.02em;
     display:flex;align-items:center;justify-content:center;gap:8px;
     box-shadow:0 6px 18px rgba(27,142,158,.32);}
@@ -173,7 +258,7 @@
   .step-dots .d.active{background:var(--orange); width:20px; border-radius:5px;}
   .step-dots .d.done{background:var(--bes);}
 
-  .foot{text-align:center;padding:16px 0 6px;font-size:10.5px;color:#9AA5B1;}
+  .foot{text-align:center;padding:16px 0 6px;font-size:10.5px;color:var(--ink-faint);}
 
   @media (min-width:640px){
     :root{--maxw:900px;}
@@ -199,15 +284,15 @@
     display:flex;align-items:center;justify-content:center;
     box-shadow:0 8px 24px rgba(27,142,158,.32), inset 0 1px 0 rgba(255,255,255,.25);}
   .login-hero .mark svg{width:38px;height:38px;}
-  .login-hero h1{font-size:28px;color:var(--navy);margin:0 0 4px;}
+  .login-hero h1{font-size:28px;color:var(--titulo);margin:0 0 4px;}
   .login-hero p{margin:0;color:var(--ink-soft);font-size:14px;}
   .login-card{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:22px 20px;box-shadow:var(--shadow);}
   .tech-list{display:flex;flex-direction:column;gap:8px;margin-top:6px;}
   .tech-pick{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1.5px solid var(--line);
-    border-radius:12px;background:#fbfbfc; cursor:pointer;}
+    border-radius:12px;background:var(--surface-5); cursor:pointer;}
   .tech-pick .av{width:34px;height:34px;border-radius:50%;background:var(--navy);color:#fff;
     display:flex;align-items:center;justify-content:center;font-family:'Barlow Condensed';font-weight:700;font-size:14px;flex-shrink:0;}
-  .tech-pick.sel{border-color:var(--orange);background:#FFF7ED;}
+  .tech-pick.sel{border-color:var(--orange);background:var(--warn-bg-2);}
   .tech-pick .nm{font-weight:600;font-size:14.5px;color:var(--ink);}
 
   /* ---- Selector de sistema (hero badges) ---- */
@@ -220,10 +305,10 @@
   .sistema-card.hpum .badge{background:var(--hpum-bg); color:var(--hpum);}
   .sistema-card.ubh .badge{background:var(--ubh-bg); color:var(--ubh);}
   .sistema-card .body{flex:1;min-width:0;}
-  .sistema-card .name{font-family:'Barlow Condensed';font-weight:800;font-size:21px;color:var(--navy);line-height:1.05;}
+  .sistema-card .name{font-family:'Barlow Condensed';font-weight:800;font-size:21px;color:var(--titulo);line-height:1.05;}
   .sistema-card .full{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px;}
   .sistema-card .desc{font-size:12.5px;color:var(--ink-soft);margin-top:6px;line-height:1.35;}
-  .sistema-card .go{position:absolute; top:16px; right:16px; color:#B7C0CC;}
+  .sistema-card .go{position:absolute; top:16px; right:16px; color:var(--ink-faint);}
   .sistema-card .go svg{width:20px;height:20px;}
   .sistema-card.soon{opacity:.6;}
   .sistema-card.soon .badge-lbl{position:absolute; bottom:14px; right:16px; font-size:9.5px; font-weight:700;
@@ -236,7 +321,20 @@
   legend::before{display:none;}
   legend{gap:10px;}
 
-  .chg-tech{background:none;border:none;color:#CBD6E6;font-size:11px;text-decoration:underline;padding:0;}
+  .chg-tech{background:none;border:none;color:var(--sobre-navy);font-size:11px;text-decoration:underline;padding:0;}
+
+  /* Interruptor de tema. Area de 34px: con guante en el PAD, algo mas
+     pequeno no se acierta. Se muestra el icono de lo que se va a
+     obtener al tocarlo, no el del estado actual, que es lo que la gente
+     espera de un interruptor. */
+  .tema-btn{display:flex;align-items:center;justify-content:center;
+    width:34px;height:34px;flex-shrink:0;padding:0;border:none;border-radius:10px;
+    background:rgba(255,255,255,.10);color:#fff;
+    transition:background .15s;}
+  .tema-btn:active{background:rgba(255,255,255,.22);}
+  .tema-btn svg{width:19px;height:19px;}
+  html[data-tema="claro"]  .tema-btn .ico-sol{display:none;}
+  html[data-tema="oscuro"] .tema-btn .ico-luna{display:none;}
 </style>
 </head>
 <body>
@@ -257,6 +355,18 @@
       <div style="display:flex; align-items:center; gap:10px;">
         <button id="pendientes-badge" class="chg-tech hidden" style="color:#FFB37A; font-weight:600;" onclick="dpAbrirOffline()"></button>
         <div class="chip-online" id="chip-conexion"><span class="dot"></span><span id="chip-conexion-txt">En linea</span></div>
+        <button class="tema-btn" id="tema-btn" type="button" onclick="alternarTema()"
+                aria-label="Cambiar entre modo claro y oscuro" title="Modo claro u oscuro">
+          <svg class="ico-sol" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 2.4v2.4M12 19.2v2.4M2.4 12h2.4M19.2 12h2.4M5.2 5.2l1.7 1.7M17.1 17.1l1.7 1.7M18.8 5.2l-1.7 1.7M6.9 17.1l-1.7 1.7"
+                  stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <svg class="ico-luna" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M20.5 14.6A8.6 8.6 0 1 1 9.4 3.5a6.9 6.9 0 0 0 11.1 11.1z"
+                  stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          </svg>
+        </button>
       </div>
     </div>
   </header>
@@ -427,8 +537,8 @@
         <div class="section-label" style="margin-top:0;"><span class="bar"></span>Preparar salida a campo</div>
         <p style="font-size:14px;margin:0 0 10px;color:var(--ink-soft);">
           Descarga el listado de activos, el catalogo de puntos de cada topologia y la
-          configuracion de todos los pozos. Hazlo con senal antes de salir: sin esto, un
-          pozo que nunca se abrio con conexion no se puede capturar en campo.
+          configuracion de todas las unidades. Hazlo con senal antes de salir: sin esto, una
+          unidad que nunca se abrio con conexion no se puede capturar en campo.
         </p>
         <div id="prep-estado" style="font-size:13px;margin-bottom:10px;"></div>
         <div id="prep-barra-caja" class="hidden" style="height:8px;background:var(--bg);border-radius:99px;overflow:hidden;margin-bottom:10px;">
@@ -452,10 +562,10 @@
       <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
       <div class="sys-banner bes">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-        <div><div class="t">Medicion predictiva</div><div class="s">Selecciona el pozo a medir</div></div>
+        <div><div class="t">Medicion predictiva</div><div class="s">Selecciona la unidad a medir</div></div>
       </div>
       <div class="field">
-        <label for="med-pozo-select">Pozo</label>
+        <label for="med-pozo-select">Unidad</label>
         <select id="med-pozo-select"></select>
       </div>
       <div id="med-locales"></div>
@@ -469,7 +579,7 @@
     </section>
 
     <section id="screen-medicion-form" class="hidden">
-      <button class="back-btn" onclick="ir('medicion-pozo')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Cambiar pozo</button>
+      <button class="back-btn" onclick="ir('medicion-pozo')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Cambiar unidad</button>
       <div class="sys-banner bes">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         <div><div class="t">Medicion <span id="med-pozo-label" class="mono"></span></div><div class="s">62 puntos de medida</div></div>
@@ -501,7 +611,7 @@
       </div>
       <form id="form-bitacora">
         <div class="group-card">
-          <div class="field"><label>Pozo</label><select id="evt-pozo"></select></div>
+          <div class="field"><label>Unidad</label><select id="evt-pozo"></select></div>
           <div class="field"><label>Realizo</label><input id="evt-realizo" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>
           <div class="grid-fields">
             <div class="field"><label>Fecha</label><input type="date" id="evt-fecha"></div>
@@ -537,7 +647,7 @@
       </div>
       <form id="form-aislamiento">
         <div class="group-card">
-          <div class="field"><label>Pozo</label><select id="ais-pozo"></select></div>
+          <div class="field"><label>Unidad</label><select id="ais-pozo"></select></div>
           <div class="grid-fields">
             <div class="field"><label>Fecha de prueba</label><input type="date" id="ais-fecha"></div>
             <div class="field"><label>Equipo de medicion</label><input id="ais-equipo" placeholder="Ej: Megger MIT525"></div>
@@ -575,12 +685,12 @@
       <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
       <div class="sys-banner setup">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
-        <div><div class="t">Configuracion VFD</div><div class="s">Selecciona el pozo</div></div>
+        <div><div class="t">Configuracion VFD</div><div class="s">Selecciona la unidad</div></div>
       </div>
-      <div class="field"><label>Pozo</label><select id="setup-pozo-select"></select></div>
+      <div class="field"><label>Unidad</label><select id="setup-pozo-select"></select></div>
       <div class="readonly-note">
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
-        Se carga la configuracion actual del pozo. Todos los campos son editables; cualquier cambio queda registrado como nota historica en la bitacora al guardar.
+        Se carga la configuracion actual de la unidad. Todos los campos son editables; cualquier cambio queda registrado como nota historica en la bitacora al guardar.
       </div>
       <div class="submit-bar" style="position:static;">
         <button class="btn-primary" onclick="cargarSetup()">Cargar configuracion actual
@@ -590,7 +700,7 @@
     </section>
 
     <section id="screen-setup-form" class="hidden">
-      <button class="back-btn" onclick="ir('setup-pozo')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Cambiar pozo</button>
+      <button class="back-btn" onclick="ir('setup-pozo')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Cambiar unidad</button>
       <div class="sys-banner setup">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
         <div><div class="t">Setup <span id="setup-pozo-label" class="mono"></span></div><div class="s">Configuracion actual - todo editable</div></div>
@@ -607,12 +717,12 @@
       <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
       <div class="sys-banner nuevo">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
-        <div><div class="t">Pozo nuevo o existente</div><div class="s">Paso 1 de 5 - Catalogo</div></div>
+        <div><div class="t">Unidad nueva o existente</div><div class="s">Paso 1 de 5 - Catalogo</div></div>
       </div>
       <div class="step-dots"><span class="d active"></span><span class="d"></span><span class="d"></span><span class="d"></span><span class="d"></span></div>
       <form id="form-nuevo-catalogo">
         <div class="group-card">
-          <div class="field"><label>Pozo (nombre)</label>
+          <div class="field"><label>Unidad (nombre)</label>
             <input id="nc-pozo" list="lista-pozos-existentes" placeholder="ej. CYC-70" required
                    oninput="this.value=this.value.toUpperCase()" onblur="normalizarYVerificarPozo()">
             <datalist id="lista-pozos-existentes"></datalist>
@@ -767,7 +877,7 @@
         </div>
       </form>
       <div class="submit-bar">
-        <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Si el pozo ya existia, el catalogo se actualiza y cada equipo editado queda como registro historico nuevo (no se borra el anterior). Si es un pozo nuevo, se crean los 5 registros.</div>
+        <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Si la unidad ya existia, el catalogo se actualiza y cada equipo editado queda como registro historico nuevo (no se borra el anterior). Si es una unidad nueva, se crean los 5 registros.</div>
         <button class="btn-primary" onclick="guardarPozoNuevo()">Guardar cambios
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
@@ -1125,7 +1235,7 @@ function dpPintarPreparacion(){
   var p = dpLeerJSON(CLAVE_PREP, null);
   if (!p){
     caja.innerHTML = '<span style="color:#C62828;font-weight:600;">Nunca se ha preparado este dispositivo.</span>'
-      + '<br><span style="color:var(--ink-soft);">Sin descargar, en campo solo funcionan los pozos que ya se abrieron con senal.</span>';
+      + '<br><span style="color:var(--ink-soft);">Sin descargar, en campo solo funcionan las unidades que ya se abrieron con senal.</span>';
   } else {
     var d = new Date(p.ts);
     var dias = Math.floor((Date.now() - d.getTime()) / 86400000);
@@ -1134,7 +1244,7 @@ function dpPintarPreparacion(){
       + d.toLocaleDateString('es-CO',{day:'2-digit',month:'short'}) + ' '
       + d.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})
       + (dias > 0 ? ' (hace ' + dias + (dias===1?' dia':' dias') + ')' : '') + '</span>'
-      + '<br><span style="color:var(--ink-soft);">' + p.pozos + ' pozos &middot; '
+      + '<br><span style="color:var(--ink-soft);">' + p.pozos + ' unidades &middot; '
       + p.topologias + ' topologias' + (p.fallos ? ' &middot; ' + p.fallos + ' sin descargar' : '') + '</span>';
   }
   var sub = document.getElementById('home-off-sub');
@@ -1248,14 +1358,14 @@ function dpPrepararCampo(){
     barra.style.width = '100%';
     dpPintarPreparacion();
 
-    var msg = 'Listo. ' + res.pozos + ' pozos y ' + res.topologias + ' topologias guardadas en este dispositivo.';
+    var msg = 'Listo. ' + res.pozos + ' unidades y ' + res.topologias + ' topologias guardadas en este dispositivo.';
     if (sinEspacio)
       msg += '\n\nAVISO: el almacenamiento del navegador se lleno y parte de los datos no quedo '
            + 'guardada. Libera espacio (borrar datos de otros sitios) y vuelve a descargar.';
     if (fallos.length)
       msg += '\n\nNo se pudo descargar: ' + fallos.slice(0,12).join(', ')
            + (fallos.length > 12 ? ' y ' + (fallos.length-12) + ' mas.' : '')
-           + '\n\nEsos pozos no van a poder capturarse sin senal.';
+           + '\n\nEsas unidades no van a poder capturarse sin senal.';
     detalle.textContent = fallos.length
       ? fallos.length + ' elementos sin descargar. Revisa el aviso.'
       : 'Descarga completa.';
@@ -1564,8 +1674,20 @@ function medGruposDesdeCatalogo(catalogo){
 }
 
 
+/* Ultima lista conocida de unidades. Se guarda para poder repintar los
+   selectores cuando el tecnico cambia de sistema, sin volver a pedirle
+   nada a la red: en campo esa peticion puede no volver. */
+var MED_UNIDADES = [];
+var medRepintarSelects = function(){};
+
+/* Selectores que SI se filtran por el sistema elegido. El datalist de
+   "unidad nueva o existente" queda fuera a proposito: sirve para saber
+   si el nombre ya existe antes de crearlo, y filtrarlo dejaria crear un
+   duplicado de una unidad de otro sistema sin que nadie se entere. */
+var MED_SELECTS_FILTRADOS = ['med-pozo-select','evt-pozo','setup-pozo-select','ais-pozo'];
+
 function poblarSelects(){
-  var idsSelect = ['med-pozo-select','evt-pozo','setup-pozo-select','ais-pozo'];
+  var idsSelect = MED_SELECTS_FILTRADOS;
 
   /* Orden de los grupos. Lo que no este aqui va despues, alfabetico,
      y los activos sin sistema conocido quedan de ultimo. */
@@ -1596,7 +1718,32 @@ function poblarSelects(){
     });
   }
 
-  function llenar(listaPozos){
+  /* Deja solo las unidades del sistema elegido.
+
+     Las de sistema desconocido se conservan siempre. Esconderlas seria
+     peor que mostrarlas: una unidad recien dada de alta, o una que la
+     base todavia no clasifico, quedaria imposible de medir en campo y
+     el tecnico no tendria forma de saber por que no aparece. Salen en
+     su propio grupo, rotuladas.
+
+     Si el filtro deja la lista vacia, se devuelve completa. Eso pasa
+     cuando el mapa de sistemas aun no llego: mas vale un selector con
+     todo que uno vacio a la mitad de una corrida. */
+  function filtrarPorSistema(listaPozos){
+    if (!sistemaActual) return listaPozos;
+    var hayMapa = false;
+    for (var k in MED_SISTEMA_POR_ACTIVO){ hayMapa = true; break; }
+    if (!hayMapa) return listaPozos;
+
+    var filtrada = listaPozos.filter(function(p){
+      var s = MED_SISTEMA_POR_ACTIVO[p] || '';
+      return !s || s === sistemaActual;
+    });
+    return filtrada.length ? filtrada : listaPozos;
+  }
+
+  function llenar(listaCruda){
+    var listaPozos = filtrarPorSistema(listaCruda);
     var grupos = agrupar(listaPozos);
     var cuerpo = grupos
       ? grupos.map(function(g){
@@ -1615,9 +1762,16 @@ function poblarSelects(){
       sel.innerHTML = '<option value="">Selecciona...</option>' + cuerpo;
       if (elegido) sel.value = elegido;
     });
+    /* Con la lista SIN filtrar: verificar si el nombre ya existe tiene
+       que mirar todas las unidades, no solo las del sistema abierto. */
     var datalist = document.getElementById('lista-pozos-existentes');
-    if(datalist) datalist.innerHTML = listaPozos.map(function(p){ return '<option value="' + p + '">'; }).join('');
+    if(datalist) datalist.innerHTML = listaCruda.map(function(p){ return '<option value="' + p + '">'; }).join('');
+
+    MED_UNIDADES = listaCruda;
   }
+
+  /* Se expone para que el cambio de sistema repinte sin volver a la red. */
+  medRepintarSelects = function(){ if (MED_UNIDADES.length) llenar(MED_UNIDADES); };
   /* Sistema por activo. El formulario de medicion lo necesita para
      saber que puntos pedir: BES y HPUM no miden lo mismo. */
   function guardarSistemas(filas){
@@ -1685,7 +1839,7 @@ function iniciarMedicion(){
   var ahora = new Date();
   var cabecera = '<fieldset><legend><span class="sec-ic" style="background:#EFF1F4;color:var(--navy);">' + ICONO_GAUGE + '</span>Identificacion</legend><div class="group-card">' +
     '<div class="grid-fields">' +
-    '<div class="field readonly"><label>Pozo</label><input value="' + pozo + '" disabled></div>' +
+    '<div class="field readonly"><label>Unidad</label><input value="' + pozo + '" disabled></div>' +
     '<div class="field"><label>Realizado por</label><input id="med-realizo" value="' + tecnicoActual + '" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>' +
     '</div>' +
     '<div class="grid-fields">' +
@@ -1708,10 +1862,10 @@ function iniciarMedicion(){
       '<div class="unit-input"><input class="mono-input" type="number" step="0.1" min="0" max="120" id="med-lsc"><span class="unit">Hz</span></div></div>' +
     '</div>' +
     '<div class="field"><label>Control mode</label><select id="med-modo"><option>Freq Set</option><option>PID</option><option>Gas Control</option></select></div>' +
-    /* Condicion del pozo al momento de medir. Es obligatoria en la
+    /* Condicion de la unidad al momento de medir. Es obligatoria en la
        base y cambia el sentido de los numeros: una medicion con el
        pozo detenido no se compara contra una en operacion. */
-    '<div class="field"><label>Condicion del pozo</label><select id="med-condicion">' +
+    '<div class="field"><label>Condicion de la unidad</label><select id="med-condicion">' +
       '<option value="OPERANDO">Operando</option>' +
       '<option value="DETENIDO">Detenido</option>' +
       '<option value="ARRANQUE">En arranque</option>' +
@@ -1878,7 +2032,7 @@ function cargarSetup(){
     if(c){ pintar(c); return; }
     caja.innerHTML = '<fieldset><legend>Sin datos</legend><div class="group-card">'
       + '<p style="margin:0 0 8px;font-size:14px;">Sin senal y sin configuracion guardada de '
-      + pozo + '. Abre este pozo una vez con conexion para poder trabajarlo en campo.</p>'
+      + pozo + '. Abre esta unidad una vez con conexion para poder trabajarla en campo.</p>'
       + '<button class="btn-primary" onclick="cargarSetup()">Reintentar</button>'
       + '</div></fieldset>';
     return;
@@ -2011,7 +2165,7 @@ function suVal(id){
 }
 
 function guardarSetup(){
-  if(!SETUP_DATOS){ alert('Carga primero la configuracion del pozo.'); return; }
+  if(!SETUP_DATOS){ alert('Carga primero la configuracion de la unidad.'); return; }
 
   var nota = suVal('nota');
   if(!nota){
@@ -2614,7 +2768,7 @@ var MEDCAB_EDITABLES = Object.keys(MEDCAB_COLUMNA);
 var MEDCAB_ETIQUETA = {
   'med-frecop': 'Frecuencia de operacion', 'med-frecset': 'Setpoint de frecuencia',
   'med-hsc': 'HSC', 'med-lsc': 'LSC',
-  'med-modo': 'Control mode', 'med-condicion': 'Condicion del pozo'
+  'med-modo': 'Control mode', 'med-condicion': 'Condicion de la unidad'
 };
 
 function dpListarCompletables(){
@@ -3005,7 +3159,7 @@ function verificarPozoExistente(){
 
     if(cat.existe){
       estado.style.color = '#2E7D32';
-      estado.textContent = '✓ Pozo existente - datos cargados, edita lo que cambio';
+      estado.textContent = '✓ Unidad existente - datos cargados, edita lo que cambio';
       document.getElementById('nc-pad').value = campos.PAD || '';
       document.getElementById('nc-campo').value = campos.Campo || 'Put Norte';
       document.getElementById('nc-operador').value = campos.Operador || '';
@@ -3014,7 +3168,7 @@ function verificarPozoExistente(){
       document.getElementById('nc-notas').value = campos.Notas || '';
     } else {
       estado.style.color = '#EF6C00';
-      estado.textContent = 'Pozo nuevo - se creara desde cero';
+      estado.textContent = 'Unidad nueva - se creara desde cero';
       document.getElementById('nc-pad').value = '';
       document.getElementById('nc-operador').value = '';
       document.getElementById('nc-estado').value = 'Activo';
@@ -3079,7 +3233,7 @@ function verificarPozoExistente(){
 
   }).catch(function(e){
     estado.style.color = '#C62828';
-    estado.textContent = 'No se pudo verificar (revisa conexion) - se tratara como pozo nuevo';
+    estado.textContent = 'No se pudo verificar (revisa conexion) - se tratara como unidad nueva';
   });
 }
 
@@ -3346,7 +3500,7 @@ function dpRevisarPreparacion(){
       ? 'Los datos para trabajar sin senal se descargaron hace ' + dias + ' dias.\n\n'
         + 'Conviene actualizarlos antes de salir a campo.'
       : 'Este dispositivo no tiene datos descargados para trabajar sin senal.\n\n'
-        + 'En campo solo van a funcionar los pozos que ya se hayan abierto con conexion. '
+        + 'En campo solo van a funcionar las unidades que ya se hayan abierto con conexion. '
         + 'Descargalos ahora, mientras hay senal.';
     if (confirm(texto + '\n\nAbrir la pantalla de descarga?')) dpAbrirOffline();
   }, 900);
@@ -3472,10 +3626,45 @@ var SISTEMAS = {
 };
 var sistemaActual = 'BES';
 
+/* El color de la barra de estado del sistema tambien cambia: si no, en
+   oscuro queda una franja azul clara arriba que delata que la app no
+   siguio el cambio completo. */
+function alternarTema(){
+  var raiz = document.documentElement;
+  var nuevo = raiz.getAttribute('data-tema') === 'oscuro' ? 'claro' : 'oscuro';
+  raiz.setAttribute('data-tema', nuevo);
+  dpAlmacen.setItem('dp_tema', nuevo);
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', nuevo === 'oscuro' ? '#0d2d43' : '#134B70');
+}
+
+/* Al abrir, la barra de estado tiene que arrancar acorde con el tema
+   que resolvio el script de la cabecera. */
+(function(){
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta && document.documentElement.getAttribute('data-tema') === 'oscuro')
+    meta.setAttribute('content', '#0d2d43');
+})();
+
 function seleccionarSistema(cod){
   sistemaActual = SISTEMAS[cod] ? cod : 'BES';
   dpAlmacen.setItem('dp_sistema', sistemaActual);
   adaptarHome();
+
+  /* Los selectores muestran solo las unidades del sistema elegido, asi
+     que al cambiarlo hay que repintarlos. Se hace desde la lista ya
+     conocida y no pidiendola de nuevo: en campo esa peticion puede no
+     volver, y el tecnico se quedaria con un selector vacio.
+
+     Tambien se suelta lo que estuviera seleccionado: quedaria una
+     unidad de otro sistema elegida y ya invisible en la lista, y el
+     formulario se armaria con la topologia equivocada. */
+  MED_SELECTS_FILTRADOS.forEach(function(id){
+    var sel = document.getElementById(id);
+    if (sel) sel.value = '';
+  });
+  medRepintarSelects();
+
   ir('home');
 }
 
