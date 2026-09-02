@@ -235,6 +235,45 @@
   .field select option,
   .field select optgroup{background:var(--campo);color:var(--ink);}
   .field select optgroup{font-weight:700;color:var(--titulo);}
+
+  /* ---- Buscador de unidad ----------------------------------------
+     Envuelve al <select> nativo en lugar de reemplazarlo. El select
+     sigue existiendo, oculto, y sigue siendo la fuente de verdad: hay
+     ocho sitios en este archivo que leen o escriben sel.value, y
+     cambiarlos todos por un control propio era pedir un fallo. */
+  .combo{position:relative;}
+  .combo select{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;}
+  .combo-inp{width:100%;padding:12px 34px 12px 13px;border:1.5px solid var(--line);
+    border-radius:11px;font-size:15px;background:var(--campo);color:var(--ink);
+    font-family:'IBM Plex Sans';}
+  .combo-inp::placeholder{color:var(--ink-faint);}
+  .combo-inp:focus{outline:none;border-color:var(--titulo);}
+  .combo-flecha{position:absolute;right:13px;top:16px;width:14px;height:9px;
+    pointer-events:none;color:var(--ink-soft);}
+  .combo-limpiar{position:absolute;right:34px;top:11px;width:22px;height:22px;padding:0;
+    border:none;background:none;color:var(--ink-faint);display:none;font-size:17px;
+    line-height:1;}
+  .combo.con-valor .combo-limpiar{display:block;}
+
+  .combo-panel{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:60;
+    background:var(--card);border:1.5px solid var(--line);border-radius:11px;
+    box-shadow:var(--shadow);max-height:46vh;overflow-y:auto;display:none;
+    -webkit-overflow-scrolling:touch;}
+  .combo.abierto .combo-panel{display:block;}
+  .combo-grupo{padding:7px 13px 4px;font-size:10.5px;font-weight:700;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--titulo);position:sticky;top:0;background:var(--card);}
+  /* 44px de alto: con guante en el PAD, algo mas bajo no se acierta. */
+  .combo-item{display:flex;align-items:center;min-height:44px;padding:9px 13px;
+    font-size:15px;color:var(--ink);cursor:pointer;border:none;background:none;
+    width:100%;text-align:left;font-family:'IBM Plex Mono';font-weight:500;}
+  .combo-item .sis{margin-left:auto;font-family:'IBM Plex Sans';font-weight:600;
+    font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);}
+  .combo-item.act,.combo-item:hover{background:var(--surface-2);}
+  .combo-item.elegido{color:var(--orange);}
+  .combo-item b{color:var(--orange);font-weight:700;}
+  .combo-vacio{padding:14px 13px;font-size:13px;color:var(--ink-soft);
+    font-family:'IBM Plex Sans';}
+
   .field input:focus,.field select:focus,.field textarea:focus{border-color:var(--titulo);}
   .field input:disabled{background:var(--surface-3); color:var(--ink-soft); border-color:var(--line);}
   .field.readonly input{background:var(--surface-4); color:var(--ink-soft); font-family:'IBM Plex Mono'; font-weight:500;}
@@ -1691,6 +1730,271 @@ function medGruposDesdeCatalogo(catalogo){
     return { etapa:et, titulo:m.titulo, cols:m.cols,
              info:{svg:es.svg, bg:es.bg, color:es.color}, campos:porEtapa[et] };
   });
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   BUSCADOR DE UNIDAD
+   ------------------------------------------------------------------
+   Con 64 unidades, el desplegable nativo obliga a rodar la lista hasta
+   encontrar la que se busca. Aqui se puede escribir.
+
+   El <select> NO se reemplaza: se oculta y sigue siendo la fuente de
+   verdad. Hay ocho sitios en este archivo que leen o escriben
+   sel.value (restaurar borrador, completar medicion, soltar seleccion
+   al cambiar de sistema), y reescribirlos todos era pedir un fallo.
+
+   COMO EMPAREJA
+   La comparacion no es sobre el texto crudo sino sobre dos formas
+   normalizadas:
+     clave     mayusculas, sin acentos, sin guiones -> CYC-01 = CYC01
+     sin ceros los ceros a la izquierda fuera       -> CYC01  = CYC1
+   Asi "cyc1" encuentra CYC-01, que es como la gente lo escribe de
+   verdad cuando tiene prisa.
+
+   Un numero suelto se trata aparte. Escribir 5 o 05 deberia dar
+   CHB-05 antes que CHB-15 o CHB-51, aunque las tres contengan un 5.
+   Por eso el numero final de cada unidad se compara como numero, no
+   como texto, y esas coincidencias pesan mas.
+   ══════════════════════════════════════════════════════════════════ */
+
+function comboClave(t){
+  return (t == null ? '' : String(t)).toUpperCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^A-Z0-9]/g, '');
+}
+function comboSinCeros(clave){
+  return clave.replace(/\d+/g, function(d){ return String(parseInt(d, 10)); });
+}
+function comboNumFinal(clave){
+  var m = clave.match(/(\d+)$/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/* Menor puntaje = mejor. null si no empareja. */
+function comboPuntaje(nombre, consulta){
+  if (!consulta) return 9;
+  var c  = comboClave(nombre),  cz = comboSinCeros(c);
+  var q  = comboClave(consulta), qz = comboSinCeros(q);
+  if (!q) return 9;
+
+  if (c === q || cz === qz) return 0;
+
+  if (/^\d+$/.test(q)){
+    var n = comboNumFinal(c);
+    if (n !== null && n === parseInt(q, 10)) return 1;
+  }
+  if (c.indexOf(q) === 0 || cz.indexOf(qz) === 0) return 2;
+  if (c.indexOf(q) >= 0 || cz.indexOf(qz) >= 0) return 3;
+  return null;
+}
+
+function comboResaltar(nombre, consulta){
+  var esc = nombre.replace(/[&<>]/g, function(x){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;'}[x]; });
+  var q = comboClave(consulta);
+  if (!q) return esc;
+  /* El resalte se calcula sobre la clave y se traslada al texto
+     original, porque el original lleva guiones y la clave no: sin
+     este mapeo el subrayado quedaria corrido. */
+  var mapa = [], clave = '';
+  for (var i = 0; i < nombre.length; i++){
+    var ch = comboClave(nombre[i]);
+    if (ch){ clave += ch; mapa.push(i); }
+  }
+  var p = clave.indexOf(q);
+  if (p < 0) return esc;
+  var ini = mapa[p], fin = mapa[Math.min(p + q.length - 1, mapa.length - 1)];
+  return nombre.slice(0, ini).replace(/[&<>]/g, '') + '<b>'
+       + nombre.slice(ini, fin + 1) + '</b>'
+       + nombre.slice(fin + 1).replace(/[&<>]/g, '');
+}
+
+function comboInstalar(id){
+  var sel = document.getElementById(id);
+  if (!sel || sel.dataset.combo) return;
+  sel.dataset.combo = '1';
+
+  var caja = document.createElement('div');
+  caja.className = 'combo';
+  sel.parentNode.insertBefore(caja, sel);
+  caja.appendChild(sel);
+
+  caja.insertAdjacentHTML('beforeend',
+      '<input class="combo-inp" type="text" autocomplete="off" autocorrect="off"'
+    + ' autocapitalize="characters" spellcheck="false" role="combobox"'
+    + ' aria-expanded="false" aria-autocomplete="list"'
+    + ' placeholder="Escribe o toca para buscar">'
+    + '<button class="combo-limpiar" type="button" tabindex="-1"'
+    + ' aria-label="Borrar">&times;</button>'
+    + '<svg class="combo-flecha" viewBox="0 0 14 9" fill="none" aria-hidden="true">'
+    + '<path d="M1 1l6 6 6-6" stroke="currentColor" stroke-width="2"'
+    + ' stroke-linecap="round"/></svg>'
+    + '<div class="combo-panel" role="listbox"></div>');
+
+  var inp    = caja.querySelector('.combo-inp');
+  var panel  = caja.querySelector('.combo-panel');
+  var limpia = caja.querySelector('.combo-limpiar');
+  var activo = -1, visibles = [];
+
+  function opciones(){
+    var out = [];
+    Array.prototype.forEach.call(sel.options, function(o){
+      if (!o.value) return;
+      var g = o.parentNode && o.parentNode.tagName === 'OPTGROUP'
+              ? o.parentNode.label : '';
+      out.push({ valor: o.value, texto: o.textContent, grupo: g });
+    });
+    return out;
+  }
+
+  /* Refleja en el recuadro lo que tenga el select. Se llama cuando el
+     select cambia por su cuenta: al restaurar un borrador, al
+     completar una medicion o al soltar la seleccion tras cambiar de
+     sistema. */
+  function sincronizar(){
+    inp.value = sel.value || '';
+    caja.classList.toggle('con-valor', !!sel.value);
+  }
+
+  function pintar(){
+    var q = inp.value.trim();
+    var elegido = sel.value;
+    visibles = opciones()
+      .map(function(o){ o.p = comboPuntaje(o.texto, q); return o; })
+      .filter(function(o){ return o.p !== null; })
+      .sort(function(a, b){
+        return a.p !== b.p ? a.p - b.p : a.texto.localeCompare(b.texto);
+      });
+
+    if (!visibles.length){
+      panel.innerHTML = '<div class="combo-vacio">Ninguna unidad coincide con "'
+        + q.replace(/[&<>]/g, '') + '".<br>Revisa el sistema activo: la lista solo '
+        + 'muestra las unidades de ese sistema.</div>';
+      activo = -1;
+      return;
+    }
+
+    /* Con la lista completa se agrupa por sistema, que es como esta
+       organizada la flota. Filtrando no: los encabezados estorban
+       cuando quedan dos resultados. */
+    var agrupar = !q, htm = '', ultimo = null;
+    visibles.forEach(function(o, i){
+      if (agrupar && o.grupo && o.grupo !== ultimo){
+        htm += '<div class="combo-grupo">' + o.grupo + '</div>';
+        ultimo = o.grupo;
+      }
+      htm += '<button type="button" class="combo-item'
+           + (o.valor === elegido ? ' elegido' : '') + '" data-i="' + i + '"'
+           + ' role="option">' + comboResaltar(o.texto, q)
+           + (!agrupar && o.grupo ? '<span class="sis">' + o.grupo + '</span>' : '')
+           + '</button>';
+    });
+    panel.innerHTML = htm;
+    activo = visibles.length ? 0 : -1;
+    marcar();
+  }
+
+  function marcar(){
+    var items = panel.querySelectorAll('.combo-item');
+    for (var i = 0; i < items.length; i++)
+      items[i].classList.toggle('act', +items[i].dataset.i === activo);
+    var a = panel.querySelector('.combo-item.act');
+    if (a) a.scrollIntoView({ block: 'nearest' });
+  }
+
+  function abrir(){
+    caja.classList.add('abierto');
+    inp.setAttribute('aria-expanded', 'true');
+    pintar();
+    /* Con el teclado abierto el panel queda fuera de pantalla si el
+       campo esta a media pagina. */
+    setTimeout(function(){
+      try { caja.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch(e){}
+    }, 220);
+  }
+  function cerrar(){
+    caja.classList.remove('abierto');
+    inp.setAttribute('aria-expanded', 'false');
+    sincronizar();   /* lo escrito a medias no se queda: manda el select */
+  }
+
+  function elegir(i){
+    var o = visibles[i];
+    if (!o) return;
+    sel.value = o.valor;
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    sincronizar();
+    cerrar();
+  }
+
+  inp.addEventListener('focus', function(){ inp.select(); abrir(); });
+  inp.addEventListener('input', function(){
+    caja.classList.add('abierto'); pintar();
+  });
+  inp.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      if (!caja.classList.contains('abierto')) return abrir();
+      activo += (e.key === 'ArrowDown' ? 1 : -1);
+      if (activo < 0) activo = visibles.length - 1;
+      if (activo >= visibles.length) activo = 0;
+      marcar();
+    } else if (e.key === 'Enter'){
+      if (caja.classList.contains('abierto')){ e.preventDefault(); elegir(activo); }
+    } else if (e.key === 'Escape'){
+      cerrar();
+    }
+  });
+
+  /* mousedown y no click: el click llega despues del blur, y para
+     entonces el panel ya se cerro. */
+  panel.addEventListener('mousedown', function(e){
+    var it = e.target.closest('.combo-item');
+    if (!it) return;
+    e.preventDefault();
+    elegir(+it.dataset.i);
+  });
+
+  limpia.addEventListener('mousedown', function(e){
+    e.preventDefault();
+    sel.value = '';
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+    sincronizar(); inp.focus();
+  });
+
+  document.addEventListener('mousedown', function(e){
+    if (!caja.contains(e.target) && caja.classList.contains('abierto')) cerrar();
+  });
+
+  sel.addEventListener('change', sincronizar);
+
+  /* poblarSelects reescribe las opciones hasta tres veces (respaldo,
+     cache y red). El observador evita tener que avisar desde alli. */
+  new MutationObserver(function(){
+    sincronizar();
+    if (caja.classList.contains('abierto')) pintar();
+  }).observe(sel, { childList: true, subtree: true });
+
+  /* Ocho sitios hacen sel.value = algo sin disparar 'change'. En vez de
+     tocar los ocho, se intercepta la asignacion en esta instancia y se
+     delega en el comportamiento normal del navegador. */
+  try {
+    var proto = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    if (proto && proto.set){
+      Object.defineProperty(sel, 'value', {
+        configurable: true,
+        get: function(){ return proto.get.call(this); },
+        set: function(v){ proto.set.call(this, v); sincronizar(); }
+      });
+    }
+  } catch(e){ /* si el navegador no deja, queda el listener de change */ }
+
+  sincronizar();
+}
+
+function comboInstalarTodos(){
+  MED_SELECTS_FILTRADOS.forEach(comboInstalar);
 }
 
 
@@ -3726,6 +4030,7 @@ function abrirActualizarUnidad(){
 })();
 
 poblarSelects();
+comboInstalarTodos();
 adaptarHome();
 actualizarIndicadorConexion();
 actualizarBadgePendientes();

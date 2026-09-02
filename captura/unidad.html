@@ -607,6 +607,17 @@ function norm(t){
     .normalize('NFD').replace(/[\u0300-\u036f]/g,'');
 }
 
+/* Clave de comparacion: sin acentos, sin guiones ni espacios, y sin
+   ceros a la izquierda. Con esto "cyc1" encuentra CYC-01, que es como
+   se escribe cuando hay prisa. Es la misma regla que usa el buscador
+   de unidad de la app de captura; si divergen, el tecnico aprende dos
+   comportamientos distintos para lo mismo. */
+function clave(t){
+  return norm(t).replace(/[^A-Z0-9]/g,'').replace(/\d+/g, function(d){
+    return String(parseInt(d,10));
+  });
+}
+
 $('q').addEventListener('input', function(e){
   clearTimeout(reloj);
   var v = e.target.value;
@@ -621,10 +632,14 @@ function buscar(texto){
       + 'Conectate una vez para bajar la lista.</span></div>';
     caja.classList.remove('oculto'); return;
   }
-  var q = norm(texto);
+  var q = norm(texto), qc = clave(texto);
   var res = esp.unidades.filter(function(u){
-    return norm(u.nombre).indexOf(q) >= 0 || norm(u.campo).indexOf(q) >= 0
-        || norm(u.pad).indexOf(q) >= 0;
+    if (norm(u.nombre).indexOf(q) >= 0 || norm(u.campo).indexOf(q) >= 0
+        || norm(u.pad).indexOf(q) >= 0) return true;
+    /* Segunda pasada sobre el nombre normalizado. Campo y PAD se
+       quedan con la comparacion literal: ahi los guiones y espacios
+       separan palabras y borrarlos junta cosas que no van juntas. */
+    return !!qc && clave(u.nombre).indexOf(qc) >= 0;
   }).slice(0, 40);
 
   if(!res.length){
