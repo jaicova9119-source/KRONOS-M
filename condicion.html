@@ -1043,7 +1043,25 @@ async function kpCargarContexto(pozoId){
   if (!pozoId) return null;
   const { data, error } = await kpCliente().rpc('dp_contexto', { p_pozo_id: pozoId });
   if (error) throw new Error(error.message);
-  return data || null;
+  const ctx = data || null;
+  if (!ctx) return null;
+
+  /* El aislamiento ya no sale de dp_contexto. Esa parte venia de la
+     tabla de la app de captura, que quedo fuera de uso: los ensayos
+     viven ahora en el modulo de Ensayos Electricos, donde quedan
+     firmados, con dictamen IEEE 43 e informe.
+
+     dp_contexto se sigue usando para la bitacora, que no cambio. Se
+     pide aparte y si falla no se tumba la pantalla: el aislamiento es
+     contexto, la medicion de la ronda es lo principal. */
+  try {
+    const r = await kpCliente().rpc('dp_aislamiento_unidad', { p_pozo_id: pozoId });
+    if (!r.error) ctx.aislamiento = r.data || [];
+  } catch (e) {
+    console.warn('[Kronos-M] Aislamiento no disponible:', e.message);
+    ctx.aislamiento = [];
+  }
+  return ctx;
 }
 
 function kpNum(v){
@@ -3139,17 +3157,54 @@ function kpRenderContexto(ctx){
       +  (ais.length === 1 ? ' prueba registrada' : ' pruebas registradas')
       +  ' &middot; referencia IEEE 43 para el &iacute;ndice de polarizaci&oacute;n</p>';
     h += '<div class="kp-list" style="margin-bottom:6px">';
+    /* Que se ensayo, dicho en palabras. En un BES instalado no se puede
+       separar el motor del cable: se mega desde superficie y el valor
+       incluye la fuga del cable, asi que sale por debajo del motor solo
+       y no es comparable contra una medicion en bornes. */
+    const COMP = {
+      MOTOR: 'motor en bornes',
+      MOTOR_CABLE: 'motor + cable, desde superficie',
+      CABLE: 'cable solo',
+      SUT: 'transformador elevador',
+      GENERADOR: 'generador'
+    };
+
     ais.forEach(a => {
       const e = kpEstadoIP(a.ip);
+      const bal = [a.balance_ab, a.balance_ac, a.balance_bc]
+        .filter(v => v != null).length;
+
       h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"><div>'
         +  '<div><span class="nm">' + (a.fecha_prueba || '\u2014') + '</span>'
         +  (a.realizado_por ? ' <span class="id">' + a.realizado_por + '</span>' : '')
         +  '</div>'
+        /* La maquina va en cada fila, no en el encabezado. El historial de
+           un pozo atraviesa mas de un motor, y sin decir de cual es cada
+           medicion, un cambio de equipo se lee como una recuperacion. */
+        +  (a.maquina
+              ? '<div class="src">' + a.maquina
+                + (a.serial ? ' &middot; serie ' + a.serial : '')
+                + (a.maquina_estado === 'RETIRADA'
+                    ? ' &middot; motor ya retirado' : '') + '</div>'
+              : '')
         +  '<div class="dt">Aislamiento ' + kpNum(a.aislamiento) + ' M&Omega;'
         +  ' &middot; IP ' + kpNum(a.ip) + ' &middot; DAR ' + kpNum(a.dar) + '</div>'
-        +  '<div class="src">Balance ' + kpNum(a.balance_ab) + ' / ' + kpNum(a.balance_ac)
-        +  ' / ' + kpNum(a.balance_bc) + ' \u03a9'
+        +  '<div class="src">'
+        +  (a.componente ? (COMP[a.componente] || a.componente) : '')
+        +  (a.alcance === 'RUTINA' ? ' &middot; rutina de campo' : '')
+        +  (bal ? ' &middot; balance ' + kpNum(a.balance_ab) + ' / '
+                  + kpNum(a.balance_ac) + ' / ' + kpNum(a.balance_bc) + ' \u03a9' : '')
         +  (a.equipo ? ' &middot; ' + a.equipo : '') + '</div>'
+        /* Dos salvedades que cambian como se lee el numero, y que sin
+           decirlas hacen comparar cosas que no son comparables. */
+        +  (a.corregible === false
+              ? '<div class="src" style="margin-top:4px">Sin temperatura de '
+                + 'devanado: no se puede corregir a 40 &deg;C ni comparar con '
+                + 'otros ensayos.</div>' : '')
+        +  (a.corregible && a.extrapolado
+              ? '<div class="src" style="margin-top:4px">Correcci&oacute;n a '
+                + '40 &deg;C extrapolada: este motor opera por encima del rango '
+                + 'definido en IEEE 43.</div>' : '')
         +  (a.observaciones ? '<div class="src" style="margin-top:5px;color:var(--kp-ink2)">'
               + a.observaciones + '</div>' : '')
         +  '</div><span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
