@@ -11,11 +11,13 @@
    destellaria en blanco antes de pasar a oscuro. De noche en un PAD
    eso encandila.
 
-   La clave es dp_tema, propia de Captura, y NO kx_tema. Son dos
-   decisiones distintas: bajo sol directo el claro se lee mucho mejor,
-   y el tecnico puede querer Captura en claro con Kronos-M en oscuro.
-   La primera vez, si no hay preferencia propia, se hereda la de
-   Kronos-M; despues cada una va por su lado.
+   La clave es dp_tema, propia de Captura. Se intenta leer kx_tema por
+   si algun dia las dos aplicaciones comparten origen, pero hoy no lo
+   comparten (kronos-captura y kronos-m son dominios distintos y cada
+   uno tiene su propio localStorage), asi que en la practica la primera
+   vez cae al tema del sistema. Que sean independientes esta bien: bajo
+   sol directo el claro se lee mucho mejor, y el tecnico puede querer
+   Captura en claro con Kronos-M en oscuro.
    ────────────────────────────────────────────────────────────────── */
 (function () {
   var t = null;
@@ -553,10 +555,19 @@
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
-        <div class="action-card card-aislamiento" data-sistemas="BES" onclick="abrirAislamiento()">
+        <!-- La prueba de aislamiento se registra en el modulo de Ensayos
+             Electricos, no aqui. Alla el ensayo queda firmado, dictaminado
+             segun IEEE 43 y con informe; este formulario solo guardaba
+             numeros en una tabla aparte, sin nada de eso, y el historial de
+             una maquina partido en dos sitios no sirve para ver tendencia.
+
+             La tarjeta se queda como enlace en lugar de desaparecer: quien
+             la buscaba tiene que encontrar a donde ir. -->
+        <div class="action-card card-aislamiento" data-sistemas="BES,HPUM,UBH"
+             onclick="irAEnsayos()">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub">Megado, DAR, IP y balance de fases</div></div>
-          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub">Se registra en Ensayos Electricos &middot; abre Kronos-M</div></div>
+          <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M7 17L17 7M17 7h-6M17 7v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
       </div>
 
@@ -3386,6 +3397,23 @@ function abrirBitacora(){
   ir('bitacora-form');
 }
 
+/* Ensayos Electricos vive en la aplicacion principal, en otro origen, asi
+   que es una navegacion y no una pantalla de este archivo. Se abre en la
+   misma pestana a proposito: en el PAD, con una sola mano, varias pestanas
+   se pierden. */
+function irAEnsayos(){
+  if (!confirm('La prueba de aislamiento se registra en Ensayos Electricos, '
+    + 'dentro de Kronos-M. Alli el ensayo queda firmado, con dictamen IEEE 43 '
+    + 'e informe.\n\n¿Abrir Kronos-M?')) return;
+  window.location.href = 'https://kronos-m.onrender.com/';
+}
+
+/* Formulario anterior. Queda sin punto de entrada desde el inicio: escribia
+   en datapredictiva.pruebas_aislamiento, una tabla separada de la del modulo,
+   y sin temperatura de devanado sus lecturas no se pueden corregir a 40 C ni
+   comparar con nada. No se borra el codigo para no perder la referencia de
+   que campos se capturaban en campo, que es util cuando se ajuste el
+   formulario del modulo. */
 function abrirAislamiento(){
   aisIdActual = dpNuevoId();
   document.getElementById('ais-realizo').value = tecnicoActual;
