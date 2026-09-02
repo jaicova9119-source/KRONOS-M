@@ -342,6 +342,8 @@ table.ko-t .sd{color:var(--ko-null)}
 .ko-d.bien{color:var(--ko-ok)}
 .ko-d.mal{color:var(--ko-crit)}
 .ko-d.ig{color:var(--ko-t3);font-weight:500}
+.ko-der{font-size:10px;font-weight:500;color:var(--ko-t3);
+  text-transform:uppercase;letter-spacing:.4px;margin-left:5px}
 /* Fila cuyos datos operacionales son anteriores al equipo instalado. Se
    atenua en lugar de esconderse: la unidad existe y hay que ir a
    medirla, pero sus numeros no sirven. */
@@ -659,6 +661,14 @@ async function koEnviarPropuesta(p){
 
 const KO_FLECHA = { sube: '\u2191', baja: '\u2193', igual: '\u2192' };
 
+/* Entero con separador de miles. Tensiones y corrientes de campo no
+   tienen decimales significativos: 585.6666666666666 A es un promedio
+   de ronda, no una medicion con seis decimales de resolucion. */
+function koEnt(v){
+  if (v == null || !isFinite(v)) return '\u2014';
+  return Math.round(v).toLocaleString('es-CO');
+}
+
 function koDelta(valor, opts){
   /* opts.mejor: 'baja' si lo deseable es que la magnitud baje.
      opts.dec:   decimales. opts.umbral: por debajo se considera igual. */
@@ -686,6 +696,47 @@ function koAccionTap(dTap){
   return '<span class="ko-d" style="color:' + KO_HEX[sem] + '">'
        + (dTap > 0 ? KO_FLECHA.baja + ' bajar ' : KO_FLECHA.sube + ' subir ')
        + abs.toFixed(0) + ' V</span>';
+}
+
+/* Las tres tensiones del lado del variador no dicen nada por separado;
+   lo que importa es en que se diferencian, porque cada diferencia
+   apunta a una causa distinta.
+
+   Entregada contra curva V/Hz: si el variador entrega menos de lo que
+   su patron indica, hay caida en la acometida, el patron esta
+   parametrizado distinto de lo que se supone, o el variador esta
+   limitando por corriente. Nada de eso se arregla cambiando el TAP.
+
+   Curva V/Hz contra lo que necesita el motor: esa si es una cuestion
+   de TAP, y es la que este modulo resuelve.
+
+   El umbral de 15 V es del orden del error de una medida de campo con
+   pinza y sonda; por debajo no vale la pena llamarlo desviacion. */
+function koLecturaVsd(r){
+  const t = [];
+  if (r.dVsdPatron != null && Math.abs(r.dVsdPatron) > 15){
+    t.push(r.dVsdPatron < 0
+      ? 'El variador entrega ' + koEnt(-r.dVsdPatron) + ' V menos de lo que '
+        + 'indica su curva V/Hz. Eso no se corrige con el TAP: revise ca&iacute;da '
+        + 'en la acometida, el patr&oacute;n V/Hz configurado y si est&aacute; '
+        + 'limitando por corriente.'
+      : 'El variador entrega ' + koEnt(r.dVsdPatron) + ' V m&aacute;s de lo que '
+        + 'indica su curva V/Hz. Revise el patr&oacute;n configurado y el refuerzo '
+        + 'de par a baja frecuencia.');
+  }
+  if (r.dVsdNec != null && Math.abs(r.dVsdNec) > 15){
+    t.push(r.dVsdNec < 0
+      ? 'Al motor le llegan ' + koEnt(-r.dVsdNec) + ' V menos de los que '
+        + 'necesita a esta frecuencia. Con el TAP en su valor &oacute;ptimo esa '
+        + 'diferencia se cierra.'
+      : 'Al motor le llegan ' + koEnt(r.dVsdNec) + ' V m&aacute;s de los que '
+        + 'necesita. Ahi est&aacute; el margen de ahorro que propone este '
+        + 'm&oacute;dulo.');
+  }
+  if (!t.length)
+    t.push('Las tres tensiones coinciden dentro de 15 V. El punto de '
+         + 'operaci&oacute;n el&eacute;ctrico est&aacute; donde deber&iacute;a.');
+  return '<p class="ko-nota">' + t.join(' ') + '</p>';
 }
 
 /* Retrato del motor al momento de emitir. */
@@ -847,6 +898,37 @@ function koCalcular(u){
     r.tapOpt = r.vOpt60 * r.fProp / 60 + r.cable;
     r.vOptOp = r.vOpt60 * u.f_op / 60 + r.cable;
   }
+
+  /* ── Lado del variador ────────────────────────────────────────────
+     El SUT es un transformador: V salida = V entrada x (TAP / V nom).
+     Con eso se pasa cualquier tension del lado de superficie al lado
+     del variador, sin necesidad de un dato nuevo.
+
+     Se calculan TRES tensiones y compararlas es el diagnostico:
+
+       vVsdMed   lo que el variador esta entregando, deducido de la
+                 tension medida en el SUT. Es una deduccion, no una
+                 medida: no ve el error de regulacion del variador.
+       vVsdPatron lo que deberia entregar segun su propia curva V/Hz,
+                 que a la frecuencia maxima ajustada da la nominal.
+       vVsdNec   lo que el motor necesita, referido al lado del
+                 variador.
+
+     Si patron y necesaria no coinciden, el TAP esta mal escogido. Si
+     medida y patron no coinciden, la curva V/Hz esta mal parametrizada
+     o hay caida en la acometida. Son dos fallas distintas y hoy el
+     modulo no las separaba. */
+  const vNomD = u.v_nom != null ? u.v_nom : koCfg.vNom;
+  r.rtSut = (u.tap != null && vNomD) ? u.tap / vNomD : null;
+  if (r.rtSut){
+    r.vVsdMed = u.v_sut != null ? u.v_sut / r.rtSut : null;
+    r.vVsdNec = r.vOptOp / r.rtSut;
+  }
+  r.vVsdPatron = (vNomD && u.f_max) ? vNomD * u.f_op / u.f_max : null;
+  r.dVsdPatron = (r.vVsdMed != null && r.vVsdPatron != null)
+                 ? r.vVsdMed - r.vVsdPatron : null;
+  r.dVsdNec    = (r.vVsdMed != null && r.vVsdNec != null)
+                 ? r.vVsdMed - r.vVsdNec : null;
 
   r.kFiltro = u.filtro ? (u.k_filtro != null ? u.k_filtro : koCfg.kFiltro) : 1;
   r.tapNew  = r.tapOpt * r.kFiltro;
@@ -1233,8 +1315,8 @@ function koPintarDetalle(){
     ['Frecuencia de operaci&oacute;n', u.f_op.toFixed(1) + ' Hz'],
     ['Frecuencia m&aacute;xima ajustada', u.f_max.toFixed(1) + ' Hz'],
     ['Carga del motor', (u.carga * 100).toFixed(0) + ' %'],
-    ['Tensi&oacute;n de placa del motor', u.v_placa + ' V'],
-    ['Corriente de placa', u.i_placa + ' A'],
+    ['Tensi&oacute;n de placa del motor', koEnt(u.v_placa) + ' V'],
+    ['Corriente de placa', koEnt(u.i_placa) + ' A'],
     ['TAP del SUT instalado', u.tap != null ? u.tap.toFixed(0) + ' V' : '\u2014'],
     ['Tensi&oacute;n nominal del variador', (r.vNom || koCfg.vNom) + ' V'],
     ['Ca&iacute;da de tensi&oacute;n en cable',
@@ -1244,9 +1326,17 @@ function koPintarDetalle(){
       + (u.temp_f != null ? ' \u00b7 ' + u.temp_f.toFixed(0) + ' \u00b0F' : '')],
     ['Lectura', (u.fecha || 'sin fecha')
       + (u.fuente ? ' \u00b7 ' + u.fuente : '')],
-    ['Corriente en el variador', u.i_vsd + ' A'],
-    ['Corriente del motor', u.i_mot + ' A'],
-    ['Tensi&oacute;n medida en el SUT', u.v_sut + ' V']
+    /* Enteros. Los valores llegan como promedio de la ronda y arrastran
+       trece decimales que no significan nada: un megohmetro de campo no
+       resuelve milesimas de amperio y la falsa precision resta
+       credibilidad al numero que si importa. */
+    ['Corriente en el variador', koEnt(u.i_vsd) + ' A'],
+    ['Corriente del motor', koEnt(u.i_mot) + ' A'],
+    ['Tensi&oacute;n medida en el SUT', koEnt(u.v_sut) + ' V'],
+    ['Tensi&oacute;n de salida del variador',
+      r.vVsdMed != null
+        ? koEnt(r.vVsdMed) + ' V <span class="ko-der">deducida del SUT</span>'
+        : '\u2014']
   ].map(x => '<tr><td style="text-align:left;color:var(--ko-t3)">' + x[0]
     + '</td><td style="color:var(--t1);font-weight:600">' + x[1] + '</td></tr>').join('');
 
@@ -1273,23 +1363,42 @@ function koPintarDetalle(){
         r.tapNew.toFixed(0), 'V')
     + '</div>';
 
+  /* Lado del variador. Tres tensiones que se leen comparandolas entre
+     si, no una por una. */
+  if (r.vVsdMed != null || r.vVsdPatron != null){
+    h += '<div class="ko-card"><div class="ct">'
+      + '<b>Tensi&oacute;n en el lado del variador</b>'
+      + '<span>referida por el SUT, relaci&oacute;n '
+      + (r.rtSut != null ? r.rtSut.toFixed(2) : '\u2014') + '</span></div>'
+      + '<div class="ko-cad">'
+      + p('Entregada hoy', 'V medida SUT / relaci&oacute;n',
+          koEnt(r.vVsdMed), 'V')
+      + p('Seg&uacute;n curva V/Hz', 'V nom x F ope / F m&aacute;x',
+          koEnt(r.vVsdPatron), 'V')
+      + p('Que necesita el motor', 'V &oacute;ptima @F ope / relaci&oacute;n',
+          koEnt(r.vVsdNec), 'V')
+      + '</div>'
+      + koLecturaVsd(r)
+      + '</div>';
+  }
+
   h += '<div class="ko-cad" style="margin-top:9px">'
-    + p('Diferencia contra el TAP actual', 'TAP actual - TAP &oacute;ptimo',
-        (r.dTap > 0 ? '+' : '') + r.dTap.toFixed(0), 'V')
+    + p('Acci&oacute;n sobre el TAP', 'contra el &oacute;ptimo',
+        koAccionTap(r.dTap), '')
     + p('Desviaci&oacute;n de tensi&oacute;n', '| V medida - V &oacute;ptima |',
-        r.dVol.toFixed(0), 'V')
+        koEnt(r.dVol), 'V')
     + (r.rtNew != null
         ? p('Relaci&oacute;n de transformaci&oacute;n', 'actual '
             + r.rtAct.toFixed(2) + ' \u2192 nueva', r.rtNew.toFixed(2), '')
         : '')
     + (r.dAmp != null
-        ? p('Corriente liberada', 'A variador - RT nueva x A motor',
-            (r.dAmp > 0 ? '+' : '') + r.dAmp.toFixed(1), 'A')
+        ? p('Corriente del variador', 'A variador - RT nueva x A motor',
+            koDelta(r.dAmp, { mejor:'baja', dec:0, umbral:0.5 }), 'A')
         : '')
     + (r.red != null
-        ? p('Reducci&oacute;n', (koCfg.raiz === 'sqrt3' ? '&radic;3' : '3^(1/3)')
+        ? p('Consumo', (koCfg.raiz === 'sqrt3' ? '&radic;3' : '3^(1/3)')
             + ' x &Delta;A x V nom x FP / 1000',
-            (r.red > 0 ? '+' : '') + r.red.toFixed(1), 'kW')
+            koDelta(r.red, { mejor:'baja', dec:1, umbral:0.5 }), 'kW')
         : '')
     + '</div>';
 
