@@ -297,6 +297,12 @@ body{background:var(--ko-bg);color:var(--ko-t1);
   color:var(--ko-t1);border-radius:6px;padding:6px 9px;font-size:13px;font-family:inherit}
 .ko-cfg input{width:78px;text-align:right}
 .ko-cfg .nota{flex:1 1 200px;font-size:11px;color:var(--ko-t3);line-height:1.5;min-width:0}
+/* Dato que llega de otra tabla y no se edita aqui: se ve como valor, no
+   como campo, para que nadie intente corregirlo en el lugar equivocado. */
+.ko-cfg .ko-fijo{background:transparent;border:1px solid transparent;padding:7px 0;
+  font-size:13px;font-weight:600;color:var(--ko-t1,#fff);width:78px;text-align:right}
+.ko-cfg .ko-fijo small{display:block;font-weight:400;font-size:10px;color:var(--ko-t3);
+  text-align:right;margin-top:2px}
 
 .ko-hero{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
   gap:10px;margin-bottom:14px}
@@ -629,6 +635,10 @@ async function koCargarSut(){
         z_pct:   koNum(r.z_pct),
         z_temp:  koNum(r.z_temp_ref_c),
         kva:     koNum(r.kva),
+        kva_org: r.kva_origen || null,
+        serial:  r.sut_serial || null,
+        modelo:  r.sut_modelo || null,
+        desde:   r.sut_desde || null,
         tap_min: koNum(r.tap_min_v),
         tap_max: koNum(r.tap_max_v),
         fuente:  r.fuente || null,
@@ -652,10 +662,7 @@ async function koGuardarSut(pozo, vals){
     p_pozo:       pozo,
     p_z_pct:      vals.z_pct,
     p_z_temp_ref: vals.z_temp,
-    p_kva:        vals.kva,
-    p_tap_min:    vals.tap_min,
-    p_tap_max:    vals.tap_max,
-    p_fuente:     vals.fuente || null
+    p_kva:        vals.kva
   });
   if (error) throw new Error(error.message);
   if (data && data.ok === false) throw new Error(data.error || 'No se pudo guardar');
@@ -2256,10 +2263,18 @@ function koPintarDetalle(){
     ['Corriente de placa', koEnt(u.i_placa) + ' A'],
     ['TAP del SUT instalado', u.tap != null ? u.tap.toFixed(0) + ' V' : '\u2014'],
     ['Tensi&oacute;n primaria nominal del SUT', (r.vNom || koCfg.vNom) + ' V'],
+    ['Transformador instalado', r.sut.serial
+      ? koEsc(r.sut.serial)
+        + (r.sut.modelo ? ' \u00b7 ' + koEsc(r.sut.modelo) : '')
+        + (r.sut.desde ? ' \u00b7 desde ' + koEsc(String(r.sut.desde).slice(0,10)) : '')
+      : '<span class="ko-der">sin instalaci&oacute;n vigente registrada</span>'],
     ['Impedancia del SUT', r.zPct != null
       ? r.zPct.toFixed(2) + ' %'
         + (r.sut.z_temp != null ? ' @ ' + r.sut.z_temp.toFixed(0) + ' \u00b0C' : '')
-        + (r.sut.kva != null ? ' \u00b7 ' + koEnt(r.sut.kva) + ' kVA' : '')
+        + (r.sut.kva != null
+            ? ' \u00b7 ' + koEnt(r.sut.kva) + ' kVA'
+              + (r.sut.kva_org === 'digitado' ? ' (digitado)' : '')
+            : '')
       : '<span class="ko-der">sin registrar</span>'],
     ['Ca&iacute;da de tensi&oacute;n en cable',
       r.cable.toFixed(0) + ' V (' + r.cableOrigen + ')'],
@@ -2526,19 +2541,28 @@ function koPintarDetalle(){
     + '<div class="ko-cfg">'
     + ci('koSutZ', 'Impedancia Zcc (%)', sv.z_pct, '0.01')
     + ci('koSutT', 'Referida a (\u00b0C)', sv.z_temp, '1')
-    + ci('koSutKva', 'Potencia (kVA)', sv.kva, '1')
-    + ci('koSutTmin', 'Tap m&iacute;nimo (V)', sv.tap_min, '1')
-    + ci('koSutTmax', 'Tap m&aacute;ximo (V)', sv.tap_max, '1')
-    + '<div class="g"><label>Fuente</label>'
-    +   '<input id="koSutF" type="text" value="' + koEsc(sv.fuente || '') + '"></div>'
+    /* Los kVA vienen de placas_pozo, que es el maestro. Solo se piden
+       cuando esa unidad no tiene placa registrada: mostrar un campo
+       editable sobre un dato que manda otra tabla invita a corregirlo
+       aqui, y esa correccion no llegaria nunca al maestro. */
+    + (sv.kva_org && sv.kva_org !== 'digitado'
+        ? '<div class="g"><label>Potencia (kVA)</label>'
+          + '<div class="ko-fijo">' + koEnt(sv.kva)
+          + '<small>' + koEsc(sv.kva_org) + '</small></div></div>'
+        : ci('koSutKva', 'Potencia (kVA)', sv.kva, '1'))
     + '</div>'
-    + '<p class="ko-nota">Estos datos est&aacute;n en la placa del '
+    + '<p class="ko-nota">La impedancia est&aacute; en la placa del '
     + 'transformador y en su descripci&oacute;n t&eacute;cnica en el '
-    + 'm&oacute;dulo de activos. La impedancia habilita el t&eacute;rmino de '
-    + 'p&eacute;rdidas del transformador; los kVA habilitan adem&aacute;s el '
-    + 'm&eacute;todo escalado por carga; el rango de taps permite verificar '
-    + 'que el TAP propuesto exista de verdad en este equipo. '
-    + 'Nada de esto se estima: en blanco, el c&aacute;lculo lo dice.</p>'
+    + 'm&oacute;dulo de activos. Es el &uacute;nico dato que hay que digitar: '
+    + 'habilita el t&eacute;rmino de p&eacute;rdidas del transformador, y sin '
+    + 'ella el TAP sale calculado solo con la ca&iacute;da del cable. '
+    + 'La temperatura de referencia importa porque cada fabricante refiere su '
+    + 'Zcc a una distinta y sin ese dato dos impedancias no son comparables. '
+    + 'Los kVA se leen del transformador que est&aacute; instalado hoy en la '
+    + 'unidad y habilitan el m&eacute;todo escalado por carga; solo se piden '
+    + 'aqu&iacute; cuando esa unidad no tiene instalaci&oacute;n ni placa '
+    + 'registrada. '
+    + 'Nada se estima: en blanco, el c&aacute;lculo lo dice.</p>'
     + '<div style="display:flex;gap:10px;align-items:center;margin-top:4px">'
     + '<button class="ko-chip on" id="koSutGuardar" data-p="' + koEsc(u.pozo)
     + '">Guardar placa del SUT</button>'
@@ -2677,18 +2701,14 @@ function koEnlazar(){
       const n = Number(t.replace(',', '.'));
       return isFinite(n) ? n : null;
     };
-    const ft = document.getElementById('koSutF');
     sg2.disabled = true;
     const previo = sg2.textContent;
     sg2.textContent = 'Guardando\u2026';
     try {
       const res = await koGuardarSut(sg2.dataset.p, {
-        z_pct:   val('koSutZ'),
-        z_temp:  val('koSutT'),
-        kva:     val('koSutKva'),
-        tap_min: val('koSutTmin'),
-        tap_max: val('koSutTmax'),
-        fuente:  ft ? String(ft.value || '').trim() : null
+        z_pct:  val('koSutZ'),
+        z_temp: val('koSutT'),
+        kva:    (document.getElementById('koSutKva') ? val('koSutKva') : null)
       });
       koPintar();
       const m2 = document.getElementById('koSutMsg');
