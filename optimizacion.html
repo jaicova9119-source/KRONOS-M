@@ -297,6 +297,10 @@ body{background:var(--ko-bg);color:var(--ko-t1);
   color:var(--ko-t1);border-radius:6px;padding:6px 9px;font-size:13px;font-family:inherit}
 .ko-cfg input{width:78px;text-align:right}
 .ko-cfg .nota{flex:1 1 200px;font-size:11px;color:var(--ko-t3);line-height:1.5;min-width:0}
+.ko-t th.ko-ord{cursor:pointer;user-select:none;white-space:nowrap}
+.ko-t th.ko-ord:hover{color:var(--ko-t1,#fff)}
+.ko-t th.ko-ord.on{color:var(--ko-ac,#2f7fd1)}
+.ko-t th.ko-ord .fl{margin-left:3px;font-weight:700}
 /* Dato que llega de otra tabla y no se edita aqui: se ve como valor, no
    como campo, para que nadie intente corregirlo en el lugar equivocado. */
 .ko-cfg .ko-fijo{background:transparent;border:1px solid transparent;padding:7px 0;
@@ -982,6 +986,65 @@ let koSel   = null;         /* pozo abierto en detalle */
 let koProp  = {};           /* pozo -> frecuencia maxima propuesta editada */
 let koBusca = '';           /* texto del buscador */
 let koFiltro = 'all';       /* all | tap | vol | ahorro | filtro | sin */
+let koOrden = null;         /* columna por la que se ordena el listado */
+let koOrdenDir = -1;        /* -1 mayor a menor, 1 menor a mayor */
+
+/* Valor de una fila para una columna. Devuelve numero para las
+   numericas y texto para la unidad; null cuando la fila no tiene ese
+   dato, y esas van siempre al final sin importar la direccion: una
+   unidad sin datos no es "la menor", es otra cosa. */
+function koValorOrden(r, col){
+  if (!r.ok) return null;
+  const u = r.u;
+  switch (col){
+    case 'unidad':  return u.pozo;
+    case 'f_op':    return u.f_op;
+    case 'f_max':   return u.f_max;
+    case 'f_prop':  return r.fProp;
+    case 'carga':   return u.carga;
+    case 'factor':  return r.fCarga;
+    case 'tap_act': return u.tap;
+    case 'tap_opt': return r.tapOpt;
+    case 'tap_new': return r.tapNew;
+    /* La accion sobre el TAP se ordena por su magnitud: lo que interesa
+       es cuanto hay que mover, no hacia donde. */
+    case 'accion':  return r.dTap != null ? Math.abs(r.dTap) : null;
+    case 'dvol':    return r.dVol;
+    /* Lo mismo con la desviacion del patron: sobrar o faltar tension
+       son igual de malos, asi que ordena el alejamiento de cero. */
+    case 'dvsd':    return r.dVsdPatron != null ? Math.abs(r.dVsdPatron) : null;
+    case 'damp':    return r.incoherente ? null : r.dAmp;
+    case 'red':     return r.incoherente ? null : r.red;
+    default:        return null;
+  }
+}
+
+function koOrdenar(lista){
+  if (!koOrden) return lista;
+  const conDato = [], sinDato = [];
+  lista.forEach(r => {
+    const v = koValorOrden(r, koOrden);
+    (v === null || v === undefined || (typeof v === 'number' && !isFinite(v))
+      ? sinDato : conDato).push(r);
+  });
+  conDato.sort((a, b) => {
+    const va = koValorOrden(a, koOrden), vb = koValorOrden(b, koOrden);
+    if (typeof va === 'string')
+      return koOrdenDir * -1 * String(va).localeCompare(String(vb), 'es');
+    return koOrdenDir * (vb - va);
+  });
+  return conDato.concat(sinDato);
+}
+
+/* Encabezado ordenable. La flecha marca la direccion activa. */
+function koTh(col, texto, ancho){
+  const act = koOrden === col;
+  return '<th class="ko-ord' + (act ? ' on' : '') + '" data-o="' + col + '">'
+    + texto
+    + (act ? '<span class="fl">' + (koOrdenDir === -1 ? '\u2193' : '\u2191')
+             + '</span>' : '')
+    + '</th>';
+}
 let koMarca = new Set();    /* pozos escogidos para la propuesta */
 
 /* ---------- motor de calculo ---------- */
@@ -1177,16 +1240,51 @@ function koCalcular(u){
     r.vNom  = vNom;
     r.rtAct = u.tap != null ? u.tap / vNom : null;
     r.rtNew = r.tapNew / vNom;
-    r.dAmp  = u.i_vsd - r.rtNew * u.i_mot;
+    /* ── Coherencia y ahorro, que son dos cosas distintas ─────────
+       El variador y el motor estan a lado y lado del SUT, asi que la
+       corriente medida en la salida del variador deberia ser la del
+       motor por la relacion ACTUAL. Es una identidad fisica, no una
+       estimacion.
+
+       La formula anterior restaba la relacion NUEVA a la corriente
+       medida, y eso mezclaba dos cantidades en un solo numero:
+       cuanto ahorra el cambio de TAP, y cuanto se equivoco quien
+       midio. En CYC-58 la medida traia la mitad de la corriente real
+       y esos 229 A faltantes salieron en pantalla como 134 kW de
+       consumo que supuestamente subia.
+
+       Separadas:
+         residuo  lo medido contra lo que la relacion actual implica.
+                  Distinto de cero significa que una de las dos
+                  medidas esta mal, y no se arregla con el TAP.
+         ahorro   lo que de verdad cambia el retap: la diferencia
+                  entre las dos relaciones, aplicada a la corriente
+                  del motor, que es la que no cambia. */
     const k = koCfg.raiz === 'sqrt3' ? Math.sqrt(3) : Math.pow(3, 1/3);
-    r.red   = k * r.dAmp * vNom * koCfg.fp / 1000;
+
+    r.iVsdEsp = (r.rtAct != null) ? r.rtAct * u.i_mot : null;
+    r.resid   = (r.iVsdEsp != null) ? u.i_vsd - r.iVsdEsp : null;
+    r.residPct = (r.iVsdEsp) ? r.resid / r.iVsdEsp : null;
+    /* 15 % es holgado para una medida de campo con pinza: por debajo
+       cabe la dispersion normal entre dos instrumentos y dos momentos
+       de la ronda. Por encima hay algo mal tomado. */
+    r.incoherente = (r.residPct != null && Math.abs(r.residPct) > 0.15);
+
+    r.dAmp  = (r.rtAct != null) ? (r.rtAct - r.rtNew) * u.i_mot : null;
+    r.red   = (r.dAmp != null) ? k * r.dAmp * vNom * koCfg.fp / 1000 : null;
     /* La reduccion es una diferencia; para comparar contra campo
        hace falta el absoluto. kwAct es lo que la unidad toma hoy y
        kwProp lo que tomaria con el TAP propuesto. Por construccion
        kwAct - kwProp es exactamente r.red, asi que el estimado y lo
        que despues se mida salen del mismo criterio. */
+    /* La linea base se toma de lo MEDIDO, que es contra lo que despues
+       se va a comparar en campo. La proyectada sale de la relacion
+       nueva. Cuando la medida no cuadra, la diferencia entre las dos
+       no es el ahorro: por eso el ahorro se calcula aparte y estas dos
+       quedan solo como referencia. */
     r.kwAct  = k * u.i_vsd * vNom * koCfg.fp / 1000;
-    r.kwProp = k * r.rtNew * u.i_mot * vNom * koCfg.fp / 1000;
+    r.kwProp = (r.red != null) ? r.kwAct - r.red : null;
+    r.kwEsp  = (r.iVsdEsp != null) ? k * r.iVsdEsp * vNom * koCfg.fp / 1000 : null;
   }
 
   /* ── Frecuencia maxima alcanzable ─────────────────────────────────
@@ -1452,7 +1550,7 @@ function koPintar(){
                'factor ' + koCfg.kFiltro.toFixed(2) + ' sobre el TAP'))
     + '</div>';
 
-  const filas = amb.map(r => {
+  const filas = koOrdenar(amb).map(r => {
     const u = r.u;
     const mk = '<td class="ko-mk" onclick="event.stopPropagation()">'
       + '<input type="checkbox" data-m="' + u.pozo + '"'
@@ -1515,12 +1613,22 @@ function koPintar(){
     + '<span>' + amb.length + ' de ' + rs.length
     + ' &middot; toque una fila para ver la cadena</span></div>'
     + '<div class="ko-scroll"><table class="ko-t"><thead><tr>'
-    + '<th class="ko-mk"></th><th>Unidad</th><th>F&nbsp;ope</th><th>F&nbsp;m&aacute;x</th>'
-    + '<th>F&nbsp;m&aacute;x prop.</th><th>Carga</th><th>Factor</th>'
-    + '<th>TAP actual</th><th>TAP &oacute;ptimo</th><th>TAP nuevo</th>'
-    + '<th>Acci&oacute;n TAP</th><th>&Delta;&nbsp;Vol SUT</th>'
-    + '<th>&Delta;&nbsp;salida VSD</th>'
-    + '<th>Corriente VSD</th><th>Consumo</th></tr></thead><tbody>' + filas + '</tbody></table></div>'
+    + '<th class="ko-mk"></th>'
+    + koTh('unidad',  'Unidad')
+    + koTh('f_op',    'F&nbsp;ope')
+    + koTh('f_max',   'F&nbsp;m&aacute;x')
+    + koTh('f_prop',  'F&nbsp;m&aacute;x prop.')
+    + koTh('carga',   'Carga')
+    + koTh('factor',  'Factor')
+    + koTh('tap_act', 'TAP actual')
+    + koTh('tap_opt', 'TAP &oacute;ptimo')
+    + koTh('tap_new', 'TAP nuevo')
+    + koTh('accion',  'Acci&oacute;n TAP')
+    + koTh('dvol',    '&Delta;&nbsp;Vol SUT')
+    + koTh('dvsd',    '&Delta;&nbsp;salida VSD')
+    + koTh('damp',    'Corriente VSD')
+    + koTh('red',     'Consumo')
+    + '</tr></thead><tbody>' + filas + '</tbody></table></div>'
     + '<div class="ko-leg">'
     +   '<span><span class="ko-d bien">\u2193</span>&nbsp;baja y conviene</span>'
     +   '<span><span class="ko-d mal">\u2191</span>&nbsp;sube y no conviene</span>'
@@ -2155,6 +2263,11 @@ async function koExportar(boton){
           + 'variador" (450 V en PWM): se usa la primaria nominal del SUT ('
           + koEnt(r.vMaxSal) + ' V). No se refiere a la medida de la ronda, que '
           + 'si esta. La desviacion contra el patron sale corrida un 6,7 %.');
+      if (r.incoherente)
+        avisos.push('Las corrientes del variador y del motor no guardan la '
+          + 'relacion del TAP: difieren un '
+          + Math.abs(r.residPct * 100).toFixed(0) + ' %. El ahorro de esta '
+          + 'fila no es confiable y la unidad no debe entrar en la propuesta.');
       if (r.dVsdPatron != null && Math.abs(r.dVsdPatron) >= 25)
         avisos.push('El variador esta ' + koEnt(Math.abs(r.dVsdPatron))
           + ' V fuera de su patron V/Hz.');
@@ -2472,20 +2585,53 @@ function koPintarDetalle(){
       + '</div>';
   }
 
+  /* Coherencia de las corrientes. Va antes de la accion sobre el TAP
+     porque si las medidas no se sostienen entre si, lo que sigue se
+     calcula sobre datos que no valen. */
+  if (r.resid != null){
+    h += '<div class="ko-card"><div class="ct">'
+      + '<b>Coherencia de las corrientes</b><span>relaci&oacute;n actual '
+      + r.rtAct.toFixed(2) + '</span></div><div class="ko-cad">'
+      + p('Medida en el variador', 'ronda', koEnt(u.i_vsd), 'A')
+      + p('Implicada por el motor', 'relaci&oacute;n actual x A motor',
+          koEnt(r.iVsdEsp), 'A')
+      + p('Residuo', 'medida &minus; implicada',
+          '<span class="ko-d" style="color:'
+          + KO_HEX[r.incoherente ? 'crit' : 'ok'] + '">'
+          + (r.resid > 0 ? '+' : '') + koEnt(r.resid) + '</span>', 'A')
+      + '</div><p class="ko-nota">'
+      + (r.incoherente
+          ? 'Las dos corrientes est&aacute;n a lado y lado del mismo '
+            + 'transformador: deber&iacute;an guardar la relaci&oacute;n del '
+            + 'TAP. Difieren un ' + Math.abs(r.residPct * 100).toFixed(0)
+            + ' %, as&iacute; que una de las dos medidas est&aacute; mal '
+            + 'tomada, o el TAP registrado no es el instalado. Revise '
+            + 'c&oacute;mo se tom&oacute; la corriente en la salida del '
+            + 'variador: si hay conductores en paralelo por fase y se '
+            + 'pinz&oacute; uno solo, la medida sale a la mitad. Mientras '
+            + 'no cuadre, esta unidad no lleva propuesta.'
+          : 'Las corrientes guardan la relaci&oacute;n del TAP. El punto de '
+            + 'operaci&oacute;n se sostiene con dos medidas independientes.')
+      + '</p></div>';
+  }
+
   h += '<div class="ko-cad" style="margin-top:9px">'
-    + p('Acci&oacute;n sobre el TAP', 'contra el &oacute;ptimo',
-        koAccionTap(r.dTap), '')
+    + p('Acci&oacute;n sobre el TAP', r.incoherente
+          ? 'en espera de datos coherentes'
+          : 'contra el TAP a solicitar',
+        r.incoherente ? '<span class="sd">\u2014</span>'
+                      : koAccionTap(u.tap != null ? u.tap - r.tapNew : null), '')
     + p('Desviaci&oacute;n de tensi&oacute;n', '| V medida - V &oacute;ptima |',
         koEnt(r.dVol), 'V')
     + (r.rtNew != null
         ? p('Relaci&oacute;n de transformaci&oacute;n', 'actual '
             + r.rtAct.toFixed(2) + ' \u2192 nueva', r.rtNew.toFixed(2), '')
         : '')
-    + (r.dAmp != null
-        ? p('Corriente del variador', 'A variador - RT nueva x A motor',
+    + (r.dAmp != null && !r.incoherente
+        ? p('Corriente del variador', '(RT actual - RT nueva) x A motor',
             koDelta(r.dAmp, { mejor:'baja', dec:0, umbral:0.5 }), 'A')
         : '')
-    + (r.red != null
+    + (r.red != null && !r.incoherente
         ? p('Consumo', (koCfg.raiz === 'sqrt3' ? '&radic;3' : '3^(1/3)')
             + ' x &Delta;A x V nom x FP / 1000',
             koDelta(r.red, { mejor:'baja', dec:1, umbral:0.5 }), 'kW')
@@ -2706,9 +2852,18 @@ async function koActualizar(boton){
    que quedo. */
 async function koRegistrar(boton){
   const msg = document.getElementById('koGuardarMsg');
-  const sel = KO_DATOS.map(koCalcular).filter(r => koMarca.has(r.pozo) && r.ok);
+  const todas = KO_DATOS.map(koCalcular).filter(r => koMarca.has(r.pozo) && r.ok);
+  /* Una unidad cuyas corrientes no cuadran no puede llevar propuesta: el
+     TAP, el ahorro y la linea base saldrian de datos que no se sostienen,
+     y despues no habria contra que medir el resultado. */
+  const sel   = todas.filter(r => !r.incoherente);
+  const fuera = todas.filter(r =>  r.incoherente).map(r => r.pozo);
   if (!sel.length){
-    if (msg) msg.textContent = 'No hay unidades con datos suficientes para registrar.';
+    if (msg) msg.textContent = fuera.length
+      ? 'Ninguna se registr\u00f3: ' + fuera.join(', ')
+        + (fuera.length > 1 ? ' tienen' : ' tiene')
+        + ' corrientes que no cuadran con la relaci\u00f3n del TAP.'
+      : 'No hay unidades con datos suficientes para registrar.';
     return;
   }
   boton.disabled = true;
@@ -2761,7 +2916,9 @@ async function koRegistrar(boton){
   koPintar();
   const m2 = document.getElementById('koGuardarMsg');
   if (m2) m2.textContent = ok + ' de ' + sel.length + ' registradas'
-    + (fallas.length ? '. Fallaron: ' + fallas.join(' \u00b7 ') : '.');
+    + (fallas.length ? '. Fallaron: ' + fallas.join(' \u00b7 ') : '.')
+    + (fuera.length ? ' Excluidas por incoherencia de corrientes: '
+        + fuera.join(', ') + '.' : '');
 }
 
 /* ---------- eventos ---------- */
@@ -2865,6 +3022,26 @@ function koEnlazar(){
     cb.onchange = e => {
       const p = e.target.dataset.m;
       if (e.target.checked) koMarca.add(p); else koMarca.delete(p);
+      koPintar();
+    };
+  });
+
+  document.querySelectorAll('th.ko-ord').forEach(th => {
+    th.onclick = () => {
+      const c = th.dataset.o;
+      if (koOrden === c){
+        /* Tercer toque quita el orden y vuelve al listado natural, que
+           es alfabetico por unidad. Sin esa salida, una vez ordenado no
+           hay forma de volver sin recargar. */
+        if (koOrdenDir === -1) koOrdenDir = 1;
+        else { koOrden = null; koOrdenDir = -1; }
+      } else {
+        koOrden = c;
+        /* Mayor a menor de entrada: en consumo, en accion sobre el TAP
+           y en desviacion, lo que se busca al ordenar es lo mas grande.
+           En la unidad no, que se lee de la A a la Z. */
+        koOrdenDir = (c === 'unidad') ? 1 : -1;
+      }
       koPintar();
     };
   });
