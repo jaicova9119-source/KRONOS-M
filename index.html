@@ -4967,6 +4967,74 @@ function volverAMateriales() {
   document.querySelector('[data-tab="materiales"]').classList.add("active");
 }
 
+/* ── Descarga paginada en paralelo ──────────────────────────────────
+   PostgREST corta cada consulta en 1000 filas, asi que una vista de
+   13.309 registros necesita catorce paginas. Se venian pidiendo en
+   serie: pedir una, esperar la respuesta, pedir la siguiente. Catorce
+   idas y vueltas encadenadas a 300 ms cada una son cuatro segundos
+   antes de dibujar nada, y eso multiplicado por las cuatro vistas que
+   carga el modulo.
+
+   El volumen no es el problema: las 13.309 filas pesan 2,5 MB. Lo que
+   costaba era la latencia acumulada.
+
+   Aqui se pregunta primero cuantas filas hay y despues se piden todas
+   las paginas a la vez. Pasa de catorce viajes en fila a uno mas
+   catorce simultaneos.
+
+   Se limita a 8 en vuelo al tiempo: mas que eso no acelera, porque el
+   navegador encola las conexiones al mismo servidor de todos modos, y
+   en cambio castiga a las demas consultas de la app.
+
+   Si el conteo falla, cae al metodo secuencial de siempre en vez de
+   quedarse sin datos. */
+async function traerPaginado(tabla, opciones){
+  const PAGINA   = 1000;
+  const EN_VUELO = 8;
+  const cols     = (opciones && opciones.columnas) || "*";
+  const orden    = opciones && opciones.orden;
+
+  const pedirPagina = (desde) => {
+    let q = sb.from(tabla).select(cols);
+    if (orden) q = q.order(orden);
+    return q.range(desde, desde + PAGINA - 1).then(({ data, error }) => {
+      if (error) throw error;
+      return data || [];
+    });
+  };
+
+  let total = null;
+  try {
+    let q = sb.from(tabla).select(cols, { count: "exact", head: true });
+    const { count, error } = await q;
+    if (!error && typeof count === "number") total = count;
+  } catch (e){ /* sin conteo, se usa el camino secuencial */ }
+
+  if (total === null){
+    const todo = [];
+    let desde = 0;
+    while (true){
+      const pag = await pedirPagina(desde);
+      todo.push.apply(todo, pag);
+      if (pag.length < PAGINA) break;
+      desde += PAGINA;
+    }
+    return todo;
+  }
+
+  const inicios = [];
+  for (let d = 0; d < total; d += PAGINA) inicios.push(d);
+  if (!inicios.length) return [];
+
+  const partes = new Array(inicios.length);
+  for (let i = 0; i < inicios.length; i += EN_VUELO){
+    const lote = inicios.slice(i, i + EN_VUELO);
+    const res = await Promise.all(lote.map(d => pedirPagina(d)));
+    res.forEach((pag, j) => { partes[i + j] = pag; });
+  }
+  return [].concat.apply([], partes);
+}
+
 async function cargarMateriales() {
   const lista = document.getElementById("lista-materiales");
   lista.innerHTML = '<div class="loading">Cargando materiales...</div>';
@@ -4976,18 +5044,9 @@ async function cargarMateriales() {
     // Como esta vista tiene mas de 12.000 registros, hay que traerla en paginas
     // hasta agotar los resultados, o se pierden silenciosamente los codigos
     // que quedan fuera de la primera pagina.
-    const PAGINA = 1000;
-    let desde = 0;
-    let todos = [];
-    while (true) {
-      const { data, error } = await sb.from("v_materiales_estado")
-        .select("*").order("codigo_sap").range(desde, desde + PAGINA - 1);
-      if (error) throw error;
-      todos = todos.concat(data || []);
-      if (!data || data.length < PAGINA) break;
-      desde += PAGINA;
-    }
-    materialesData = todos;
+    materialesData = await traerPaginado("v_materiales_estado",
+      { orden: "codigo_sap" });
+    const todos = materialesData;
     await guardarEspejo(ESPEJO.materiales, todos);
     /* Estos tres son complementos: si fallan, la lista principal sigue
        sirviendo. Van con allSettled y no en cadena de awaits, que era
@@ -5078,18 +5137,9 @@ async function cargarBalanceTraslados() {
   mapaTraslados = new Map();
   await cargarAplicabilidad();
   try {
-    const PAGINA = 1000;
-    let desde = 0;
-    while (true) {
-      const { data, error } = await sb.from("v_traslados_sugeridos")
-        .select("*").order("codigo_sap").range(desde, desde + PAGINA - 1);
-      if (error) throw error;
-      (data || []).forEach(t => {
-        mapaTraslados.set(`${t.codigo_sap}|${t.centro}`, t);
-      });
-      if (!data || data.length < PAGINA) break;
-      desde += PAGINA;
-    }
+    const filas = await traerPaginado("v_traslados_sugeridos",
+      { orden: "codigo_sap" });
+    filas.forEach(t => { mapaTraslados.set(`${t.codigo_sap}|${t.centro}`, t); });
   } catch (e) {
     console.warn("Balance entre centros no disponible:", e.message);
   }
@@ -5100,6 +5150,8 @@ async function cargarBalanceTraslados() {
 async function cargarAplicabilidad() {
   mapaAplica = new Map();
   try {
+    /* Este si necesita el filtro not-null en cada pagina, asi que no usa
+       el helper: son pocas filas y no justifica generalizarlo. */
     const PAGINA = 1000;
     let desde = 0;
     while (true) {
@@ -5142,18 +5194,8 @@ let mapaUbicaciones = new Map();// "codigo|centro" -> fila de v_ubicaciones_mate
 async function cargarUbicaciones() {
   mapaUbicaciones = new Map();
   try {
-    const PAGINA = 1000;
-    let desde = 0;
-    while (true) {
-      const { data, error } = await sb.from("v_ubicaciones_material")
-        .select("*").range(desde, desde + PAGINA - 1);
-      if (error) throw error;
-      (data || []).forEach(u => {
-        mapaUbicaciones.set(`${u.codigo_sap}|${u.centro}`, u);
-      });
-      if (!data || data.length < PAGINA) break;
-      desde += PAGINA;
-    }
+    const filas = await traerPaginado("v_ubicaciones_material");
+    filas.forEach(u => { mapaUbicaciones.set(`${u.codigo_sap}|${u.centro}`, u); });
   } catch (e) { console.warn("Ubicaciones de bodega no disponibles:", e.message); }
 }
 
@@ -5165,15 +5207,8 @@ async function cargarConsumoYTramites() {
   mapaConsumo = new Map();
   mapaTramites = new Map();
   const paginado = async (vista, clave) => {
-    const PAGINA = 1000;
-    let desde = 0;
-    while (true) {
-      const { data, error } = await sb.from(vista).select("*").range(desde, desde + PAGINA - 1);
-      if (error) throw error;
-      (data || []).forEach(r => clave(r));
-      if (!data || data.length < PAGINA) break;
-      desde += PAGINA;
-    }
+    const filas = await traerPaginado(vista);
+    filas.forEach(r => clave(r));
   };
   /* Si las vistas todavia no existen, la app sigue funcionando igual: la
      ficha simplemente no muestra esas filas. */
