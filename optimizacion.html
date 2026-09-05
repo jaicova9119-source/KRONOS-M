@@ -904,6 +904,28 @@ function koCriterios(){
   };
 }
 
+/* La fuente de la lectura se guarda en clave: 'ronda', 'excel-2026-05'.
+   Sirve para el codigo y no para quien lee un informe, asi que se
+   traduce al mostrarla. No se renombra en la base: opt_sincronizar_
+   lecturas distingue por ese valor exacto y la llave unica de
+   opt_lectura lo incluye. */
+const KO_MES = ['enero','febrero','marzo','abril','mayo','junio','julio',
+                'agosto','septiembre','octubre','noviembre','diciembre'];
+
+function koFuente(f){
+  if (!f) return 'sin origen registrado';
+  const s = String(f).trim().toLowerCase();
+  if (s === 'ronda')  return 'Ronda de campo';
+  if (s === 'manual') return 'Captura manual';
+  const m = s.match(/^excel-(\d{4})-(\d{2})$/);
+  if (m){
+    const mes = KO_MES[parseInt(m[2], 10) - 1];
+    return 'Carga hist\u00f3rica' + (mes ? ' de ' + mes + ' ' + m[1] : '');
+  }
+  if (s.indexOf('excel') === 0) return 'Carga hist\u00f3rica';
+  return f;
+}
+
 /* Un cero medido es un dato; una cadena vacia no. */
 function koNum(v){
   if (v == null || v === '') return null;
@@ -2064,7 +2086,7 @@ function kxLibroPropuestas(ExcelJS, filas, meta){
     ['kw_actual','Consumo actual (kW)',14],
     ['kw_red','Cambio de consumo (kW)',16],
     ['filtro','Filtro seno',10],
-    ['fecha','Fecha de la lectura',14], ['fuente','Origen',10],
+    ['fecha','Fecha de la lectura',14], ['fuente','Origen',22],
     ['aviso','Aviso',34]
   ];
   dt.columns = cols.map(c => ({ header: c[1], key: c[0], width: c[2] }));
@@ -2283,7 +2305,7 @@ async function koExportar(boton){
         kw_actual: (u.i_vsd != null) ? k * u.i_vsd * vNom * koCfg.fp / 1000 : null,
         kw_red: r.red,
         filtro: u.filtro ? 'Si' : 'No',
-        fecha: u.fecha || '', fuente: u.fuente || '',
+        fecha: u.fecha || '', fuente: koFuente(u.fuente),
         /* Las unidades con lectura vieja se exportan con aviso y con
            kw en cero, para que nadie las sume por error desde la hoja
            de detalle. */
@@ -2486,7 +2508,7 @@ function koPintarDetalle(){
       + (u.long_ft != null ? ' \u00b7 ' + u.long_ft.toFixed(0) + ' ft' : '')
       + (u.temp_f != null ? ' \u00b7 ' + u.temp_f.toFixed(0) + ' \u00b0F' : '')],
     ['Lectura', (u.fecha || 'sin fecha')
-      + (u.fuente ? ' \u00b7 ' + u.fuente : '')],
+      + (u.fuente ? ' \u00b7 ' + koEsc(koFuente(u.fuente)) : '')],
     /* Enteros. Los valores llegan como promedio de la ronda y arrastran
        trece decimales que no significan nada: un megohmetro de campo no
        resuelve milesimas de amperio y la falsa precision resta
