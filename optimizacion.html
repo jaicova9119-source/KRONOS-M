@@ -600,6 +600,14 @@ async function koCargarSalidaVsd(){
            venia haciendo. */
         v_max: koNum(r.v_max_salida_vsd_v),
         v_nom: koNum(r.v_nom_variador_v),
+        /* El modo del inversor gobierna las dos cosas que antes iban por
+           separado: la referencia del patron V/Hz y el factor de
+           correccion del TAP. 480/450 = 1,067 es el mismo numero visto
+           desde los dos lados. */
+        modo:  r.modo_inversor || null,
+        modo_fuente: r.modo_fuente || null,
+        v_max_org: r.v_max_origen || null,
+        k_ten: koNum(r.k_tension),
         fecha: r.fecha || null
       };
     });
@@ -840,11 +848,15 @@ function koLecturaVsd(r){
      que en un PWM son 480 en lugar de 450: un 6,7 % de error que
      siempre apunta en el mismo sentido. Decirlo evita perseguir una
      desviacion que es del dato y no del equipo. */
-  if (r.vMaxOrigen !== 'unidad'){
-    t.push('Esta unidad no tiene registrada la tensi&oacute;n m&aacute;xima de '
-      + 'salida del variador, as&iacute; que se usa la primaria nominal del SUT '
-      + '(' + koEnt(r.vMaxSal) + ' V). En un variador PWM son 450 y no 480, y esa '
-      + 'diferencia se traslada entera a la desviaci&oacute;n de arriba.');
+  if (r.vMaxOrigen === 'nominal del SUT'){
+    t.push('Falta el dato de dise&ntilde;o <b>tensi&oacute;n m&aacute;xima de '
+      + 'salida del variador</b>, que es cu&aacute;nto entrega este equipo a su '
+      + 'frecuencia m&aacute;xima. No es la medida de la ronda, que s&iacute; '
+      + 'est&aacute;. Sin ese dato se usa la primaria nominal del SUT ('
+      + koEnt(r.vMaxSal) + ' V), y en un variador PWM son 450 y no 480: esa '
+      + 'diferencia se traslada entera a la desviaci&oacute;n de arriba, siempre '
+      + 'en el sentido de decir que el variador entrega menos de lo que debe. '
+      + 'Se llena en el dise&ntilde;o de la unidad.');
   }
   if (r.vVsdOrigen === 'implicada'){
     t.push('La salida del variador no viene medida en esta lectura: se '
@@ -1125,14 +1137,36 @@ function koCalcular(u){
      segunda mete un error del 6,7 % en cada unidad de PWM, siempre en
      el sentido de decir que entrega menos de lo que debe. */
   r.vMaxSal = sal.v_max != null ? sal.v_max : vNomD;
-  r.vMaxOrigen = sal.v_max != null ? 'unidad' : 'nominal del SUT';
+  r.vMaxOrigen = sal.v_max_org || (sal.v_max != null ? 'unidad'
+                                                     : 'nominal del SUT');
+  r.modo = sal.modo || null;
+  r.modoFuente = sal.modo_fuente || null;
   r.vVsdPatron = (r.vMaxSal && u.f_max) ? r.vMaxSal * u.f_op / u.f_max : null;
   r.dVsdPatron = (sal.v_vsd != null && r.vVsdPatron != null)
                  ? sal.v_vsd - r.vVsdPatron : null;
   r.dVsdNec    = (r.vVsdMed != null && r.vVsdNec != null)
                  ? r.vVsdMed - r.vVsdNec : null;
 
-  r.kFiltro = u.filtro ? (u.k_filtro != null ? u.k_filtro : koCfg.kFiltro) : 1;
+  /* Precedencia del factor de correccion del TAP:
+       1. el que este cargado en el diseno de la unidad
+       2. el del modo de inversor, que es el criterio general
+       3. el viejo comportamiento por filtro seno, para no quedarse sin
+          calculo si la migracion todavia no corrio
+     El origen se muestra en pantalla: un TAP corregido por un 6,7 % sin
+     que se sepa de donde sale es un numero que nadie puede defender. */
+  if (u.k_filtro != null){
+    r.kFiltro = u.k_filtro;
+    r.kOrigen = 'cargado en el dise\u00f1o';
+  } else if (sal.k_ten != null && r.modo){
+    r.kFiltro = sal.k_ten;
+    r.kOrigen = 'modo ' + r.modo;
+  } else if (u.filtro){
+    r.kFiltro = koCfg.kFiltro;
+    r.kOrigen = 'filtro seno';
+  } else {
+    r.kFiltro = 1;
+    r.kOrigen = 'sin correcci\u00f3n';
+  }
   r.tapNew  = r.tapOpt * r.kFiltro;
 
   r.dTap = u.tap != null ? u.tap - r.tapOpt : null;
@@ -2120,9 +2154,11 @@ async function koExportar(boton){
         + 'instalado el ' + viejo + ': los numeros son de otro equipo.');
       if (r.vVsdOrigen === 'implicada')
         avisos.push('Salida del variador no medida; implicada por el SUT.');
-      if (r.vMaxOrigen !== 'unidad')
-        avisos.push('Sin tension maxima de salida registrada; se usa la nominal '
-          + 'del SUT.');
+      if (r.vMaxOrigen === 'nominal del SUT')
+        avisos.push('Falta el dato de diseno "tension maxima de salida del '
+          + 'variador" (450 V en PWM): se usa la primaria nominal del SUT ('
+          + koEnt(r.vMaxSal) + ' V). No se refiere a la medida de la ronda, que '
+          + 'si esta. La desviacion contra el patron sale corrida un 6,7 %.');
       if (r.dVsdPatron != null && Math.abs(r.dVsdPatron) >= 25)
         avisos.push('El variador esta ' + koEnt(Math.abs(r.dVsdPatron))
           + ' V fuera de su patron V/Hz.');
@@ -2317,6 +2353,11 @@ function koPintarDetalle(){
     ['Corriente de placa', koEnt(u.i_placa) + ' A'],
     ['TAP del SUT instalado', u.tap != null ? u.tap.toFixed(0) + ' V' : '\u2014'],
     ['Tensi&oacute;n primaria nominal del SUT', (r.vNom || koCfg.vNom) + ' V'],
+    ['Modo del inversor', r.modo
+      ? koEsc(r.modo) + ' \u00b7 salida m&aacute;xima ' + koEnt(r.vMaxSal) + ' V'
+        + (r.modoFuente && /supuesto/i.test(r.modoFuente)
+            ? ' <span class="ko-der">(' + koEsc(r.modoFuente) + ')</span>' : '')
+      : '<span class="ko-der">sin registrar</span>'],
     ['Transformador instalado', r.sut.serial
       ? koEsc(r.sut.serial)
         + (r.sut.modelo ? ' \u00b7 ' + koEsc(r.sut.modelo) : '')
@@ -2381,9 +2422,10 @@ function koPintarDetalle(){
         r.tapOpt.toFixed(0), 'V')
     + p('Tensi&oacute;n &oacute;ptima @ F operaci&oacute;n', 'V sup x F ope / 60',
         r.vOptOp.toFixed(0), 'V')
-    + p('TAP a solicitar', u.filtro
-          ? 'TAP &oacute;ptimo x ' + koCfg.kFiltro.toFixed(2) + ' (filtro)'
-          : 'igual al &oacute;ptimo (sin filtro)',
+    + p('TAP a solicitar', r.kFiltro === 1
+          ? 'igual al &oacute;ptimo &middot; ' + koEsc(r.kOrigen)
+          : 'TAP &oacute;ptimo x ' + r.kFiltro.toFixed(3)
+            + ' &middot; ' + koEsc(r.kOrigen),
         r.tapNew.toFixed(0), 'V')
     + '</div>'
     + (r.pSut == null
@@ -2693,6 +2735,10 @@ async function koRegistrar(boton){
            uso: sin eso, dos propuestas con el mismo TAP pueden venir de
            cuentas distintas y nadie puede auditarlas despues. */
         criterios:    Object.assign(koCriterios(), {
+          modo_inversor:  r.modo,
+          v_max_salida_v: r.vMaxSal,
+          k_tension:      r.kFiltro,
+          k_tension_origen: r.kOrigen,
           sut_metodo:     r.sutMetodo,
           sut_z_pct:      r.zPct,
           sut_z_efectiva: (r.zEfect != null ? Number(r.zEfect.toFixed(2)) : null),
