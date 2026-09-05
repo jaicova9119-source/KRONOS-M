@@ -1383,7 +1383,7 @@ function dpPrepararCampo(){
     if (!dpGuardar('dp_pozos_cache', JSON.stringify(nombres))) sinEspacio = true;
     dpGuardar('dp_sistemas_cache', JSON.stringify(MED_SISTEMA_POR_ACTIVO));
 
-    var total = nombres.length * 2;
+    var total = nombres.length * 3;
 
     /* 1. Catalogo de puntos por pozo (se guarda por topologia) */
     return porLotes(nombres, 4, function(pozo){
@@ -1412,6 +1412,23 @@ function dpPrepararCampo(){
         }).catch(function(){ fallos.push(pozo + ' (setup)'); });
       }, function(hechos){
         avanzar(nombres.length + hechos, total, 'Configuracion VFD: ' + hechos + ' de ' + nombres.length);
+      });
+    })
+    /* 3. Ronda anterior por pozo, como referencia de captura.
+          Va de ultima a proposito: es la unica de las tres que no
+          impide capturar si falta, asi que si el almacenamiento se
+          llena, lo que se pierde es esto y no el catalogo. */
+    .then(function(){
+      return porLotes(nombres, 4, function(pozo){
+        return sb.rpc('dp_ronda_anterior', { p_pozo: pozo }).then(function(rr){
+          var j = (rr && rr.data) || {};
+          if (rr.error || !j.ok || !j.valores) return;
+          dpGuardar(medClaveRef(pozo),
+            JSON.stringify({ fecha: j.fecha || null, valores: j.valores }));
+        }).catch(function(){});
+      }, function(hechos){
+        avanzar(nombres.length * 2 + hechos, total,
+          'Rondas de referencia: ' + hechos + ' de ' + nombres.length);
       });
     })
     .then(function(){
@@ -1534,6 +1551,19 @@ function postJSON(url, datos){
   }).then(function(resp){ return resp.json().then(function(j){ return {status: resp.status, body: j}; }); });
 }
 
+/* La referencia se ve, no se lee: gris pequeno debajo del campo. Cuando
+   el valor digitado se aparta mucho pasa a ambar y crece el texto, que
+   es lo que hace que alguien levante la vista. */
+(function(){
+  var st = document.createElement('style');
+  st.textContent =
+    '.ref-ant{font-size:11px;line-height:1.35;color:var(--ink-soft);'
+    + 'margin-top:3px;min-height:14px}'
+    + '.ref-ant.alerta{color:var(--orange,#c1660a);font-weight:600;font-size:12px}'
+    + '.field input.desviado{border-color:var(--orange,#c1660a)}';
+  document.head.appendChild(st);
+})();
+
 function campoNumero(id, label, unidad, opciones){
   opciones = opciones || {};
   /* Los decimales los manda el catalogo (puntos_medida.decimales). Antes
@@ -1552,10 +1582,14 @@ function campoNumero(id, label, unidad, opciones){
      formulario tiene que poder guardarse como borrador incompleto. */
   var marca = opciones.obligatorio
     ? '<span style="color:var(--danger);font-weight:700;" title="Obligatorio para completar la ronda"> *</span>' : '';
+  /* Ranura para la ronda anterior. Va vacia: se llena despues, cuando la
+     referencia esta disponible, y si nunca llega el campo se ve igual
+     que antes. Nada de esto puede impedir capturar. */
   return '<div class="field' + (opciones.obligatorio ? ' obligatorio' : '') + '">' +
     '<label for="' + id + '">' + label + marca + '</label>' +
     '<div class="unit-input"><input class="mono-input" type="number"' + attrs + ' id="' + id + '">' +
-    (unidad ? '<span class="unit">' + unidad + '</span>' : '') + '</div></div>';
+    (unidad ? '<span class="unit">' + unidad + '</span>' : '') + '</div>' +
+    '<div class="ref-ant" id="ref-' + id + '"></div></div>';
 }
 
 var ICONO_TRANSFORMADOR = '<svg viewBox="0 0 24 24" fill="none"><circle cx="8" cy="8" r="4" stroke="currentColor" stroke-width="1.6"/><circle cx="16" cy="16" r="4" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l2 2" stroke="currentColor" stroke-width="1.6"/></svg>';
@@ -1704,6 +1738,104 @@ function cargarCatalogoUnidad(pozo){
     var c = desdeCache();
     if (c) return c;
     throw e;
+  });
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RONDA ANTERIOR COMO REFERENCIA
+   ------------------------------------------------------------------
+   Un valor mal tomado solo se puede corregir mientras el tecnico sigue
+   frente al equipo. Despues vive meses: CYC-58 capturo 252 A donde la
+   ronda anterior traia 500, y el error se descubrio tres semanas mas
+   tarde, cuando ya habia producido una propuesta de TAP absurda.
+
+   La referencia se MUESTRA, no se PRECARGA. Precargar invitaria a
+   confirmar sin medir, y terminariamos con rondas copiadas, que es un
+   problema peor y mas dificil de detectar que un dato faltante.
+
+   Se guarda por unidad en el almacen local y se descarga junto con el
+   resto al preparar campo, porque en el PAD no hay senal.
+   ------------------------------------------------------------------ */
+
+var MED_REF = null;          /* {fecha, valores:{codigo:valor}} de la unidad abierta */
+
+function medClaveRef(pozo){ return 'dp_ronda_ant_' + pozo; }
+
+function medRefDesdeCache(pozo){
+  try { return dpLeerJSON(medClaveRef(pozo), null); } catch(e){ return null; }
+}
+
+function cargarRefUnidad(pozo){
+  var local = medRefDesdeCache(pozo);
+  if (!sb || !navigator.onLine) return Promise.resolve(local);
+  return sb.rpc('dp_ronda_anterior', { p_pozo: pozo }).then(function(r){
+    if (r.error) return local;
+    var b = r.data || {};
+    if (!b.ok || !b.valores) return local;
+    var ref = { fecha: b.fecha || null, valores: b.valores };
+    try { dpAlmacen.setItem(medClaveRef(pozo), JSON.stringify(ref)); } catch(e){}
+    return ref;
+  }).catch(function(){ return local; });
+}
+
+/* Escribe la referencia debajo de cada campo. Se llama despues de armar
+   el formulario; si no hay referencia no escribe nada y las ranuras
+   quedan vacias. */
+function medPintarReferencias(){
+  if (!MED_REF || !MED_REF.valores) return;
+  MED_CATALOGO.forEach(function(pt){
+    var v = MED_REF.valores[pt.codigo];
+    if (v === null || v === undefined) return;
+    var el = document.getElementById('ref-' + medIdCampo(pt.codigo));
+    if (el) el.textContent = 'anterior: ' + v;
+  });
+  var f = document.getElementById('ref-fecha-ronda');
+  if (f && MED_REF.fecha)
+    f.textContent = 'Los valores en gris son los de la ronda del '
+      + String(MED_REF.fecha).slice(0, 10) + '. Estan como referencia: '
+      + 'no se copian, se vuelven a medir.';
+}
+
+/* Aviso al digitar. No bloquea: la unidad pudo cambiar de verdad. Lo
+   que hace es obligar a mirar el numero otra vez antes de seguir.
+
+   El umbral es relativo y con piso absoluto, porque un 30 % sobre 0,05
+   in/s de vibracion es ruido y sobre 500 A no lo es. */
+function medRevisarDesvio(pt, input){
+  var slot = document.getElementById('ref-' + medIdCampo(pt.codigo));
+  if (!slot || !MED_REF || !MED_REF.valores) return;
+  var ant = MED_REF.valores[pt.codigo];
+  var base = 'anterior: ' + (ant === null || ant === undefined ? '' : ant);
+  if (ant === null || ant === undefined || !ant){
+    slot.className = 'ref-ant'; input.classList.remove('desviado'); return;
+  }
+  var val = parseFloat(input.value);
+  if (!isFinite(val)){
+    slot.className = 'ref-ant'; slot.textContent = base;
+    input.classList.remove('desviado'); return;
+  }
+  var dif = Math.abs(val - ant) / Math.abs(ant);
+  if (dif <= 0.30 || Math.abs(val - ant) < 2){
+    slot.className = 'ref-ant'; slot.textContent = base;
+    input.classList.remove('desviado'); return;
+  }
+  slot.className = 'ref-ant alerta';
+  input.classList.add('desviado');
+  var pct = Math.round(dif * 100);
+  var mitad = Math.abs(val / ant - 0.5) < 0.08;
+  var doble = Math.abs(val / ant - 2) < 0.3;
+  slot.textContent = base + '  \u00b7  ' + pct + '% de diferencia.'
+    + (mitad ? ' Es casi la mitad: si hay conductores en paralelo por fase,'
+             + ' verifique que pinzo todos.'
+       : doble ? ' Es casi el doble: verifique la escala del instrumento.'
+       : ' Confirme la lectura antes de seguir.');
+}
+
+function medEnlazarReferencias(){
+  MED_CATALOGO.forEach(function(pt){
+    var el = document.getElementById(medIdCampo(pt.codigo));
+    if (!el) return;
+    el.addEventListener('input', function(){ medRevisarDesvio(pt, el); });
   });
 }
 
@@ -2233,6 +2365,12 @@ function iniciarMedicion(){
      sobre el formulario de "Cargando": los puntos todavia no existian,
      asi que todos los valores se contaban como huerfanos, y acto
      seguido el innerHTML final borraba tambien la cabecera. */
+  /* La referencia va en paralelo y su fallo no cuenta: el formulario se
+     arma igual sin ella. */
+  MED_REF = null;
+  var promRef = cargarRefUnidad(pozo).then(function(r){ MED_REF = r; })
+                                     .catch(function(){ MED_REF = null; });
+
   return cargarCatalogoUnidad(pozo).then(function(res){
     MED_CATALOGO  = res.puntos;
     MED_PLANTILLA = res.plantilla || '';
@@ -2249,9 +2387,16 @@ function iniciarMedicion(){
       ' &middot; ' + MED_CATALOGO.length + ' puntos, ' + nObl + ' obligatorios. ' +
       'Los marcados con <span style="color:var(--danger);font-weight:700;">*</span> se piden para dar la ronda por completa.' +
       '</div>';
-    caja.innerHTML = cabecera + resumen + html;
+    caja.innerHTML = cabecera + resumen +
+      '<div class="group-card" id="ref-fecha-ronda" style="margin-bottom:14px;'
+      + 'font-size:12px;color:var(--ink-soft);"></div>' + html;
     var etq = document.querySelector('#screen-medicion-form .s');
     if (etq) etq.textContent = MED_CATALOGO.length + ' puntos de medida';
+    /* Despues del innerHTML: antes los nodos no existen. */
+    return promRef.then(function(){
+      medPintarReferencias();
+      medEnlazarReferencias();
+    });
   }).catch(function(e){
     MED_CATALOGO = []; MED_PLANTILLA = '';
     caja.innerHTML = cabecera +
