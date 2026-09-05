@@ -1774,16 +1774,29 @@ function kxLibroPropuestas(ExcelJS, filas, meta){
 
   /* Entradas editables. Van marcadas en amarillo porque son lo unico
      que se espera que alguien cambie. */
-  rs.getCell(f, 2).value = 'Valorizacion';
+  rs.getCell(f, 2).value = 'Valorizaci\u00f3n';
   rs.getCell(f, 2).font = { bold: true, size: 11, color: { argb: KX_C.azul } };
   f += 1;
-  const filaHoras = f, filaTarifa = f + 1, filaEnergia = f + 2, filaDinero = f + 3;
 
+  const filaHoras  = f;
+  const filaTarifa = f + 1;
+  const filaTasa   = f + 2;
+  const filaEnc    = f + 4;
+  const filaEnergia= f + 5;
+  const filaCop    = f + 6;
+  const filaUsd    = f + 7;
+
+  /* Entradas editables, en amarillo porque son lo unico que se espera
+     que alguien cambie. Las horas van al MES: es la unidad en que se
+     razona una parada, y el ano sale de multiplicar por doce, no al
+     reves. */
   const ent = [
-    ['Horas de operacion al ano', 8760, '#,##0', true,
+    ['Horas de operaci\u00f3n al mes', 730, '#,##0', 
       'Marcha continua. Ajustar por factor de servicio si aplica.'],
-    ['Costo de la energia (COP/kWh)', null, '#,##0', true,
-      'Sin valor no se calcula el ahorro en dinero. Lo pone quien conoce la tarifa.']
+    ['Costo de la energ\u00eda (COP/kWh)', null, '#,##0',
+      'Sin valor no se calcula el ahorro en dinero. Lo pone quien conoce la tarifa.'],
+    ['Tasa de cambio (COP/USD)', null, '#,##0',
+      'Solo para la fila en d\u00f3lares. Sin tasa, esa fila queda vac\u00eda.']
   ];
   ent.forEach((e, i) => {
     const r = filaHoras + i;
@@ -1796,31 +1809,72 @@ function kxLibroPropuestas(ExcelJS, filas, meta){
     c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: KX_C.fAmar } };
     c.border = { top:{style:'thin'}, left:{style:'thin'},
                  bottom:{style:'thin'}, right:{style:'thin'} };
-    rs.getCell(r, 4).value = e[4];
-    rs.getCell(r, 4).font = { size: 9, italic: true, color: { argb: KX_C.gris2 } };
-    rs.mergeCells(r, 4, r, 8);
+    rs.getCell(r, 5).value = e[3];
+    rs.getCell(r, 5).font = { size: 9, italic: true, color: { argb: KX_C.gris2 } };
+    rs.mergeCells(r, 5, r, 9);
+  });
+
+  /* Encabezado de las dos columnas de resultado. El mes es el horizonte
+     en que se decide una intervencion; el ano es el que se lleva a
+     comite. Poner los dos evita que alguien divida entre doce por su
+     cuenta y se equivoque de orden de magnitud. */
+  [[3, 'Mensual'], [4, 'Anual']].forEach(([col, txt]) => {
+    const c = rs.getCell(filaEnc, col);
+    c.value = txt;
+    c.font = { bold: true, size: 10, color: { argb: KX_C.azul } };
+    c.alignment = { horizontal: 'right' };
+    c.border = { bottom: { style: 'thin', color: { argb: KX_C.azul } } };
   });
 
   /* Formulas de verdad, con resultado precalculado: ExcelJS no evalua,
      asi que sin result la celda sale vacia hasta que Excel recalcule. */
-  const kwhAno = kwBaja * 8760;
-  rs.getCell(filaEnergia, 2).value = 'Energia que se deja de consumir al ano';
+  const kwhMes = kwBaja * 730;
+
+  rs.getCell(filaEnergia, 2).value = 'Energ\u00eda que se deja de consumir';
   rs.getCell(filaEnergia, 2).font = { size: 10 };
-  const cE = rs.getCell(filaEnergia, 3);
-  cE.value = { formula: kwBaja.toFixed(4) + '*C' + filaHoras, result: kwhAno };
-  cE.numFmt = '#,##0" kWh"';
-  cE.font = { bold: true, size: 11, color: { argb: KX_C.azul } };
 
-  rs.getCell(filaDinero, 2).value = 'Ahorro anual estimado';
-  rs.getCell(filaDinero, 2).font = { size: 10, bold: true };
-  const cD = rs.getCell(filaDinero, 3);
-  cD.value = { formula: 'IF(C' + filaTarifa + '="","",C' + filaEnergia
-               + '*C' + filaTarifa + ')', result: '' };
-  cD.numFmt = '"$"#,##0';
-  cD.font = { bold: true, size: 13, color: { argb: KX_C.verde } };
-  cD.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: KX_C.fVerde } };
+  const cEm = rs.getCell(filaEnergia, 3);
+  cEm.value = { formula: kwBaja.toFixed(4) + '*C' + filaHoras, result: kwhMes };
+  cEm.numFmt = '#,##0" kWh"';
+  cEm.font = { bold: true, size: 11, color: { argb: KX_C.azul } };
 
-  f = filaDinero + 3;
+  const cEa = rs.getCell(filaEnergia, 4);
+  cEa.value = { formula: 'C' + filaEnergia + '*12', result: kwhMes * 12 };
+  cEa.numFmt = '#,##0" kWh"';
+  cEa.font = { bold: true, size: 11, color: { argb: KX_C.azul } };
+
+  rs.getCell(filaCop, 2).value = 'Ahorro estimado (COP)';
+  rs.getCell(filaCop, 2).font = { size: 10, bold: true };
+  [[3, filaEnergia], [4, filaEnergia]].forEach(([col], i) => {
+    const ref = (i === 0 ? 'C' : 'D') + filaEnergia;
+    const c = rs.getCell(filaCop, col);
+    c.value = { formula: 'IF(C' + filaTarifa + '="","",' + ref
+                + '*C' + filaTarifa + ')', result: '' };
+    c.numFmt = '"$"#,##0';
+    c.font = { bold: true, size: 13, color: { argb: KX_C.verde } };
+    c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: KX_C.fVerde } };
+  });
+
+  rs.getCell(filaUsd, 2).value = 'Ahorro estimado (USD)';
+  rs.getCell(filaUsd, 2).font = { size: 10 };
+  [3, 4].forEach((col, i) => {
+    const ref = (i === 0 ? 'C' : 'D') + filaCop;
+    const c = rs.getCell(filaUsd, col);
+    c.value = { formula: 'IF(OR(C' + filaTarifa + '="",C' + filaTasa + '="",C'
+                + filaTasa + '=0),"",' + ref + '/C' + filaTasa + ')', result: '' };
+    c.numFmt = '"US$"#,##0';
+    c.font = { size: 11, color: { argb: KX_C.verde } };
+  });
+
+  rs.getCell(filaUsd + 1, 2).value =
+    'El ahorro sale de la reducci\u00f3n de corriente calculada, no de una '
+    + 'medici\u00f3n posterior. Se confirma comparando contra la l\u00ednea '
+    + 'base congelada de cada propuesta.';
+  rs.getCell(filaUsd + 1, 2).font =
+    { size: 9, italic: true, color: { argb: KX_C.gris2 } };
+  rs.mergeCells(filaUsd + 1, 2, filaUsd + 1, 9);
+
+  f = filaUsd + 4;
 
   /* Graficas */
   const top = conAhorro.slice().sort((a, b) => b.kw_red - a.kw_red).slice(0, 15)
