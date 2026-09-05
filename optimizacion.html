@@ -604,6 +604,65 @@ async function koCargarSalidaVsd(){
   }
 }
 
+/* Datos de placa del SUT. El transformador tambien produce una caida
+   de tension, declarada en su placa como impedancia de cortocircuito, y
+   hasta ahora el calculo la ignoraba: solo sumaba la del cable. No es un
+   termino menor. En el ejemplo resuelto del procedimiento de RETAP son
+   181 V de 356 V totales, o sea la mitad.
+
+   Omitirla sesga el TAP propuesto siempre hacia abajo, que es justo el
+   escenario que hace aparecer XLIM en un Advantage: el tap queda corto y
+   el variador recorta tension intentando compensar.
+
+   El dato se digita a mano desde esta misma pantalla. No se estima y no
+   tiene valor por defecto: sin impedancia el modulo calcula con cable
+   solamente y lo dice. */
+let KO_SUT = {};
+
+async function koCargarSut(){
+  try {
+    const { data, error } = await koCliente().rpc('opt_sut');
+    if (error) throw new Error(error.message);
+    const m = {};
+    (data || []).forEach(r => {
+      if (r && r.pozo) m[r.pozo] = {
+        z_pct:   koNum(r.z_pct),
+        z_temp:  koNum(r.z_temp_ref_c),
+        kva:     koNum(r.kva),
+        tap_min: koNum(r.tap_min_v),
+        tap_max: koNum(r.tap_max_v),
+        fuente:  r.fuente || null,
+        fecha:   r.fecha || null,
+        por:     r.capturado_por || null,
+        metodo:  r.metodo || 'sin_impedancia'
+      };
+    });
+    KO_SUT = m;
+  } catch(e){
+    console.warn('[Kronos-M] Datos del SUT no disponibles:', e.message);
+    KO_SUT = {};
+  }
+}
+
+/* Guarda la placa del SUT de una unidad. Se recarga el mapa completo en
+   vez de parchear la entrada local: si el servidor rechazo algo, la
+   pantalla debe mostrar lo que quedo guardado y no lo que se digito. */
+async function koGuardarSut(pozo, vals){
+  const { data, error } = await koCliente().rpc('opt_guardar_sut', {
+    p_pozo:       pozo,
+    p_z_pct:      vals.z_pct,
+    p_z_temp_ref: vals.z_temp,
+    p_kva:        vals.kva,
+    p_tap_min:    vals.tap_min,
+    p_tap_max:    vals.tap_max,
+    p_fuente:     vals.fuente || null
+  });
+  if (error) throw new Error(error.message);
+  if (data && data.ok === false) throw new Error(data.error || 'No se pudo guardar');
+  await koCargarSut();
+  return data;
+}
+
 async function koCargarVigencia(){
   try {
     const { data, error } = await koCliente().rpc('opt_vigencia_equipo');
@@ -963,13 +1022,61 @@ function koCalcular(u){
      mientras se confirma contra campo. */
   if (koCfg.escalaCable){
     r.vSup60 = r.vOpt60 + r.cable;
-    r.tapOpt = r.vSup60 * r.fProp / 60;
+    r.tapBase = r.vSup60 * r.fProp / 60;
     r.vOptOp = r.vSup60 * u.f_op / 60;
   } else {
     r.vSup60 = r.vOpt60 + r.cable;
-    r.tapOpt = r.vOpt60 * r.fProp / 60 + r.cable;
+    r.tapBase = r.vOpt60 * r.fProp / 60 + r.cable;
     r.vOptOp = r.vOpt60 * u.f_op / 60 + r.cable;
   }
+
+  /* ── Perdidas en el SUT ───────────────────────────────────────────
+     El transformador tambien cae. Su placa lo declara como impedancia
+     de cortocircuito y hasta ahora el calculo lo ignoraba.
+
+     Dos metodos, y hay que decir cual se uso:
+
+       conservador          Z de placa completa, o sea la caida a plena
+                            carga nominal del transformador. Es el del
+                            procedimiento clasico. Un SUT casi siempre
+                            trabaja por debajo de sus kVA nominales, asi
+                            que sobreestima.
+       escalado por carga   Z corregida por la relacion entre los kVA de
+                            operacion y los nominales. Refleja mejor la
+                            realidad y evita subir un tap sin necesidad.
+                            Necesita los kVA del SUT.
+
+     La caida depende del tap, y el tap es lo que se esta buscando: la
+     cuenta es circular. Se resuelve como en el procedimiento, con una
+     pasada: se calcula la caida sobre el tap sin corregir y se suma. La
+     segunda iteracion mueve el resultado menos que la resolucion de un
+     escalon de tap, asi que no se hace.
+
+     No se escala con la frecuencia, por lo mismo que la del cable:
+     depende de la corriente. */
+  const sut = KO_SUT[u.pozo] || {};
+  r.sut = sut;
+  r.zPct = sut.z_pct != null ? sut.z_pct : null;
+
+  if (r.zPct != null && r.tapBase){
+    const iSec = u.i_mot != null ? u.i_mot : u.i_placa;
+    r.sutKva = sut.kva != null ? sut.kva : null;
+    if (r.sutKva && iSec != null){
+      r.sOper  = r.tapBase * iSec * Math.sqrt(3) / 1000;
+      r.zEfect = r.zPct * (r.sOper / r.sutKva);
+      r.sutMetodo = 'escalado_por_carga';
+    } else {
+      r.zEfect = r.zPct;
+      r.sutMetodo = 'conservador';
+    }
+    r.pSut = (r.zEfect / 100) * r.tapBase;
+  } else {
+    r.pSut = null;
+    r.sutMetodo = 'sin_impedancia';
+  }
+
+  r.pTotal = r.cable + (r.pSut || 0);
+  r.tapOpt = r.tapBase + (r.pSut || 0);
 
   /* ── Lado del variador ────────────────────────────────────────────
      El SUT es un transformador: V salida = V entrada x (TAP / V nom).
@@ -1040,6 +1147,79 @@ function koCalcular(u){
     r.kwAct  = k * u.i_vsd * vNom * koCfg.fp / 1000;
     r.kwProp = k * r.rtNew * u.i_mot * vNom * koCfg.fp / 1000;
   }
+
+  /* ── Frecuencia maxima alcanzable ─────────────────────────────────
+     El paso que ninguna hoja del fabricante trae y el que convierte el
+     calculo en una propuesta defendible:
+
+       F max = (V tap - perdidas totales) x 60 / V placa del motor
+
+     Se calcula dos veces y las dos sirven para cosas distintas.
+
+     Con el TAP INSTALADO es un diagnostico del estado actual, y no es
+     circular: dice hasta que frecuencia puede llegar hoy la unidad
+     conservando su relacion V/Hz. Si sale por debajo de la frecuencia a
+     la que esta corriendo, el motor esta subtensionado ahora mismo.
+
+     Con el TAP PROPUESTO es la verificacion de que la propuesta sirve.
+     Por construccion queda cerca de la frecuencia propuesta, asi que lo
+     que importa no es el numero sino el margen: el criterio de campo
+     son 2 a 3 Hz. Sin margen, al primer ajuste de frecuencia hacia
+     arriba el tap vuelve a quedar corto. */
+  if (u.v_placa){
+    /* La caida del SUT es proporcional al tap, asi que la verificacion
+       se hace sobre el tap que de verdad se va a instalar y no sobre el
+       intermedio con que se selecciono. Es lo que hace el procedimiento
+       en su ejemplo resuelto: escoge el tap y recien entonces calcula la
+       caida con ese valor.
+
+       Para el diagnostico del estado actual, la caida se calcula sobre
+       el tap instalado, por la misma razon. */
+    const zF = (r.zEfect != null) ? r.zEfect / 100 : 0;
+    r.pTotalProp = r.cable + zF * r.tapNew;
+    r.pTotalAct  = (u.tap != null) ? r.cable + zF * u.tap : null;
+
+    r.fMaxAct = (u.tap != null)
+      ? (u.tap - r.pTotalAct) * 60 / u.v_placa : null;
+    r.fMaxProp = (r.tapNew - r.pTotalProp) * 60 / u.v_placa;
+    r.margen = r.fMaxProp - r.fProp;
+    /* Diagnostico del estado actual: la unidad corre por encima de lo
+       que su tap le permite sostener. */
+    r.cortoHoy = (r.fMaxAct != null && u.f_op != null)
+      ? u.f_op - r.fMaxAct : null;
+  }
+
+  /* ── Setpoints a reprogramar ──────────────────────────────────────
+     Al cambiar el tap cambia la relacion, y con ella todas las
+     protecciones que se digitan del lado del variador. Un RETAP sin
+     reescalarlas deja el motor sin proteccion de sobrecarga, o
+     disparando sin causa. Es el olvido mas frecuente y el mas grave.
+
+     Ojo con de que lado va cada corriente. En un Advantage, Load Setup
+     va del lado del MOTOR sin multiplicar, mientras Overload y los dos
+     ILimit van del lado del VARIADOR multiplicados. En un GCS todo va
+     multiplicado, incluido Load Setup. Por eso la tarjeta los separa en
+     vez de dar una lista plana. */
+  if (r.rtNew && u.i_placa != null){
+    r.vSecProp   = r.tapNew - (r.pSut || 0);
+    r.vSec60     = r.vSup60 + (r.pSut || 0);
+    r.spVolts60  = r.vSec60 / r.rtNew;
+    r.spVClamp   = Math.min(r.spVolts60 * r.fProp / 60, r.vMaxSal || r.spVolts60);
+    r.spVClampTope = (r.spVolts60 * r.fProp / 60) > (r.vMaxSal || Infinity);
+    r.spHiSpeed  = Math.min(r.fMaxProp != null ? r.fMaxProp : r.fProp, r.fProp);
+    r.spOverload = u.i_placa * r.rtNew;
+    r.spRunI     = u.i_placa * r.rtNew * 1.05;
+    r.spSyncI    = u.i_placa * r.rtNew * 1.25;
+    r.kvaReq     = r.vSecProp * u.i_placa * Math.sqrt(3) / 1000;
+  }
+
+  /* El TAP propuesto tiene que existir en el transformador. Con el
+     rango de la placa registrado esto se detecta antes de salir a
+     campo; sin el, alguien lo descubre frente al equipo abierto. */
+  r.tapFuera = (sut.tap_max != null && r.tapNew > sut.tap_max) ? 'alto'
+             : (sut.tap_min != null && r.tapNew < sut.tap_min) ? 'bajo'
+             : null;
+
   r.ok = true;
   return r;
 }
@@ -2075,7 +2255,12 @@ function koPintarDetalle(){
     ['Tensi&oacute;n de placa del motor', koEnt(u.v_placa) + ' V'],
     ['Corriente de placa', koEnt(u.i_placa) + ' A'],
     ['TAP del SUT instalado', u.tap != null ? u.tap.toFixed(0) + ' V' : '\u2014'],
-    ['Tensi&oacute;n nominal del variador', (r.vNom || koCfg.vNom) + ' V'],
+    ['Tensi&oacute;n primaria nominal del SUT', (r.vNom || koCfg.vNom) + ' V'],
+    ['Impedancia del SUT', r.zPct != null
+      ? r.zPct.toFixed(2) + ' %'
+        + (r.sut.z_temp != null ? ' @ ' + r.sut.z_temp.toFixed(0) + ' \u00b0C' : '')
+        + (r.sut.kva != null ? ' \u00b7 ' + koEnt(r.sut.kva) + ' kVA' : '')
+      : '<span class="ko-der">sin registrar</span>'],
     ['Ca&iacute;da de tensi&oacute;n en cable',
       r.cable.toFixed(0) + ' V (' + r.cableOrigen + ')'],
     ['Cable', (u.awg != null ? 'calibre #' + u.awg : 'calibre sin registrar')
@@ -2113,14 +2298,40 @@ function koPintarDetalle(){
         r.vOpt60.toFixed(0), 'V')
     + p('Tensi&oacute;n &oacute;ptima superficie @60 Hz', '+ ca&iacute;da de cable',
         r.vSup60.toFixed(0), 'V')
-    + p('TAP &oacute;ptimo', 'V sup x F prop / 60', r.tapOpt.toFixed(0), 'V')
+    + p('TAP sin p&eacute;rdidas del SUT', 'V sup x F prop / 60',
+        r.tapBase.toFixed(0), 'V')
+    + (r.pSut != null
+        ? p('P&eacute;rdidas en el SUT',
+            r.sutMetodo === 'escalado_por_carga'
+              ? 'Z ' + r.zEfect.toFixed(2) + '% x TAP'
+              : 'Z de placa ' + r.zPct.toFixed(2) + '% x TAP',
+            r.pSut.toFixed(0), 'V')
+        : p('P&eacute;rdidas en el SUT', 'sin impedancia registrada',
+            '\u2014', ''))
+    + p('TAP &oacute;ptimo', 'TAP base + p&eacute;rdidas del SUT',
+        r.tapOpt.toFixed(0), 'V')
     + p('Tensi&oacute;n &oacute;ptima @ F operaci&oacute;n', 'V sup x F ope / 60',
         r.vOptOp.toFixed(0), 'V')
     + p('TAP a solicitar', u.filtro
           ? 'TAP &oacute;ptimo x ' + koCfg.kFiltro.toFixed(2) + ' (filtro)'
           : 'igual al &oacute;ptimo (sin filtro)',
         r.tapNew.toFixed(0), 'V')
-    + '</div>';
+    + '</div>'
+    + (r.pSut == null
+        ? '<p class="ko-nota">Esta unidad no tiene la impedancia del SUT '
+          + 'registrada, as&iacute; que el TAP sale calculado solo con la '
+          + 'ca&iacute;da del cable. El transformador tambi&eacute;n cae, y esa '
+          + 'omisi&oacute;n siempre empuja el TAP hacia abajo. Reg&iacute;strela '
+          + 'abajo antes de emitir la propuesta.</p>'
+        : '')
+    + (r.tapFuera
+        ? '<p class="ko-nota">El TAP a solicitar queda por '
+          + (r.tapFuera === 'alto' ? 'encima del m&aacute;ximo'
+                                   : 'debajo del m&iacute;nimo')
+          + ' que tiene este transformador ('
+          + koEnt(r.sut.tap_min) + ' a ' + koEnt(r.sut.tap_max) + ' V). '
+          + 'No es ejecutable: hay que revisar el dise&ntilde;o, no el tap.</p>'
+        : '');
 
   /* Lado del variador. Tres tensiones que se leen comparandolas entre
      si, no una por una. */
@@ -2190,6 +2401,149 @@ function koPintarDetalle(){
     + '<p class="ko-nota">No se escala con la frecuencia: depende de la corriente, '
     + 'no de la velocidad.</p></div>';
 
+  /* Perdidas totales, desarmadas. La del cable ya estaba; la del SUT es
+     nueva y del mismo orden de magnitud, asi que se muestran juntas para
+     que se vea el peso relativo. */
+  if (r.pSut != null){
+    h += '<div class="ko-card"><div class="ct">'
+      + '<b>P&eacute;rdidas en el transformador</b><span>m&eacute;todo '
+      + (r.sutMetodo === 'escalado_por_carga' ? 'escalado por carga' : 'conservador')
+      + '</span></div><div class="ko-cad">'
+      + (r.sOper != null
+          ? p('Potencia de operaci&oacute;n', 'V sec x I motor x &radic;3 / 1000',
+              r.sOper.toFixed(0), 'kVA') : '')
+      + (r.sOper != null
+          ? p('Impedancia efectiva', 'Z placa x (kVA oper / kVA nom)',
+              r.zEfect.toFixed(2), '%') : '')
+      + p('Ca&iacute;da en el SUT', 'Z efectiva x TAP', r.pSut.toFixed(0), 'V')
+      + p('P&eacute;rdidas totales', 'cable + SUT', r.pTotal.toFixed(0), 'V')
+      + '</div><p class="ko-nota">'
+      + (r.sutMetodo === 'escalado_por_carga'
+          ? 'El m&eacute;todo escalado corrige la Z de placa por la carga real '
+            + 'del transformador. Refleja mejor la operaci&oacute;n y evita subir '
+            + 'un tap sin necesidad, pero protege menos que el conservador.'
+          : 'Se us&oacute; la Z de placa completa, que corresponde a la '
+            + 'ca&iacute;da a plena carga nominal. Un SUT casi siempre trabaja '
+            + 'por debajo de sus kVA, as&iacute; que el resultado es '
+            + 'conservador. Registrando los kVA del transformador se habilita '
+            + 'el m&eacute;todo escalado por carga.')
+      + ' El m&eacute;todo usado queda guardado con la propuesta.</p></div>';
+  }
+
+  /* Verificacion de frecuencia maxima. Es lo que hace defendible la
+     propuesta frente a quien la aprueba. */
+  if (r.fMaxProp != null){
+    const semM = r.margen == null ? 'null'
+               : r.margen >= 2 ? 'ok' : r.margen >= 0 ? 'warn' : 'crit';
+    h += '<div class="ko-card"><div class="ct">'
+      + '<b>Frecuencia m&aacute;xima alcanzable</b>'
+      + '<span>(TAP &minus; p&eacute;rdidas) x 60 / V placa</span></div>'
+      + '<div class="ko-cad">'
+      + (r.fMaxAct != null
+          ? p('Con el TAP instalado', koEnt(u.tap) + ' V &minus; '
+              + r.pTotalAct.toFixed(0) + ' V p&eacute;rdidas',
+              r.fMaxAct.toFixed(1), 'Hz') : '')
+      + p('Con el TAP propuesto', koEnt(r.tapNew) + ' V &minus; '
+          + r.pTotalProp.toFixed(0) + ' V p&eacute;rdidas',
+          r.fMaxProp.toFixed(1), 'Hz')
+      + p('Margen sobre la propuesta', 'F m&aacute;x &minus; F propuesta '
+          + r.fProp.toFixed(1) + ' Hz',
+          '<span class="ko-d" style="color:' + KO_HEX[semM] + '">'
+          + (r.margen > 0 ? '+' : '') + r.margen.toFixed(1) + '</span>', 'Hz')
+      + '</div><p class="ko-nota">'
+      + (r.cortoHoy != null && r.cortoHoy > 0
+          ? 'Con el TAP que tiene hoy, esta unidad no puede sostener la '
+            + 'relaci&oacute;n V/Hz por encima de ' + r.fMaxAct.toFixed(1)
+            + ' Hz, y est&aacute; corriendo a ' + u.f_op.toFixed(1)
+            + '. El motor est&aacute; subtensionado ahora mismo. '
+          : '')
+      + (r.margen == null ? ''
+         : r.margen >= 2
+           ? 'El margen cumple el criterio de campo de 2 a 3 Hz.'
+           : r.margen >= 0
+             ? 'El margen es menor a 2 Hz: al primer ajuste de frecuencia '
+               + 'hacia arriba el tap vuelve a quedar corto. Conviene subir '
+               + 'un tap, que aporta del orden de 3 Hz.'
+             : 'El TAP propuesto no alcanza la frecuencia propuesta. Suba un '
+               + 'tap y vuelva a verificar.')
+      + '</p></div>';
+  }
+
+  /* Setpoints. Separados por lado del transformador a proposito: es
+     donde se comete el error que descuadra un ADV recien configurado. */
+  if (r.spOverload != null){
+    const esAdv = /advantage|adv/i.test(u.vsd || '');
+    h += '<div class="ko-card"><div class="ct">'
+      + '<b>Setpoints a reprogramar</b><span>relaci&oacute;n nueva '
+      + r.rtNew.toFixed(2) + '</span></div>'
+      + '<div class="ko-cad">'
+      + p('Volts at 60 Hz', 'V sec @60 / relaci&oacute;n',
+          r.spVolts60.toFixed(0), 'V')
+      + p('VClamp', 'Volts60 x F prop / 60'
+          + (r.spVClampTope ? ' &middot; topado' : ''),
+          r.spVClamp.toFixed(0), 'V')
+      + p('Hi Speed Clamp', 'la menor entre F m&aacute;x y F aplicaci&oacute;n',
+          r.spHiSpeed.toFixed(1), 'Hz')
+      + p('Overload', 'A placa x relaci&oacute;n', r.spOverload.toFixed(0), 'A')
+      + p('Run ILimit', 'A placa x relaci&oacute;n x 1,05',
+          r.spRunI.toFixed(0), 'A')
+      + p('Sync ILimit', 'A placa x relaci&oacute;n x 1,25',
+          r.spSyncI.toFixed(0), 'A')
+      + p('kVA requeridos', 'V sec x A placa x &radic;3 / 1000',
+          r.kvaReq.toFixed(0), 'kVA')
+      + '</div><p class="ko-nota">'
+      + 'Al cambiar el tap cambia la relaci&oacute;n, y con ella todas las '
+      + 'protecciones que se digitan del lado del variador. Un cambio de tap '
+      + 'sin reescalarlas deja el motor sin protecci&oacute;n de sobrecarga, o '
+      + 'disparando sin causa. '
+      + (esAdv
+          ? 'En esta unidad, que es Advantage: Overload y los dos ILimit van '
+            + 'multiplicados como aparecen arriba, pero Load Setup (Mtr Nmplt '
+            + 'Cur, Motor Mag Cur) va del lado del MOTOR, sin multiplicar. Y '
+            + 'Act Xfmr Tap debe digitarse con el tap que quede f&iacute;sicamente '
+            + 'seleccionado: sin eso el variador no conoce la relaci&oacute;n real '
+            + 'y lo que muestra en pantalla queda mintiendo.'
+          : 'Si la unidad es GCS, todo va multiplicado por la relaci&oacute;n, '
+            + 'incluido Load Setup. Si es Advantage, Load Setup va del lado del '
+            + 'motor sin multiplicar y hay que digitar Act Xfmr Tap.')
+      + '</p></div>';
+  }
+
+  /* Captura de la placa del SUT. Va en la pantalla de la unidad y no en
+     un modulo aparte porque el momento en que hace falta el dato es
+     justo este: cuando alguien esta mirando la propuesta. */
+  const sv = r.sut || {};
+  const ci = (id, et, val, paso) =>
+    '<div class="g"><label>' + et + '</label>'
+    + '<input id="' + id + '" type="number" step="' + paso + '" value="'
+    + (val != null ? val : '') + '"></div>';
+
+  h += '<div class="ko-card"><div class="ct"><b>Placa del SUT</b><span>'
+    + (sv.fecha
+        ? 'capturado ' + koEsc(String(sv.fecha).slice(0, 10))
+          + (sv.por ? ' \u00b7 ' + koEsc(sv.por) : '')
+        : 'sin capturar') + '</span></div>'
+    + '<div class="ko-cfg">'
+    + ci('koSutZ', 'Impedancia Zcc (%)', sv.z_pct, '0.01')
+    + ci('koSutT', 'Referida a (\u00b0C)', sv.z_temp, '1')
+    + ci('koSutKva', 'Potencia (kVA)', sv.kva, '1')
+    + ci('koSutTmin', 'Tap m&iacute;nimo (V)', sv.tap_min, '1')
+    + ci('koSutTmax', 'Tap m&aacute;ximo (V)', sv.tap_max, '1')
+    + '<div class="g"><label>Fuente</label>'
+    +   '<input id="koSutF" type="text" value="' + koEsc(sv.fuente || '') + '"></div>'
+    + '</div>'
+    + '<p class="ko-nota">Estos datos est&aacute;n en la placa del '
+    + 'transformador y en su descripci&oacute;n t&eacute;cnica en el '
+    + 'm&oacute;dulo de activos. La impedancia habilita el t&eacute;rmino de '
+    + 'p&eacute;rdidas del transformador; los kVA habilitan adem&aacute;s el '
+    + 'm&eacute;todo escalado por carga; el rango de taps permite verificar '
+    + 'que el TAP propuesto exista de verdad en este equipo. '
+    + 'Nada de esto se estima: en blanco, el c&aacute;lculo lo dice.</p>'
+    + '<div style="display:flex;gap:10px;align-items:center;margin-top:4px">'
+    + '<button class="ko-chip on" id="koSutGuardar" data-p="' + koEsc(u.pozo)
+    + '">Guardar placa del SUT</button>'
+    + '<span class="ko-nota" id="koSutMsg" style="margin:0"></span></div></div>';
+
   const pr = r.u.prop_estado
     ? '<div class="ko-card"><div class="ct"><b>Propuesta vigente</b><span>'
       + koEsc(r.u.prop_estado) + '</span></div>'
@@ -2256,7 +2610,29 @@ async function koRegistrar(boton){
         f_max_previa: (r.u.f_max != null ? Number(r.u.f_max) : null),
         tap_previo:   (r.u.tap   != null ? Number(r.u.tap)   : null),
         kw_previo:    (r.kwAct != null ? Number(r.kwAct.toFixed(2)) : null),
-        criterios:    koCriterios()
+        /* Los criterios globales mas lo que es propio de esta unidad. El
+           procedimiento exige declarar cual metodo de perdidas del SUT se
+           uso: sin eso, dos propuestas con el mismo TAP pueden venir de
+           cuentas distintas y nadie puede auditarlas despues. */
+        criterios:    Object.assign(koCriterios(), {
+          sut_metodo:     r.sutMetodo,
+          sut_z_pct:      r.zPct,
+          sut_z_efectiva: (r.zEfect != null ? Number(r.zEfect.toFixed(2)) : null),
+          sut_kva:        r.sutKva != null ? r.sutKva : null,
+          perdida_cable_v: Number(r.cable.toFixed(0)),
+          perdida_sut_v:  (r.pSut != null ? Number(r.pSut.toFixed(0)) : null),
+          f_max_alcanzable: (r.fMaxProp != null ? Number(r.fMaxProp.toFixed(1)) : null),
+          margen_hz:      (r.margen != null ? Number(r.margen.toFixed(1)) : null),
+          setpoints: (r.spOverload != null ? {
+            volts_60:      Number(r.spVolts60.toFixed(0)),
+            vclamp:        Number(r.spVClamp.toFixed(0)),
+            hi_speed:      Number(r.spHiSpeed.toFixed(1)),
+            overload:      Number(r.spOverload.toFixed(0)),
+            run_ilimit:    Number(r.spRunI.toFixed(0)),
+            sync_ilimit:   Number(r.spSyncI.toFixed(0)),
+            kva_requeridos: Number(r.kvaReq.toFixed(0))
+          } : null)
+        })
       });
       ok += 1;
     } catch(e){ fallas.push(r.pozo + ': ' + e.message); }
@@ -2289,6 +2665,44 @@ function koEnlazar(){
   if (ec) ec.onchange = e => { koCfg.escalaCable = e.target.value === '1'; koPintar(); };
   const rz = document.getElementById('koRaiz');
   if (rz) rz.onchange = e => { koCfg.raiz = e.target.value; koPintar(); };
+
+  const sg2 = document.getElementById('koSutGuardar');
+  if (sg2) sg2.onclick = async () => {
+    const msg = document.getElementById('koSutMsg');
+    const val = id => {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const t = String(el.value || '').trim();
+      if (t === '') return null;
+      const n = Number(t.replace(',', '.'));
+      return isFinite(n) ? n : null;
+    };
+    const ft = document.getElementById('koSutF');
+    sg2.disabled = true;
+    const previo = sg2.textContent;
+    sg2.textContent = 'Guardando\u2026';
+    try {
+      const res = await koGuardarSut(sg2.dataset.p, {
+        z_pct:   val('koSutZ'),
+        z_temp:  val('koSutT'),
+        kva:     val('koSutKva'),
+        tap_min: val('koSutTmin'),
+        tap_max: val('koSutTmax'),
+        fuente:  ft ? String(ft.value || '').trim() : null
+      });
+      koPintar();
+      const m2 = document.getElementById('koSutMsg');
+      if (m2) m2.textContent = res && res.metodo === 'escalado_por_carga'
+        ? 'Guardado. Queda habilitado el m\u00e9todo escalado por carga.'
+        : res && res.metodo === 'conservador'
+          ? 'Guardado. Con los kVA del SUT se habilita el m\u00e9todo escalado por carga.'
+          : 'Guardado. Sin impedancia el c\u00e1lculo sigue sin el t\u00e9rmino del SUT.';
+    } catch(e){
+      sg2.disabled = false;
+      sg2.textContent = previo;
+      if (msg) msg.textContent = e.message;
+    }
+  };
 
   const cs = document.getElementById('koCampoSel');
   if (cs) cs.onchange = e => { koCampo = e.target.value; koPad = 'all'; koPintar(); };
@@ -2385,6 +2799,7 @@ async function koArrancar(){
      debe retrasar la pantalla. */
   koCargarVigencia();
   koCargarSalidaVsd();
+  await koCargarSut();
   try {
     KO_DATOS = await koCargarUnidades();
   } catch(e){
