@@ -1022,7 +1022,27 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     font-size:11px;font-weight:600;color:var(--text-2);text-transform:uppercase;
     letter-spacing:.04em;margin:14px 0 6px;
   }
-  #panel-documentos .dd-fila{padding:9px 4px;}
+  #panel-documentos .dd-fila{padding:8px 4px;}
+
+  /* Cabecera compacta. Las dos barras pasan de apiladas a horizontales:
+     pestanas y buscador en una fila, migas / conteo / filtros en otra.
+     Son ~110 px que vuelven a la lista, que es lo que el usuario mira. */
+  #panel-documentos .dd-barra1,
+  #panel-documentos .dd-barra2{
+    display:flex;align-items:center;gap:14px;flex-shrink:0;padding:0 8px;
+  }
+  #panel-documentos .dd-barra1{padding-top:8px;}
+  #panel-documentos .dd-barra1 .dd-tabs{flex:1;min-width:0;padding:2px 8px;}
+  #panel-documentos .dd-barra1 .search-row{
+    width:340px;flex-shrink:0;padding:0 12px 0 0 !important;
+  }
+  #panel-documentos .dd-barra2{padding-bottom:6px;border-bottom:1px solid var(--line);}
+  #panel-documentos .dd-barra2 .dd-ruta{flex:1;min-width:0;padding:6px 8px 4px;}
+  #panel-documentos .dd-barra2 .dd-conteo{padding:0 4px;white-space:nowrap;}
+  #panel-documentos .dd-barra2 .filtros-bar{
+    width:280px;flex-shrink:0;padding:0 12px 0 0 !important;
+  }
+  #panel-documentos .dd-cuerpo{border-top:none;}
 }
 
 /* Movil: una sola columna, carpetas y archivos en la misma lista. */
@@ -2915,26 +2935,31 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <!-- Clase de archivo. El espejo de Drive no es homogeneo: documentos,
          descargas de variador, termografias y respaldos de configuracion
          son activos distintos y se buscan distinto. -->
-    <div class="dd-tabs" id="doc-tabs"></div>
-
-    <div class="search-row" style="padding:8px 16px 0">
-      <div class="search-box">
-        <span class="search-icon">&#128269;</span>
-        <input id="doc-buscar" placeholder="Buscar por nombre, código, equipo..."/>
+    <!-- Cabecera en dos barras. En movil se apilan como antes; en
+         escritorio cada barra se vuelve una fila horizontal, lo que
+         recupera ~110 px de alto util para la lista. -->
+    <div class="dd-barra1">
+      <div class="dd-tabs" id="doc-tabs"></div>
+      <div class="search-row" style="padding:8px 16px 0">
+        <div class="search-box">
+          <span class="search-icon">&#128269;</span>
+          <input id="doc-buscar" placeholder="Buscar por nombre, código, equipo..."/>
+        </div>
       </div>
     </div>
 
-    <div class="filtros-bar" style="padding:8px 16px 0" id="doc-filtros">
-      <select id="doc-filtro-categoria" style="min-width:0;flex:1;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
-        <option value="">Todas las categorías</option>
-      </select>
-      <select id="doc-filtro-pozo" style="min-width:0;flex:1;display:none;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
-        <option value="">Todas las unidades</option>
-      </select>
+    <div class="dd-barra2">
+      <div class="dd-ruta" id="doc-migas"></div>
+      <div class="dd-conteo" id="doc-conteo"></div>
+      <div class="filtros-bar" style="padding:8px 16px 0" id="doc-filtros">
+        <select id="doc-filtro-categoria" style="min-width:0;flex:1;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
+          <option value="">Todas las categorías</option>
+        </select>
+        <select id="doc-filtro-pozo" style="min-width:0;flex:1;display:none;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
+          <option value="">Todas las unidades</option>
+        </select>
+      </div>
     </div>
-
-    <div class="dd-ruta" id="doc-migas"></div>
-    <div class="dd-conteo" id="doc-conteo"></div>
 
     <div class="dd-cuerpo">
       <div class="dd-lateral" id="doc-carpetas"></div>
@@ -9545,9 +9570,13 @@ function ddPintarFiltros() {
         + `${ddEsc(DD_LABEL_CAT[c.v] || c.v)} (${c.n})</option>`).join("");
   }
 
+  /* La unidad no filtra documentos: un manual de Yaskawa no pertenece a
+     un pozo. Solo aparece donde el dato SI esta ligado a una unidad:
+     telemetria, termografias y respaldos de configuracion. */
   const pozos = dd.facetas.pozos || [];
-  selPozo.style.display = pozos.length ? "" : "none";
-  if (pozos.length) {
+  const usaPozo = dd.clase !== "DOCUMENTO" && pozos.length > 0;
+  selPozo.style.display = usaPozo ? "" : "none";
+  if (usaPozo) {
     selPozo.innerHTML = '<option value="">Todas las unidades</option>'
       + pozos.map(p => `<option value="${ddEsc(p.v)}"${p.v === dd.pozo ? " selected" : ""}>`
         + `${ddEsc(p.v)} (${p.n})</option>`).join("");
