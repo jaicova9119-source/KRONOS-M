@@ -920,6 +920,122 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   background:var(--bg-2);border-radius:8px;padding:10px 12px;font-size:13px;margin-bottom:6px;
 }
 
+/* ---------- Gestion documental: navegacion de biblioteca ----------
+   El espejo de Drive trae ~42.000 archivos en 9.253 carpetas. Ni el
+   arbol completo ni la lista entera caben en pantalla, y menos en un
+   PAD. El patron es el mismo en movil y escritorio -pestanas de clase,
+   migas de pan, lista paginada- y solo cambia la reparticion: una
+   columna abajo de 860px, dos columnas arriba.                        */
+
+.dd-tabs{
+  display:flex;gap:6px;padding:10px 16px 2px;overflow-x:auto;flex-shrink:0;
+  scrollbar-width:none;
+}
+.dd-tabs::-webkit-scrollbar{display:none;}
+.dd-tab{
+  font-size:12.5px;padding:6px 13px;border-radius:20px;white-space:nowrap;
+  border:1px solid var(--line);color:var(--text-1);background:var(--bg-2);flex-shrink:0;
+}
+.dd-tab.active{background:var(--accent-bg);color:var(--accent);border-color:var(--accent-dim);font-weight:600;}
+.dd-tab .dd-tab-n{font-size:11px;opacity:.7;margin-left:5px;font-family:var(--mono);}
+
+/* Migas de pan. Se desplazan en horizontal en vez de partirse en varias
+   lineas: con rutas de seis niveles, el salto de linea empujaba la lista
+   fuera de la pantalla. */
+.dd-ruta{
+  display:flex;align-items:center;gap:3px;padding:8px 16px 6px;overflow-x:auto;
+  flex-shrink:0;scrollbar-width:none;font-size:12px;
+}
+.dd-ruta::-webkit-scrollbar{display:none;}
+.dd-miga{
+  color:var(--accent);white-space:nowrap;background:none;border:none;padding:3px 4px;
+  font-size:12px;font-family:inherit;flex-shrink:0;
+}
+.dd-miga:disabled{color:var(--text-1);font-weight:600;}
+.dd-miga-sep{color:var(--text-2);flex-shrink:0;}
+
+.dd-conteo{
+  padding:2px 16px 8px;font-size:11.5px;color:var(--text-2);flex-shrink:0;
+  font-family:var(--mono);
+}
+
+/* Carpeta y archivo comparten alto y ritmo para que la lista se lea
+   como una sola columna y no como dos bloques pegados. */
+.dd-fila{
+  display:flex;align-items:center;gap:11px;padding:11px 4px;
+  border-bottom:1px solid var(--line-soft);cursor:pointer;
+}
+.dd-fila:active{background:var(--bg-2);}
+.dd-ico{
+  flex-shrink:0;width:26px;height:26px;border-radius:7px;display:flex;
+  align-items:center;justify-content:center;font-size:13px;
+  background:var(--bg-3);color:var(--text-1);
+}
+.dd-ico.carpeta{background:var(--accent-bg);color:var(--accent);}
+.dd-main{min-width:0;flex:1;}
+.dd-nombre{
+  font-size:14px;font-weight:500;color:var(--text-0);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.dd-meta{
+  font-size:11.5px;color:var(--text-2);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.dd-cola{font-size:11px;color:var(--text-2);font-family:var(--mono);flex-shrink:0;}
+
+/* La ruta se muestra solo cuando el resultado viene de una busqueda: al
+   navegar por carpetas ya la sabes, y repetirla es ruido. */
+.dd-ruta-hint{
+  font-size:10.5px;color:var(--text-2);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;opacity:.8;
+}
+
+.dd-mas{
+  width:100%;padding:12px;margin:10px 0 20px;border-radius:10px;
+  border:1px solid var(--line);background:var(--bg-2);color:var(--accent);
+  font-size:13px;font-weight:600;font-family:inherit;
+}
+
+.dd-badge{
+  display:inline-block;font-size:10px;font-weight:600;padding:1px 7px;border-radius:5px;
+  background:var(--bg-3);color:var(--text-1);margin-right:5px;
+}
+
+/* Escritorio: la navegacion pasa a columna izquierda fija y la lista
+   ocupa el resto. Es el mismo arbol y la misma lista, repartidos. */
+@media (min-width: 860px){
+  #panel-documentos .dd-cuerpo{
+    display:flex;flex:1;min-height:0;overflow:hidden;
+  }
+  #panel-documentos .dd-lateral{
+    width:320px;flex-shrink:0;border-right:1px solid var(--line);
+    overflow-y:auto;padding:4px 12px 30px;background:var(--bg-1);
+  }
+  /* Un buscador de 1.280 px de ancho no se lee mejor, se lee peor: el ojo
+     pierde el punto de partida. Se limita a una medida comoda. */
+  #panel-documentos .search-row,
+  #panel-documentos .filtros-bar{max-width:720px;}
+  #panel-documentos .dd-principal{
+    flex:1;min-width:0;overflow-y:auto;padding:4px 20px 40px;
+  }
+  #panel-documentos .dd-lateral-titulo{
+    font-size:11px;font-weight:600;color:var(--text-2);text-transform:uppercase;
+    letter-spacing:.04em;margin:14px 0 6px;
+  }
+  #panel-documentos .dd-fila{padding:9px 4px;}
+}
+
+/* Movil: una sola columna, carpetas y archivos en la misma lista. */
+@media (max-width: 859px){
+  #panel-documentos .dd-cuerpo{
+    flex:1;min-height:0;overflow-y:auto;padding:0 16px 90px;
+  }
+  #panel-documentos .dd-lateral-titulo{
+    font-size:11px;font-weight:600;color:var(--text-2);text-transform:uppercase;
+    letter-spacing:.04em;margin:14px 0 4px;
+  }
+}
+
 /* ---------- Materiales / Min-Max ---------- */
 .mat-card{
   display:flex;justify-content:space-between;align-items:center;gap:10px;
@@ -2792,24 +2908,41 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <div class="panel" id="panel-documentos">
   <div class="panel-header">
     <h2>Documentos</h2>
+    <button class="icon-btn" id="doc-btn-sync" title="Sincronizar biblioteca" style="display:none">&#8635;</button>
   </div>
-  <div class="panel-body" style="padding:0">
-    <div class="search-row" style="padding:12px 16px 8px">
-      <div class="search-box"><span class="search-icon">&#128269;</span><input id="doc-buscar" placeholder="Título, palabra clave, tipo de equipo..."/></div>
+  <div class="panel-body" style="padding:0;display:flex;flex-direction:column">
+
+    <!-- Clase de archivo. El espejo de Drive no es homogeneo: documentos,
+         descargas de variador, termografias y respaldos de configuracion
+         son activos distintos y se buscan distinto. -->
+    <div class="dd-tabs" id="doc-tabs"></div>
+
+    <div class="search-row" style="padding:8px 16px 0">
+      <div class="search-box">
+        <span class="search-icon">&#128269;</span>
+        <input id="doc-buscar" placeholder="Buscar por nombre, código, equipo..."/>
+      </div>
     </div>
-    <div class="filtros-bar" style="padding:0 16px 8px">
+
+    <div class="filtros-bar" style="padding:8px 16px 0" id="doc-filtros">
       <select id="doc-filtro-categoria" style="min-width:0;flex:1;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
         <option value="">Todas las categorías</option>
-        <option value="MANUAL">Manual</option>
-        <option value="INSTRUCTIVO">Instructivo</option>
-        <option value="PROCEDIMIENTO">Procedimiento</option>
-        <option value="CHECKLIST">Check List</option>
-        <option value="OTRO">Otro</option>
+      </select>
+      <select id="doc-filtro-pozo" style="min-width:0;flex:1;display:none;font-size:12.5px;padding:8px;border-radius:8px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1)">
+        <option value="">Todas las unidades</option>
       </select>
     </div>
-    <div class="list" style="padding-top:4px" id="lista-documentos">
-      <div class="loading">Cargando documentos...</div>
+
+    <div class="dd-ruta" id="doc-migas"></div>
+    <div class="dd-conteo" id="doc-conteo"></div>
+
+    <div class="dd-cuerpo">
+      <div class="dd-lateral" id="doc-carpetas"></div>
+      <div class="dd-principal" id="lista-documentos">
+        <div class="loading">Cargando biblioteca...</div>
+      </div>
     </div>
+
   </div>
 </div>
 
@@ -9212,86 +9345,427 @@ function volverADocumentos() {
   document.querySelector('[data-tab="documentos"]').classList.add("active");
 }
 
-async function cargarDocumentos() {
+/* ══════════════════════════════════════════════════════════════════════
+   Gestion documental — motor de biblioteca
+   ──────────────────────────────────────────────────────────────────────
+   El espejo de Drive tiene ~42.000 archivos. El patron anterior (traer
+   todo con select("*") y filtrar en el navegador) funcionaba con cuatro
+   documentos; con este volumen PostgREST corta en 1.000 filas y el PAD
+   se queda sin memoria. Todo el filtrado se hace ahora en la base via
+   doc_drive_buscar, que devuelve pagina y total en la misma llamada.
+
+   Los documentos cargados a mano en la tabla `documentos` siguen
+   apareciendo: se consultan aparte y se muestran primero, marcados,
+   porque son los curados y tienen rutinas y componentes asociados.
+   ══════════════════════════════════════════════════════════════════════ */
+
+const DD_CLASES = [
+  { v: "DOCUMENTO",   t: "Documentos"   },
+  { v: "TELEMETRIA",  t: "Telemetría"   },
+  { v: "TERMOGRAFIA", t: "Termografías" },
+  { v: "RESPALDO",    t: "Respaldos"    },
+  { v: "FIRMWARE",    t: "Firmware"     },
+  { v: "IMAGEN",      t: "Imágenes"     },
+];
+
+const DD_LABEL_CAT = {
+  MANUAL: "Manual", INSTRUCTIVO: "Instructivo", PROCEDIMIENTO: "Procedimiento",
+  CHECKLIST: "Check List", INFORME: "Informe", PLANO: "Plano",
+  FORMATO: "Formato", REGISTRO: "Registro", OTRO: "Otro",
+};
+
+const DD_PAGINA = 50;
+
+const dd = {
+  clase: "DOCUMENTO",
+  ruta: "",           // "" = raiz
+  texto: "",
+  categoria: "",
+  pozo: "",
+  desde: 0,
+  total: 0,
+  filas: [],
+  carpetas: [],
+  curados: [],
+  cargando: false,
+  facetas: null,
+};
+
+/* ---------- utilidades ---------- */
+
+function ddEsc(s) {
+  return String(s == null ? "" : s).replace(/[&<>"]/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function ddPeso(b) {
+  if (!b) return "";
+  const u = ["B", "KB", "MB", "GB"];
+  let i = 0, n = Number(b);
+  while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
+  return `${n < 10 && i > 0 ? n.toFixed(1) : Math.round(n)} ${u[i]}`;
+}
+
+function ddFecha(s) {
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString("es-CO", { year: "numeric", month: "short", day: "numeric" });
+}
+
+/* El icono da la pista del tipo sin ocupar ancho, que en movil es lo
+   escaso. Nada de depender solo del color. */
+function ddIcono(mime, nombre) {
+  const n = (nombre || "").toLowerCase();
+  if ((mime || "").includes("pdf") || n.endsWith(".pdf")) return "PDF";
+  if (/(word|document)/.test(mime || "") || /\.(docx?|odt)$/.test(n)) return "DOC";
+  if (/(sheet|excel)/.test(mime || "") || /\.(xlsx?m?|csv|ods)$/.test(n)) return "XLS";
+  if (/(presentation|powerpoint)/.test(mime || "") || /\.pptx?$/.test(n)) return "PPT";
+  if ((mime || "").startsWith("image/")) return "IMG";
+  if (/\.(dwg|dxf)$/.test(n)) return "CAD";
+  if (/\.is2$/.test(n)) return "IR";
+  return "\u25CF";
+}
+
+/* ---------- carga ---------- */
+
+async function cargarDocumentos(reset = true) {
+  if (reset) {
+    dd.desde = 0;
+    dd.filas = [];
+  }
+  if (dd.cargando) return;
+  dd.cargando = true;
+
   const lista = document.getElementById("lista-documentos");
-  lista.innerHTML = '<div class="loading">Cargando documentos...</div>';
+  if (reset) lista.innerHTML = '<div class="loading">Cargando biblioteca...</div>';
+
   try {
-    const { data, error } = await sb.from("documentos").select("*").order("created_at", { ascending: false });
-    if (error) throw error;
-    documentosData = data || [];
-    await guardarEspejo(ESPEJO.documentos, documentosData);
+    /* Las tres consultas son independientes: van en paralelo para que la
+       pantalla no espere tres viajes encadenados. */
+    const buscando = !!dd.texto;
 
-    const dl = document.getElementById("dl-tipos-equipo");
-    const tiposUnicos = [...new Set(documentosData.map(d => d.tipo_equipo).filter(Boolean))].sort();
-    dl.innerHTML = tiposUnicos.map(t => `<option value="${t}">`).join("");
+    const pBusqueda = sb.rpc("doc_drive_buscar", {
+      p_texto: dd.texto || null,
+      p_ruta: dd.ruta || null,
+      p_categoria: dd.categoria || null,
+      p_limite: DD_PAGINA,
+      p_desde: dd.desde,
+      p_clase: dd.clase,
+      p_pozo: dd.pozo || null,
+      p_tipo_dato: null,
+      /* Al navegar se listan solo los archivos de ESTA carpeta y las
+         subcarpetas aparecen aparte. Al buscar, en cambio, se barre todo
+         lo que cuelga debajo. */
+      p_exacto: !buscando,
+    });
 
-    /* Un style.display en linea gana sobre la hoja de estilos, y eso hacia
-       que este boton siguiera visible en todos los modulos una vez cargado
-       el modulo documental. Con una clase, la regla que filtra por modulo
-       sigue mandando. */
-    const puedeCargar = usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
-    const tabCargar = document.querySelector('[data-tab="documentos-cargar"]');
-    if (tabCargar) tabCargar.classList.toggle("sin-permiso", !puedeCargar);
+    const pCarpetas = buscando
+      ? Promise.resolve({ data: [] })
+      : sb.rpc("doc_drive_carpetas", { p_prefijo: dd.ruta || null, p_clase: dd.clase });
 
-    renderListaDocumentos();
+    const pFacetas = dd.facetas ? Promise.resolve(null) : sb.rpc("doc_drive_facetas", { p_clase: dd.clase });
+
+    const [rB, rC, rF] = await Promise.all([pBusqueda, pCarpetas, pFacetas]);
+    if (rB.error) throw rB.error;
+
+    const nuevas = rB.data || [];
+    dd.total = nuevas.length ? Number(nuevas[0].total) : (dd.desde > 0 ? dd.total : 0);
+    dd.filas = reset ? nuevas : dd.filas.concat(nuevas);
+    dd.carpetas = (rC && rC.data) || [];
+    if (rF && rF.data) dd.facetas = rF.data;
+
+    /* Documentos curados de la tabla `documentos`: solo en la pestana de
+       documentos, en la raiz y sin filtro de carpeta. */
+    if (reset && dd.clase === "DOCUMENTO" && !dd.ruta) {
+      try {
+        let q = sb.from("documentos").select("*").order("updated_at", { ascending: false }).limit(200);
+        const { data: cur } = await q;
+        dd.curados = (cur || []).filter(d => {
+          if (dd.categoria && d.categoria !== dd.categoria) return false;
+          if (dd.texto) {
+            const campo = `${d.titulo} ${d.tipo_equipo || ""} ${d.descripcion || ""}`.toLowerCase();
+            if (!campo.includes(dd.texto.toLowerCase())) return false;
+          }
+          return true;
+        });
+        documentosData = cur || [];
+        await guardarEspejo(ESPEJO.documentos, documentosData);
+      } catch (e) { dd.curados = []; }
+    } else if (reset) {
+      dd.curados = [];
+    }
+
+    ddPintarTabs();
+    ddPintarFiltros();
+    ddPintarMigas();
+    ddPintar();
+
   } catch (e) {
-    const esp = await leerEspejo(ESPEJO.documentos);
-    if (!esp || !esp.datos || !esp.datos.length) {
-      lista.innerHTML = '<div class="empty">No se pudo cargar y no hay copia guardada.<br><br>'
-        + (e.esPlazo ? e.message : 'Error: ' + e.message) + '</div>';
-      return;
-    }
-    documentosData = esp.datos;
-    const dl2 = document.getElementById("dl-tipos-equipo");
-    if (dl2) dl2.innerHTML = [...new Set(documentosData.map(d => d.tipo_equipo).filter(Boolean))]
-      .sort().map(t => `<option value="${t}">`).join("");
-    renderListaDocumentos();
-    /* El listado se ve; el PDF en si vive en Storage y no esta
-       descargado. Se dice, para que nadie salga a campo creyendo que
-       lleva los documentos encima. */
-    lista.insertAdjacentHTML("afterbegin", bannerEspejo(esp, documentosData.length + " documentos")
-      .replace("</div>", "<br><b>Los archivos PDF no est\u00e1n descargados</b>: sin se\u00f1al se ve la ficha, no el documento.</div>"));
+    lista.innerHTML = '<div class="empty">No se pudo cargar la biblioteca.<br><br>'
+      + ddEsc(e.esPlazo ? e.message : ("Error: " + e.message)) + "</div>";
+  } finally {
+    dd.cargando = false;
+  }
+
+  /* Permiso de carga manual: se conserva el comportamiento anterior. */
+  const puedeCargar = usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+  const tabCargar = document.querySelector('[data-tab="documentos-cargar"]');
+  if (tabCargar) tabCargar.classList.toggle("sin-permiso", !puedeCargar);
+}
+
+/* ---------- pintado ---------- */
+
+function ddPintarTabs() {
+  const cont = document.getElementById("doc-tabs");
+  if (!cont) return;
+  cont.innerHTML = DD_CLASES.map(c =>
+    `<button class="dd-tab${c.v === dd.clase ? " active" : ""}" data-clase="${c.v}">${c.t}</button>`
+  ).join("");
+  cont.querySelectorAll(".dd-tab").forEach(b => {
+    b.onclick = () => {
+      if (dd.clase === b.dataset.clase) return;
+      dd.clase = b.dataset.clase;
+      dd.ruta = ""; dd.categoria = ""; dd.pozo = ""; dd.facetas = null;
+      cargarDocumentos(true);
+    };
+  });
+}
+
+function ddPintarFiltros() {
+  const selCat = document.getElementById("doc-filtro-categoria");
+  const selPozo = document.getElementById("doc-filtro-pozo");
+  if (!selCat || !selPozo || !dd.facetas) return;
+
+  const cats = dd.facetas.categorias || [];
+  selCat.style.display = cats.length ? "" : "none";
+  if (cats.length) {
+    selCat.innerHTML = '<option value="">Todas las categorías</option>'
+      + cats.map(c => `<option value="${ddEsc(c.v)}"${c.v === dd.categoria ? " selected" : ""}>`
+        + `${ddEsc(DD_LABEL_CAT[c.v] || c.v)} (${c.n})</option>`).join("");
+  }
+
+  const pozos = dd.facetas.pozos || [];
+  selPozo.style.display = pozos.length ? "" : "none";
+  if (pozos.length) {
+    selPozo.innerHTML = '<option value="">Todas las unidades</option>'
+      + pozos.map(p => `<option value="${ddEsc(p.v)}"${p.v === dd.pozo ? " selected" : ""}>`
+        + `${ddEsc(p.v)} (${p.n})</option>`).join("");
   }
 }
 
-function renderListaDocumentos() {
+function ddPintarMigas() {
+  const cont = document.getElementById("doc-migas");
+  if (!cont) return;
+
+  const partes = dd.ruta ? dd.ruta.split("/") : [];
+  let acumulado = "";
+  const migas = [`<button class="dd-miga" data-ruta=""${!partes.length ? " disabled" : ""}>Biblioteca</button>`];
+  partes.forEach((p, k) => {
+    acumulado = acumulado ? acumulado + "/" + p : p;
+    migas.push('<span class="dd-miga-sep">&rsaquo;</span>');
+    migas.push(`<button class="dd-miga" data-ruta="${ddEsc(acumulado)}"`
+      + `${k === partes.length - 1 ? " disabled" : ""}>${ddEsc(p)}</button>`);
+  });
+  cont.innerHTML = migas.join("");
+  cont.querySelectorAll(".dd-miga").forEach(b => {
+    b.onclick = () => { dd.ruta = b.dataset.ruta; dd.texto = ""; 
+      const inp = document.getElementById("doc-buscar"); if (inp) inp.value = "";
+      cargarDocumentos(true); };
+  });
+  cont.scrollLeft = cont.scrollWidth;
+}
+
+function ddPintar() {
+  const lateral = document.getElementById("doc-carpetas");
   const lista = document.getElementById("lista-documentos");
-  const texto = (document.getElementById("doc-buscar").value || "").toLowerCase().trim();
+  const conteo = document.getElementById("doc-conteo");
+  if (!lista) return;
 
-  let filtrados = documentosData.filter(d => {
-    if (filtroCategoriaDoc && d.categoria !== filtroCategoriaDoc) return false;
-    if (texto) {
-      const campo = `${d.titulo} ${d.tipo_equipo || ""} ${d.descripcion || ""} ${d.tags || ""}`.toLowerCase();
-      if (!campo.includes(texto)) return false;
-    }
-    return true;
-  });
-
-  if (!filtrados.length) {
-    lista.innerHTML = '<div class="empty">No hay documentos que coincidan con el filtro actual.</div>';
-    return;
+  /* Conteo: dice de que universo se esta hablando. Sin esto, "50
+     resultados" no distingue entre 50 de 50 y 50 de 2.234. */
+  if (conteo) {
+    const q = dd.texto ? ` para "${ddEsc(dd.texto)}"` : "";
+    conteo.textContent = dd.total
+      ? `${dd.filas.length} de ${dd.total} archivo${dd.total === 1 ? "" : "s"}${q}`
+      : (dd.carpetas.length ? `${dd.carpetas.length} carpetas` : "");
   }
 
-  lista.innerHTML = filtrados.map((d, i) => `
-    <div class="mat-card" data-idx="${documentosData.indexOf(d)}">
-      <div class="mat-main">
-        <span class="doc-card-cat">${LABEL_CATEGORIA_DOC[d.categoria] || d.categoria}</span>
-        <div class="mat-desc">${d.titulo}</div>
-        <div class="mat-meta">${d.tipo_equipo || ''}</div>
-      </div>
-    </div>
-  `).join("");
+  /* Carpetas: columna propia en escritorio, encabezado de la lista en
+     movil. Se pinta en el mismo contenedor cuando la pantalla es
+     angosta para no duplicar el nodo. */
+  const anchoAmplio = window.matchMedia("(min-width: 860px)").matches;
+  const htmlCarpetas = dd.carpetas.length
+    ? `<div class="dd-lateral-titulo">Carpetas</div>` + dd.carpetas.map(c => `
+        <div class="dd-fila" data-carpeta="${ddEsc(c.ruta)}">
+          <div class="dd-ico carpeta">&#128193;</div>
+          <div class="dd-main">
+            <div class="dd-nombre" title="${ddEsc(c.segmento)}">${ddEsc(c.segmento)}</div>
+          </div>
+          <div class="dd-cola">${c.archivos}</div>
+        </div>`).join("")
+    : "";
 
-  lista.querySelectorAll(".mat-card").forEach(card => {
-    card.onclick = () => abrirFichaDocumento(documentosData[parseInt(card.dataset.idx)]);
-  });
+  const htmlCurados = dd.curados.length
+    ? `<div class="dd-lateral-titulo">Documentos controlados</div>` + dd.curados.map((d, k) => `
+        <div class="dd-fila" data-curado="${k}">
+          <div class="dd-ico">&#128196;</div>
+          <div class="dd-main">
+            <div class="dd-nombre" title="${ddEsc(d.titulo)}">${ddEsc(d.titulo)}</div>
+            <div class="dd-meta">
+              <span class="dd-badge">${ddEsc(DD_LABEL_CAT[d.categoria] || d.categoria || "")}</span>
+              ${ddEsc(d.tipo_equipo || "")}
+            </div>
+          </div>
+        </div>`).join("")
+    : "";
+
+  const htmlArchivos = dd.filas.length
+    ? (dd.curados.length || dd.carpetas.length ? `<div class="dd-lateral-titulo">Archivos</div>` : "")
+      + dd.filas.map((f, k) => {
+        const meta = [];
+        if (f.categoria) meta.push(`<span class="dd-badge">${ddEsc(DD_LABEL_CAT[f.categoria] || f.categoria)}</span>`);
+        if (f.pozo) meta.push(ddEsc(f.pozo));
+        if (f.tipo_dato) meta.push(ddEsc(f.tipo_dato));
+        if (f.fecha_dato) meta.push(ddFecha(f.fecha_dato));
+        else if (f.modificado_en) meta.push(ddFecha(f.modificado_en));
+        return `
+        <div class="dd-fila" data-archivo="${k}">
+          <div class="dd-ico">${ddIcono(f.mime, f.nombre)}</div>
+          <div class="dd-main">
+            <div class="dd-nombre" title="${ddEsc(f.nombre)}">${ddEsc(f.nombre)}</div>
+            <div class="dd-meta">${meta.join(" · ")}</div>
+            ${dd.texto ? `<div class="dd-ruta-hint">${ddEsc(f.ruta || "")}</div>` : ""}
+          </div>
+          <div class="dd-cola">${ddPeso(f.tamano_bytes)}</div>
+        </div>`;
+      }).join("")
+    : "";
+
+  const hayAlgo = dd.carpetas.length || dd.filas.length || dd.curados.length;
+
+  if (anchoAmplio) {
+    if (lateral) lateral.innerHTML = htmlCarpetas || '<div class="dd-lateral-titulo">Sin subcarpetas</div>';
+    lista.innerHTML = hayAlgo
+      ? htmlCurados + htmlArchivos + ddBotonMas()
+      : '<div class="empty">No hay nada que coincida con el filtro actual.</div>';
+  } else {
+    if (lateral) lateral.innerHTML = "";
+    lista.innerHTML = hayAlgo
+      ? htmlCarpetas + htmlCurados + htmlArchivos + ddBotonMas()
+      : '<div class="empty">No hay nada que coincida con el filtro actual.</div>';
+  }
+
+  ddEnlazarFilas(lateral);
+  ddEnlazarFilas(lista);
 }
 
-document.getElementById("doc-buscar").addEventListener("input", renderListaDocumentos);
-document.getElementById("doc-filtro-categoria").addEventListener("change", (e) => {
-  filtroCategoriaDoc = e.target.value;
-  renderListaDocumentos();
+function ddBotonMas() {
+  return dd.filas.length < dd.total
+    ? `<button class="dd-mas" id="dd-btn-mas">Cargar 50 más (${dd.filas.length} de ${dd.total})</button>`
+    : "";
+}
+
+function ddEnlazarFilas(cont) {
+  if (!cont) return;
+
+  cont.querySelectorAll("[data-carpeta]").forEach(el => {
+    el.onclick = () => { dd.ruta = el.dataset.carpeta; cargarDocumentos(true); };
+  });
+
+  cont.querySelectorAll("[data-curado]").forEach(el => {
+    el.onclick = () => abrirFichaDocumento(dd.curados[parseInt(el.dataset.curado, 10)]);
+  });
+
+  cont.querySelectorAll("[data-archivo]").forEach(el => {
+    el.onclick = () => ddAbrirArchivo(dd.filas[parseInt(el.dataset.archivo, 10)]);
+  });
+
+  const mas = cont.querySelector("#dd-btn-mas");
+  if (mas) mas.onclick = () => { dd.desde += DD_PAGINA; cargarDocumentos(false); };
+}
+
+/* ---------- ficha de archivo de Drive ----------
+   Se reusa el panel de ficha existente. Los archivos de Drive son de
+   solo lectura desde Kronos-M: se editan en Drive, que es su origen.  */
+
+function ddAbrirArchivo(f) {
+  if (!f) return;
+  documentoActual = {
+    id: null,
+    titulo: f.nombre,
+    categoria: f.categoria,
+    tipo_equipo: f.tipo_equipo,
+    descripcion: null,
+    archivo_path: null,
+    enlace_externo: f.web_view_link,
+    _drive: f,
+  };
+
+  document.getElementById("doc-ficha-titulo").textContent = f.nombre;
+
+  const filas = [
+    ["Clase", f.clase || "—"],
+    ["Categoría", DD_LABEL_CAT[f.categoria] || f.categoria || "—"],
+    ["Tipo de equipo", f.tipo_equipo || "—"],
+    ["Unidad / pozo", f.pozo || "—"],
+    ["Tipo de dato", f.tipo_dato || "—"],
+    ["Fecha del dato", f.fecha_dato ? ddFecha(f.fecha_dato) : "—"],
+    ["Carpeta", f.ruta || "Raíz"],
+    ["Tamaño", ddPeso(f.tamano_bytes) || "—"],
+    ["Modificado", ddFecha(f.modificado_en) || "—"],
+    ["Origen", "Google Drive"],
+  ].filter(r => r[1] !== "—" || ["Categoría", "Carpeta", "Origen"].includes(r[0]));
+
+  document.getElementById("doc-ficha-tabla").innerHTML =
+    filas.map(r => `<tr><td>${r[0]}</td><td>${ddEsc(r[1])}</td></tr>`).join("");
+
+  /* Sin edicion ni borrado: el archivo no vive aqui. */
+  document.getElementById("doc-btn-eliminar").style.display = "none";
+  document.getElementById("doc-btn-editar").style.display = "none";
+
+  const secR = document.getElementById("doc-rutinas-seccion");
+  const secC = document.getElementById("doc-componentes-seccion");
+  if (secR) secR.style.display = "none";
+  if (secC) secC.style.display = "none";
+
+  abrirPanel("panel-documento-ficha");
+}
+
+/* ---------- listeners ---------- */
+
+let ddTemporizador = null;
+document.getElementById("doc-buscar").addEventListener("input", (e) => {
+  clearTimeout(ddTemporizador);
+  const v = e.target.value;
+  /* Rebote de 350 ms: sin esto cada tecla dispara una consulta contra
+     42.000 filas. */
+  ddTemporizador = setTimeout(() => {
+    dd.texto = v.trim();
+    cargarDocumentos(true);
+  }, 350);
 });
+
+document.getElementById("doc-filtro-categoria").addEventListener("change", (e) => {
+  dd.categoria = e.target.value;
+  filtroCategoriaDoc = e.target.value;   /* compatibilidad con el resto del modulo */
+  cargarDocumentos(true);
+});
+
+document.getElementById("doc-filtro-pozo").addEventListener("change", (e) => {
+  dd.pozo = e.target.value;
+  cargarDocumentos(true);
+});
+
+/* Al cruzar el punto de quiebre cambia de una a dos columnas. Se
+   repinta para que las carpetas se muevan al contenedor correcto. */
+window.matchMedia("(min-width: 860px)").addEventListener("change", () => {
+  if (document.getElementById("panel-documentos").classList.contains("open")) ddPintar();
+});
+
+/* renderListaDocumentos se conserva como alias: hay llamadas a esta
+   funcion en otros puntos del modulo. */
+function renderListaDocumentos() { ddPintar(); }
 
 async function abrirFichaDocumento(doc) {
   documentoActual = doc;
