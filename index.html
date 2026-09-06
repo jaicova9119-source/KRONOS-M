@@ -3003,7 +3003,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <div class="panel" id="panel-documentos-cargar">
   <div class="panel-header">
     <button class="icon-btn" onclick="volverADocumentos()">&#8592;</button>
-    <h2 id="doc-cargar-titulo">Cargar documento</h2>
+    <h2 id="doc-cargar-titulo">Documento controlado</h2>
   </div>
   <div class="panel-body">
     <div class="field"><label>Título / nombre clave</label><input id="doc-nuevo-titulo" placeholder="Ej. Procedimiento mantenimiento variador de frecuencia 8000h"/></div>
@@ -3045,15 +3045,26 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <button type="button" class="btn-secondary" id="btn-agregar-rutina">+ Agregar rutina</button>
     <div class="field"><label>Descripción / palabras clave</label><textarea id="doc-nuevo-descripcion"></textarea></div>
 
-    <div class="section-label">Archivo</div>
+    <div class="section-label">Archivo en Drive</div>
+    <div class="hint-box">&#128193; El archivo vive en Drive y se edita allá. Aquí se le enganchan las rutinas y los repuestos, que es lo que Drive no puede guardar.</div>
     <div id="doc-archivo-actual"></div>
-    <div class="dropzone" id="doc-dropzone">
-      &#128193; Toca para elegir un archivo (PDF, Word, Excel, imagen...)
+    <div class="search-row" style="padding:0 0 8px">
+      <div class="search-box"><span class="search-icon">&#128269;</span>
+        <input id="doc-drive-buscar" placeholder="Buscar el archivo en la biblioteca..."/></div>
+    </div>
+    <div id="doc-drive-resultados"></div>
+
+    <div class="section-label">Disponibilidad en campo</div>
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:4px 0;font-size:13px">
+      <input type="checkbox" id="doc-offline" style="margin-top:3px">
+      <span><b>Llevar a campo</b><br><span style="font-size:12px;color:var(--text-2)">Guarda una copia en la plataforma para abrirlo sin señal. Pensado para instructivos y checklists propios: los manuales de fabricante pesan demasiado para el PAD.</span></span>
+    </label>
+    <div class="dropzone" id="doc-dropzone" style="display:none">
+      &#128190; Toca para elegir la copia de campo
       <input type="file" id="doc-input-archivo" style="display:none">
     </div>
     <div id="doc-archivo-elegido"></div>
-    <div class="hint-box">o, si todavía no lo has migrado desde Drive:</div>
-    <div class="field"><label>Enlace externo (Google Drive, etc.)</label><input id="doc-nuevo-enlace" placeholder="https://drive.google.com/..."/></div>
+    <input type="hidden" id="doc-nuevo-enlace"/>
 
     <div class="section-label">Componentes / repuestos relacionados (opcional)</div>
     <div class="hint-box">&#128295; Si este documento aplica a un mantenimiento que requiere cambiar repuestos, agrégalos aquí para poder cruzar contra el stock disponible.</div>
@@ -3061,7 +3072,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="doc-comp-resultados"></div>
     <div id="doc-comp-agregados"></div>
 
-    <button class="btn-primary" id="doc-btn-guardar" style="margin-top:16px">Guardar documento</button>
+    <button class="btn-primary" id="doc-btn-guardar" style="margin-top:16px">Guardar documento controlado</button>
   </div>
 </div>
 
@@ -9882,8 +9893,8 @@ let documentoEditandoId = null;
 
 async function prepararFormularioDocumento(doc = null) {
   documentoEditandoId = doc ? doc.id : null;
-  document.getElementById("doc-cargar-titulo").textContent = doc ? "Editar documento" : "Cargar documento";
-  document.getElementById("doc-btn-guardar").textContent = doc ? "Guardar cambios" : "Guardar documento";
+  document.getElementById("doc-cargar-titulo").textContent = doc ? "Editar documento controlado" : "Nuevo documento controlado";
+  document.getElementById("doc-btn-guardar").textContent = doc ? "Guardar cambios" : "Guardar documento controlado";
 
   document.getElementById("doc-nuevo-titulo").value = doc ? doc.titulo : "";
   document.getElementById("doc-nuevo-categoria").value = doc ? doc.categoria : "MANUAL";
@@ -9898,12 +9909,25 @@ async function prepararFormularioDocumento(doc = null) {
   archivoSeleccionadoDoc = null;
   document.getElementById("doc-input-archivo").value = "";
 
-  const contActual = document.getElementById("doc-archivo-actual");
-  if (doc && doc.archivo_path) {
-    contActual.innerHTML = `<div class="hint-box">&#128196; Archivo actual: <b>${doc.archivo_nombre || "archivo subido"}</b> — si eliges uno nuevo abajo, lo reemplaza.</div>`;
-  } else {
-    contActual.innerHTML = "";
+  /* Vinculo a Drive. Un documento controlado es una anotacion sobre un
+     archivo que vive alla; aqui solo se guarda su file_id. */
+  docDriveSel = null;
+  document.getElementById("doc-drive-buscar").value = "";
+  document.getElementById("doc-drive-resultados").innerHTML = "";
+
+  const chkOffline = document.getElementById("doc-offline");
+  chkOffline.checked = !!(doc && doc.offline);
+  document.getElementById("doc-dropzone").style.display = chkOffline.checked ? "" : "none";
+
+  if (doc && doc.drive_file_id) {
+    try {
+      const { data } = await sb.from("doc_drive_archivos")
+        .select("file_id,nombre,ruta,mime,tamano_bytes,web_view_link,borrado")
+        .eq("file_id", doc.drive_file_id).maybeSingle();
+      if (data) docDriveSel = data;
+    } catch (e) { /* el vinculo se muestra igual, marcado como no hallado */ }
   }
+  ddRenderVinculo(doc);
 
   if (doc) {
     try {
@@ -10124,37 +10148,127 @@ async function cargarRutinasFicha(documentoId) {
   }
 }
 
+/* ══════════════════════════════════════════════════════════════════════
+   Documento controlado
+   ──────────────────────────────────────────────────────────────────────
+   Ya no se sube el archivo: se referencia el que esta en Drive. La tabla
+   `documentos` aporta lo que Drive no puede guardar -rutinas de
+   mantenimiento y lista de repuestos cruzada contra stock- y el binario
+   no se duplica.
+
+   La subida a Storage se conserva para un caso acotado: los documentos
+   marcados "llevar a campo". Sin senal un enlace de Drive no abre, y un
+   instructivo que no se puede leer parado frente al variador no sirve.
+   ══════════════════════════════════════════════════════════════════════ */
+
+let docDriveSel = null;      /* archivo de Drive elegido para vincular */
+let ddTempDrive = null;
+
+function ddRenderVinculo(doc) {
+  const cont = document.getElementById("doc-archivo-actual");
+  if (!cont) return;
+
+  if (docDriveSel) {
+    const aviso = docDriveSel.borrado
+      ? '<br><span style="color:var(--crit)">&#9888; Este archivo ya no está en Drive.</span>' : "";
+    cont.innerHTML = `<div class="archivo-elegido">
+        <div style="min-width:0">
+          <div style="font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddEsc(docDriveSel.nombre)}</div>
+          <div style="font-size:11.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${ddEsc(docDriveSel.ruta || "Raíz")} · ${ddPeso(docDriveSel.tamano_bytes)}${aviso}</div>
+        </div>
+        <button class="icon-btn" id="doc-quitar-vinculo" title="Quitar">&#10005;</button>
+      </div>`;
+    const q = document.getElementById("doc-quitar-vinculo");
+    if (q) q.onclick = () => { docDriveSel = null; ddRenderVinculo(null); };
+  } else if (doc && doc.drive_file_id) {
+    cont.innerHTML = '<div class="hint-box" style="color:var(--crit)">&#9888; El archivo vinculado no aparece en el espejo. Sincroniza la biblioteca o elige otro.</div>';
+  } else if (doc && doc.archivo_path) {
+    cont.innerHTML = `<div class="hint-box">&#128196; Copia heredada en la plataforma: <b>${ddEsc(doc.archivo_nombre || "archivo subido")}</b>. Vincula su archivo de Drive para dejar una sola versión.</div>`;
+  } else {
+    cont.innerHTML = "";
+  }
+}
+
+async function ddBuscarCandidatos(texto) {
+  const cont = document.getElementById("doc-drive-resultados");
+  if (!texto || texto.trim().length < 2) { cont.innerHTML = ""; return; }
+  cont.innerHTML = '<div class="loading" style="padding:18px">Buscando...</div>';
+  try {
+    const { data, error } = await sb.rpc("doc_candidatos", { p_texto: texto.trim(), p_limite: 25 });
+    if (error) throw error;
+    if (!data || !data.length) { cont.innerHTML = '<div class="empty" style="padding:20px">Sin coincidencias en la biblioteca.</div>'; return; }
+    cont.innerHTML = data.map((f, k) => `
+      <div class="dd-fila" data-cand="${k}" ${f.controlado ? 'style="opacity:.45"' : ""}>
+        <div class="dd-ico">${ddIcono(f.mime, f.nombre)}</div>
+        <div class="dd-main">
+          <div class="dd-nombre" title="${ddEsc(f.nombre)}">${ddEsc(f.nombre)}</div>
+          <div class="dd-meta">${f.controlado ? "Ya es documento controlado · " : ""}${ddEsc(f.ruta || "Raíz")}</div>
+        </div>
+        <div class="dd-cola">${ddPeso(f.tamano_bytes)}</div>
+      </div>`).join("");
+    cont.querySelectorAll("[data-cand]").forEach(el => {
+      el.onclick = () => {
+        const f = data[parseInt(el.dataset.cand, 10)];
+        if (f.controlado) { toast("Ese archivo ya tiene documento controlado"); return; }
+        docDriveSel = f;
+        /* El titulo se propone desde el nombre del archivo, pero se deja
+           editable: el nombre del archivo no siempre es el nombre util. */
+        const t = document.getElementById("doc-nuevo-titulo");
+        if (!t.value.trim()) t.value = f.nombre.replace(/\.[a-z0-9]{2,5}$/i, "");
+        if (f.categoria) document.getElementById("doc-nuevo-categoria").value = f.categoria;
+        if (f.tipo_equipo) document.getElementById("doc-nuevo-tipo-equipo").value = f.tipo_equipo;
+        document.getElementById("doc-drive-buscar").value = "";
+        cont.innerHTML = "";
+        ddRenderVinculo(null);
+      };
+    });
+  } catch (e) {
+    cont.innerHTML = '<div class="empty" style="padding:20px">Error: ' + ddEsc(e.message) + "</div>";
+  }
+}
+
+document.getElementById("doc-drive-buscar").addEventListener("input", (e) => {
+  clearTimeout(ddTempDrive);
+  const v = e.target.value;
+  ddTempDrive = setTimeout(() => ddBuscarCandidatos(v), 350);
+});
+
+document.getElementById("doc-offline").addEventListener("change", (e) => {
+  document.getElementById("doc-dropzone").style.display = e.target.checked ? "" : "none";
+  if (!e.target.checked) { archivoSeleccionadoDoc = null; renderArchivoElegido(); }
+});
+
 document.getElementById("doc-btn-guardar").onclick = async () => {
   const titulo = document.getElementById("doc-nuevo-titulo").value.trim();
-  const enlace = document.getElementById("doc-nuevo-enlace").value.trim();
   const editando = documentoEditandoId !== null;
   const docPrevio = editando ? documentosData.find(d => d.id === documentoEditandoId) : null;
+  const offline = document.getElementById("doc-offline").checked;
 
   if (!titulo) { toast("El título es obligatorio"); return; }
-  const tendraArchivo = archivoSeleccionadoDoc || enlace || (docPrevio && docPrevio.archivo_path && !archivoSeleccionadoDoc);
-  if (!tendraArchivo) { toast("Sube un archivo o pega un enlace externo"); return; }
+
+  /* Se exige vinculo salvo que el documento venga de antes con copia
+     propia: esos se migran cuando el usuario quiera, no a la fuerza. */
+  const tieneOrigen = docDriveSel || (docPrevio && (docPrevio.archivo_path || docPrevio.drive_file_id));
+  if (!tieneOrigen) { toast("Elige el archivo de Drive que este documento controla"); return; }
 
   const btn = document.getElementById("doc-btn-guardar");
   btn.disabled = true; btn.textContent = "Guardando...";
   try {
-    // Por defecto, se conserva el archivo/enlace que ya tenia (si se esta editando)
     let archivoPath = docPrevio ? docPrevio.archivo_path : null;
     let archivoNombre = docPrevio ? docPrevio.archivo_nombre : null;
 
-    if (archivoSeleccionadoDoc) {
-      // Se eligio un archivo nuevo: subirlo, y borrar el anterior si habia uno en Storage
+    if (offline && archivoSeleccionadoDoc) {
       const nombreSeguro = archivoSeleccionadoDoc.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const nuevoPath = `${crypto.randomUUID()}-${nombreSeguro}`;
       const { error: errSubida } = await sb.storage.from("documentos").upload(nuevoPath, archivoSeleccionadoDoc);
       if (errSubida) throw errSubida;
-      if (docPrevio && docPrevio.archivo_path) {
-        await sb.storage.from("documentos").remove([docPrevio.archivo_path]);
-      }
+      if (archivoPath) await sb.storage.from("documentos").remove([archivoPath]);
       archivoPath = nuevoPath;
       archivoNombre = archivoSeleccionadoDoc.name;
-    } else if (enlace && docPrevio && docPrevio.archivo_path && enlace !== docPrevio.enlace_externo) {
-      // Se paso a usar un enlace externo en vez del archivo que tenia subido
-      await sb.storage.from("documentos").remove([docPrevio.archivo_path]);
+    } else if (!offline && archivoPath) {
+      /* Se desmarco "llevar a campo": la copia deja de tener razon de ser
+         y se borra, que para eso se dejo de duplicar. */
+      await sb.storage.from("documentos").remove([archivoPath]);
       archivoPath = null;
       archivoNombre = null;
     }
@@ -10164,10 +10278,13 @@ document.getElementById("doc-btn-guardar").onclick = async () => {
       categoria: document.getElementById("doc-nuevo-categoria").value,
       tipo_equipo: document.getElementById("doc-nuevo-tipo-equipo").value || null,
       descripcion: document.getElementById("doc-nuevo-descripcion").value || null,
+      drive_file_id: docDriveSel ? docDriveSel.file_id : (docPrevio ? docPrevio.drive_file_id : null),
+      enlace_externo: docDriveSel ? (docDriveSel.web_view_link || null)
+                                  : (docPrevio ? docPrevio.enlace_externo : null),
       archivo_path: archivoPath,
       archivo_nombre: archivoNombre,
-      enlace_externo: enlace || null,
-      updated_at: new Date().toISOString()
+      offline,
+      updated_at: new Date().toISOString(),
     };
 
     let documentoId;
@@ -10175,49 +10292,49 @@ document.getElementById("doc-btn-guardar").onclick = async () => {
       const { error: errUpd } = await sb.from("documentos").update(payload).eq("id", documentoEditandoId);
       if (errUpd) throw errUpd;
       documentoId = documentoEditandoId;
-
-      // Reemplazar por completo componentes y rutinas (mas simple y seguro que calcular el diff)
-      const { error: errDelComp } = await sb.from("documento_componentes").delete().eq("documento_id", documentoId);
-      if (errDelComp) throw errDelComp;
-      const { error: errDelRut } = await sb.from("documento_rutinas").delete().eq("documento_id", documentoId);
-      if (errDelRut) throw errDelRut;
+      const { error: e1 } = await sb.from("documento_componentes").delete().eq("documento_id", documentoId);
+      if (e1) throw e1;
+      const { error: e2 } = await sb.from("documento_rutinas").delete().eq("documento_id", documentoId);
+      if (e2) throw e2;
     } else {
       payload.creado_por = (usuarioActual && usuarioActual.nombre) || null;
-      const { data: docInsertado, error: errDoc } = await sb.from("documentos").insert(payload).select().single();
-      if (errDoc) throw errDoc;
-      documentoId = docInsertado.id;
+      const { data: ins, error: errDoc } = await sb.from("documentos").insert(payload).select().single();
+      if (errDoc) {
+        /* El indice unico sobre drive_file_id impide controlar dos veces
+           el mismo archivo; se traduce a un mensaje entendible. */
+        if (String(errDoc.message || "").includes("ux_documentos_drive")) {
+          throw new Error("Ese archivo de Drive ya tiene un documento controlado.");
+        }
+        throw errDoc;
+      }
+      documentoId = ins.id;
     }
 
     if (componentesNuevoDoc.length) {
-      const filas = componentesNuevoDoc.map(c => ({
-        documento_id: documentoId,
-        codigo_sap: c.codigo_sap,
-        cantidad_requerida: c.cantidad_requerida
-      }));
-      const { error: errComp } = await sb.from("documento_componentes").insert(filas);
-      if (errComp) throw errComp;
+      const { error } = await sb.from("documento_componentes").insert(
+        componentesNuevoDoc.map(c => ({
+          documento_id: documentoId, codigo_sap: c.codigo_sap,
+          cantidad_requerida: c.cantidad_requerida })));
+      if (error) throw error;
     }
 
     if (rutinasNuevoDoc.length) {
-      const filasRutinas = rutinasNuevoDoc.map(r => ({
-        documento_id: documentoId,
-        nombre_rutina: r.nombre_rutina,
-        tipo_frecuencia: r.tipo_frecuencia,
-        valor_horas: r.valor_horas,
-        periodo: r.periodo,
-        tiempo_ejecucion_horas: r.tiempo_ejecucion_horas
-      }));
-      const { error: errRut } = await sb.from("documento_rutinas").insert(filasRutinas);
-      if (errRut) throw errRut;
+      const { error } = await sb.from("documento_rutinas").insert(
+        rutinasNuevoDoc.map(r => ({
+          documento_id: documentoId, nombre_rutina: r.nombre_rutina,
+          tipo_frecuencia: r.tipo_frecuencia, valor_horas: r.valor_horas,
+          periodo: r.periodo, tiempo_ejecucion_horas: r.tiempo_ejecucion_horas })));
+      if (error) throw error;
     }
 
-    toast(editando ? "Documento actualizado" : "Documento guardado");
+    toast(editando ? "Documento actualizado" : "Documento controlado creado");
     volverADocumentos();
-    cargarDocumentos();
+    cargarDocumentos(true);
   } catch (e) {
-    toast("Error guardando documento: " + e.message);
+    toast("Error guardando: " + e.message);
   } finally {
-    btn.disabled = false; btn.textContent = editando ? "Guardar cambios" : "Guardar documento";
+    btn.disabled = false;
+    btn.textContent = editando ? "Guardar cambios" : "Guardar documento controlado";
   }
 };
 
