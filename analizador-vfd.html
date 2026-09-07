@@ -99,20 +99,29 @@ button{cursor:pointer;background:none;border:none}
 #tip .tr b{font-family:var(--f-mono);font-weight:500;color:var(--tx);font-variant-numeric:tabular-nums}
 /* Punto fijado: mismo aspecto que el tooltip pero anclado abajo a la
    izquierda y con el ratón activo, para poder copiarlo o soltarlo. */
-#fijo{position:fixed;left:14px;bottom:14px;z-index:59;display:none;max-width:330px;
+.fx{position:fixed;z-index:59;display:none;max-width:330px;
   background:var(--panel);border:1px solid var(--g-accion);border-radius:3px;padding:10px 12px;
   box-shadow:0 6px 24px rgba(0,0,0,.35)}
-:root[data-theme="light"] #fijo{box-shadow:0 6px 24px rgba(30,60,80,.18)}
-#fijo .fx-h{display:flex;align-items:center;gap:8px;margin-bottom:7px;
+:root[data-theme="light"] .fx{box-shadow:0 6px 24px rgba(30,60,80,.18)}
+.fx .fx-h{display:flex;align-items:center;gap:8px;margin-bottom:7px;
   border-bottom:1px solid var(--rule3);padding-bottom:6px}
-#fijo .fx-t{font-family:var(--f-mono);font-size:11.5px;color:var(--g-accion);flex:1}
-#fijo .fx-b{font:inherit;font-size:11px;background:none;border:1px solid var(--rule);border-radius:2px;
+.fx .fx-t{font-family:var(--f-mono);font-size:11.5px;color:var(--g-accion);flex:1}
+/* La cabecera es el asa: cursor de arrastre y sin seleccion de texto,
+   que al arrastrar seleccionaba las etiquetas y se veia sucio. */
+.fx .fx-h{cursor:move;user-select:none;-webkit-user-select:none;touch-action:none}
+.fx .fx-n{font-family:var(--f-mono);font-size:10px;font-weight:600;
+  border:1px solid var(--g-accion);color:var(--g-accion);border-radius:2px;
+  padding:0 4px;line-height:15px}
+.fx .fx-d{margin-top:7px;padding-top:6px;border-top:1px dashed var(--rule2)}
+.fx .fx-d .tr b{color:var(--acc)}
+.fx.arrastrando{opacity:.9;box-shadow:0 10px 34px rgba(0,0,0,.5)}
+.fx .fx-b{font:inherit;font-size:11px;background:none;border:1px solid var(--rule);border-radius:2px;
   color:var(--tx3);padding:1px 7px;cursor:pointer}
-#fijo .fx-b:hover{border-color:var(--g-accion);color:var(--g-accion)}
-#fijo .tr{display:flex;justify-content:space-between;gap:16px;font-size:12.5px;line-height:1.7}
-#fijo .tr span{color:var(--tx2);display:flex;align-items:center;gap:6px}
-#fijo .tr i{width:9px;height:2.5px;border-radius:2px;display:inline-block}
-#fijo .tr b{font-family:var(--f-mono);font-weight:500;color:var(--tx);font-variant-numeric:tabular-nums}
+.fx .fx-b:hover{border-color:var(--g-accion);color:var(--g-accion)}
+.fx .tr{display:flex;justify-content:space-between;gap:16px;font-size:12.5px;line-height:1.7}
+.fx .tr span{color:var(--tx2);display:flex;align-items:center;gap:6px}
+.fx .tr i{width:9px;height:2.5px;border-radius:2px;display:inline-block}
+.fx .tr b{font-family:var(--f-mono);font-weight:500;color:var(--tx);font-variant-numeric:tabular-nums}
 
 .ampwrap{display:grid;grid-template-columns:1fr 190px;gap:18px;padding:16px 0;height:100%}
 #ampCv{display:block;width:100%;cursor:crosshair}
@@ -304,6 +313,7 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
     <div class="hdr-act">
       <button class="btn tgl off" id="bCinta" title="mostrar u ocultar la cinta de navegación">▭</button>
       <button class="btn" id="bMarcas" title="cuánto marcar sobre las gráficas">Marcas</button>
+      <button class="btn" id="bSuave" title="interpolación de la línea entre puntos medidos">Línea</button>
       <button class="btn" id="bTemp" title="unidad de temperatura">°F</button>
       <button class="btn" id="bSize" title="tamaño de la interfaz">A</button>
       <button class="btn" id="bTheme">Claro</button>
@@ -463,6 +473,45 @@ function ensureRole(id,label,unit){
    0 ninguna   — solo la banda de paradas y la franja de densidad. */
 let MARCAS=+(localStorage.getItem("vfd_marcas") ?? 1);
 const MARCAS_TXT=["Marcas: ninguna","Marcas: discretas","Marcas: completas"];
+
+/* Suavizado del trazo. Solo afecta el camino DIBUJADO entre puntos
+   medidos: ningun valor cambia y la envolvente min/max por pixel se sigue
+   dibujando igual. */
+let SUAVE=+(localStorage.getItem("vfd_suave") ?? 0);
+const SUAVE_TXT=["Línea: recta","Línea: curva"];
+function setSuave(v){
+  SUAVE=(v+2)%2;
+  try{ localStorage.setItem("vfd_suave",SUAVE); }catch(e){}
+  const b=document.getElementById("bSuave"); if(b) b.textContent=SUAVE_TXT[SUAVE];
+  if(DB.active) renderAll();
+}
+
+/* Cubica monotona de Fritsch-Carlson. Devuelve las tangentes de cada
+   punto acotadas para que la curva no rebase los valores vecinos: con un
+   spline normal, una serie cuantizada en escalones produce ondas que no
+   estan en el dato. */
+function tangentesMonotonas(xs,ys){
+  const n=xs.length, d=new Array(n-1), m=new Array(n);
+  for(let i=0;i<n-1;i++){ const h=xs[i+1]-xs[i]; d[i]= h!==0? (ys[i+1]-ys[i])/h : 0; }
+  m[0]=d[0]||0; m[n-1]=d[n-2]||0;
+  for(let i=1;i<n-1;i++){
+    if(d[i-1]*d[i]<=0){ m[i]=0; continue; }
+    m[i]=(d[i-1]+d[i])/2;
+    const lim=3*Math.min(Math.abs(d[i-1]),Math.abs(d[i]));
+    if(Math.abs(m[i])>lim) m[i]=Math.sign(m[i])*lim;
+  }
+  return m;
+}
+function trazoSuave(g,xs,ys){
+  const n=xs.length;
+  if(n<3){ g.moveTo(xs[0],ys[0]); for(let i=1;i<n;i++) g.lineTo(xs[i],ys[i]); return; }
+  const m=tangentesMonotonas(xs,ys);
+  g.moveTo(xs[0],ys[0]);
+  for(let i=0;i<n-1;i++){
+    const h=(xs[i+1]-xs[i])/3;
+    g.bezierCurveTo(xs[i]+h, ys[i]+m[i]*h, xs[i+1]-h, ys[i+1]-m[i+1]*h, xs[i+1], ys[i+1]);
+  }
+}
 function setMarcas(v){
   MARCAS=(v+3)%3;
   localStorage.setItem("vfd_marcas",MARCAS);
@@ -1369,7 +1418,10 @@ let sel=new Set(), mode="unit", view={a:0,b:0}, cross=null, panels=[];
 /* Punto fijado con un clic sobre la tendencia. Queda en pantalla mientras se
    navega a otra hora, y el tooltip pasa a mostrar la diferencia contra el.
    Es lo que hace falta para escribir un reporte: dos lecturas y su delta. */
-let fijo=null;          // {t, filas:[[etiqueta, valor, color, num, unidad]]}
+let fijo=null;          // alias de fijos[0]: el resto del modulo lo usa
+let fijos=[];           // hasta dos: {t, filas, unit, pos:{x,y}}
+const MAX_FIJOS=2;
+function sincFijo(){ fijo = fijos[0] || null; }
 let _movio=false;       // distinguir un clic de un arrastre de zoom
 const $=s=>document.querySelector(s);
 const el=(t,c,x)=>{const e=document.createElement(t); if(c)e.className=c; if(x!=null)e.textContent=x; return e;};
@@ -1459,7 +1511,7 @@ const GROUPS=[
 function boot(){
   const u=U(); if(!u) return;
   // la lectura fijada es de un pozo concreto; al cambiar de pozo deja de aplicar
-  if(fijo && fijo.unit!==DB.active){ fijo=null; const c=$("#fijo"); if(c) c.style.display="none"; }
+  if(fijos.some(f=>f.unit!==DB.active)){ fijos=fijos.filter(f=>f.unit===DB.active); sincFijo(); pintarFijo(); }
   const has=r=>u.ch[r]&&u.ch[r].n;
   sel=new Set(GROUPS[0][1].filter(has));
   if(!sel.size) sel=new Set(Object.keys(u.ch).slice(0,4));
@@ -1590,7 +1642,7 @@ function buildQuick(){
   const crit=u.events.filter(e=>e.sev==="crit");
   if(crit.length) opts.push(["Último disparo",()=>{const t=crit[crit.length-1].t;return{a:t-36e5,b:t+18e5};}]);
   opts.forEach(([l,f])=>{ const b=el("button","qb",l); b.onclick=()=>setView(f()); c.appendChild(b); });
-  c.appendChild(el("span","klav","arrastra para zoom · rueda · ⇧arrastra desplaza · clic fija una lectura · doble clic reinicia · ratón al borde abre el panel · ancla para fijarlo"));
+  c.appendChild(el("span","klav","arrastra para zoom · rueda · ⇧arrastra desplaza · clic fija una lectura (hasta 2, arrastrables) · doble clic reinicia · ratón al borde abre el panel · ancla para fijarlo"));
 }
 function buildEvents(){
   const u=U(),box=$("#evs"); box.innerHTML="";
@@ -1758,6 +1810,15 @@ function drawPanel(p){
       const s=stat(C,view.a,view.b);
       let a=s.min,b=s.max;
       if(b===a){ const d=Math.max(1,Math.abs(a)*.05); b=a+d; a-=d; }
+      /* Piso de escala: al menos un 2 % de la magnitud del canal. Con la
+         frecuencia en 65 Hz eso son 1,3 Hz de eje, y una variacion real de
+         0,2 Hz ocupa un 15 % del alto: se lee plana, que es lo que es.
+         Los canales con recorrido amplio -corriente, par, vibracion- no se
+         ven afectados porque su rango ya supera ese piso. */
+      const med=pctl(C,view.a,view.b,.5);
+      const ref=Math.abs(med==null? (s.min+s.max)/2 : med);
+      const piso=ref*0.02;
+      if(piso>0 && (b-a)<piso){ const c=(a+b)/2; a=c-piso/2; b=c+piso/2; }
       const m=(b-a)*.06; a-=m; b+=m;
       const tk=niceTicks(a,b,4);
       p._esc.set(C.role,{
@@ -1881,21 +1942,51 @@ function drawPanel(p){
     }
     if(!any) return;
     g.strokeStyle=V(C.cvar); g.lineWidth=1.35; g.lineJoin="round";
-    g.beginPath(); let first=true;
+
+    /* Se separan las dos cosas que antes iban en el mismo trazo: la línea
+       que une los puntos, y las barras verticales de envolvente donde en un
+       píxel caben varias muestras. Mezcladas no se podía interpolar. */
+    const xs=[], ys=[], barras=[];
     for(let px=0;px<=iw;px++){
       if(amn[px]===Infinity) continue;
       const x=PADL+px+.5, y1=Y(amx[px]), y2=Y(amn[px]);
-      if(first){ g.moveTo(x,(y1+y2)/2); first=false; } else g.lineTo(x,(y1+y2)/2);
-      if(y2-y1>1.2){ g.moveTo(x,y1); g.lineTo(x,y2); g.moveTo(x,(y1+y2)/2); }
+      xs.push(x); ys.push((y1+y2)/2);
+      if(y2-y1>1.2) barras.push([x,y1,y2]);
     }
+    if(!xs.length) return;
+
+    g.beginPath();
+    // La curva solo aporta cuando hay pocos puntos para muchos píxeles. Con
+    // la serie más densa que la pantalla, cada píxel ya tiene su muestra y
+    // una recta entre píxeles contiguos es indistinguible de una curva.
+    if(SUAVE && xs.length>2 && xs.length < iw*0.6) trazoSuave(g,xs,ys);
+    else { g.moveTo(xs[0],ys[0]); for(let i=1;i<xs.length;i++) g.lineTo(xs[i],ys[i]); }
     g.stroke();
+
+    // Envolvente: siempre recta, porque representa el rango real medido en
+    // esa columna y no un camino entre puntos.
+    if(barras.length){
+      g.beginPath();
+      barras.forEach(([x,y1,y2])=>{ g.moveTo(x,y1); g.lineTo(x,y2); });
+      g.stroke();
+    }
   });
-  if(fijo&&fijo.t>=view.a&&fijo.t<=view.b){
-    const x=Math.round(X(fijo.t))+.5;
+  fijos.forEach((f,k)=>{
+    if(f.t<view.a||f.t>view.b) return;
+    const x=Math.round(X(f.t))+.5;
     g.strokeStyle=V("--g-accion"); g.globalAlpha=.85; g.lineWidth=1.4;
+    // La segunda va punteada: con dos lineas del mismo color no se sabe
+    // cual corresponde a cual caja.
+    if(k===1) g.setLineDash([4,3]);
     g.beginPath();g.moveTo(x,PADT);g.lineTo(x,PADT+ih);g.stroke();
-    g.fillStyle=V("--g-accion"); g.beginPath(); g.arc(x,PADT+4,3.2,0,7); g.fill(); g.globalAlpha=1;
-  }
+    g.setLineDash([]);
+    g.fillStyle=V("--g-accion"); g.beginPath(); g.arc(x,PADT+4,3.2,0,7); g.fill();
+    if(fijos.length>1){
+      g.font="9px "+cssFont("--f-mono"); g.fillStyle=V("--panel");
+      g.textAlign="center"; g.fillText(String(k+1),x,PADT+7); g.textAlign="left";
+    }
+    g.globalAlpha=1;
+  });
   if(cross!=null&&cross>=view.a&&cross<=view.b){
     const x=Math.round(X(cross))+.5;
     g.strokeStyle=V("--acc"); g.globalAlpha=.7; g.setLineDash([3,3]); g.lineWidth=1;
@@ -1984,33 +2075,128 @@ function lecturaEn(t){
 function fijarPunto(t){
   const filas=lecturaEn(t);
   if(!filas.length) return;
-  // volver a hacer clic casi en el mismo sitio suelta el punto
-  if(fijo && Math.abs(fijo.t-t) < (view.b-view.a)/300){ soltarPunto(); return; }
-  fijo={t, filas, unit:DB.active};
-  pintarFijo(); refreshOnly();
+  const tol=(view.b-view.a)/300;
+  // Volver a hacer clic casi en el mismo sitio suelta ESE punto, no todos.
+  const k=fijos.findIndex(f=>Math.abs(f.t-t)<tol);
+  if(k>=0){ fijos.splice(k,1); sincFijo(); pintarFijo(); refreshOnly(); return; }
+  // Con dos ya puestos, el nuevo reemplaza al mas antiguo: es lo que se
+  // espera al ir comparando instantes uno tras otro.
+  fijos.push({t, filas, unit:DB.active, pos:null});
+  if(fijos.length>MAX_FIJOS) fijos.shift();
+  sincFijo(); pintarFijo(); refreshOnly();
 }
-function soltarPunto(){ fijo=null; const c=$("#fijo"); if(c) c.style.display="none"; refreshOnly(); }
+function soltarPunto(){ fijos=[]; sincFijo(); pintarFijo(); refreshOnly(); }
+
+/* Arrastre de la caja por su cabecera. Pointer Events para que funcione
+   igual con raton y con dedo en el PAD. La posicion se guarda en el objeto
+   para que sobreviva a los repintados. */
+function arrastrable(caja, f){
+  const asa=caja.querySelector(".fx-h");
+  if(!asa) return;
+  let dx=0, dy=0, id=null;
+  asa.addEventListener("pointerdown", ev=>{
+    if(ev.target.closest("button")) return;   // los botones siguen siendo botones
+    id=ev.pointerId;
+    const r=caja.getBoundingClientRect();
+    dx=ev.clientX-r.left; dy=ev.clientY-r.top;
+    f.pos={x:r.left, y:r.top};
+    caja.classList.add("arrastrando");
+    asa.setPointerCapture(id);
+    ev.preventDefault();
+  });
+  asa.addEventListener("pointermove", ev=>{
+    if(id===null||ev.pointerId!==id) return;
+    const w=caja.offsetWidth, h=caja.offsetHeight;
+    // Se limita a la ventana: una caja arrastrada fuera no se recupera.
+    f.pos={
+      x: Math.max(2, Math.min(window.innerWidth-w-2, ev.clientX-dx)),
+      y: Math.max(2, Math.min(window.innerHeight-h-2, ev.clientY-dy)),
+    };
+    caja.style.left=f.pos.x+"px"; caja.style.top=f.pos.y+"px";
+    caja.style.right="auto"; caja.style.bottom="auto";
+  });
+  const fin=()=>{ if(id===null) return; caja.classList.remove("arrastrando"); id=null; };
+  asa.addEventListener("pointerup", fin);
+  asa.addEventListener("pointercancel", fin);
+}
 
 function pintarFijo(){
-  const c=$("#fijo"); if(!c||!fijo) return;
-  c.innerHTML="";
-  const h=el("div","fx-h");
-  h.appendChild(el("span","fx-t",`${DB.active} · ${fT(fijo.t)}`));
-  const bc=el("button","fx-b","Copiar"); bc.onclick=copiarFijo;
-  const bx=el("button","fx-b","×"); bx.title="soltar el punto"; bx.onclick=soltarPunto;
-  h.appendChild(bc); h.appendChild(bx); c.appendChild(h);
-  fijo.filas.forEach(([lab,val,col])=>{
-    const r=el("div","tr"), l=el("span");
-    if(col){ const i=el("i"); i.style.background=col; l.appendChild(i); }
-    l.appendChild(el("span",null,lab)); r.appendChild(l); r.appendChild(el("b",null,val)); c.appendChild(r);
+  // Se rehacen las cajas desde cero: son dos como maximo y asi no hay que
+  // reconciliar estado entre repintados.
+  document.querySelectorAll(".fx").forEach(n=>{ if(n.id!=="fijo") n.remove(); });
+  const base=$("#fijo"); if(base) base.style.display="none";
+  if(!fijos.length) return;
+
+  fijos.forEach((f,k)=>{
+    const c = k===0 && base ? base : (()=>{ const d=el("div","fx"); document.body.appendChild(d); return d; })();
+    c.className="fx";
+    c.innerHTML="";
+    const h=el("div","fx-h");
+    if(fijos.length>1) h.appendChild(el("span","fx-n",String(k+1)));
+    h.appendChild(el("span","fx-t",`${DB.active} · ${fT(f.t)}`));
+    const bc=el("button","fx-b","Copiar"); bc.onclick=()=>copiarFijo(k);
+    const bx=el("button","fx-b","×"); bx.title="soltar esta lectura";
+    bx.onclick=()=>{ fijos.splice(k,1); sincFijo(); pintarFijo(); refreshOnly(); };
+    h.appendChild(bc); h.appendChild(bx); c.appendChild(h);
+
+    f.filas.forEach(([lab,val,col])=>{
+      const r=el("div","tr"), l=el("span");
+      if(col){ const i=el("i"); i.style.background=col; l.appendChild(i); }
+      l.appendChild(el("span",null,lab)); r.appendChild(l); r.appendChild(el("b",null,val)); c.appendChild(r);
+    });
+
+    /* En la segunda caja va la diferencia contra la primera. Es el dato que
+       se necesita para un informe -"de 215 a 252 A"- y calcularlo a mano
+       leyendo dos cajas es justo lo que se quiere evitar. */
+    if(k===1){
+      const a=fijos[0];
+      const d=el("div","fx-d");
+      d.appendChild(el("div","fx-t",`Diferencia contra 1 · ${fDur(Math.abs(f.t-a.t))}`));
+      f.filas.forEach(([lab,,col,num,uni],i)=>{
+        const na=a.filas[i] && a.filas[i][0]===lab ? a.filas[i][3] : null;
+        if(num==null||na==null) return;
+        const dv=num-na;
+        const r=el("div","tr"), l=el("span");
+        if(col){ const ic=el("i"); ic.style.background=col; l.appendChild(ic); }
+        l.appendChild(el("span",null,lab)); r.appendChild(l);
+        r.appendChild(el("b",null,(dv>=0?"+":"")+fN(dv,uni)));
+        d.appendChild(r);
+      });
+      if(d.children.length>1) c.appendChild(d);
+    }
+
+    // Posicion: la guardada si el usuario la movio; si no, esquinas opuestas
+    // para que las dos cajas no nazcan una encima de la otra.
+    if(f.pos){
+      c.style.left=f.pos.x+"px"; c.style.top=f.pos.y+"px";
+      c.style.right="auto"; c.style.bottom="auto";
+    } else if(k===0){
+      c.style.left="14px"; c.style.bottom="14px"; c.style.top="auto"; c.style.right="auto";
+    } else {
+      c.style.right="14px"; c.style.bottom="14px"; c.style.top="auto"; c.style.left="auto";
+    }
+    c.style.display="block";
+    arrastrable(c, f);
   });
-  c.style.display="block";
 }
-function copiarFijo(){
-  if(!fijo) return;
-  const txt=[`${DB.active}  ${fT(fijo.t)}`,
-    ...fijo.filas.map(([lab,val])=>`  ${lab}: ${val}`)].join("\n");
-  navigator.clipboard?.writeText(txt).then(
+function copiarFijo(k){
+  const f=fijos[k==null?0:k]; if(!f) return;
+  const L=[`${DB.active}  ${fT(f.t)}`, ...f.filas.map(([lab,val])=>`  ${lab}: ${val}`)];
+  // Con dos lecturas se copian ambas y la diferencia: es lo que se pega en
+  // un informe, no una sola columna de valores.
+  if(fijos.length===2){
+    const a=fijos[0], b=fijos[1];
+    L.length=0;
+    L.push(`${DB.active}`, `  1) ${fT(a.t)}`, `  2) ${fT(b.t)}`,
+           `  intervalo: ${fDur(Math.abs(b.t-a.t))}`, "");
+    b.filas.forEach(([lab,val,,num,uni],i)=>{
+      const pa=a.filas[i] && a.filas[i][0]===lab ? a.filas[i] : null;
+      if(!pa){ L.push(`  ${lab}: ${val}`); return; }
+      const dv=(num!=null&&pa[3]!=null)? (num-pa[3]) : null;
+      L.push(`  ${lab}: ${pa[1]} -> ${val}` + (dv!=null? `  (${dv>=0?"+":""}${fN(dv,uni)})` : ""));
+    });
+  }
+  navigator.clipboard?.writeText(L.join("\n")).then(
     ()=>{ $("#err").textContent="Lectura copiada al portapapeles."; setTimeout(()=>{$("#err").textContent="";},2500); },
     ()=>{});
 }
@@ -3555,6 +3741,8 @@ $("#bCinta").onclick=toggleRibbon;
 $("#bDelUnit").onclick=()=>{ if(DB.active) removeUnit(DB.active); };
 $("#bMarcas").onclick=()=>setMarcas(MARCAS+1);
 setMarcas(MARCAS);
+$("#bSuave").onclick=()=>setSuave(SUAVE+1);
+setSuave(SUAVE);
 $("#bTemp").onclick=()=>setTempUnit(TUNIT==="F"?"C":"F");
 $("#bSize").onclick=()=>{ const i=(+document.documentElement.dataset.si+1)%SIZES.length; setScale(i); };
 $("#bRen").onclick=()=>{
