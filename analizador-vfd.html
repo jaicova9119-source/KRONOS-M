@@ -310,6 +310,7 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
       <button class="btn" id="bCopy">Copiar análisis</button>
       <button class="btn" id="bObj" title="Qué quieres saber y qué pasó en campo">Objetivo y contexto</button>
       <button class="btn" id="bCtx" title="Copia el paquete para pegárselo a un modelo de IA">Copiar datos</button>
+      <button class="btn" id="bIA" style="display:none" title="Preguntar sobre esta descarga">&#10022; Asistente</button>
       <button class="btn" id="bRen">Renombrar</button>
       <button class="btn pri" id="bAdd">Agregar días</button>
     </div>
@@ -2844,9 +2845,9 @@ function ctxPanel() {
     "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;" +
     "align-items:center;justify-content:center;padding:16px";
   const campo = "width:100%;box-sizing:border-box;font:13px/1.5 inherit;padding:8px 10px;" +
-    "border:1px solid var(--line,#ccc);border-radius:8px;background:var(--bg2,#fff);color:inherit";
+    "border:1px solid var(--rule);border-radius:6px;background:var(--panel2);color:var(--tx)";
   d.innerHTML = `
-    <div style="background:var(--bg,#fff);color:inherit;max-width:640px;width:100%;
+    <div style="background:var(--panel);color:var(--tx);max-width:640px;width:100%;
                 max-height:90vh;overflow:auto;border-radius:12px;padding:20px">
       <div style="font-weight:600;font-size:15px;margin-bottom:4px">Objetivo y contexto de campo</div>
       <div style="font-size:12px;opacity:.7;margin-bottom:16px">
@@ -2952,6 +2953,253 @@ function contextoTexto() {
 }
 
 document.getElementById("bObj").onclick = ctxPanel;
+
+/* ══════════════════════════════════════════════════════════════════
+   8d · ASISTENTE — consulta sobre la descarga sin salir del módulo
+
+   El analizador es autónomo: no tiene cliente de Supabase ni sesión
+   propia. Pero corre en un iframe del mismo origen que Kronos-M, así
+   que toma el cliente del padre y hereda sesión y rol sin duplicar el
+   login. Abierto con "Pestaña aparte" no hay padre: el botón no
+   aparece y el analizador funciona como siempre con archivos locales.
+
+   La ventaja de preguntar aquí y no pegando el contexto en un chat
+   externo es que el asistente además consulta la plataforma: placa del
+   motor, materiales, ensayos, documentos. La pregunta "¿esta corriente
+   está alta?" solo se puede responder contra la nominal de placa.
+══════════════════════════════════════════════════════════════════ */
+
+function puente() {
+  try {
+    const p = window.parent;
+    if (p && p !== window && p.sb && p.SUPABASE_URL) {
+      return { sb: p.sb, url: p.SUPABASE_URL };
+    }
+  } catch (e) { /* origen distinto: no hay puente */ }
+  return null;
+}
+
+const IA = { conv: null, hist: [], ocupado: false, series: true };
+
+const IA_RAPIDAS = [
+  ["¿Qué cambió?", "¿Qué cambió en esta ventana y en qué momento? Solo los cambios relevantes."],
+  ["Diagnóstico", "Dame el diagnóstico más probable de lo que se observa, con las hipótesis alternativas y qué las descartaría."],
+  ["Reporte WhatsApp", "Redacta un reporte corto para enviar por WhatsApp informando la condición de la unidad. Formato de viñetas, negritas con asteriscos, sin encabezados de documento."],
+  ["Informe formal", "Redacta un informe técnico formal de esta lectura, con hallazgos, análisis y recomendaciones."],
+];
+
+function iaEsc(t) {
+  return String(t == null ? "" : t).replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+/* Formato mínimo: el modelo responde con negritas y viñetas y en texto
+   plano se leen mal. No es un renderizador de Markdown, solo lo justo. */
+function iaFormato(t) {
+  return iaEsc(t)
+    .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")
+    .replace(/(^|\n)\s*[•\-\*]\s+/g, "$1&nbsp;&nbsp;• ")
+    .replace(/\n/g, "<br>");
+}
+
+function iaAbrir() {
+  const pu = puente();
+  if (!pu) return;
+  let d = document.getElementById("iaDlg");
+  if (d) { d.style.display = "flex"; return; }
+
+  d = document.createElement("div");
+  d.id = "iaDlg";
+  d.style.cssText =
+    "position:fixed;top:0;right:0;bottom:0;z-index:9998;width:min(440px,100vw);" +
+    "display:flex;flex-direction:column;background:var(--panel);color:var(--tx);" +
+    "border-left:1px solid var(--rule);box-shadow:-8px 0 32px rgba(0,0,0,.30)";
+  d.innerHTML = `
+    <div style="display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--rule);flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600;font-size:14px">Asistente técnico</div>
+        <div id="iaCtxLbl" style="font-size:11px;opacity:.7;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+      </div>
+      <button class="btn" id="iaObj" title="Objetivo y contexto de campo">Contexto</button>
+      <button class="btn" id="iaNueva" title="Empezar de nuevo">Limpiar</button>
+      <button class="btn" id="iaCerrar">&#10005;</button>
+    </div>
+    <div id="iaMsgs" style="flex:1;min-height:0;overflow-y:auto;padding:14px;font-size:13.5px;line-height:1.55"></div>
+    <div id="iaChips" style="display:flex;gap:6px;padding:0 12px 8px;overflow-x:auto;flex-shrink:0"></div>
+    <div style="padding:0 12px 12px;flex-shrink:0">
+      <textarea id="iaIn" rows="2" placeholder="Pregunta sobre esta descarga..."
+        style="width:100%;box-sizing:border-box;font:13px/1.5 inherit;padding:8px 10px;
+               border:1px solid var(--rule);border-radius:6px;background:var(--panel2);color:var(--tx)"></textarea>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <label style="font-size:11px;opacity:.75;display:flex;align-items:center;gap:5px">
+          <input type="checkbox" id="iaSeries" checked> series
+        </label>
+        <span id="iaPeso" style="font-size:11px;opacity:.6;font-family:var(--f-mono)"></span>
+        <span style="flex:1"></span>
+        <button class="btn" id="iaEnviar" style="font-weight:600">Enviar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(d);
+
+  document.getElementById("iaCerrar").onclick = () => { d.style.display = "none"; };
+  document.getElementById("iaObj").onclick = ctxPanel;
+  document.getElementById("iaNueva").onclick = () => {
+    IA.conv = null; IA.hist = [];
+    document.getElementById("iaMsgs").innerHTML = "";
+    iaBienvenida();
+  };
+  document.getElementById("iaSeries").onchange = e => { IA.series = e.target.checked; iaPeso(); };
+  document.getElementById("iaEnviar").onclick = () => iaEnviar();
+  document.getElementById("iaIn").addEventListener("keydown", e => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); iaEnviar(); }
+  });
+
+  const chips = document.getElementById("iaChips");
+  chips.innerHTML = IA_RAPIDAS.map((r, i) =>
+    `<button class="btn" data-r="${i}" style="font-size:11.5px;white-space:nowrap;flex-shrink:0">${r[0]}</button>`).join("");
+  chips.querySelectorAll("[data-r]").forEach(b => {
+    b.onclick = () => {
+      document.getElementById("iaIn").value = IA_RAPIDAS[+b.dataset.r][1];
+      iaEnviar();
+    };
+  });
+
+  iaBienvenida();
+}
+
+function iaBienvenida() {
+  const u = U();
+  const i = ctxLeerIntencion();
+  const lbl = document.getElementById("iaCtxLbl");
+  if (lbl) lbl.textContent = u ? `${u.key} · ${{ tend: "Tendencias", amp: "Carta", evt: "Eventos" }[VIEW]} · ${fT(view.a, false)}–${fT(view.b, false)}` : "sin unidad";
+
+  const falta = !i.campo;
+  iaMsg("sys",
+    `Preguntas sobre la ventana que tienes abierta. Va la data destilada y, si lo llenaste, tu contexto de campo.` +
+    (falta
+      ? `<br><br><b>No has cargado contexto de campo.</b> Es lo que la telemetría no puede saber —maniobras, intervenciones, estado del pozo— y suele ser lo que decide el diagnóstico. Cárgalo en <b>Contexto</b>.`
+      : `<br><br>Contexto de campo cargado: <i>${iaEsc(i.campo.slice(0, 120))}${i.campo.length > 120 ? "…" : ""}</i>`));
+  iaPeso();
+}
+
+function iaPaquete() {
+  const c = contextoAnalisis();
+  if (!c) return null;
+  const i = ctxLeerIntencion();
+  if (!IA.series) delete c.series;
+  return Object.assign({
+    objetivo: i.objetivo || null,
+    marco_de_la_consulta: i.pregunta || null,
+    contexto_de_campo: i.campo || "(el especialista no indicó nada)",
+    datos_de_la_unidad: i.placa || null,
+    instrucciones: [
+      "Responde lo que se te pregunta. No narres todo lo que ves en los datos: úsalos como evidencia.",
+      "El contexto de campo es prioritario: la telemetría muestra que la carga subió, no que alguien abrió una válvula.",
+      "Si el contexto y los datos se contradicen, dilo explícitamente en vez de elegir uno.",
+      "Si falta un dato para responder bien, pídelo. No lo estimes.",
+      "Distingue lo que la data soporta de lo que es hipótesis, y di qué confirmaría cada hipótesis.",
+      "Varios canales están cuantizados (frecuencia 0,1 Hz; tensión de entrada 4 V). Un mín/máx separado por un solo paso puede ser resolución del instrumento, no un evento.",
+      "Las series están reducidas a tramos con mín y máx: no infieras frecuencias de oscilación finas a partir de ellas.",
+      "El bloque analisis_plataforma ya viene calculado con umbrales de norma. Pártelo como dado.",
+      "Para datos de la unidad que no estén aquí (placa del motor, corriente nominal, setpoints, historial), consulta la plataforma con tus herramientas antes de decir que faltan.",
+    ],
+  }, c);
+}
+
+function iaPeso() {
+  const p = iaPaquete();
+  const el = document.getElementById("iaPeso");
+  if (el) el.textContent = p ? `${(new Blob([JSON.stringify(p)]).size / 1024).toFixed(0)} KB de contexto` : "";
+}
+
+function iaMsg(quien, html, extra) {
+  const c = document.getElementById("iaMsgs");
+  const d = document.createElement("div");
+  if (quien === "user") {
+    d.style.cssText = "margin:0 0 14px;padding:9px 12px;border-radius:12px 12px 3px 12px;" +
+      "background:var(--acc-bg);color:var(--acc);margin-left:36px";
+  } else if (quien === "sys") {
+    d.style.cssText = "margin:0 0 14px;font-size:12px;opacity:.75;padding:9px 11px;" +
+      "border-radius:10px;background:var(--panel2)";
+  } else {
+    d.style.cssText = "margin:0 0 16px;padding-bottom:12px;border-bottom:1px solid var(--rule3)";
+  }
+  d.innerHTML = html + (extra || "");
+  c.appendChild(d);
+  c.scrollTop = c.scrollHeight;
+  return d;
+}
+
+async function iaEnviar() {
+  if (IA.ocupado) return;
+  const pu = puente();
+  if (!pu) return;
+  const inp = document.getElementById("iaIn");
+  const q = inp.value.trim();
+  if (!q) return;
+
+  const paquete = iaPaquete();
+  if (!paquete) { iaMsg("sys", "No hay unidad cargada."); return; }
+
+  inp.value = "";
+  iaMsg("user", iaFormato(q));
+  const pensando = iaMsg("sys", "Consultando…");
+  IA.ocupado = true;
+  document.getElementById("iaEnviar").disabled = true;
+
+  try {
+    const ses = (await pu.sb.auth.getSession()).data.session;
+    if (!ses) throw new Error("No hay sesión activa en Kronos-M. Vuelve a entrar.");
+
+    const r = await fetch(`${pu.url}/functions/v1/asistente-tecnico-v2`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ses.access_token}` },
+      body: JSON.stringify({
+        pregunta: q.slice(0, 2000),
+        conversacion_id: IA.conv,
+        historial: IA.hist.slice(-8),
+        contexto: {
+          texto: `Analizador de data — descarga de variador de ${paquete.unidad}, pestaña ${paquete.pestana}, ventana ${paquete.ventana.desde} a ${paquete.ventana.hasta}`,
+          modulo: "Analizador de data",
+          pantalla: paquete.pestana,
+          registro: paquete,
+        },
+      }),
+    });
+
+    const j = await r.json();
+    pensando.remove();
+
+    if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+
+    IA.conv = j.conversacion_id || IA.conv;
+    IA.hist.push({ rol: "usuario", texto: q }, { rol: "asistente", texto: j.respuesta });
+
+    const usadas = (j.herramientas_usadas || []).length
+      ? `<div style="font-size:11px;opacity:.55;margin-top:8px;font-family:var(--f-mono)">${iaEsc(j.herramientas_usadas.join(" · "))}</div>`
+      : "";
+    const nodo = iaMsg("bot", iaFormato(j.respuesta),
+      `<button class="btn" style="font-size:11.5px;margin-top:9px">Copiar</button>` + usadas);
+    const btn = nodo.querySelector("button");
+    btn.onclick = async () => {
+      await navigator.clipboard.writeText(j.respuesta);
+      btn.textContent = "Copiado"; setTimeout(() => { btn.textContent = "Copiar"; }, 1500);
+    };
+
+  } catch (e) {
+    pensando.remove();
+    iaMsg("sys", `<b>No se pudo consultar.</b><br>${iaEsc(e.message)}`);
+  } finally {
+    IA.ocupado = false;
+    document.getElementById("iaEnviar").disabled = false;
+  }
+}
+
+/* El botón solo existe si hay padre con sesión. */
+if (puente()) {
+  const b = document.getElementById("bIA");
+  b.style.display = "";
+  b.onclick = iaAbrir;
+}
 
 $("#bCtx").onclick = async e => {
   try {
