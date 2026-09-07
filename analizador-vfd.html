@@ -333,16 +333,21 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
       <div class="pane-top"><span>Canales y archivos</span><button class="pinb" data-side="L">Anclar</button></div>
       <div class="sec" id="secHist" hidden>
         <h3 class="sec-h">Historial guardado <em id="nHist"></em></h3><div id="hist"></div></div>
-      <div class="sec">
-        <h3 class="sec-h">Archivos cargados <em id="nFiles"></em>
-          <button class="secb" id="bDelUnit">Quitar pozo</button></h3>
-        <div id="files"></div></div>
+      <!-- Orden invertido a propósito: los controles que se usan en cada
+           consulta van arriba, y los archivos -que solo se revisan al
+           cargar y arrastran los avisos de catalogación- quedan al final.
+           Antes había que bajar decenas de líneas de aviso para poder
+           escoger un canal. -->
       <div class="sec" id="secGrupos"><h3 class="sec-h">Grupos</h3><div class="grp" id="grps"></div></div>
       <div class="sec" id="secCanales">
         <h3 class="sec-h">Canales <em id="nSel"></em></h3>
         <div id="chans"></div>
       </div>
       <div class="sec" id="secModo"><h3 class="sec-h">Modo de panel</h3><div class="grp" id="modes"></div></div>
+      <div class="sec">
+        <h3 class="sec-h">Archivos cargados <em id="nFiles"></em>
+          <button class="secb" id="bDelUnit">Quitar pozo</button></h3>
+        <div id="files"></div></div>
       <div class="sec" id="secEventos"><h3 class="sec-h">Eventos en la ventana <em id="nEv"></em></h3><div id="evs"></div></div>
     </div>
     <div class="col plots" id="plots">
@@ -1511,7 +1516,20 @@ function buildFiles(){
     m.appendChild(el("div","nm",f.name));
     m.appendChild(el("div","dt",`${f.profName.split("·")[1]||f.profName} · ${fD(f.t0)} ${fT(f.t0,false)} → ${fD(f.t1)} ${fT(f.t1,false)}`));
     m.appendChild(el("div","dt",`${f.n.toLocaleString("es")} registros${f.nch?` · ${f.nch} canales`:""}`));
-    f.notes.forEach(w=>m.appendChild(el("div","warn","⚠ "+w)));
+    /* Los avisos de catalogación son informativos y se repiten en cada
+       archivo: desplegados ocupaban más que el resto del panel entero.
+       Se resumen en una línea que se abre al tocarla. */
+    if(f.notes.length){
+      const res=el("div","warn","⚠ "+f.notes.length+" aviso"+(f.notes.length>1?"s":"")+" — ver");
+      res.style.cursor="pointer";
+      const det=el("div"); det.style.display="none";
+      f.notes.forEach(w=>det.appendChild(el("div","warn","⚠ "+w)));
+      res.onclick=ev=>{ if(ev.stopPropagation) ev.stopPropagation();
+        const ab=det.style.display==="none";
+        det.style.display=ab?"":"none";
+        res.textContent="⚠ "+f.notes.length+" aviso"+(f.notes.length>1?"s":"")+(ab?" — ocultar":" — ver"); };
+      m.appendChild(res); m.appendChild(det);
+    }
     d.appendChild(m);
     const ks=Object.keys(DB.units);
     if(ks.length>1||f.genre!=="serie"){
@@ -1665,7 +1683,15 @@ function renderRibbon(){
 function buildPanels(){
   const u=U();
   const list=[...sel].map(r=>u.ch[r]).filter(C=>C&&C.n);
-  if(mode==="one") return list.length?[{title:"Superpuesto · normalizado",chs:list,norm:true}]:[];
+  /* Superpuesto con un eje por canal, al estilo de los visores de pozo.
+     La normalización 0-100 alineaba las curvas pero el eje no correspondía
+     a nada y no se podía leer un valor. Con más de 8 canales las columnas
+     de eje se comen el ancho útil, así que ahí sí se cae a normalizado. */
+  if(mode==="one") return list.length
+    ? [ list.length<=8
+        ? {title:"Superpuesto · multieje", chs:list, multi:true}
+        : {title:"Superpuesto · normalizado ("+list.length+" canales)", chs:list, norm:true} ]
+    : [];
   if(mode==="each") return list.map(C=>({title:C.label,chs:[C]}));
   const m=new Map();
   list.forEach(C=>{ const k=C.unit||"—"; if(!m.has(k))m.set(k,[]); m.get(k).push(C); });
@@ -1707,16 +1733,40 @@ function fmtTick(v){ const a=Math.abs(v);
   if(a>=10) return v.toFixed(1); if(a>=1) return v.toFixed(2); return v.toFixed(3); }
 function drawPanel(p){
   const u=U(),{g,w,h}=fit(p.cv,p.h);
-  const PADL=56,PADR=10,PADT=6,PADB=6, iw=w-PADL-PADR, ih=h-PADT-PADB;
+  // Una columna de eje por canal con datos. El ancho se reparte entre ellos
+  // y se acota para que las curvas nunca se queden sin espacio.
+  const ejes = p.multi ? p.chs.filter(C=>stat(C,view.a,view.b)) : [];
+  const AXW = ejes.length ? Math.max(32, Math.min(54, Math.floor((w*0.44)/ejes.length))) : 0;
+  const PADL = ejes.length ? Math.max(56, AXW*ejes.length + 6) : 56;
+  const PADR=10,PADT=6,PADB=6, iw=w-PADL-PADR, ih=h-PADT-PADB;
   g.clearRect(0,0,w,h);
   let lo=Infinity,hi=-Infinity;
-  p.chs.forEach(C=>{ if(p.norm){lo=0;hi=100;return;} const s=stat(C,view.a,view.b); if(!s)return;
+  p.chs.forEach(C=>{ if(p.norm||p.multi){lo=0;hi=100;return;} const s=stat(C,view.a,view.b); if(!s)return;
     lo=Math.min(lo,s.min); hi=Math.max(hi,s.max); });
   if(!Number.isFinite(lo)){ g.fillStyle=V("--tx3"); g.font="11px "+cssFont("--f-ui");
     g.fillText("sin datos en esta ventana",PADL,h/2); p._geo={PADL,iw}; return; }
   if(hi===lo){ const d=Math.max(1,Math.abs(lo)*.05); hi=lo+d; lo-=d; }
   const pad=(hi-lo)*.08; lo-=pad; hi+=pad;
   const Y=v=>PADT+ih-(v-lo)/(hi-lo)*ih, X=t=>PADL+(t-view.a)/(view.b-view.a)*iw;
+
+  // Escala propia de cada canal, redondeada a marcas legibles. Se guarda en
+  // el panel para que el trazado y la columna de eje compartan exactamente
+  // la misma transformación: si difieren, la curva no cae donde dice el eje.
+  if(p.multi){
+    p._esc=new Map();
+    ejes.forEach(C=>{
+      const s=stat(C,view.a,view.b);
+      let a=s.min,b=s.max;
+      if(b===a){ const d=Math.max(1,Math.abs(a)*.05); b=a+d; a-=d; }
+      const m=(b-a)*.06; a-=m; b+=m;
+      const tk=niceTicks(a,b,4);
+      p._esc.set(C.role,{
+        lo: tk.length? Math.min(a,tk[0]) : a,
+        hi: tk.length? Math.max(b,tk[tk.length-1]) : b,
+        ticks: tk
+      });
+    });
+  }
 
   // franjas de fondo: rojo tenue donde la unidad estuvo parada, gris donde no hay archivo
   (u.segs||[]).forEach(sg=>{
@@ -1734,13 +1784,40 @@ function drawPanel(p){
       prev=Math.max(prev,y); }
     if(prev<view.b){ const a1=Math.max(PADL,X(prev)); g.fillRect(a1,PADT,(w-PADR)-a1,ih); }
   }
-  const ticks=niceTicks(lo,hi,Math.max(2,Math.round(ih/34)));
-  g.strokeStyle=V("--cv-grid"); g.lineWidth=1; g.font="10px "+cssFont("--f-mono");
-  g.fillStyle = (p.chs.length===1 && !p.norm)? V(p.chs[0].cvar) : V("--cv-tick");
-  ticks.forEach(v=>{ const y=Math.round(Y(v))+.5;
-    g.beginPath();g.moveTo(PADL,y);g.lineTo(w-PADR,y);g.stroke();
-    g.textAlign="right"; g.fillText(fmtTick(v),PADL-7,y+3.5); });
-  g.textAlign="left";
+  if(p.multi){
+    // Rejilla neutra: con un eje por canal, ligarla a uno de ellos le daría
+    // a ese canal una prioridad visual que no le corresponde.
+    g.strokeStyle=V("--cv-grid"); g.lineWidth=1;
+    [0,25,50,75,100].forEach(q=>{ const y=Math.round(Y(q))+.5;
+      g.beginPath(); g.moveTo(PADL,y); g.lineTo(w-PADR,y); g.stroke(); });
+
+    g.font="9.5px "+cssFont("--f-mono");
+    ejes.forEach((C,k)=>{
+      const es=p._esc.get(C.role); if(!es) return;
+      const xr=6+AXW*k+AXW-8, col=V(C.cvar);
+      // La línea del eje va en el color del canal: es lo que lo empareja
+      // con su curva sin necesidad de leyenda.
+      g.strokeStyle=col; g.globalAlpha=.55; g.lineWidth=1.25;
+      g.beginPath(); g.moveTo(xr+3.5,PADT); g.lineTo(xr+3.5,PADT+ih); g.stroke();
+      g.globalAlpha=1;
+      g.fillStyle=col; g.textAlign="right";
+      es.ticks.forEach(v=>{
+        const y=Math.round(Y((v-es.lo)/(es.hi-es.lo)*100))+.5;
+        if(y<PADT-1||y>PADT+ih+1) return;
+        g.fillText(fmtTick(v),xr,y+3.5);
+      });
+      if(C.unit){ g.globalAlpha=.7; g.fillText(C.unit,xr,PADT+ih+PADB-1); g.globalAlpha=1; }
+    });
+    g.textAlign="left";
+  } else {
+    const ticks=niceTicks(lo,hi,Math.max(2,Math.round(ih/34)));
+    g.strokeStyle=V("--cv-grid"); g.lineWidth=1; g.font="10px "+cssFont("--f-mono");
+    g.fillStyle = (p.chs.length===1 && !p.norm)? V(p.chs[0].cvar) : V("--cv-tick");
+    ticks.forEach(v=>{ const y=Math.round(Y(v))+.5;
+      g.beginPath();g.moveTo(PADL,y);g.lineTo(w-PADR,y);g.stroke();
+      g.textAlign="right"; g.fillText(fmtTick(v),PADL-7,y+3.5); });
+    g.textAlign="left";
+  }
 
   // Inicio y fin de corrida: solo en modo completo. La banda --band-off ya
   // marca los tramos parados, así que estas líneas son información repetida
@@ -1786,8 +1863,11 @@ function drawPanel(p){
   }
 
   p.chs.forEach(C=>{
+    const es=p.multi&&p._esc? p._esc.get(C.role) : null;
     const st=p.norm?stat(C,view.a,view.b):null;
-    const nv=v=>p.norm? (st&&st.max>st.min? (v-st.min)/(st.max-st.min)*100 : 50) : v;
+    const nv = es
+      ? (v=>(v-es.lo)/(es.hi-es.lo)*100)
+      : (v=>p.norm? (st&&st.max>st.min? (v-st.min)/(st.max-st.min)*100 : 50) : v);
     const L=levelFor(C,view.b-view.a,iw);
     const T=L?L.t:C.t, MN=L?L.mn:C.y, MX=L?L.mx:C.y, N=L?L.n:C.n;
     const cols=Math.ceil(iw)+2;
@@ -2986,24 +3066,66 @@ window.addEventListener("message", e => {
 
 (function () {
   const t = temaDelPadre();
-  if (t) setTheme(t);
+  if (t === null) return;      // sin padre: el botón propio sigue haciendo falta
+  setTheme(t);
+  // Con el sol/luna de Kronos-M arriba, el botón local sobra y confunde:
+  // eran dos controles para lo mismo, y solo uno mandaba de verdad.
+  const b = document.querySelector("#bTheme");
+  if (b) b.remove();
 })();
 
-/* El panel derecho deja de asomarse solo. */
+/* Panel de análisis: fuera de la vista cuando corre dentro de Kronos-M.
+   El asistente ya cubre esa función y además recibe analysisText() completo
+   dentro del paquete, así que el razonamiento determinista no se pierde:
+   solo deja de ocupar pantalla y de asomarse mientras uno lee las gráficas.
+   Suelto en pestaña aparte no hay asistente, así que ahí se conserva.
+
+   No basta con frenar los eventos del riel: la apertura la dispara un
+   mousemove sobre `document` cuando el cursor se acerca al borde. Lo que
+   sí corta de raíz es neutralizar paneShow para ese lado. */
 (function () {
-  const r = railEl("R"), p = paneEl("R");
-  if (!r || !p) return;
-  const frenar = ev => { ev.stopPropagation(); };
-  ["mouseenter", "mouseleave"].forEach(ev => {
-    r.addEventListener(ev, frenar, true);
-    p.addEventListener(ev, frenar, true);
+  if (!puente()) return;
+  const p = paneEl("R"), r = railEl("R");
+  if (p) p.style.display = "none";
+  if (r) r.style.display = "none";
+  const original = paneShow;
+  paneShow = function (s, on) { return original(s, s === "R" ? false : on); };
+  const m = document.querySelector(".main");
+  if (m) m.classList.remove("dockR");
+})();
+
+/* Escala automática según el ancho disponible.
+   Los umbrales anteriores (>2200 y >1700) dejaban escala 1,0 desde 1.700 px
+   hacia abajo, y por debajo de ~1.400 la barra de herramientas ya no cabe.
+   Se afinan los cortes y se reevalúa al redimensionar, que en un iframe
+   pasa también al acoplar paneles o entrar a pantalla completa. */
+function escalaSegunAncho() {
+  const w = window.innerWidth;
+  return w > 2600 ? 4 : w > 2100 ? 3 : w > 1700 ? 2 : w > 1400 ? 1 : 0;
+}
+
+(function () {
+  let manual = false;
+  try { manual = localStorage.getItem("vfd_escala_manual") === "1"; } catch (e) {}
+
+  if (!manual) setScale(escalaSegunAncho());
+
+  // El botón de tamaño pasa a ser una anulación explícita: si el usuario
+  // elige un tamaño, deja de reajustarse solo.
+  const b = document.querySelector("#bSize");
+  if (b) b.addEventListener("click", () => {
+    manual = true;
+    try { localStorage.setItem("vfd_escala_manual", "1"); } catch (e) {}
   });
-  // Se recuerda si quedó anclado; por defecto, cerrado.
-  try {
-    if (localStorage.getItem("vfd_analisis_pin") === "1") togglePane("R", true);
-  } catch (e) { /* sin almacenamiento */ }
-  r.addEventListener("click", () => {
-    try { localStorage.setItem("vfd_analisis_pin", PANE.R.pin ? "1" : "0"); } catch (e) {}
+
+  let t = null;
+  window.addEventListener("resize", () => {
+    if (manual) return;
+    clearTimeout(t);
+    t = setTimeout(() => {
+      const i = escalaSegunAncho();
+      if (+document.documentElement.dataset.si !== i) setScale(i);
+    }, 250);
   });
 })();
 
