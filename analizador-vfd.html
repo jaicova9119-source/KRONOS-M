@@ -308,6 +308,7 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
       <button class="btn" id="bSize" title="tamaño de la interfaz">A</button>
       <button class="btn" id="bTheme">Claro</button>
       <button class="btn" id="bCopy">Copiar análisis</button>
+      <button class="btn" id="bCtx" title="Copia los datos destilados para pegárselos a un modelo de IA">Copiar datos</button>
       <button class="btn" id="bRen">Renombrar</button>
       <button class="btn pri" id="bAdd">Agregar días</button>
     </div>
@@ -2625,6 +2626,226 @@ function analysisText(){
     f.paras.forEach(p=>L.push("  "+strip(p))); L.push(""); });
   return L.join("\n");
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   8c · CONTEXTO PARA ANÁLISIS ASISTIDO
+
+   Convierte lo que hay en pantalla en un objeto compacto que un modelo
+   pueda leer. Sustituye a la captura de pantalla: una imagen obliga al
+   modelo a estimar valores mirando píxeles; esto le entrega los números.
+
+   Tres decisiones que importan:
+
+   · La serie NO se reduce promediando. Un promedio por tramo borra
+     justamente las excursiones cortas —las caídas de frecuencia de un
+     segundo, los picos de corriente al arranque— que son la señal que
+     interesa. Se guarda el mínimo y el máximo de cada tramo, así que
+     una excursión de una sola muestra sobrevive a la reducción.
+
+   · Se incluye analysisText() completo. El razonamiento determinista ya
+     está hecho aquí, con umbrales de norma; el modelo debe partir de él
+     y razonar encima, no recalcularlo con criterio propio.
+
+   · El contenido cambia según la pestaña. Preguntar sobre la carta
+     amperimétrica no necesita las series de tendencia, y mandarlas solo
+     diluye la atención del modelo.
+══════════════════════════════════════════════════════════════════ */
+
+const CTX_PUNTOS = 160;   // por canal; con mín/máx son 320 números
+
+/* Reducción por mínimo y máximo de tramo. Devuelve pares [t, min, max]
+   para que el modelo vea la envolvente real y no una versión suavizada. */
+function ctxSerie(C, a, b, np) {
+  const [i0, i1] = rangeOf(C, a, b);
+  const paso = (b - a) / np;
+  const out = [];
+  let k = 0, mn = Infinity, mx = -Infinity, tk = a, hay = false;
+  for (let i = i0; i <= i1; i++) {
+    const t = C.t[i], v = C.y[i];
+    if (t < a || t > b || !Number.isFinite(v)) continue;
+    while (t >= tk + paso && k < np) {
+      // Segundos desde el inicio de la ventana, no marca absoluta: la
+      // fecha ya va una vez en el encabezado y repetir 13 dígitos en cada
+      // punto duplicaba el tamaño del contexto sin aportar nada.
+      if (hay) out.push([Math.round((tk + paso / 2 - a) / 1000), +mn.toFixed(2), +mx.toFixed(2)]);
+      tk += paso; k++; mn = Infinity; mx = -Infinity; hay = false;
+    }
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+    hay = true;
+  }
+  if (hay) out.push([Math.round((tk + paso / 2 - a) / 1000), +mn.toFixed(2), +mx.toFixed(2)]);
+  return out;
+}
+
+function ctxCanal(C, a, b) {
+  const s = stat(C, a, b);
+  if (!s) return null;
+  const p = (q) => { const v = pctl(C, a, b, q); return v == null ? null : +v.toFixed(3); };
+  const sl = (typeof slope === "function") ? slope(C, a, b) : null;
+  return {
+    canal: C.label,
+    unidad: C.unit,
+    muestras: s.n,
+    min: +s.min.toFixed(3),
+    p05: p(0.05),
+    mediana: p(0.5),
+    p95: p(0.95),
+    max: +s.max.toFixed(3),
+    media: +s.mean.toFixed(3),
+    desv: +s.sd.toFixed(4),
+    // Pendiente por hora: distingue una deriva lenta de una variación
+    // que solo va y vuelve.
+    deriva_h: (sl != null && Number.isFinite(sl)) ? +(sl * 3.6e6).toFixed(4) : null,
+  };
+}
+
+/* Excursiones: cuántas veces el canal sale de su banda p05–p95 y por
+   cuánto tiempo. Es lo que una estadística de media y desviación no
+   muestra y en cambio salta a la vista en la gráfica. */
+function ctxExcursiones(C, a, b) {
+  const lo = pctl(C, a, b, 0.05), hi = pctl(C, a, b, 0.95);
+  if (lo == null || hi == null || hi === lo) return null;
+  const margen = (hi - lo) * 0.5;
+  const [i0, i1] = rangeOf(C, a, b);
+  let nAlta = 0, nBaja = 0, msAlta = 0, msBaja = 0, estado = 0, t0 = 0;
+  for (let i = i0; i <= i1; i++) {
+    const t = C.t[i], v = C.y[i];
+    if (t < a || t > b || !Number.isFinite(v)) continue;
+    const e = v > hi + margen ? 1 : v < lo - margen ? -1 : 0;
+    if (e !== estado) {
+      if (estado === 1) { nAlta++; msAlta += t - t0; }
+      if (estado === -1) { nBaja++; msBaja += t - t0; }
+      estado = e; t0 = t;
+    }
+  }
+  if (!nAlta && !nBaja) return null;
+  return {
+    banda: [+lo.toFixed(3), +hi.toFixed(3)],
+    por_encima: { veces: nAlta, segundos: +(msAlta / 1000).toFixed(1) },
+    por_debajo: { veces: nBaja, segundos: +(msBaja / 1000).toFixed(1) },
+  };
+}
+
+function contextoAnalisis() {
+  const u = U();
+  if (!u) return null;
+  const a = view.a, b = view.b;
+
+  const ctx = {
+    unidad: u.key,
+    pestana: { tend: "Tendencias", amp: "Carta amperimétrica", evt: "Registro de eventos" }[VIEW],
+    ventana: { desde: fT(a), hasta: fT(b), duracion: fDur(b - a) },
+    archivos: DB.files.filter(f => f.unit === u.key).map(f => f.name),
+    unidad_temperatura: TU(),
+    // El análisis determinista de la plataforma. El modelo parte de aquí.
+    analisis_plataforma: analysisText(),
+  };
+
+  // Marcas de arranque y paro: contexto que las series solas no dan.
+  const segs = (u.segs || []).filter(s => s.b > a && s.a < b);
+  if (segs.length) {
+    ctx.tramos = segs.slice(0, 40).map(s => ({
+      estado: s.state,
+      desde: fT(Math.max(s.a, a)),
+      hasta: fT(Math.min(s.b, b)),
+      duracion: fDur(Math.min(s.b, b) - Math.max(s.a, a)),
+    }));
+  }
+
+  // Lectura clavada con el cursor: equivale a señalar un punto de la
+  // gráfica y preguntar "¿qué pasa aquí?".
+  if (fijo && fijo.unit === u.key) {
+    ctx.lectura_marcada = {
+      instante: fT(fijo.t),
+      valores: fijo.filas.map(f => `${f[0]}: ${f[1]}`),
+    };
+  }
+
+  if (VIEW === "tend") {
+    const roles = Object.keys(u.ch).filter(r => u.ch[r] && u.ch[r].n);
+    ctx.canales = [];
+    ctx.series = {};
+    for (const r of roles) {
+      const C = u.ch[r];
+      const res = ctxCanal(C, a, b);
+      if (!res) continue;
+      const exc = ctxExcursiones(C, a, b);
+      if (exc) res.excursiones = exc;
+      ctx.canales.push(res);
+      ctx.series[C.label] = ctxSerie(C, a, b, CTX_PUNTOS);
+    }
+    ctx.formato_series =
+      "Cada punto es [segundos_desde_inicio_ventana, mínimo_del_tramo, máximo_del_tramo]. Se guarda mín y máx " +
+      "en vez del promedio a propósito: promediar borra las excursiones cortas, que suelen " +
+      "ser la señal que interesa.";
+  }
+
+  if (VIEW === "amp") {
+    ctx.dia_seleccionado = AMPDAY;
+    ctx.nota = "El usuario está viendo la carta amperimétrica de ese día, no las tendencias.";
+  }
+
+  if (VIEW === "evt") {
+    const evs = u.events.filter(e => e.t >= a && e.t <= b);
+    const cnt = {};
+    evs.forEach(e => { cnt[e.label] = (cnt[e.label] || 0) + 1; });
+    ctx.eventos = {
+      filtro_activo: EFILT,
+      total_en_ventana: evs.length,
+      por_tipo: Object.entries(cnt).sort((x, y) => y[1] - x[1]).slice(0, 30)
+        .map(([k, v]) => ({ evento: k, veces: v })),
+      ultimos: evs.slice(-25).map(e => ({
+        hora: fT(e.t), evento: e.label, severidad: e.sev, detalle: e.detail || null,
+      })),
+    };
+  }
+
+  return ctx;
+}
+
+/* Texto listo para pegar. Encabezado explícito de qué es y qué no es:
+   sin eso, un modelo tiende a tratar las series reducidas como si fueran
+   la medición completa. */
+function contextoTexto() {
+  const c = contextoAnalisis();
+  if (!c) return "";
+  return [
+    "=== DESCARGA DE VARIADOR · CONTEXTO PARA ANÁLISIS ===",
+    "",
+    "Los datos vienen de una descarga real de la unidad. Las series están",
+    "reducidas a ~160 tramos por canal conservando mínimo y máximo de cada",
+    "tramo, así que las excursiones cortas sobreviven pero la resolución",
+    "temporal fina no. No infieras frecuencias de oscilación finas a partir",
+    "de la serie reducida; para eso usa el conteo de excursiones.",
+    "",
+    "El bloque analisis_plataforma es el diagnóstico determinista ya",
+    "calculado con umbrales de norma (NEMA MG-1, IEEE). Pártelo como dado.",
+    "",
+    JSON.stringify(c, null, 1),
+  ].join("\n");
+}
+
+$("#bCtx").onclick = async e => {
+  try {
+    const txt = contextoTexto();
+    if (!txt) { $("#err").textContent = "No hay unidad cargada."; return; }
+    await navigator.clipboard.writeText(txt);
+    const kb = (new Blob([txt]).size / 1024).toFixed(0);
+    e.target.textContent = `Copiado · ${kb} KB`;
+    setTimeout(() => { e.target.textContent = "Copiar datos"; }, 2200);
+  } catch (x) {
+    // Portapapeles bloqueado: se descarga como archivo, que sirve igual
+    // para adjuntarlo a un chat.
+    const txt = contextoTexto();
+    const url = URL.createObjectURL(new Blob([txt], { type: "text/plain" }));
+    const el2 = document.createElement("a");
+    el2.href = url;
+    el2.download = `contexto ${U() ? U().key : "unidad"}.txt`;
+    el2.click();
+    URL.revokeObjectURL(url);
+  }
+};
 
 /* ══════════════════════════════════════════════════════════════════
    8b · HISTORIAL — solo activo si corre sobre el servidor local
