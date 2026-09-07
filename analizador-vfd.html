@@ -3097,6 +3097,8 @@ function iaPaquete() {
       "Si el contexto y los datos se contradicen, dilo explícitamente en vez de elegir uno.",
       "Si falta un dato para responder bien, pídelo. No lo estimes.",
       "Distingue lo que la data soporta de lo que es hipótesis, y di qué confirmaría cada hipótesis.",
+      "Busca canales que se muevan en DIRECCIONES CONTRARIAS entre sí. Que la carga suba y la vibración baje, o que la presión siga subiendo mientras el par afloja, suele discriminar entre causas mejor que cualquier canal por separado. Reporta la dirección del cambio, no solo el valor máximo.",
+      "Cuando un canal cambie, di de cuánto a cuánto y en qué momento. Un máximo aislado no dice si subió o bajó.",
       "Varios canales están cuantizados (frecuencia 0,1 Hz; tensión de entrada 4 V). Un mín/máx separado por un solo paso puede ser resolución del instrumento, no un evento.",
       "Las series están reducidas a tramos con mín y máx: no infieras frecuencias de oscilación finas a partir de ellas.",
       "El bloque analisis_plataforma ya viene calculado con umbrales de norma. Pártelo como dado.",
@@ -3174,8 +3176,18 @@ async function iaEnviar() {
     IA.conv = j.conversacion_id || IA.conv;
     IA.hist.push({ rol: "usuario", texto: q }, { rol: "asistente", texto: j.respuesta });
 
-    const usadas = (j.herramientas_usadas || []).length
-      ? `<div style="font-size:11px;opacity:.55;margin-top:8px;font-family:var(--f-mono)">${iaEsc(j.herramientas_usadas.join(" · "))}</div>`
+    /* Pie técnico: qué modelo respondió, qué consultó y qué costó. Sin
+       esto no hay forma de saber si una respuesta salió del modelo
+       primario o del respaldo, ni de comparar calidad entre versiones. */
+    const pie = [];
+    if (j.modelo) pie.push(iaEsc(j.modelo));
+    if (j.tokens && j.tokens.entrada) {
+      pie.push(`${((j.tokens.entrada + (j.tokens.salida || 0)) / 1000).toFixed(1)}k tok`);
+    }
+    if (j.ms) pie.push(`${(j.ms / 1000).toFixed(1)} s`);
+    if ((j.herramientas_usadas || []).length) pie.push(j.herramientas_usadas.map(iaEsc).join(" · "));
+    const usadas = pie.length
+      ? `<div style="font-size:11px;opacity:.55;margin-top:8px;font-family:var(--f-mono)">${pie.join("  |  ")}</div>`
       : "";
     const nodo = iaMsg("bot", iaFormato(j.respuesta),
       `<button class="btn" style="font-size:11.5px;margin-top:9px">Copiar</button>` + usadas);
