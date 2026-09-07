@@ -3070,8 +3070,13 @@ window.addEventListener("message", e => {
   setTheme(t);
   // Con el sol/luna de Kronos-M arriba, el botón local sobra y confunde:
   // eran dos controles para lo mismo, y solo uno mandaba de verdad.
+  //
+  // Se OCULTA, no se elimina: más abajo el analizador hace
+  // $("#bTheme").onclick = ... y si el nodo no existe eso lanza TypeError,
+  // que aborta el resto del arranque y deja sin manejador a los botones de
+  // cargar archivos. Un `remove()` aquí rompía toda la carga de datos.
   const b = document.querySelector("#bTheme");
-  if (b) b.remove();
+  if (b) b.style.display = "none";
 })();
 
 /* Panel de análisis: fuera de la vista cuando corre dentro de Kronos-M.
@@ -3115,7 +3120,13 @@ function escalaSegunAncho() {
   const b = document.querySelector("#bSize");
   if (b) b.addEventListener("click", () => {
     manual = true;
-    try { localStorage.setItem("vfd_escala_manual", "1"); } catch (e) {}
+    // Se guarda también el valor: al recargar debe volver al tamaño elegido,
+    // no al automático ni al índice 1 del arranque original.
+    try {
+      localStorage.setItem("vfd_escala_manual", "1");
+      setTimeout(() => localStorage.setItem("vfd_escala_valor",
+        String(document.documentElement.dataset.si || 1)), 0);
+    } catch (e) {}
   });
 
   let t = null;
@@ -3692,8 +3703,8 @@ function finishLoad(errs,antes,opts){
   if(!avisos.length){ $("#drop").classList.add("hide");
     $("#dz").querySelector("h1").textContent="Suelta uno o varios archivos"; TARGET=DB.active; }
 }
-setTheme((window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches)?"light":"dark");
-setScale(window.innerWidth>2200?3: window.innerWidth>1700?2:1);
+setTheme(temaDelPadre() || ((window.matchMedia&&window.matchMedia("(prefers-color-scheme: light)").matches)?"light":"dark"));
+setScale((function(){ try{ if(localStorage.getItem("vfd_escala_manual")==="1"){ const i=+localStorage.getItem("vfd_escala_valor"); if(Number.isFinite(i)&&i>=0&&i<=4) return i; } }catch(e){} return escalaSegunAncho(); })());
 if(location.protocol!=="file:") initServidor();   // arranca acorde a la pantalla
 
 /* ══════════════════════════════════════════════════════════════════
