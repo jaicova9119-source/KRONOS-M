@@ -308,7 +308,8 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
       <button class="btn" id="bSize" title="tamaño de la interfaz">A</button>
       <button class="btn" id="bTheme">Claro</button>
       <button class="btn" id="bCopy">Copiar análisis</button>
-      <button class="btn" id="bCtx" title="Copia los datos destilados para pegárselos a un modelo de IA">Copiar datos</button>
+      <button class="btn" id="bObj" title="Qué quieres saber y qué pasó en campo">Objetivo y contexto</button>
+      <button class="btn" id="bCtx" title="Copia el paquete para pegárselo a un modelo de IA">Copiar datos</button>
       <button class="btn" id="bRen">Renombrar</button>
       <button class="btn pri" id="bAdd">Agregar días</button>
     </div>
@@ -2804,27 +2805,153 @@ function contextoAnalisis() {
   return ctx;
 }
 
-/* Texto listo para pegar. Encabezado explícito de qué es y qué no es:
-   sin eso, un modelo tiende a tratar las series reducidas como si fueran
-   la medición completa. */
+/* ── Intención: objetivo, pregunta y contexto de campo ──────────────
+   Sin esto, un modelo recibe los datos y responde "lo que ve", que rara
+   vez es lo que se necesita. Y hay información que la telemetría NO
+   contiene y que suele ser la que decide el diagnóstico: qué maniobra se
+   hizo, qué está pasando en el pozo, qué se sospecha. Eso solo lo aporta
+   quien está en campo.
+
+   Se guarda por unidad para no volver a teclearlo en cada consulta. */
+
+const OBJETIVOS = [
+  "Diagnóstico: qué está causando lo que observo",
+  "Validar una hipótesis que ya tengo",
+  "Descartar una causa concreta",
+  "Decidir una acción operativa",
+  "Redactar informe técnico formal",
+  "Solo responder una pregunta puntual",
+];
+
+function ctxClave() { return "vfd_intencion_" + (U() ? U().key : "sin_unidad"); }
+
+function ctxLeerIntencion() {
+  try { return JSON.parse(localStorage.getItem(ctxClave()) || "{}"); }
+  catch (e) { return {}; }
+}
+
+function ctxGuardarIntencion(o) {
+  try { localStorage.setItem(ctxClave(), JSON.stringify(o)); } catch (e) {}
+}
+
+function ctxPanel() {
+  const prev = ctxLeerIntencion();
+  let d = document.getElementById("objDlg");
+  if (d) d.remove();
+  d = document.createElement("div");
+  d.id = "objDlg";
+  d.style.cssText =
+    "position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.55);display:flex;" +
+    "align-items:center;justify-content:center;padding:16px";
+  const campo = "width:100%;box-sizing:border-box;font:13px/1.5 inherit;padding:8px 10px;" +
+    "border:1px solid var(--line,#ccc);border-radius:8px;background:var(--bg2,#fff);color:inherit";
+  d.innerHTML = `
+    <div style="background:var(--bg,#fff);color:inherit;max-width:640px;width:100%;
+                max-height:90vh;overflow:auto;border-radius:12px;padding:20px">
+      <div style="font-weight:600;font-size:15px;margin-bottom:4px">Objetivo y contexto de campo</div>
+      <div style="font-size:12px;opacity:.7;margin-bottom:16px">
+        Esto viaja junto con los datos. Es lo que la telemetría no puede saber.
+      </div>
+
+      <label style="display:block;font-size:12px;font-weight:600;margin:0 0 5px">¿Para qué?</label>
+      <select id="objSel" style="${campo};margin-bottom:14px">
+        ${OBJETIVOS.map(o => `<option${prev.objetivo === o ? " selected" : ""}>${o}</option>`).join("")}
+      </select>
+
+      <label style="display:block;font-size:12px;font-weight:600;margin:0 0 5px">
+        Lo que quiero saber</label>
+      <textarea id="objPreg" rows="2" style="${campo};margin-bottom:14px"
+        placeholder="Ej: ¿la subida de corriente de las 16:00 se explica por la maniobra o hay algo más?"
+        >${prev.pregunta || ""}</textarea>
+
+      <label style="display:block;font-size:12px;font-weight:600;margin:0 0 5px">
+        Qué pasó / qué se hizo en la unidad</label>
+      <textarea id="objCtx" rows="5" style="${campo}"
+        placeholder="Maniobras, intervenciones, cambios de setpoint, estado del pozo, trabajos cercanos, lo que sospechas. Fechas y horas si las tienes."
+        >${prev.campo || ""}</textarea>
+      <div style="font-size:11.5px;opacity:.65;margin:6px 0 16px">
+        Un dato de campo pesa más que cualquier canal: la telemetría muestra
+        que la carga subió, pero no que alguien abrió una válvula.
+      </div>
+
+      <label style="display:block;font-size:12px;font-weight:600;margin:0 0 5px">
+        Datos de la unidad que convenga tener presentes (opcional)</label>
+      <textarea id="objPlaca" rows="2" style="${campo};margin-bottom:18px"
+        placeholder="Placa del motor, corriente nominal, setpoint de disparo por temperatura, etapas de bomba, profundidad."
+        >${prev.placa || ""}</textarea>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" id="objCancel">Cancelar</button>
+        <button class="btn" id="objOk" style="font-weight:600">Guardar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(d);
+
+  const cerrar = () => d.remove();
+  d.onclick = e => { if (e.target === d) cerrar(); };
+  document.getElementById("objCancel").onclick = cerrar;
+  document.getElementById("objOk").onclick = () => {
+    ctxGuardarIntencion({
+      objetivo: document.getElementById("objSel").value,
+      pregunta: document.getElementById("objPreg").value.trim(),
+      campo: document.getElementById("objCtx").value.trim(),
+      placa: document.getElementById("objPlaca").value.trim(),
+    });
+    cerrar();
+    const b = document.getElementById("bCtx");
+    if (b) { b.textContent = "Copiar datos ✓"; setTimeout(() => { b.textContent = "Copiar datos"; }, 1600); }
+  };
+}
+
+/* Texto listo para pegar.
+   El orden importa: primero para qué se pide, después lo que aporta el
+   especialista, y solo al final los datos. Puesto al revés, el modelo
+   arranca describiendo la telemetría y llega al objetivo cuando ya se
+   comprometió con una lectura. */
 function contextoTexto() {
   const c = contextoAnalisis();
   if (!c) return "";
-  return [
-    "=== DESCARGA DE VARIADOR · CONTEXTO PARA ANÁLISIS ===",
+  const i = ctxLeerIntencion();
+  const L = ["=== CONSULTA SOBRE DESCARGA DE VARIADOR ==="];
+
+  L.push("", "OBJETIVO", i.objetivo || "(no indicado — pregúntalo antes de analizar)");
+
+  L.push("", "LO QUE QUIERO SABER",
+    i.pregunta || "(no indicado — pregúntalo antes de analizar)");
+
+  L.push("", "CONTEXTO DE CAMPO — lo aporta el especialista, NO sale de la telemetría",
+    i.campo || "(no se indicó nada)");
+
+  if (i.placa) L.push("", "DATOS DE LA UNIDAD", i.placa);
+
+  L.push("",
+    "CÓMO RESPONDER",
+    "- Responde el objetivo y la pregunta. No narres todo lo que ves en los datos:",
+    "  úsalos como evidencia de lo que se te preguntó.",
+    "- El contexto de campo es prioritario. La telemetría puede mostrar que la carga",
+    "  subió, pero no que alguien abrió una válvula. Si el contexto y los datos se",
+    "  contradicen, dilo explícitamente en vez de elegir uno.",
+    "- Si para cumplir el objetivo falta un dato, pídelo. No lo estimes ni lo supongas.",
+    "- Distingue lo que la data soporta de lo que es hipótesis, y para cada hipótesis",
+    "  di qué medición o revisión la confirmaría o descartaría.",
+    "- Si no se indicó objetivo ni pregunta, no analices: pregunta primero qué se busca.",
     "",
-    "Los datos vienen de una descarga real de la unidad. Las series están",
-    "reducidas a ~160 tramos por canal conservando mínimo y máximo de cada",
-    "tramo, así que las excursiones cortas sobreviven pero la resolución",
-    "temporal fina no. No infieras frecuencias de oscilación finas a partir",
-    "de la serie reducida; para eso usa el conteo de excursiones.",
+    "SOBRE LOS DATOS",
+    "- Series reducidas a ~160 tramos por canal, guardando mínimo y máximo de cada",
+    "  tramo. Las excursiones cortas sobreviven; la resolución temporal fina no.",
+    "  No infieras frecuencias de oscilación a partir de la serie reducida.",
+    "- Varios canales están cuantizados (frecuencia en pasos de 0,1 Hz, tensión de",
+    "  entrada en pasos de 4 V). Un mín/máx separado por un solo paso puede ser",
+    "  resolución del instrumento y no un evento físico.",
+    "- El bloque analisis_plataforma es el diagnóstico determinista ya calculado con",
+    "  umbrales de norma (NEMA MG-1, IEEE). Pártelo como dado.",
     "",
-    "El bloque analisis_plataforma es el diagnóstico determinista ya",
-    "calculado con umbrales de norma (NEMA MG-1, IEEE). Pártelo como dado.",
-    "",
-    JSON.stringify(c, null, 1),
-  ].join("\n");
+    JSON.stringify(c, null, 1));
+
+  return L.join("\n");
 }
+
+document.getElementById("bObj").onclick = ctxPanel;
 
 $("#bCtx").onclick = async e => {
   try {
