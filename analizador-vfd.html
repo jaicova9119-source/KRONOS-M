@@ -55,11 +55,16 @@ button{cursor:pointer;background:none;border:none}
 
 #app{display:grid;grid-template-rows:auto auto auto 1fr;height:100%;min-height:0}
 
-.hdr{display:flex;align-items:center;gap:20px;padding:10px 18px;border-bottom:1px solid var(--rule);background:var(--panel2)}
+.hdr{display:flex;align-items:center;gap:12px 20px;padding:10px 18px;border-bottom:1px solid var(--rule);background:var(--panel2);flex-wrap:wrap}
 .brand{display:flex;align-items:baseline;gap:10px;flex:0 0 auto}
 .brand b{font-weight:700;letter-spacing:-.02em;font-size:16px}
 .brand span{font-family:var(--f-mono);font-size:10.5px;color:var(--tx3);letter-spacing:.11em;text-transform:uppercase}
-.unitsel{display:flex;gap:7px;flex:1 1 auto;align-items:center;min-width:0;overflow-x:auto;scrollbar-width:none}
+/* Ancho base generoso: si no cabe junto a los botones, flex-wrap lo baja
+   Sin encogimiento (flex-shrink 0): con shrink activo el selector cedia
+   ancho a los botones y recortaba el nombre aunque la cabecera ya tuviera
+   dos filas. Asi reclama su ancho de contenido y los botones bajan solos.
+   El overflow-x queda de ultimo recurso para nombres desmedidos. */
+.unitsel{display:flex;gap:7px;flex:1 0 auto;align-items:center;min-width:0;max-width:100%;overflow-x:auto;scrollbar-width:none}
 .usel-lab{font-family:var(--f-mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;color:var(--tx3);flex:0 0 auto}
 .usel{font-family:var(--f-mono);font-size:12.5px;padding:6px 10px;border:1px solid var(--acc-dim);border-radius:2px;
   background:var(--acc-bg);color:var(--acc);max-width:min(460px,42vw);min-width:0}
@@ -69,13 +74,13 @@ button{cursor:pointer;background:none;border:none}
 .usel-x:hover{border-color:var(--crit);color:var(--crit)}
 .unitsel::-webkit-scrollbar{display:none}
 .ub{font-family:var(--f-mono);font-size:12.5px;padding:6px 12px;border:1px solid var(--rule);border-radius:2px;
-  color:var(--tx2);white-space:nowrap}
+  color:var(--tx2);white-space:nowrap;flex:0 0 auto}
 .ub:hover{border-color:var(--rule2);color:var(--tx)}
 .ub.on{border-color:var(--acc-dim);color:var(--acc);background:var(--acc-bg)}
 .ub em{font-style:normal;color:var(--tx3);margin-left:6px}
 .ub .ubx{font-style:normal;margin-left:9px;padding:0 3px;color:var(--tx3);font-size:14px;line-height:1;border-radius:2px}
 .ub .ubx:hover{color:#fff;background:var(--crit)}
-.hdr-act{display:flex;gap:8px;flex:0 0 auto}
+.hdr-act{display:flex;gap:8px;flex:0 1 auto;flex-wrap:wrap}
 .btn{border:1px solid var(--rule2);border-radius:3px;padding:7px 13px;font-size:13.5px;color:var(--tx2);transition:.13s}
 .btn:hover{border-color:var(--acc-dim);color:var(--acc)}
 .btn.tgl{padding:7px 10px;font-size:15px;line-height:1}
@@ -4288,8 +4293,12 @@ window.addEventListener("message",e=>{
     : `no se guardó: ${d.error}`;
 });
 
-/* Botón, solo cuando corre dentro de Kronos-M. */
+/* Botón, solo cuando corre dentro de Kronos-M.
+   EN PAUSA: el envío a Monitoreo de Condición queda desactivado hasta
+   definir bien la estructura del dato que se manda. dpEnviarAKronos() se
+   conserva completa; para reactivarlo basta con quitar el return de abajo. */
 (function(){
+  return;
   if(window.parent===window) return;
   const ref=document.getElementById("bAdd"); if(!ref) return;
   const b=document.createElement("button");
