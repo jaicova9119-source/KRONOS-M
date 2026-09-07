@@ -2876,10 +2876,13 @@ function ctxPanel() {
       </div>
 
       <label style="display:block;font-size:12px;font-weight:600;margin:0 0 5px">
-        Datos de la unidad que convenga tener presentes (opcional)</label>
-      <textarea id="objPlaca" rows="2" style="${campo};margin-bottom:18px"
-        placeholder="Placa del motor, corriente nominal, setpoint de disparo por temperatura, etapas de bomba, profundidad."
+        Datos que NO estén en la plataforma (opcional)</label>
+      <textarea id="objPlaca" rows="2" style="${campo}"
+        placeholder="Solo lo que el asistente no puede consultar solo. La placa del motor y los setpoints los trae de Monitoreo de condición."
         >${prev.placa || ""}</textarea>
+      <div style="font-size:11.5px;opacity:.65;margin:6px 0 18px">
+        El asistente identifica el pozo desde el nombre de la unidad y busca la placa por su cuenta.
+      </div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn" id="objCancel">Cancelar</button>
@@ -2953,6 +2956,56 @@ function contextoTexto() {
 }
 
 document.getElementById("bObj").onclick = ctxPanel;
+
+/* ══════════════════════════════════════════════════════════════════
+   8c-bis · TEMA HEREDADO Y RIEL DE ANÁLISIS
+
+   Tema: Kronos-M ya emite postMessage({tipo:"kx-tema"}) a sus iframes
+   cuando se pulsa el sol/luna, pero el analizador nunca lo escuchó, así
+   que solo cambiaba con su propio botón "Oscuro". Ahora sigue al padre
+   y su botón queda como anulación local.
+
+   Riel de análisis: se abría solo al rozar el borde derecho, lo que
+   interrumpe cuando uno está leyendo las gráficas. Se quita la apertura
+   por proximidad; sigue disponible haciendo clic en ANÁLISIS, y el
+   estado anclado se recuerda entre sesiones.
+══════════════════════════════════════════════════════════════════ */
+
+function temaDelPadre() {
+  try {
+    const t = window.parent && window.parent !== window
+      ? window.parent.document.documentElement.getAttribute("data-tema") : null;
+    return t === "claro" ? "light" : t === "oscuro" ? "dark" : null;
+  } catch (e) { return null; }
+}
+
+window.addEventListener("message", e => {
+  if (!e.data || e.data.tipo !== "kx-tema") return;
+  setTheme(e.data.tema === "claro" ? "light" : "dark");
+});
+
+(function () {
+  const t = temaDelPadre();
+  if (t) setTheme(t);
+})();
+
+/* El panel derecho deja de asomarse solo. */
+(function () {
+  const r = railEl("R"), p = paneEl("R");
+  if (!r || !p) return;
+  const frenar = ev => { ev.stopPropagation(); };
+  ["mouseenter", "mouseleave"].forEach(ev => {
+    r.addEventListener(ev, frenar, true);
+    p.addEventListener(ev, frenar, true);
+  });
+  // Se recuerda si quedó anclado; por defecto, cerrado.
+  try {
+    if (localStorage.getItem("vfd_analisis_pin") === "1") togglePane("R", true);
+  } catch (e) { /* sin almacenamiento */ }
+  r.addEventListener("click", () => {
+    try { localStorage.setItem("vfd_analisis_pin", PANE.R.pin ? "1" : "0"); } catch (e) {}
+  });
+})();
 
 /* ══════════════════════════════════════════════════════════════════
    8d · ASISTENTE — consulta sobre la descarga sin salir del módulo
@@ -3081,12 +3134,26 @@ function iaBienvenida() {
   iaPeso();
 }
 
+/* El código de pozo sale del nombre de la unidad, normalizando igual que
+   la base: COHEMBI 14, CHB 14 y CHB-14 son la misma unidad. Se manda
+   explícito para que el asistente pueda buscar la placa del motor en
+   Monitoreo de condición sin que el usuario la teclee. */
+function iaPozo(nombre) {
+  const t = String(nombre || "").toUpperCase()
+    .replace(/COHEMBI/g, "CHB")
+    .replace(/PIÑUNA|PINUNA|PNN/g, "PÑÑ");
+  const m = t.match(/(CYC|CHB|PÑÑ|QND|RAJU|INY|MOQ|CHN)[ _\-]?0*(\d{1,3})(?!\d)/);
+  return m ? `${m[1]}-${String(m[2]).padStart(2, "0")}` : null;
+}
+
 function iaPaquete() {
   const c = contextoAnalisis();
   if (!c) return null;
   const i = ctxLeerIntencion();
   if (!IA.series) delete c.series;
+  const pozo = iaPozo(c.unidad);
   return Object.assign({
+    pozo: pozo,
     objetivo: i.objetivo || null,
     marco_de_la_consulta: i.pregunta || null,
     contexto_de_campo: i.campo || "(el especialista no indicó nada)",
@@ -3102,7 +3169,8 @@ function iaPaquete() {
       "Varios canales están cuantizados (frecuencia 0,1 Hz; tensión de entrada 4 V). Un mín/máx separado por un solo paso puede ser resolución del instrumento, no un evento.",
       "Las series están reducidas a tramos con mín y máx: no infieras frecuencias de oscilación finas a partir de ellas.",
       "El bloque analisis_plataforma ya viene calculado con umbrales de norma. Pártelo como dado.",
-      "Para datos de la unidad que no estén aquí (placa del motor, corriente nominal, setpoints, historial), consulta la plataforma con tus herramientas antes de decir que faltan.",
+      "El campo `pozo` identifica la unidad en la plataforma. ANTES de responder, consulta con tus herramientas los datos de placa del motor en Monitoreo de condición o Gestión de activos: corriente nominal, tensión, potencia y setpoints de disparo. Con eso puedes expresar la carga como porcentaje de la nominal en vez de solo en amperios, que es lo que permite juzgar si un valor es alto.",
+      "Si la búsqueda por pozo no devuelve nada, dilo y sigue con el resto del análisis. No inventes valores de placa.",
     ],
   }, c);
 }
