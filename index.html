@@ -10402,6 +10402,35 @@ function puedoModulo(k) {
 function modulosVisibles() {
   return MODULOS_CAT.map(([k]) => k).filter(puedoModulo);
 }
+
+const APPS_CAT = [
+  ["kronos",  "Kronos-M"],
+  ["captura", "Kronos Captura"],
+];
+
+/* Tres niveles: sin acceso, solo lectura, edicion. `modulos_solo_lectura`
+   nulo o vacio significa que edita todo lo que ve, que es como se
+   comportaban los usuarios antes de esta funcion. */
+function puedoEditar(k) {
+  if (!usuarioActual) return false;
+  if (usuarioActual.rol === "admin") return true;
+  if (!puedoModulo(k)) return false;
+  const sl = usuarioActual.modulos_solo_lectura;
+  return !(Array.isArray(sl) && sl.includes(k));
+}
+
+function nivelModulo(u, k) {
+  if (!(u.modulos == null || (Array.isArray(u.modulos) && u.modulos.includes(k)))) return "no";
+  const sl = u.modulos_solo_lectura;
+  return (Array.isArray(sl) && sl.includes(k)) ? "ver" : "edita";
+}
+
+function puedoApp(a) {
+  if (!usuarioActual) return false;
+  if (usuarioActual.rol === "admin") return true;
+  const ap = usuarioActual.apps;
+  return ap == null || (Array.isArray(ap) && ap.includes(a));
+}
 let sesionSupabase = null;
 
 function mostrarAuthGate() {
@@ -10559,6 +10588,8 @@ async function manejarSesionActiva(session) {
     // `modulos` nulo significa todos: hay que distinguirlo de undefined,
     // que es lo que se obtiene si no se copia el campo.
     modulos: perfil.modulos ?? null,
+    modulos_solo_lectura: perfil.modulos_solo_lectura ?? null,
+    apps: perfil.apps ?? null,
   };
   sincronizarSelectorModulos();
   kmAlmacen.setItem(PERFIL_CACHE_KEY, JSON.stringify(perfil));
@@ -10795,10 +10826,17 @@ async function cargarPanelPerfil() {
           <option value="admin" ${u.rol === "admin" ? "selected" : ""}>Admin</option>
         </select>
         <button data-modulos-usuario="${u.id}" title="Módulos visibles para este usuario"
-          style="font-size:12px;padding:6px 9px;flex-shrink:0">${
-            u.rol === "admin" ? "Todos"
-            : u.modulos == null ? "Todos"
-            : `${u.modulos.length}/${MODULOS_CAT.length}`}</button>
+          style="font-size:12px;padding:6px 9px;flex-shrink:0">${(() => {
+            if (u.rol === "admin") return "Todos";
+            const n = MODULOS_CAT.map(([k]) => nivelModulo(u, k));
+            const ed = n.filter(x => x === "edita").length;
+            const ve = n.filter(x => x === "ver").length;
+            const sinApp = Array.isArray(u.apps) && u.apps.length < APPS_CAT.length;
+            // El resumen dice edicion/lectura y avisa si ademas tiene apps
+            // recortadas: sin eso, dos usuarios muy distintos se ven igual.
+            return (ed === MODULOS_CAT.length && !sinApp) ? "Todos"
+                 : `${ed}✎ ${ve}👁${sinApp ? " ·apps" : ""}`;
+          })()}</button>
         ${u.auth_user_id !== usuarioActual.auth_user_id ? `<button data-desactivar-usuario="${u.id}" title="Quitar acceso" style="background:var(--danger-bg);border-color:var(--danger);color:var(--danger);font-size:12px;padding:6px 8px;flex-shrink:0">&#10005;</button>` : ""}
       </div>
       <div data-modulos-panel="${u.id}" style="display:none;padding:4px 0 14px 2px;border-bottom:1px solid var(--line-soft)">
@@ -10807,18 +10845,41 @@ async function cargarPanelPerfil() {
             ? "Este usuario es admin: ve todos los módulos sin importar lo que se marque aquí."
             : "Sin nada marcado el usuario entra pero no ve módulos. Marcar todos equivale a no restringir."}
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:6px 14px">
-          ${MODULOS_CAT.map(([k, t]) => `
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:7px 18px">
+          ${MODULOS_CAT.map(([k, t]) => {
+            const n = nivelModulo(u, k);
+            return `
+            <div style="display:flex;gap:9px;align-items:center;font-size:13px">
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span>
+              <select data-mod-niv="${u.id}" data-mod-k="${k}"
+                style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1);flex-shrink:0">
+                <option value="no"${n === "no" ? " selected" : ""}>Sin acceso</option>
+                <option value="ver"${n === "ver" ? " selected" : ""}>Solo lectura</option>
+                <option value="edita"${n === "edita" ? " selected" : ""}>Edición</option>
+              </select>
+            </div>`;
+          }).join("")}
+        </div>
+
+        <div style="font-size:11.5px;font-weight:600;color:var(--text-2);margin:16px 0 7px;text-transform:uppercase;letter-spacing:.04em">Aplicaciones</div>
+        <div style="display:flex;gap:18px;flex-wrap:wrap">
+          ${APPS_CAT.map(([k, t]) => `
             <label style="display:flex;gap:7px;align-items:center;font-size:13px">
-              <input type="checkbox" data-mod-chk="${u.id}" value="${k}"
-                ${(u.modulos == null || u.modulos.includes(k)) ? "checked" : ""}>
+              <input type="checkbox" data-app-chk="${u.id}" value="${k}"
+                ${(u.apps == null || u.apps.includes(k)) ? "checked" : ""}>
               <span>${t}</span>
             </label>`).join("")}
         </div>
-        <div style="display:flex;gap:8px;margin-top:11px">
-          <button data-mod-guardar="${u.id}" class="btn-primary" style="font-size:12.5px;padding:7px 14px">Guardar módulos</button>
-          <button data-mod-todos="${u.id}" style="font-size:12.5px;padding:7px 12px">Marcar todos</button>
-          <button data-mod-ninguno="${u.id}" style="font-size:12.5px;padding:7px 12px">Ninguno</button>
+        <div style="font-size:11.5px;color:var(--text-2);margin:6px 0 0">
+          Quitar Kronos Captura impide registrar mediciones de campo desde
+          cualquier aplicación, no solo desde Captura: la base no distingue el origen.
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:13px;flex-wrap:wrap">
+          <button data-mod-guardar="${u.id}" class="btn-primary" style="font-size:12.5px;padding:7px 14px">Guardar permisos</button>
+          <button data-mod-todos="${u.id}" style="font-size:12.5px;padding:7px 12px">Todo edición</button>
+          <button data-mod-ver="${u.id}" style="font-size:12.5px;padding:7px 12px">Todo solo lectura</button>
+          <button data-mod-ninguno="${u.id}" style="font-size:12.5px;padding:7px 12px">Sin acceso</button>
         </div>
       </div>`;
     });
@@ -10831,31 +10892,50 @@ async function cargarPanelPerfil() {
         if (p) p.style.display = p.style.display === "none" ? "block" : "none";
       };
     });
-    const chks = id => [...cont.querySelectorAll(`[data-mod-chk="${id}"]`)];
+    const nivs = id => [...cont.querySelectorAll(`[data-mod-niv="${id}"]`)];
+    const apps = id => [...cont.querySelectorAll(`[data-app-chk="${id}"]`)];
+    const ponerTodo = (id, v) => nivs(id).forEach(s => { s.value = v; });
+
     cont.querySelectorAll("[data-mod-todos]").forEach(b => {
-      b.onclick = () => chks(b.dataset.modTodos).forEach(c => { c.checked = true; });
+      b.onclick = () => ponerTodo(b.dataset.modTodos, "edita");
+    });
+    cont.querySelectorAll("[data-mod-ver]").forEach(b => {
+      b.onclick = () => ponerTodo(b.dataset.modVer, "ver");
     });
     cont.querySelectorAll("[data-mod-ninguno]").forEach(b => {
-      b.onclick = () => chks(b.dataset.modNinguno).forEach(c => { c.checked = false; });
+      b.onclick = () => ponerTodo(b.dataset.modNinguno, "no");
     });
+
     cont.querySelectorAll("[data-mod-guardar]").forEach(btn => {
       btn.onclick = async () => {
         const id = btn.dataset.modGuardar;
-        const sel = chks(id).filter(c => c.checked).map(c => c.value);
+        /* Un modulo en solo lectura tiene que ir en AMBAS listas: en
+           `modulos` porque el usuario lo ve, y en `modulos_solo_lectura`
+           porque no lo toca. Mandarlo solo en la segunda lo dejaria
+           invisible, que no es lo mismo. */
+        const ve = [], solo = [];
+        nivs(id).forEach(s => {
+          if (s.value === "no") return;
+          ve.push(s.dataset.modK);
+          if (s.value === "ver") solo.push(s.dataset.modK);
+        });
+        const ap = apps(id).filter(c => c.checked).map(c => c.value);
+
         btn.disabled = true; btn.textContent = "Guardando...";
         /* Se guarda por RPC y no con update directo: la validacion de que
            quien asigna es admin, y la normalizacion de "todos" a null, viven
            en un solo sitio del lado del servidor. */
-        const { data, error } = await sb.rpc("usuarios_set_modulos", {
-          p_usuario_id: id, p_modulos: sel,
+        const { data, error } = await sb.rpc("usuarios_set_permisos", {
+          p_usuario_id: id, p_modulos: ve,
+          p_solo_lectura: solo, p_apps: ap,
         });
-        btn.disabled = false; btn.textContent = "Guardar módulos";
+        btn.disabled = false; btn.textContent = "Guardar permisos";
         if (error || !data?.ok) { toast("No se pudo guardar: " + (error?.message || data?.error || "")); return; }
-        toast(data.nota || `Módulos actualizados para ${data.usuario}`);
-        /* Si el admin se cambio sus propios permisos, hay que refrescar el
-           menu; en otro caso solo la lista. */
+        toast(data.nota || `Permisos actualizados para ${data.usuario}`);
         if (id === usuarioActual.id) {
           usuarioActual.modulos = data.modulos;
+          usuarioActual.modulos_solo_lectura = data.solo_lectura;
+          usuarioActual.apps = data.apps;
           sincronizarSelectorModulos();
         }
         cargarPanelPerfil();

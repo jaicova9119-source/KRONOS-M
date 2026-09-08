@@ -336,6 +336,15 @@ body{background:var(--ko-bg);color:var(--ko-t1);
   font-size:12px;color:var(--ko-t2);line-height:1.55}
 .ko-aviso b{color:var(--t1)}
 
+/* Aviso de solo lectura. Va en la barra superior y no dentro de la vista
+   porque debe verse en cualquier pestana y en el detalle de una unidad,
+   no solo en el listado. */
+.ko-ro{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.14);
+  border:1px solid rgba(255,255,255,.3);color:var(--brand-t);border-radius:6px;
+  padding:5px 11px;font-size:12px;margin-left:10px}
+.ko-ro:before{content:"";width:7px;height:7px;border-radius:50%;
+  background:var(--ko-warn,#d08a26)}
+
 .ko-cfg{background:var(--ko-card);border:1px solid var(--ko-line);border-radius:9px;
   padding:12px 14px;margin-bottom:14px;display:flex;gap:18px;flex-wrap:wrap;
   align-items:flex-end}
@@ -1561,8 +1570,8 @@ function koPintar(){
   /* Si la pestana activa es dimensionamiento, cualquier repintado general
      debe respetarla: sin esto, recargar datos devolvia al usuario a la
      vista de TAP sin explicacion. */
-  if (koPanel === 'dim') return koPintarDim();
-  if (koSel) return koPintarDetalle();
+  if (koPanel === 'dim'){ koPintarDim(); return koBloquearEscritura(); }
+  if (koSel){ koPintarDetalle(); return koBloquearEscritura(); }
   const v = document.getElementById('koVista');
   document.getElementById('koBack').style.display = 'none';
   document.getElementById('koTabs').style.display = '';
@@ -3167,6 +3176,65 @@ function koAplicarUrl(){
    criterio cambia, cambia en un sitio y no en dos.
    ============================================================ */
 
+/* ── Permiso de edicion ─────────────────────────────────────────────────
+   Arranca en true y se corrige al conocer la respuesta. Al reves —empezar
+   bloqueado y habilitar— haria parpadear los controles en cada carga para
+   la mayoria de usuarios, que si pueden editar.
+
+   Si la consulta falla se deja en true: la base rechaza igual, y bloquear
+   la interfaz por un fallo de red dejaria a un usuario legitimo sin poder
+   trabajar sin saber por que. */
+let KO_EDITA = true;
+
+async function koCargarPermiso(){
+  try {
+    const { data, error } = await koCliente().rpc('puedo_editar', { p_modulo: 'optimizacion' });
+    if (error) throw error;
+    KO_EDITA = data !== false;
+  } catch(e){
+    console.warn('[Kronos-M] No se pudo verificar el permiso de edición:', e.message);
+    KO_EDITA = true;
+  }
+  koMarcarSoloLectura();
+}
+
+function koMarcarSoloLectura(){
+  const top = document.querySelector('.ko-top');
+  let b = document.getElementById('koRo');
+  if (KO_EDITA){ if (b) b.remove(); return; }
+  if (!b && top){
+    b = document.createElement('span');
+    b.id = 'koRo'; b.className = 'ko-ro';
+    b.textContent = 'Solo lectura';
+    b.title = 'Su usuario puede consultar este módulo pero no modificar valores.';
+    const t = document.getElementById('koTitulo');
+    if (t && t.parentNode) t.parentNode.appendChild(b); else top.appendChild(b);
+  }
+}
+
+/* Se llama despues de cada pintado: los controles se regeneran con el
+   HTML, asi que deshabilitarlos una sola vez al arrancar no serviria. */
+function koBloquearEscritura(){
+  if (KO_EDITA) return;
+  ['koGuardar','koSutGuardar'].forEach(id => {
+    const e = document.getElementById(id);
+    if (!e) return;
+    e.disabled = true;
+    e.style.opacity = '.45';
+    e.style.cursor = 'not-allowed';
+    e.title = 'Su usuario tiene este módulo en solo lectura.';
+  });
+  /* Los campos de la placa del SUT tambien: dejarlos editables invita a
+     llenar un formulario que despues no se puede guardar. */
+  document.querySelectorAll('#koVista input[data-sut], #koVista .ko-sut input')
+    .forEach(i => { i.disabled = true; i.style.opacity = '.55'; });
+  const m = document.getElementById('koGuardarMsg');
+  if (m && !m.dataset.ro){
+    m.dataset.ro = '1';
+    m.textContent = 'Su usuario tiene Optimización en solo lectura: puede consultar y exportar, no registrar cambios.';
+  }
+}
+
 let koPanel   = 'tap';   // 'tap' | 'dim'
 let koMargen  = 85;      // objetivo de utilizacion, %
 let KO_DIM    = null;    // filas de opt_dimensionamiento()
@@ -3476,6 +3544,7 @@ function koPintarDim(){
     + 'atribuida al pozo equivocado: verifique en campo antes de mover equipo.</div>';
 
   v.innerHTML = h;
+  koBloquearEscritura();
 
   document.getElementById('koDimNodo').onchange = e => {
     koDimNodo = e.target.value; koPintarDim();
@@ -3560,6 +3629,9 @@ document.querySelectorAll('#koTabs .ko-tab').forEach(b => {
 });
 
 async function koArrancar(){
+  /* Sin await: el permiso no debe retrasar la carga de datos. Cuando
+     llega, koCargarPermiso() marca la interfaz por su cuenta. */
+  koCargarPermiso();
   koAplicarUrl();
   const v = document.getElementById('koVista');
   try {
