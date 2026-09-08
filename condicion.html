@@ -1711,7 +1711,10 @@ function keLibro(ExcelJS, d, meta){
       g.value = grpAct;
       g.font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
       g.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
-      g.alignment = { horizontal:'center' };
+      /* A la izquierda y con sangria, no centrado: un grupo puede abarcar
+         veinte columnas y el rotulo centrado cae fuera de la pantalla,
+         dejando la fila en blanco justo donde debia orientar. */
+      g.alignment = { horizontal:'left', indent:1 };
     };
     cols.forEach(p => {
       if (p.grupo !== grpAct){ cerrarGrupo(cx - 1); grpAct = p.grupo; grpIni = cx; }
