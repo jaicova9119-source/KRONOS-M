@@ -1661,6 +1661,29 @@ function keLibro(ExcelJS, d, meta){
     }).map(p => ({ cod:p.punto_codigo, etq:p.etiqueta, grupo:p.grupo,
                    uds:p.unidades_med || '', mezcla:!!p.mezcla_ud }));
 
+    /* Decimales por columna, no un formato unico.
+       Con '#,##0.###' Excel deja el separador decimal a la vista aunque no
+       haya decimales -"467," en configuracion espanola- porque el punto
+       del formato se conserva. Y poner todo a cero decimales rompe el
+       factor de potencia y la vibracion. Se mira cuantos decimales trae
+       realmente cada punto y se fija el formato de esa columna: asi la
+       columna queda alineada y ningun valor pierde precision. */
+    const decDe = v => {
+      if (v == null) return 0;
+      const t = String(v);
+      const i = t.indexOf('.');
+      if (i < 0) return 0;
+      return t.slice(i + 1).replace(/0+$/, '').length;
+    };
+    cols.forEach(p => {
+      let dmax = 0;
+      d.detalle.forEach(r => {
+        const v = (r.valores || {})[p.cod];
+        if (v != null) dmax = Math.max(dmax, Math.min(3, decDe(v)));
+      });
+      p.fmt = dmax === 0 ? '#,##0' : '#,##0.' + '0'.repeat(dmax);
+    });
+
     const filas = new Map();
     d.detalle.forEach(r => {
       filas.set(r.unidad, { unidad:r.unidad, campo:r.campo, pad:r.pad,
@@ -1739,7 +1762,7 @@ function keLibro(ExcelJS, d, meta){
         const c = det.getCell(fy, p.col);
         const v = f.v[p.cod];
         if (v != null) c.value = Number(v);
-        c.numFmt = '#,##0.###';
+        c.numFmt = p.fmt;
         c.font = f.dudoso[p.cod]
           ? { size:9, italic:true, color:{ argb:KE_C.naranja } }
           : { size:9 };
