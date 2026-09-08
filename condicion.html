@@ -1256,9 +1256,9 @@ function keLibro(ExcelJS, d, meta){
           + '. Se registran desde Captura de datos de campo.' : '',
       d.setup.length < d.operacional.length);
   lin('Registros de protecciones', d.protecciones.length);
-  lin('Puntos en el detalle', (d.detalle || []).length,
+  lin('Unidades en el detalle', (d.detalle || []).length,
       (d.detalle || []).length
-        ? 'Ultima ronda, valores crudos por punto. Hoja Detalle.'
+        ? (d.puntos || []).length + ' puntos distintos. Hoja Detalle.'
         : 'Sin detalle disponible.',
       !(d.detalle || []).length);
   lin('Rondas en el historico', (d.historico || []).length,
@@ -1642,39 +1642,30 @@ function keLibro(ExcelJS, d, meta){
      Va aparte de Operacional a proposito. Operacional se lee de un
      vistazo, una fila por unidad; con setenta columnas dejaria de servir
      para eso. Aqui se viene a revisar una unidad a fondo. */
-  if (d.detalle && d.detalle.length){
+  if (d.detalle && d.detalle.length && d.puntos && d.puntos.length){
     /* Orden de columnas: por grupo de nodo siguiendo el recorrido de la
        cadena, y dentro de cada grupo por el orden del catalogo. */
+    /* El catalogo de columnas llega aparte de los datos. Antes ambos
+       venian en el mismo arreglo largo -una fila por unidad y punto- y
+       eso hacia ~2.500 filas, por encima del tope de PostgREST: la
+       respuesta se truncaba y las ultimas unidades desaparecian sin que
+       nada fallara. */
     const ORDEN_GRUPO = ['PST entrada','Convertidor 1','Convertidor 2','Bus',
                          'VFD salida','SUT salida','Temperaturas',
                          'Sensor de fondo','Otros'];
-    const puntos = new Map();
-    d.detalle.forEach(r => {
-      if (!puntos.has(r.punto_codigo)){
-        puntos.set(r.punto_codigo, { cod:r.punto_codigo, etq:r.etiqueta,
-                                     grupo:r.grupo, orden:r.orden,
-                                     uds:new Set() });
-      }
-      if (r.unidad_med) puntos.get(r.punto_codigo).uds.add(r.unidad_med);
-    });
-    const cols = [...puntos.values()].sort((a, b) => {
+    const cols = (d.puntos || []).slice().sort((a, b) => {
       const ga = ORDEN_GRUPO.indexOf(a.grupo), gb = ORDEN_GRUPO.indexOf(b.grupo);
       if (ga !== gb) return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb);
       if (a.orden !== b.orden) return a.orden - b.orden;
-      return a.cod.localeCompare(b.cod);
-    });
+      return a.punto_codigo.localeCompare(b.punto_codigo);
+    }).map(p => ({ cod:p.punto_codigo, etq:p.etiqueta, grupo:p.grupo,
+                   uds:p.unidades_med || '', mezcla:!!p.mezcla_ud }));
 
     const filas = new Map();
     d.detalle.forEach(r => {
-      if (!filas.has(r.unidad)){
-        filas.set(r.unidad, { unidad:r.unidad, campo:r.campo, pad:r.pad,
-                              fecha:r.fecha, v:{}, dudoso:{} });
-      }
-      const f = filas.get(r.unidad);
-      f.v[r.punto_codigo] = r.valor;
-      /* Un valor marcado como no valido en captura se conserva pero se
-         distingue: borrarlo escondería que se midió y se descartó. */
-      if (r.valido === false) f.dudoso[r.punto_codigo] = true;
+      filas.set(r.unidad, { unidad:r.unidad, campo:r.campo, pad:r.pad,
+                            fecha:r.fecha,
+                            v: r.valores || {}, dudoso: r.dudosos || {} });
     });
 
     const det = wb.addWorksheet('Detalle', {
@@ -1726,10 +1717,9 @@ function keLibro(ExcelJS, d, meta){
       const u = det.getCell(F_UDS, cx);
       /* Un punto capturado con dos unidades distintas entre pozos mezcla
          escalas en la misma columna. Se marca en vez de ocultarlo. */
-      const lista = [...p.uds];
-      u.value = lista.length > 1 ? lista.join(' / ') + ' \u26a0' : (lista[0] || '');
+      u.value = p.mezcla ? p.uds + ' \u26a0' : p.uds;
       u.font = { size:8, italic:true,
-                 color:{ argb: lista.length > 1 ? KE_C.naranja : KE_C.gris2 } };
+                 color:{ argb: p.mezcla ? KE_C.naranja : KE_C.gris2 } };
       u.alignment = { horizontal:'center' };
       p.col = cx;
       cx += 1;
@@ -1902,12 +1892,16 @@ async function kpExportarEntrega(){
        unico dato opcional del libro. Si falla -por volumen o porque la
        funcion no esta desplegada- el resto del archivo debe salir igual,
        que es lo que la gente necesita casi siempre. */
-    let detalle = [];
+    let detalle = [], puntos = [];
     try {
-      const { data, error } = await sb.rpc('dp_entrega_detalle',
-        { p_campo: c, p_sistema: s });
-      if (error) throw new Error(error.message);
-      detalle = data || [];
+      const [dd, pp] = await Promise.all([
+        sb.rpc('dp_entrega_detalle',        { p_campo: c, p_sistema: s }),
+        sb.rpc('dp_entrega_detalle_puntos', { p_campo: c, p_sistema: s }),
+      ]);
+      if (dd.error) throw new Error(dd.error.message);
+      if (pp.error) throw new Error(pp.error.message);
+      detalle = dd.data || [];
+      puntos  = pp.data || [];
     } catch(e){
       console.warn('[Kronos-M] Detalle por punto no disponible:', e.message);
     }
@@ -1961,7 +1955,7 @@ async function kpExportarEntrega(){
     const hoy = new Date().toISOString().slice(0, 10);
     const ambito = (c || 'Todos los campos') + (s ? ' · ' + s : '');
     const wb = keLibro(ExcelJS,
-      { operacional, placas, setup, protecciones, propuestas, historico, detalle },
+      { operacional, placas, setup, protecciones, propuestas, historico, detalle, puntos },
       { ambito: ambito, fecha: hoy });
 
     const buf = await wb.xlsx.writeBuffer();
