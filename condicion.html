@@ -4509,7 +4509,7 @@ function kpRenderMedicion(m){
        desbalances tienen su propia seccion en la tendencia, y lo unico
        que solo vivia alli -- tension y kVA -- pasa al tooltip de cada
        nodo del diagrama, donde no ocupa pantalla. */
-    h += '<div class="kp-card">' + kpDibujarCadena(cad) + kpLeyenda() + '</div>';
+    h += '<div class="kp-card">' + kpDibujarCadena(cad, val) + kpLeyenda() + '</div>';
   }
   if (bal){
     const e = KP_EST[bal.estado];
@@ -4596,7 +4596,7 @@ function kpRenderMedicion(m){
   return h;
 }
 
-function kpDibujarCadena(nodos){
+function kpDibujarCadena(nodos, val){
   const n = nodos.length;
   const w = 148, gap = 26, mx = 22;
   const yTerr = 214;                 /* linea de terreno */
@@ -4739,6 +4739,67 @@ function kpDibujarCadena(nodos){
         +  'stroke="var(--t3)" stroke-width="1.5" marker-end="url(#kpAr)"/>';
     }
   });
+
+  /* ── Sensor de fondo ──
+     Ocupa la zona bajo la linea de terreno, que estaba vacia. Los datos
+     del sensor pertenecen al fondo del pozo, no a una lista aparte de la
+     cadena: es la misma profundidad y el mismo instante.
+
+     Los umbrales de alerta son deliberadamente conservadores y solo se
+     usan para colorear: la vibracion y la temperatura de un ESP dependen
+     del diseno de cada pozo, y marcar en rojo con un valor generico
+     seria dar por falla lo que puede ser normal en esa unidad. */
+  const V = val || {};
+  const SENSOR = [
+    ['sf_pip_psi',    'Presi\u00f3n de admisi\u00f3n', 'psi',  0, null],
+    ['sf_pdesc_psi',  'Presi\u00f3n de descarga',      'psi',  0, null],
+    ['sf_t_motor_c',  'Temperatura de motor',          '\u00b0F', 1, 260],
+    ['sf_t_intake_c', 'Temperatura de admisi\u00f3n',  '\u00b0F', 1, 240],
+    ['sf_vib_x_g',    'Vibraci\u00f3n X',              'g',    2, 0.8],
+    ['sf_vib_y_g',    'Vibraci\u00f3n Y',              'g',    2, 0.8],
+    ['sf_ct_ma',      'Corriente de fuga',             'mA',   2, null],
+    ['sf_vt_v',       'Tensi\u00f3n del sensor',       'V',    0, null],
+  ];
+  /* Las dos temperaturas se guardan en C y el sensor las reporta en F,
+     que es como se leen en campo. Se convierte solo esas dos. */
+  const leerSensor = (cod) => {
+    const v = V[cod];
+    if (v == null) return null;
+    return (cod === 'sf_t_motor_c' || cod === 'sf_t_intake_c')
+      ? Number(v) * 9 / 5 + 32 : Number(v);
+  };
+  const hay = SENSOR.some(([c]) => leerSensor(c) != null);
+
+  const xS = mx, yS = yTerr + 34, wS = Math.min(4 * (w + gap) - gap, anchoTot - mx * 2 - w - gap * 2);
+  s += '<rect x="' + xS + '" y="' + yS + '" width="' + wS + '" height="' + hCard + '" rx="9" '
+    +  'fill="#fff" stroke="var(--kp-line,#e4e9ee)" stroke-width="1.5" '
+    +  'stroke-dasharray="' + (hay ? '0' : '4 4') + '"/>'
+    +  cab('SENSOR DE FONDO', xS + 14, yS + 20, 9.5, 700, 'var(--t3)', wS - 28, 'start');
+
+  if (!hay){
+    s += cab('No se registr\u00f3 en esta ronda', xS + 14, yS + 44, 11.5, 500, 'var(--t2)', wS - 28, 'start')
+      +  cab('Sin estos valores no hay lectura de la bomba: presi\u00f3n de entrada,',
+             xS + 14, yS + 62, 10, 400, 'var(--t3)', wS - 28, 'start')
+      +  cab('temperaturas y vibraci\u00f3n quedan sin evaluar.',
+             xS + 14, yS + 76, 10, 400, 'var(--t3)', wS - 28, 'start');
+  } else {
+    /* Dos columnas de cuatro: cabe en el alto de la tarjeta sin apretar y
+       agrupa presiones con presiones, temperaturas con temperaturas. */
+    const colAncho = (wS - 28) / 2;
+    SENSOR.forEach(([cod, etq, ud, dec, lim], k) => {
+      const cxs = xS + 14 + (k % 2) * colAncho;
+      const ys  = yS + 44 + Math.floor(k / 2) * 27;
+      const v   = leerSensor(cod);
+      const alto2 = (lim != null && v != null && v > lim);
+      s += cab(etq, cxs, ys, 9.5, 400, 'var(--t3)', colAncho - 70, 'start')
+        +  cab(v == null ? '\u2014'
+                         : (Math.round(v * Math.pow(10, dec)) / Math.pow(10, dec))
+                             .toString().replace('.', ',') + ' ' + ud,
+               cxs + colAncho - 14, ys, 12, 600,
+               v == null ? 'var(--t3)' : (alto2 ? KP_HEX.warn : 'var(--t1)'),
+               72, 'end');
+    });
+  }
 
   const conKva = nodos.filter(x => x.kva_nom).length;
   return s + '</svg></div>'
