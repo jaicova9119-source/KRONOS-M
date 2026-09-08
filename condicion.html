@@ -1147,6 +1147,14 @@ function keAF(celsius){
 
 const KE_METRICAS = [
   { k:'f_operacion_hz', t:'F operación', u:'Hz',  f:'0.0',  abs:0.2,  rel:0     },
+  /* Los porcentajes de carga van arriba: son lo que responde "¿este equipo
+     está holgado o apretado?", que es la pregunta con la que se abre el
+     archivo. Tolerancia de 2 puntos porcentuales, no relativa: un cambio
+     de 20 a 22 % y otro de 80 a 82 % son el mismo movimiento real. */
+  { k:'carga_vfd_pct',   t:'Carga VFD',   u:'%', f:'0.0', abs:2, rel:0 },
+  { k:'carga_sut_pct',   t:'Carga SUT',   u:'%', f:'0.0', abs:2, rel:0 },
+  { k:'carga_pst_pct',   t:'Carga PST',   u:'%', f:'0.0', abs:2, rel:0 },
+  { k:'carga_motor_pct', t:'Carga motor', u:'%', f:'0.0', abs:2, rel:0 },
   { k:'vfd_i',          t:'VFD salida',  u:'A',   f:'#,##0', abs:2,    rel:0.02  },
   { k:'motor_i',        t:'Motor',       u:'A',   f:'#,##0.0', abs:0.5, rel:0.02 },
   { k:'pst_kw',         t:'PST',         u:'kW',  f:'#,##0.0', abs:2,  rel:0.02  },
@@ -1319,6 +1327,17 @@ function keLibro(ExcelJS, d, meta){
       { k:'f_maxima_hz', t:'F maxima', w:11, f:HZ },
       { k:'f_setpoint_hz', t:'F setpoint', w:11, f:HZ },
       { k:'hsc', t:'HSC', w:8, f:V1 },
+      /* Capacidad y carga juntas: el porcentaje sin la capacidad al lado
+         obliga a recordar contra qué se calculó, y esa capacidad puede
+         haber cambiado dentro del mismo periodo. */
+      { k:'vfd_cap_a', t:'VFD capacidad A', w:12, f:V },
+      { k:'carga_vfd_pct', t:'Carga VFD %', w:11, f:PCT },
+      { k:'sut_cap_kva', t:'SUT capacidad kVA', w:13, f:V },
+      { k:'carga_sut_pct', t:'Carga SUT %', w:11, f:PCT },
+      { k:'pst_cap_kva', t:'PST capacidad kVA', w:13, f:V },
+      { k:'carga_pst_pct', t:'Carga PST %', w:11, f:PCT },
+      { k:'motor_cap_a', t:'Motor capacidad A', w:13, f:V1 },
+      { k:'carga_motor_pct', t:'Carga motor %', w:12, f:PCT },
       { k:'pst_v', t:'PST entrada V', w:11, f:V },
       { k:'pst_i', t:'PST entrada A', w:11, f:V },
       { k:'pst_fp', t:'PST FP', w:9, f:FP },
