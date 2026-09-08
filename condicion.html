@@ -1122,6 +1122,45 @@ function keHoja(wb, nombre, cols, filas, opciones){
   return ws;
 }
 
+/* ── Comparacion entre rondas ────────────────────────────────────────────
+   "Se mantuvo igual" necesita una banda de tolerancia. Comparar contra
+   cero marca como incremento que la temperatura pase de 243,0 a 243,4 °F,
+   y con todas las filas en color el color deja de significar algo.
+
+   Cada metrica tiene su umbral porque la sensibilidad del instrumento y
+   la variabilidad natural no son iguales: la frecuencia se lee con
+   decima de Hz y es estable; la vibracion oscila sola entre rondas.
+
+   `abs` es tolerancia absoluta en la unidad de la variable; `rel` es
+   relativa al valor anterior. Se considera igual si el cambio no supera
+   NINGUNO de los dos, para que un valor pequeno no dispare por la
+   relativa ni uno grande por la absoluta. */
+const KE_METRICAS = [
+  { k:'f_operacion_hz', t:'F operación', u:'Hz',  f:'0.0',  abs:0.2,  rel:0     },
+  { k:'vfd_i',          t:'VFD salida',  u:'A',   f:'#,##0', abs:2,    rel:0.02  },
+  { k:'motor_i',        t:'Motor',       u:'A',   f:'#,##0.0', abs:0.5, rel:0.02 },
+  { k:'pst_kw',         t:'PST',         u:'kW',  f:'#,##0.0', abs:2,  rel:0.02  },
+  { k:'pst_fp',         t:'PST FP',      u:'',    f:'0.00', abs:0.02, rel:0     },
+  { k:'pip_psi',        t:'PIP',         u:'psi', f:'#,##0', abs:3,    rel:0.03  },
+  { k:'t_motor_c',      t:'T motor',     u:'°C',  f:'#,##0.0', abs:2,  rel:0     },
+  { k:'t_intake_c',     t:'T intake',    u:'°C',  f:'#,##0.0', abs:2,  rel:0     },
+  { k:'vib_x',          t:'Vib X',       u:'g',   f:'0.00', abs:0.05, rel:0     },
+  { k:'vib_y',          t:'Vib Y',       u:'g',   f:'0.00', abs:0.05, rel:0     },
+];
+
+/* Devuelve el delta y su clasificacion. `null` de delta significa que no
+   hay con que comparar -primera ronda o dato ausente-, que no es lo
+   mismo que "se mantuvo igual" y se muestra distinto. */
+function keCambio(m, actual, previo){
+  if (actual == null || previo == null) return { d:null, clase:'sd' };
+  const d = Number(actual) - Number(previo);
+  const lim = Math.max(m.abs || 0, (m.rel || 0) * Math.abs(Number(previo)));
+  if (Math.abs(d) <= lim) return { d, clase:'igual' };
+  return { d, clase: d > 0 ? 'sube' : 'baja' };
+}
+
+const KE_FLECHA = { sube:'▲', baja:'▼', igual:'=', sd:'' };
+
 function keLibro(ExcelJS, d, meta){
   const wb = new ExcelJS.Workbook();
   wb.creator = ''; wb.lastModifiedBy = ''; wb.company = '';
@@ -1172,6 +1211,11 @@ function keLibro(ExcelJS, d, meta){
           + '. Se registran desde Captura de datos de campo.' : '',
       d.setup.length < d.operacional.length);
   lin('Registros de protecciones', d.protecciones.length);
+  lin('Rondas en el historico', (d.historico || []).length,
+      (d.historico || []).length
+        ? 'Ultimos 24 meses. Hojas Historico y Variacion.'
+        : 'Sin historico disponible: el libro sale sin esas dos hojas.',
+      !(d.historico || []).length);
   lin('Propuestas de optimizacion vigentes', d.propuestas.length);
 
   f += 1;
@@ -1237,6 +1281,166 @@ function keLibro(ExcelJS, d, meta){
     { k:'vib_x', t:'Vibracion X', w:10, f:'0.00' },
     { k:'vib_y', t:'Vibracion Y', w:10, f:'0.00' }
   ], d.operacional, { vacioSi: x => !x.fecha });
+
+  /* ── Historico ──
+     Mismas columnas que Operacional para que las dos hojas se lean igual,
+     mas el numero de ronda y los dias transcurridos desde la anterior. Va
+     en crudo: es la hoja para tablas dinamicas y para llevarse los datos. */
+  if (d.historico && d.historico.length){
+    keHoja(wb, 'Historico', [
+      { k:'unidad', t:'Unidad', w:11 }, { k:'campo', t:'Campo', w:13 },
+      { k:'pad', t:'PAD', w:13 }, { k:'sistema', t:'Sistema', w:9 },
+      { k:'ronda', t:'Ronda', w:7, f:V },
+      { k:'fecha', t:'Fecha', w:12 },
+      { k:'dias_desde_anterior', t:'Dias desde anterior', w:14, f:V },
+      { k:'condicion', t:'Condicion', w:11 },
+      { k:'modo_control', t:'Modo de control', w:13 },
+      { k:'f_operacion_hz', t:'F operacion', w:11, f:HZ },
+      { k:'f_maxima_hz', t:'F maxima', w:11, f:HZ },
+      { k:'f_setpoint_hz', t:'F setpoint', w:11, f:HZ },
+      { k:'hsc', t:'HSC', w:8, f:V1 },
+      { k:'pst_v', t:'PST entrada V', w:11, f:V },
+      { k:'pst_i', t:'PST entrada A', w:11, f:V },
+      { k:'pst_fp', t:'PST FP', w:9, f:FP },
+      { k:'pst_kw', t:'PST kW', w:10, f:V1 },
+      { k:'pst_kva', t:'PST kVA', w:10, f:V1 },
+      { k:'pst_thd_i', t:'PST THD I %', w:11, f:PCT },
+      { k:'pst_thd_v', t:'PST THD V %', w:11, f:PCT },
+      { k:'pst_desbal_v_pct', t:'PST desbal. V %', w:12, f:PCT },
+      { k:'pst_desbal_i_pct', t:'PST desbal. I %', w:12, f:PCT },
+      { k:'conv1_i', t:'Convertidor 1 A', w:12, f:V },
+      { k:'conv2_i', t:'Convertidor 2 A', w:12, f:V },
+      { k:'bus_dc_v', t:'Bus DC V', w:10, f:V },
+      { k:'bus_ac_v', t:'Bus AC V', w:10, f:V },
+      { k:'vfd_v', t:'VFD salida V', w:11, f:V },
+      { k:'vfd_i', t:'VFD salida A', w:11, f:V },
+      { k:'vfd_fp', t:'VFD FP', w:9, f:FP },
+      { k:'vfd_kw', t:'VFD kW', w:10, f:V1 },
+      { k:'vfd_desbal_i_pct', t:'VFD desbal. I %', w:12, f:PCT },
+      { k:'sut_v', t:'SUT salida V', w:11, f:V },
+      { k:'sut_i', t:'SUT salida A', w:11, f:V },
+      { k:'motor_i', t:'Motor A', w:10, f:V },
+      { k:'pip_psi', t:'PIP psi', w:10, f:V },
+      { k:'pdesc_psi', t:'P descarga psi', w:12, f:V },
+      { k:'t_motor_c', t:'T motor °C', w:10, f:V },
+      { k:'t_intake_c', t:'T intake °C', w:10, f:V },
+      { k:'vib_x', t:'Vibracion X', w:10, f:'0.00' },
+      { k:'vib_y', t:'Vibracion Y', w:10, f:'0.00' }
+    ], d.historico, {});
+
+    /* ── Variacion ──
+       La hoja que se mira. Diez metricas con su valor y su cambio contra
+       la ronda anterior de la MISMA unidad. Se construye a mano y no con
+       keHoja porque cada delta lleva color propio segun suba, baje o se
+       mantenga, y eso no cabe en una definicion de columnas. */
+    const va = wb.addWorksheet('Variacion', {
+      views: [{ state: 'frozen', xSplit: 3, ySplit: 3 }] });
+
+    va.getCell('A1').value = 'Variacion entre rondas · ' + meta.ambito;
+    va.getCell('A1').font = { bold:true, size:13, color:{ argb:KE_C.azul } };
+    va.getCell('A2').value = 'Cada metrica se compara con la ronda anterior de la misma unidad. '
+      + 'Se marca "=" cuando el cambio queda dentro de la tolerancia del instrumento.';
+    va.getCell('A2').font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+
+    /* Cabecera en dos filas: la metrica arriba, valor y cambio abajo. Una
+       sola fila obligaria a repetir el nombre en cada par de columnas. */
+    const FILA_H1 = 3, FILA_H2 = 4;
+    const fijas = [
+      { t:'Unidad', w:11 }, { t:'Fecha', w:12 }, { t:'Ronda', w:7 },
+      { t:'Dias', w:7 }, { t:'Condicion', w:11 },
+    ];
+    let col = 1;
+    fijas.forEach(f => {
+      va.getColumn(col).width = f.w;
+      va.mergeCells(FILA_H1, col, FILA_H2, col);
+      const c = va.getCell(FILA_H1, col);
+      c.value = f.t;
+      c.font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+      c.alignment = { vertical:'middle', horizontal:'center', wrapText:true };
+      col += 1;
+    });
+    const colMetrica = {};
+    KE_METRICAS.forEach(m => {
+      colMetrica[m.k] = col;
+      va.mergeCells(FILA_H1, col, FILA_H1, col + 1);
+      const h = va.getCell(FILA_H1, col);
+      h.value = m.t + (m.u ? ' (' + m.u + ')' : '');
+      h.font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
+      h.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+      h.alignment = { horizontal:'center' };
+      ['Valor','Cambio'].forEach((t, i) => {
+        va.getColumn(col + i).width = i === 0 ? 10 : 11;
+        const c = va.getCell(FILA_H2, col + i);
+        c.value = t;
+        c.font = { bold:true, size:8, color:{ argb:KE_C.gris } };
+        c.alignment = { horizontal:'center' };
+      });
+      col += 2;
+    });
+
+    /* Se recorre en orden y se guarda la fila previa por unidad: el
+       historico ya viene ordenado por unidad y fecha desde la base, asi
+       que basta con recordar la anterior. */
+    const previa = {};
+    let fila = FILA_H2 + 1;
+    d.historico.forEach(r => {
+      const p = previa[r.unidad];
+      va.getCell(fila, 1).value = r.unidad;
+      va.getCell(fila, 1).font = { bold:true, size:9 };
+      va.getCell(fila, 2).value = r.fecha;
+      va.getCell(fila, 3).value = r.ronda;
+      va.getCell(fila, 4).value = r.dias_desde_anterior;
+      va.getCell(fila, 5).value = r.condicion || '';
+      for (let i = 1; i <= 5; i++) va.getCell(fila, i).font =
+        Object.assign({ size:9 }, i === 1 ? { bold:true } : {});
+
+      KE_METRICAS.forEach(m => {
+        const cv = colMetrica[m.k];
+        const v = r[m.k];
+        const cel = va.getCell(fila, cv);
+        if (v != null){ cel.value = Number(v); cel.numFmt = m.f; }
+        cel.font = { size:9 };
+        cel.alignment = { horizontal:'right' };
+
+        const { d: dd, clase } = keCambio(m, v, p ? p[m.k] : null);
+        const cc = va.getCell(fila, cv + 1);
+        if (clase === 'sd'){
+          cc.value = '';
+        } else if (clase === 'igual'){
+          cc.value = KE_FLECHA.igual;
+          cc.font = { size:9, color:{ argb:KE_C.gris2 } };
+        } else {
+          cc.value = KE_FLECHA[clase] + ' ' +
+            (Math.abs(dd) >= 100 ? Math.round(dd) : Math.round(dd * 100) / 100);
+          /* Rojo para arriba y verde para abajo NO se usa: en estas
+             variables subir no siempre es malo -mas frecuencia puede ser
+             mas produccion- y pintar juicio donde solo hay direccion
+             induce a error. Se usa un color por sentido, neutro. */
+          cc.font = { size:9, bold:true,
+                      color:{ argb: clase === 'sube' ? KE_C.naranja : KE_C.azul } };
+        }
+        cc.alignment = { horizontal:'right' };
+      });
+
+      previa[r.unidad] = r;
+      fila += 1;
+    });
+
+    va.autoFilter = { from:{ row:FILA_H2, column:1 }, to:{ row:FILA_H2, column:col - 1 } };
+
+    /* Leyenda al pie: sin ella el "=" se lee como dato faltante. */
+    fila += 1;
+    va.getCell(fila, 1).value =
+      '▲ subio · ▼ bajo · = sin cambio significativo · vacio: primera ronda o sin dato';
+    va.getCell(fila, 1).font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+    fila += 1;
+    va.getCell(fila, 1).value = 'Tolerancias: '
+      + KE_METRICAS.map(m => m.t + ' ' +
+          (m.abs ? '±' + m.abs + (m.u ? ' ' + m.u : '') : '') +
+          (m.rel ? (m.abs ? ' o ' : '±') + (m.rel * 100) + '%' : '')).join(' · ');
+    va.getCell(fila, 1).font = { size:8, color:{ argb:KE_C.gris2 } };
+  }
 
   /* ── Placas ── */
   keHoja(wb, 'Placas', [
@@ -1366,6 +1570,20 @@ async function kpExportarEntrega(){
       pedir('dp_entrega_setup'),       pedir('dp_entrega_protecciones')
     ]);
 
+    /* El historico va aparte del Promise.all y con su propio try: es el
+       unico dato opcional del libro. Si falla -por volumen o porque la
+       funcion no esta desplegada- el resto del archivo debe salir igual,
+       que es lo que la gente necesita casi siempre. */
+    let historico = [];
+    try {
+      const { data, error } = await sb.rpc('dp_entrega_historico',
+        { p_campo: c, p_sistema: s, p_meses: 24 });
+      if (error) throw new Error(error.message);
+      historico = data || [];
+    } catch(e){
+      console.warn('[Kronos-M] Historico no disponible:', e.message);
+    }
+
     if (!operacional.length)
       throw new Error('No hay unidades en ese ambito. Revise el nombre del campo.');
 
@@ -1396,7 +1614,7 @@ async function kpExportarEntrega(){
     const hoy = new Date().toISOString().slice(0, 10);
     const ambito = (c || 'Todos los campos') + (s ? ' · ' + s : '');
     const wb = keLibro(ExcelJS,
-      { operacional, placas, setup, protecciones, propuestas },
+      { operacional, placas, setup, protecciones, propuestas, historico },
       { ambito: ambito, fecha: hoy });
 
     const buf = await wb.xlsx.writeBuffer();
