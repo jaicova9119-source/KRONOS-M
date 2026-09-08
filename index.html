@@ -14973,9 +14973,39 @@ async function dpAbrirDialogo(msg) {
     document.body.appendChild(dlg);
   }
 
-  const { data: pozos } = await sbDP
-    .from("pozos").select("id,nombre,campo,marca_variador")
-    .eq("activo", true).order("nombre");
+  /* La sesion se sincroniza ANTES de consultar los pozos.
+     Estaba solo dentro de dpGuardar, es decir despues de que el usuario
+     eligiera el pozo, pero para elegirlo hace falta la lista y la lista
+     necesita sesion: el orden estaba invertido. Sin sesion, PostgREST
+     responde 401 y el desplegable quedaba con una sola opcion vacia,
+     asi que el boton Guardar no podia hacer nada. */
+  const haySesion = await dpSincronizarSesion();
+
+  const { data: pozos, error: ePozos } = haySesion
+    ? await sbDP
+        .from("pozos").select("id,nombre,campo,marca_variador")
+        .eq("activo", true).order("nombre")
+    : { data: null, error: new Error("sesión no válida") };
+
+  /* Si la lista no llega, se dice por que en el propio dialogo en vez de
+     dejar un desplegable vacio que no explica nada. */
+  if (ePozos || !pozos || !pozos.length) {
+    dlg.innerHTML =
+      '<div style="background:var(--bg);border-radius:12px;padding:22px;max-width:420px">'
+      + '<div style="font-weight:600;font-size:15px;margin-bottom:8px">No se pudo cargar la lista de pozos</div>'
+      + '<div style="font-size:13px;color:var(--text-2);line-height:1.5">'
+      + (haySesion
+          ? 'La consulta no devolvió unidades' + (ePozos ? ': ' + escaparHtml(ePozos.message) : '.')
+          : 'La sesión no está activa. Vuelve a entrar a Kronos-M e inténtalo de nuevo.')
+      + '</div>'
+      + '<div style="display:flex;justify-content:flex-end;margin-top:16px">'
+      + '<button id="dp-cerrar-err" class="btn-primary" style="padding:8px 16px">Entendido</button></div></div>';
+    document.getElementById("dp-cerrar-err").onclick = () => {
+      dpCerrarDialogo();
+      dpResponder(false, { error: "sin lista de pozos" });
+    };
+    return;
+  }
 
   /* El analizador ya sabe de qué unidad son los archivos ("CYC 08").
      Se resuelve contra el maestro de pozos para preseleccionarlo y que
