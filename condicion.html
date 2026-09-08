@@ -1135,6 +1135,16 @@ function keHoja(wb, nombre, cols, filas, opciones){
    relativa al valor anterior. Se considera igual si el cambio no supera
    NINGUNO de los dos, para que un valor pequeno no dispare por la
    relativa ni uno grande por la absoluta. */
+/* Las temperaturas de fondo se leen en °F en el sensor y así se manejan
+   en campo; en la base se guardan en °C. Se convierten al exportar usando
+   el mismo criterio que la pantalla (kpTempF), incluido el descarte de
+   valores de 0 °F o menos, que en un pozo en operación no son medición
+   sino sensor caído. */
+function keAF(celsius){
+  const f = kpTempF(celsius);
+  return f == null ? null : Math.round(f * 10) / 10;
+}
+
 const KE_METRICAS = [
   { k:'f_operacion_hz', t:'F operación', u:'Hz',  f:'0.0',  abs:0.2,  rel:0     },
   { k:'vfd_i',          t:'VFD salida',  u:'A',   f:'#,##0', abs:2,    rel:0.02  },
@@ -1142,8 +1152,10 @@ const KE_METRICAS = [
   { k:'pst_kw',         t:'PST',         u:'kW',  f:'#,##0.0', abs:2,  rel:0.02  },
   { k:'pst_fp',         t:'PST FP',      u:'',    f:'0.00', abs:0.02, rel:0     },
   { k:'pip_psi',        t:'PIP',         u:'psi', f:'#,##0', abs:3,    rel:0.03  },
-  { k:'t_motor_c',      t:'T motor',     u:'°C',  f:'#,##0.0', abs:2,  rel:0     },
-  { k:'t_intake_c',     t:'T intake',    u:'°C',  f:'#,##0.0', abs:2,  rel:0     },
+  /* Tolerancia de 3 °F, equivalente a los 2 °C que se usaban antes: la
+     sensibilidad no cambia, solo la unidad en que se expresa. */
+  { k:'t_motor_f',      t:'T motor',     u:'°F',  f:'#,##0.0', abs:3,  rel:0     },
+  { k:'t_intake_f',     t:'T intake',    u:'°F',  f:'#,##0.0', abs:3,  rel:0     },
   { k:'vib_x',          t:'Vib X',       u:'g',   f:'0.00', abs:0.05, rel:0     },
   { k:'vib_y',          t:'Vib Y',       u:'g',   f:'0.00', abs:0.05, rel:0     },
 ];
@@ -1162,6 +1174,14 @@ function keCambio(m, actual, previo){
 const KE_FLECHA = { sube:'▲', baja:'▼', igual:'=', sd:'' };
 
 function keLibro(ExcelJS, d, meta){
+  /* Se agregan las columnas en °F sobre los mismos objetos. Convertir aquí
+     y no en cada hoja evita que dos hojas muestren temperaturas distintas
+     por haber redondeado en momentos diferentes. */
+  [d.operacional, d.historico].forEach(arr => (arr || []).forEach(r => {
+    r.t_motor_f  = keAF(r.t_motor_c);
+    r.t_intake_f = keAF(r.t_intake_c);
+  }));
+
   const wb = new ExcelJS.Workbook();
   wb.creator = ''; wb.lastModifiedBy = ''; wb.company = '';
   wb.created = new Date();
@@ -1213,7 +1233,7 @@ function keLibro(ExcelJS, d, meta){
   lin('Registros de protecciones', d.protecciones.length);
   lin('Rondas en el historico', (d.historico || []).length,
       (d.historico || []).length
-        ? 'Ultimos 24 meses. Hojas Historico y Variacion.'
+        ? 'Ultimos 24 meses. Hojas Historico, Variacion y Consolidado.'
         : 'Sin historico disponible: el libro sale sin esas dos hojas.',
       !(d.historico || []).length);
   lin('Propuestas de optimizacion vigentes', d.propuestas.length);
@@ -1276,8 +1296,8 @@ function keLibro(ExcelJS, d, meta){
     { k:'motor_i', t:'Motor A', w:10, f:V },
     { k:'pip_psi', t:'PIP psi', w:10, f:V },
     { k:'pdesc_psi', t:'P descarga psi', w:12, f:V },
-    { k:'t_motor_c', t:'T motor °C', w:10, f:V },
-    { k:'t_intake_c', t:'T intake °C', w:10, f:V },
+    { k:'t_motor_f', t:'T motor °F', w:10, f:V1 },
+    { k:'t_intake_f', t:'T intake °F', w:10, f:V1 },
     { k:'vib_x', t:'Vibracion X', w:10, f:'0.00' },
     { k:'vib_y', t:'Vibracion Y', w:10, f:'0.00' }
   ], d.operacional, { vacioSi: x => !x.fecha });
@@ -1322,8 +1342,8 @@ function keLibro(ExcelJS, d, meta){
       { k:'motor_i', t:'Motor A', w:10, f:V },
       { k:'pip_psi', t:'PIP psi', w:10, f:V },
       { k:'pdesc_psi', t:'P descarga psi', w:12, f:V },
-      { k:'t_motor_c', t:'T motor °C', w:10, f:V },
-      { k:'t_intake_c', t:'T intake °C', w:10, f:V },
+      { k:'t_motor_f', t:'T motor °F', w:10, f:V1 },
+      { k:'t_intake_f', t:'T intake °F', w:10, f:V1 },
       { k:'vib_x', t:'Vibracion X', w:10, f:'0.00' },
       { k:'vib_y', t:'Vibracion Y', w:10, f:'0.00' }
     ], d.historico, {});
@@ -1428,6 +1448,131 @@ function keLibro(ExcelJS, d, meta){
     });
 
     va.autoFilter = { from:{ row:FILA_H2, column:1 }, to:{ row:FILA_H2, column:col - 1 } };
+
+    /* ── Consolidado ──
+       Una fila por unidad. Responde "como esta cada pozo y hacia donde va"
+       sin tener que recorrer la hoja de Variacion pozo por pozo.
+
+       El cambio se mide entre la PRIMERA y la ULTIMA ronda del periodo, no
+       contra la ronda anterior: entre dos rondas seguidas una variable
+       puede ir y volver, y lo que interesa aqui es la deriva del periodo.
+       Por eso se muestran tambien los meses que abarca: un cambio de 8 °F
+       en dos meses y otro en dos anos no son el mismo hallazgo. */
+    const cons = wb.addWorksheet('Consolidado', {
+      views: [{ state:'frozen', xSplit:1, ySplit:4 }] });
+
+    cons.getCell('A1').value = 'Consolidado por unidad · ' + meta.ambito;
+    cons.getCell('A1').font = { bold:true, size:13, color:{ argb:KE_C.azul } };
+    cons.getCell('A2').value = 'Valor de la ultima ronda y deriva entre la primera y la ultima del periodo. '
+      + 'No es el cambio contra la ronda anterior: eso esta en la hoja Variacion.';
+    cons.getCell('A2').font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+
+    const CF1 = 3, CF2 = 4;
+    const cFijas = [
+      { t:'Unidad', w:11 }, { t:'Campo', w:13 }, { t:'PAD', w:13 },
+      { t:'Rondas', w:8 }, { t:'Primera', w:12 }, { t:'Ultima', w:12 },
+      { t:'Meses', w:8 }, { t:'Dias sin medir', w:12 }, { t:'Condicion', w:11 },
+    ];
+    let cc2 = 1;
+    cFijas.forEach(f => {
+      cons.getColumn(cc2).width = f.w;
+      cons.mergeCells(CF1, cc2, CF2, cc2);
+      const c = cons.getCell(CF1, cc2);
+      c.value = f.t;
+      c.font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+      c.alignment = { vertical:'middle', horizontal:'center', wrapText:true };
+      cc2 += 1;
+    });
+    const colM2 = {};
+    KE_METRICAS.forEach(m => {
+      colM2[m.k] = cc2;
+      cons.mergeCells(CF1, cc2, CF1, cc2 + 1);
+      const h = cons.getCell(CF1, cc2);
+      h.value = m.t + (m.u ? ' (' + m.u + ')' : '');
+      h.font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
+      h.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+      h.alignment = { horizontal:'center' };
+      ['Actual','Deriva'].forEach((t, i) => {
+        cons.getColumn(cc2 + i).width = i === 0 ? 10 : 11;
+        const c = cons.getCell(CF2, cc2 + i);
+        c.value = t;
+        c.font = { bold:true, size:8, color:{ argb:KE_C.gris } };
+        c.alignment = { horizontal:'center' };
+      });
+      cc2 += 2;
+    });
+
+    /* Se agrupa el historico por unidad conservando el orden, que ya viene
+       cronologico desde la base. */
+    const porUnidad = new Map();
+    d.historico.forEach(r => {
+      if (!porUnidad.has(r.unidad)) porUnidad.set(r.unidad, []);
+      porUnidad.get(r.unidad).push(r);
+    });
+
+    let fc = CF2 + 1;
+    [...porUnidad.entries()].sort((a, b) => a[0].localeCompare(b[0])).forEach(([u, rs]) => {
+      const pri = rs[0], ult = rs[rs.length - 1];
+      const meses = (pri.fecha && ult.fecha)
+        ? Math.round(((new Date(ult.fecha) - new Date(pri.fecha)) / 2629800000) * 10) / 10
+        : null;
+      const dSin = ult.fecha
+        ? Math.round((Date.now() - new Date(ult.fecha)) / 86400000) : null;
+
+      const fijos = [u, ult.campo, ult.pad, rs.length, pri.fecha, ult.fecha,
+                     meses, dSin, ult.condicion || ''];
+      fijos.forEach((v, i) => {
+        const c = cons.getCell(fc, i + 1);
+        c.value = v;
+        c.font = { size:9, bold: i === 0 };
+        if (i >= 3 && i !== 4 && i !== 5 && i !== 8) c.alignment = { horizontal:'right' };
+      });
+      /* Se resalta la unidad que lleva mucho sin ronda: sin eso, una fila
+         con datos de hace ocho meses se lee igual que una de la semana
+         pasada. */
+      if (dSin != null && dSin > 90){
+        cons.getCell(fc, 8).font = { size:9, bold:true, color:{ argb:KE_C.naranja } };
+      }
+
+      KE_METRICAS.forEach(m => {
+        const cv = colM2[m.k];
+        const cel = cons.getCell(fc, cv);
+        if (ult[m.k] != null){ cel.value = Number(ult[m.k]); cel.numFmt = m.f; }
+        cel.font = { size:9 };
+        cel.alignment = { horizontal:'right' };
+
+        /* Si la ultima o la primera no tienen el dato se busca el primer y
+           ultimo valor disponible de esa metrica: descartar la unidad
+           entera por un hueco puntual perderia la deriva del resto. */
+        const conDato = rs.filter(x => x[m.k] != null);
+        const cc3 = cons.getCell(fc, cv + 1);
+        if (conDato.length < 2){
+          cc3.value = '';
+        } else {
+          const { d: dd, clase } =
+            keCambio(m, conDato[conDato.length - 1][m.k], conDato[0][m.k]);
+          if (clase === 'igual'){
+            cc3.value = KE_FLECHA.igual;
+            cc3.font = { size:9, color:{ argb:KE_C.gris2 } };
+          } else {
+            cc3.value = KE_FLECHA[clase] + ' ' +
+              (Math.abs(dd) >= 100 ? Math.round(dd) : Math.round(dd * 100) / 100);
+            cc3.font = { size:9, bold:true,
+                         color:{ argb: clase === 'sube' ? KE_C.naranja : KE_C.azul } };
+          }
+        }
+        cc3.alignment = { horizontal:'right' };
+      });
+      fc += 1;
+    });
+
+    cons.autoFilter = { from:{ row:CF2, column:1 }, to:{ row:CF2, column:cc2 - 1 } };
+    fc += 1;
+    cons.getCell(fc, 1).value =
+      'Deriva = ultima ronda menos primera del periodo. ▲ subio · ▼ bajo · '
+      + '= sin cambio significativo · vacio: menos de dos rondas con ese dato.';
+    cons.getCell(fc, 1).font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
 
     /* Leyenda al pie: sin ella el "=" se lee como dato faltante. */
     fila += 1;
