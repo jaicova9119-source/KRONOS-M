@@ -4232,6 +4232,109 @@ async function dpHash(txt){
 }
 
 /* ── Envío al padre ──────────────────────────────────────────────── */
+/* ── Series para Monitoreo de Condicion ─────────────────────────────────
+   Lo que se envia NO son los datos crudos: quince dias a cinco segundos
+   son 260.000 puntos por canal y la grafica tiene mil pixeles de ancho.
+   Se agregan en cubos de cinco minutos guardando minimo y maximo, no
+   promedio: promediar borra las excursiones cortas, que son justo lo que
+   se quiere ver.
+
+   Doce canales, los que permiten leer el estado de la unidad de un
+   vistazo. Las corrientes van por fase porque un desbalance naciente solo
+   se ve separandolas. */
+
+const DP_PASO_SEG = 300;
+const DP_DIAS     = 15;
+
+const DP_CANALES = [
+  ['f_out',      'Frecuencia',            'Hz'],
+  ['i_out_a',    'Corriente salida A',    'A'],
+  ['i_out_b',    'Corriente salida B',    'A'],
+  ['i_out_c',    'Corriente salida C',    'A'],
+  ['v_out',      'Tension salida',        'V'],
+  ['v_motor',    'Tension de motor',      'V'],
+  ['i_motor',    'Corriente de motor',    'A'],
+  ['pip',        'Presion de admision',   'PSI'],
+  ['t_motor',    'Temperatura de motor',  'F'],
+  ['t_intake',   'Temperatura de admision','F'],
+  ['vib_x',      'Vibracion X',           'g'],
+  ['vib_y',      'Vibracion Y',           'g'],
+];
+
+/* El analizador nombra sus canales por `role`. Se mapea al nombre estable
+   que guarda la plataforma: si manana el analizador renombra un role, se
+   corrige aqui y no en la base ni en la grafica. */
+const DP_ROLE = {
+  f_out:'freq', i_out_a:'ia', i_out_b:'ib', i_out_c:'ic',
+  v_out:'vout', v_motor:'vmotor', i_motor:'imotor',
+  pip:'pip', t_motor:'tmotor', t_intake:'tintake',
+  vib_x:'vibx', vib_y:'viby',
+};
+
+function dpBuscarCanal(u, clave){
+  const r = DP_ROLE[clave];
+  if (r && u.ch[r] && u.ch[r].n) return u.ch[r];
+  /* Respaldo por etiqueta: los formatos no siempre traen el mismo role y
+     un canal ausente se veria como una unidad sin datos. */
+  const pats = {
+    f_out:/frecuenc.*salida|output freq/i,
+    i_out_a:/corriente.*salida.*\bA\b|output current.*\bA\b/i,
+    i_out_b:/corriente.*salida.*\bB\b|output current.*\bB\b/i,
+    i_out_c:/corriente.*salida.*\bC\b|output current.*\bC\b/i,
+    v_out:/tensi.n.*salida|output volt/i,
+    v_motor:/tensi.n.*motor|motor volt/i,
+    i_motor:/downhole current|corriente.*fondo|motor current/i,
+    pip:/intake pres|pip\b/i,
+    t_motor:/motor temp|temp.*motor/i,
+    t_intake:/intake temp|temp.*intake/i,
+    vib_x:/vib.*x/i, vib_y:/vib.*y/i,
+  };
+  const p = pats[clave];
+  if (!p) return null;
+  for (const k in u.ch){
+    const C = u.ch[k];
+    if (C && C.n && p.test(C.label || '')) return C;
+  }
+  return null;
+}
+
+function dpSeriesMonitoreo(u){
+  const paso = DP_PASO_SEG * 1000;
+  /* La ventana se toma desde el final del archivo, no desde hoy: una
+     descarga de una unidad parada sigue teniendo sus ultimos 15 dias. */
+  const fin = u.t1;
+  const ini = Math.max(u.t0, fin - DP_DIAS * 86400000);
+  /* Se alinea a la rejilla absoluta para que dos descargas distintas
+     produzcan cubos en las mismas posiciones y se puedan superponer. */
+  const ini0 = Math.floor(ini / paso) * paso;
+  const n = Math.floor((fin - ini0) / paso) + 1;
+  if (n < 2) return [];
+
+  const out = [];
+  DP_CANALES.forEach(([clave, , unidad]) => {
+    const C = dpBuscarCanal(u, clave);
+    if (!C) return;
+    const mn = new Array(n).fill(null), mx = new Array(n).fill(null);
+    let hay = false;
+    for (let i = 0; i < C.n; i++){
+      const t = C.t[i], v = C.y[i];
+      if (t < ini0 || t > fin || !Number.isFinite(v)) continue;
+      const k = Math.floor((t - ini0) / paso);
+      if (k < 0 || k >= n) continue;
+      if (mn[k] === null || v < mn[k]) mn[k] = v;
+      if (mx[k] === null || v > mx[k]) mx[k] = v;
+      hay = true;
+    }
+    if (!hay) return;
+    const red = x => x === null ? null : Math.round(x * 1000) / 1000;
+    out.push({ canal: clave, unidad: C.unit || unidad,
+               desde: new Date(ini0 + paso / 2).toISOString(),
+               paso_seg: DP_PASO_SEG,
+               min: mn.map(red), max: mx.map(red) });
+  });
+  return out;
+}
+
 async function dpEnviarAKronos(){
   const U=DB.units[DB.active];
   if(!U){ $("#err").textContent="carga primero un archivo"; return; }
@@ -4263,6 +4366,11 @@ async function dpEnviarAKronos(){
     periodo_hasta:new Date(U.t1).toISOString(),
     resolucion_seg:resolucion,
     filas,
+    /* Ventana corta para la grafica de Monitoreo de Condicion. Va aparte
+       de `filas`, que son agregados diarios: son dos resoluciones para
+       dos preguntas distintas. */
+    series:dpSeriesMonitoreo(U),
+    series_dias:DP_DIAS,
     /* Los eventos explican los quiebres de la tendencia: sin el paro y sin
        el cambio de frecuencia, la curva se ve pero no se puede interpretar.
        Se manda la ventana completa del periodo cargado, ya leida por el
@@ -4298,7 +4406,6 @@ window.addEventListener("message",e=>{
    definir bien la estructura del dato que se manda. dpEnviarAKronos() se
    conserva completa; para reactivarlo basta con quitar el return de abajo. */
 (function(){
-  return;
   if(window.parent===window) return;
   const ref=document.getElementById("bAdd"); if(!ref) return;
   const b=document.createElement("button");

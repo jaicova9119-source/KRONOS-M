@@ -15130,6 +15130,32 @@ async function dpGuardar() {
       throw eIng;
     }
 
+    /* Series de la ventana corta. Van DESPUES de la ingesta y con su
+       propio try: no comparten transaccion con las features, y si el
+       envio de series falla no tiene sentido revertir una carga que ya
+       quedo bien ingestada. Se avisa y se sigue. */
+    let avisoSeries = "";
+    if (Array.isArray(msg.series) && msg.series.length) {
+      const { data: rs, error: eSer } = await sbDP.rpc("dp_ingestar_series", {
+        p_pozo_id: pozoId,
+        p_series: msg.series,
+        p_origen: msg.archivo_nombre || null,
+        p_dias: msg.series_dias || 15,
+      });
+      if (eSer) {
+        avisoSeries = " · la tendencia no se pudo guardar: " + eSer.message;
+      } else if (rs && rs.ok === false) {
+        avisoSeries = " · " + (rs.error || "la tendencia no se guardo");
+      } else if (rs && rs.nota) {
+        /* El caso de descarga anterior a la ventana: la carga entra pero
+           la grafica no cambia, y sin este aviso parece que fallo. */
+        avisoSeries = " · " + rs.nota;
+      } else if (rs) {
+        avisoSeries = " · tendencia: " + rs.canales + " canales de "
+                    + rs.ventana_dias + " dias";
+      }
+    }
+
     /* Eventos del período. Van después de las features y su fallo no
        invalida la carga: sin eventos la tendencia sigue siendo válida,
        solo queda sin anotar. */
@@ -15158,7 +15184,8 @@ async function dpGuardar() {
     dpCerrarDialogo();
     toast(`Monitoreo de Condición: ${filas.length} día(s) en ${pozo.nombre}` +
           (nEv ? ` · ${nEv} evento(s)` : "") +
-          (atencion ? ` · ${atencion} requieren atención` : ""));
+          (atencion ? ` · ${atencion} requieren atención` : "") +
+          avisoSeries);
     dpResponder(true, { dias: filas.length, atencion, eventos: nEv });
 
   } catch (err) {
