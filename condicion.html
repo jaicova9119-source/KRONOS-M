@@ -1934,9 +1934,16 @@ function kpUbicarControles(){
   if (!b || !l) return;
   const destino = kpMQ.matches ? document.getElementById('kpFBus')
                                : document.getElementById('kpFiltros2');
-  if (b.parentNode === destino) return;
-  destino.appendChild(b);
-  destino.appendChild(l);
+  if (b.parentNode !== destino){
+    destino.appendChild(b);
+    destino.appendChild(l);
+  }
+
+  /* El boton de exportar nacio dentro de kpFBar, que es la barra compacta
+     y esta oculta por CSS en pantalla ancha: en escritorio el boton
+     desaparecia con ella. Se reubica igual que el buscador. */
+  const x = document.getElementById('kpExportar');
+  if (x && x.parentNode !== destino) destino.appendChild(x);
 }
 
 /* Deja los dos juegos de controles diciendo lo mismo. */
