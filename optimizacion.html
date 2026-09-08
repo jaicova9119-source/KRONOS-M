@@ -288,6 +288,54 @@ body{background:var(--ko-bg);color:var(--ko-t1);
 
 .ko-wrap{padding:18px 20px;max-width:1400px;margin:0 auto}
 
+/* ── Pestanas del modulo ────────────────────────────────────────────────
+   Viven en la barra superior, sobre el fondo de marca, asi que no pueden
+   reutilizar .ko-chip: ese esta pensado para el fondo de tarjeta. */
+.ko-tabs{display:flex;gap:6px;flex-wrap:wrap}
+.ko-tab{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.28);
+  color:var(--brand-t);border-radius:6px;padding:6px 14px;font-size:13px;
+  cursor:pointer;font-family:inherit}
+.ko-tab.on{background:var(--brand-t);color:var(--brand);border-color:var(--brand-t);
+  font-weight:600}
+
+/* Barra de holgura: comunica de un golpe cuanto sobra. El numero solo
+   obliga a comparar mentalmente dos cifras en cada renglon. */
+.ko-bar-u{position:relative;height:16px;background:var(--ko-card2);
+  border:1px solid var(--ko-line);border-radius:3px;overflow:hidden;min-width:96px}
+.ko-bar-u i{position:absolute;left:0;top:0;bottom:0;background:var(--ko-teal)}
+.ko-bar-u i.g{background:var(--ko-green)}
+.ko-bar-u i.w{background:var(--ko-warn)}
+.ko-bar-u i.r{background:var(--ko-crit)}
+/* Marca del tamano recomendado sobre la barra: donde quedaria el equipo
+   nuevo. Sin ella no se ve que el hueco es aprovechable. */
+.ko-bar-u u{position:absolute;top:-1px;bottom:-1px;width:2px;
+  background:var(--ko-t1,#fff);opacity:.85}
+/* El porcentaje va FUERA de la barra: dentro y centrado, la marca del
+   tamano recomendado lo atravesaba justo en el rango de valores mas
+   comun. */
+.ko-uso{display:flex;align-items:center;gap:8px;justify-content:flex-end}
+.ko-uso span{font-size:11.5px;font-weight:600;color:var(--ko-t2);
+  min-width:38px;text-align:right}
+
+.ko-lib{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));
+  gap:10px;margin-bottom:14px}
+.ko-lib .c{background:var(--ko-card);border:1px solid var(--ko-line);
+  border-radius:9px;padding:11px 13px;position:relative;overflow:hidden}
+.ko-lib .c:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;
+  background:var(--ko-green)}
+.ko-lib .c .k{font-size:9.5px;letter-spacing:.9px;text-transform:uppercase;
+  color:var(--ko-t3)}
+.ko-lib .c .v{font-size:25px;font-weight:600;letter-spacing:-.6px;margin:3px 0 0;
+  color:var(--t1);line-height:1.05}
+.ko-lib .c .v small{font-size:11.5px;font-weight:400;color:var(--ko-t2);
+  margin-left:3px;letter-spacing:0}
+.ko-lib .c .r2{font-size:11px;color:var(--ko-t3);margin-top:3px}
+
+.ko-aviso{background:var(--ko-card);border:1px solid var(--ko-warn);
+  border-left-width:3px;border-radius:9px;padding:11px 14px;margin-bottom:14px;
+  font-size:12px;color:var(--ko-t2);line-height:1.55}
+.ko-aviso b{color:var(--t1)}
+
 .ko-cfg{background:var(--ko-card);border:1px solid var(--ko-line);border-radius:9px;
   padding:12px 14px;margin-bottom:14px;display:flex;gap:18px;flex-wrap:wrap;
   align-items:flex-end}
@@ -435,6 +483,10 @@ table.ko-t tr.mk td{background:var(--accent-soft)}
   <div>
     <h1 id="koTitulo">Optimizaci&oacute;n Energ&eacute;tica</h1>
     <p class="sub" id="koSub">Propuesta de cambio de TAP por condici&oacute;n de operaci&oacute;n</p>
+  </div>
+  <div class="ko-tabs" id="koTabs">
+    <button class="ko-tab on" data-panel="tap">Propuesta de TAP</button>
+    <button class="ko-tab" data-panel="dim">Dimensionamiento</button>
   </div>
   <button class="ko-back" id="koBack">&larr; Volver al listado</button>
 </div>
@@ -1506,9 +1558,14 @@ function koEsc(t){
 /* ---------- vistas ---------- */
 
 function koPintar(){
+  /* Si la pestana activa es dimensionamiento, cualquier repintado general
+     debe respetarla: sin esto, recargar datos devolvia al usuario a la
+     vista de TAP sin explicacion. */
+  if (koPanel === 'dim') return koPintarDim();
   if (koSel) return koPintarDetalle();
   const v = document.getElementById('koVista');
   document.getElementById('koBack').style.display = 'none';
+  document.getElementById('koTabs').style.display = '';
   document.getElementById('koTitulo').textContent = 'Optimizaci\u00f3n Energ\u00e9tica';
   document.getElementById('koSub').innerHTML =
     'Propuesta de cambio de TAP por condici&oacute;n de operaci&oacute;n';
@@ -2456,6 +2513,7 @@ function koPintarDetalle(){
   const v = document.getElementById('koVista');
 
   document.getElementById('koBack').style.display = 'block';
+  document.getElementById('koTabs').style.display = 'none';
   document.getElementById('koTitulo').textContent = u.pozo;
   document.getElementById('koSub').textContent =
     u.vsd + ' \u00b7 ' + u.campo
@@ -3098,6 +3156,212 @@ function koAplicarUrl(){
     if (d) koPad = d;
   } catch(e){}
 }
+
+/* ============================================================
+   DIMENSIONAMIENTO
+   Que equipo esta sobredimensionado para la demanda real, y cuantas
+   unidades de cada tamano quedarian disponibles.
+
+   Todo el calculo vive en la base: opt_dimensionamiento() y
+   opt_liberables(). Aqui no se recalcula nada, solo se presenta. Si el
+   criterio cambia, cambia en un sitio y no en dos.
+   ============================================================ */
+
+let koPanel   = 'tap';   // 'tap' | 'dim'
+let koMargen  = 85;      // objetivo de utilizacion, %
+let KO_DIM    = null;    // filas de opt_dimensionamiento()
+let KO_LIB    = null;    // resumen de opt_liberables()
+let koDimNodo = 'VFD';   // nodo mostrado en la tabla
+let koDimSoloSobra = true;
+
+async function koCargarDim(){
+  const sb = koCliente();
+  if (!sb) throw new Error('Sin conexion a Kronos-M.');
+  /* Las dos en paralelo: el resumen no depende del detalle y esperar en
+     serie duplica el tiempo de la pantalla. */
+  const [d, l] = await Promise.all([
+    sb.rpc('opt_dimensionamiento', { p_util_objetivo: koMargen }),
+    sb.rpc('opt_liberables',       { p_util_objetivo: koMargen }),
+  ]);
+  if (d.error) throw d.error;
+  if (l.error) throw l.error;
+  KO_DIM = d.data || [];
+  KO_LIB = l.data || [];
+}
+
+function koDimBarra(util, instalado, recomendado){
+  const u = Math.max(0, Math.min(100, Number(util) || 0));
+  const c = u >= 90 ? 'r' : u >= 60 ? 'w' : u >= 40 ? '' : 'g';
+  /* La marca se dibuja donde quedaria la utilizacion si se instalara el
+     equipo recomendado, no donde esta el tamano recomendado: lo que
+     interesa es que el equipo nuevo trabajaria comodo. */
+  const pos = (recomendado && instalado)
+    ? Math.max(0, Math.min(100, (Number(recomendado) / Number(instalado)) * 100))
+    : null;
+  return '<div class="ko-uso"><div class="ko-bar-u">'
+       + '<i class="' + c + '" style="width:' + u.toFixed(1) + '%"></i>'
+       + (pos != null ? '<u style="left:' + pos.toFixed(1) + '%"></u>' : '')
+       + '</div><span>' + u.toFixed(0) + '%</span></div>';
+}
+
+function koPintarDim(){
+  const v = document.getElementById('koVista');
+  document.getElementById('koBack').style.display = 'none';
+  document.getElementById('koTitulo').textContent = 'Dimensionamiento de superficie';
+  document.getElementById('koSub').innerHTML =
+    'Equipo sobredimensionado frente a la demanda real proyectada a frecuencia m&aacute;xima';
+
+  if (!KO_DIM){
+    v.innerHTML = '<div class="ko-card"><div class="ko-vacio">Cargando&hellip;</div></div>';
+    return;
+  }
+
+  /* ── Resumen: cuantos equipos de cada tamano quedan disponibles ──
+     Es la respuesta corta. Se muestran solo los tamanos grandes primero
+     porque son los que valen la pena mover. */
+  const lib = (KO_LIB || []).filter(r => r.nodo === koDimNodo);
+  let h = '';
+
+  /* SUT y PST comparten la demanda medida en kVA. Decirlo aqui y no en
+     una nota al pie: sumar sus liberables como si fueran hallazgos
+     independientes duplicaria la cuenta. */
+  if (koDimNodo === 'SUT' || koDimNodo === 'PST'){
+    h += '<div class="ko-aviso"><b>SUT y PST comparten la demanda medida en kVA.</b> '
+      + 'La misma potencia atraviesa los dos nodos, as&iacute; que sus resultados no son '
+      + 'hallazgos independientes: no sume los liberables de ambos.</div>';
+  }
+
+  if (lib.length){
+    h += '<div class="ko-lib">' + lib.map(r =>
+      '<div class="c"><div class="k">' + koEsc(r.tamano) + ' ' + koEsc(r.unidad) + '</div>'
+      + '<div class="v">' + r.equipos + '<small>equipo' + (r.equipos === 1 ? '' : 's') + '</small></div>'
+      + '<div class="r2">bajar&iacute;a a ' + koEsc(r.baja_a || '\u2014') + ' ' + koEsc(r.unidad) + '</div></div>'
+    ).join('') + '</div>';
+  }
+
+  /* ── Controles ────────────────────────────────────────────────────── */
+  h += '<div class="ko-cfg">'
+    + '<div class="g"><label>Nodo</label><select id="koDimNodo">'
+    + ['VFD','SUT','PST'].map(n =>
+        '<option value="' + n + '"' + (n === koDimNodo ? ' selected' : '') + '>'
+        + (n === 'VFD' ? 'Variador' : n) + '</option>').join('')
+    + '</select></div>'
+    + '<div class="g"><label>Utilizaci&oacute;n objetivo</label>'
+    + '<input type="number" id="koDimMargen" min="60" max="95" step="5" value="' + koMargen + '"></div>'
+    + '<div class="g"><label>Mostrar</label><select id="koDimFiltro">'
+    + '<option value="1"' + (koDimSoloSobra ? ' selected' : '') + '>Solo sobredimensionados</option>'
+    + '<option value="0"' + (!koDimSoloSobra ? ' selected' : '') + '>Todas las unidades</option>'
+    + '</select></div>'
+    /* Que el margen sea visible y movible no es adorno: es la unica
+       decision de criterio del analisis, y quien decide debe poder ver
+       cuanto cambia la respuesta al endurecerlo. */
+    + '<div class="nota">El equipo recomendado es el escal&oacute;n m&aacute;s peque&ntilde;o que '
+    + 'existe en la flota y que cubre la demanda proyectada a frecuencia m&aacute;xima con esa '
+    + 'holgura. Mueva el objetivo para ver cu&aacute;nto cambia la lista.</div>'
+    + '</div>';
+
+  /* ── Tabla ────────────────────────────────────────────────────────── */
+  let filas = KO_DIM.filter(r => r.nodo === koDimNodo);
+  if (koDimSoloSobra){
+    filas = filas.filter(r => r.recomendado != null && Number(r.recomendado) < Number(r.instalado) * 0.95);
+  }
+
+  if (!filas.length){
+    h += '<div class="ko-card"><div class="ko-vacio">'
+      + (koDimSoloSobra
+         ? 'Ninguna unidad de este nodo est&aacute; sobredimensionada con ese objetivo.'
+         : 'Sin datos de este nodo.')
+      + '</div></div>';
+  } else {
+    h += '<div class="ko-card"><div class="ct"><b>Unidades</b>'
+      + '<span>' + filas.length + ' de ' + KO_DIM.filter(r => r.nodo === koDimNodo).length + '</span></div>'
+      + '<div class="ko-scroll"><table class="ko-t"><thead><tr>'
+      + '<th>Unidad</th><th>PAD</th><th>Instalado</th><th>Demanda</th>'
+      + '<th>Utilizaci&oacute;n</th><th>Recomendado</th><th>Libera</th><th>Lectura</th>'
+      + '</tr></thead><tbody>';
+
+    filas.forEach(r => {
+      const sobra = r.recomendado != null && Number(r.recomendado) < Number(r.instalado) * 0.95;
+      h += '<tr><td><b>' + koEsc(r.pozo) + '</b></td>'
+        + '<td>' + koEsc(r.pad || '\u2014') + '</td>'
+        + '<td>' + koEnt(r.instalado) + ' ' + koEsc(r.unidad) + '</td>'
+        + '<td>' + koEnt(r.demanda_fmax) + ' ' + koEsc(r.unidad) + '</td>'
+        + '<td>' + koDimBarra(r.util_actual_pct, r.instalado, r.recomendado) + '</td>'
+        + '<td>' + (r.recomendado != null
+                     ? koEnt(r.recomendado) + ' ' + koEsc(r.unidad)
+                     : '<span style="color:var(--ko-crit)">no alcanza</span>') + '</td>'
+        + '<td>' + (sobra
+                     ? '<b style="color:var(--ko-green)">' + koEnt(r.instalado) + ' ' + koEsc(r.unidad) + '</b>'
+                     : '\u2014') + '</td>'
+        + '<td>' + koEsc(r.lectura_fecha || '\u2014') + '</td></tr>';
+    });
+
+    h += '</tbody></table></div>'
+      + '<div class="ko-leg">'
+      + '<span><i style="background:var(--ko-green)"></i>por debajo del 40&nbsp;%</span>'
+      + '<span><i style="background:var(--ko-teal)"></i>40 a 60&nbsp;%</span>'
+      + '<span><i style="background:var(--ko-warn)"></i>60 a 90&nbsp;%</span>'
+      + '<span><i style="background:var(--ko-crit)"></i>90&nbsp;% o m&aacute;s</span>'
+      + '<span>La marca blanca sobre la barra indica d&oacute;nde quedar&iacute;a el equipo recomendado.</span>'
+      + '</div></div>';
+  }
+
+  /* Salvedad permanente: el inventario tiene equipos registrados en dos
+     pozos a la vez, y en esos casos la capacidad puede estar atribuida al
+     pozo equivocado. Ocultarlo daria una confianza que el dato no tiene. */
+  h += '<div class="ko-aviso">Las capacidades salen del inventario de instalaciones. '
+    + 'Si un equipo figura instalado en dos pozos a la vez, su capacidad puede estar '
+    + 'atribuida al pozo equivocado: verifique en campo antes de mover equipo.</div>';
+
+  v.innerHTML = h;
+
+  document.getElementById('koDimNodo').onchange = e => {
+    koDimNodo = e.target.value; koPintarDim();
+  };
+  document.getElementById('koDimFiltro').onchange = e => {
+    koDimSoloSobra = e.target.value === '1'; koPintarDim();
+  };
+  document.getElementById('koDimMargen').onchange = async e => {
+    const n = parseInt(e.target.value, 10);
+    if (!Number.isFinite(n)) return;
+    koMargen = Math.max(60, Math.min(95, n));
+    KO_DIM = null; koPintarDim();
+    try { await koCargarDim(); } catch(err){
+      document.getElementById('koVista').innerHTML =
+        '<div class="ko-card"><div class="ko-vacio">No se pudo recalcular.<br>'
+        + koEsc(err.message) + '</div></div>';
+      return;
+    }
+    koPintarDim();
+  };
+}
+
+async function koIrPanel(p){
+  koPanel = p;
+  document.querySelectorAll('#koTabs .ko-tab').forEach(b =>
+    b.classList.toggle('on', b.dataset.panel === p));
+  if (p === 'dim'){
+    /* Se carga la primera vez que se entra, no al arrancar: la mayoria de
+       las visitas al modulo son por la propuesta de TAP y no hay razon
+       para pagar dos consultas mas en cada carga. */
+    if (!KO_DIM){
+      koPintarDim();
+      try { await koCargarDim(); } catch(e){
+        document.getElementById('koVista').innerHTML =
+          '<div class="ko-card"><div class="ko-vacio">No se pudo cargar el '
+          + 'dimensionamiento.<br>' + koEsc(e.message) + '</div></div>';
+        return;
+      }
+    }
+    koPintarDim();
+  } else {
+    koPintar();
+  }
+}
+
+document.querySelectorAll('#koTabs .ko-tab').forEach(b => {
+  b.onclick = () => koIrPanel(b.dataset.panel);
+});
 
 async function koArrancar(){
   koAplicarUrl();
