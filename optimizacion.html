@@ -3192,6 +3192,24 @@ async function koCargarDim(){
   KO_LIB = l.data || [];
 }
 
+/* Frecuencia de operacion contra la maxima de diseno.
+   Importa por dos razones distintas. Una: un pozo corriendo muy por debajo
+   de su maxima puede subir, y ahi la holgura de hoy no es holgura real.
+   Dos, y mas sutil: cuanto mas lejos esta la operacion de la maxima, mas
+   se apoya la recomendacion en la proyeccion f^2 y menos en la medicion.
+   Un factor de 1,3 significa que el 30 % de la demanda que se usa para
+   decidir es calculo, no dato, y quien decide deberia verlo. */
+function koDimFrec(r){
+  const fo = Number(r.f_op_hz), fm = Number(r.f_max);
+  if (!Number.isFinite(fo) || !Number.isFinite(fm) || fo <= 0) return '\u2014';
+  const k = Math.pow(fm / fo, 2);
+  const txt = fo.toFixed(1) + ' / ' + fm.toFixed(1) + ' Hz';
+  if (k < 1.15) return txt;
+  const c = k >= 1.6 ? 'var(--ko-crit)' : 'var(--ko-warn)';
+  return txt + '<div style="font-size:10.5px;color:' + c + '">proyecci&oacute;n \u00d7'
+       + k.toFixed(2) + '</div>';
+}
+
 function koDimBarra(util, instalado, recomendado){
   const u = Math.max(0, Math.min(100, Number(util) || 0));
   const c = u >= 90 ? 'r' : u >= 60 ? 'w' : u >= 40 ? '' : 'g';
@@ -3266,6 +3284,10 @@ function koDimCopiar(){
     L.push('   ' + r.nodo + ': ' + koEnt(r.instalado) + ' ' + r.unidad
            + ' → ' + koEnt(r.recomendado) + ' ' + r.unidad
            + '  (uso ' + r.util_actual_pct + '%)');
+    if (r.f_op_hz && r.f_max) {
+      L.push('   Frecuencia: ' + Number(r.f_op_hz).toFixed(1) + ' Hz de '
+             + Number(r.f_max).toFixed(1) + ' máx');
+    }
     if (r.motor_i_nominal) {
       L.push('   Motor: ' + (r.motor_modelo || r.motor_marca || 's/d')
              + ' · ' + koEnt(r.motor_i_nominal) + ' A nom'
@@ -3393,7 +3415,7 @@ function koPintarDim(){
       + '</div>'
       + '<div class="ko-scroll"><table class="ko-t"><thead><tr>'
       + '<th style="width:26px"></th>'
-      + '<th>Unidad</th><th>PAD</th><th>Instalado</th><th>Demanda</th>'
+      + '<th>Unidad</th><th>PAD</th><th>Frecuencia</th><th>Instalado</th><th>Demanda</th>'
       + '<th>Utilizaci&oacute;n</th><th>Recomendado</th><th>Libera</th>'
       /* El equipo de fondo va en la misma fila: sustentar un cambio de
          superficie obligaba a abrir otra pantalla para saber que hay abajo. */
@@ -3417,6 +3439,7 @@ function koPintarDim(){
         + '<td><b>' + koEsc(r.pozo) + '</b>'
         + '<div style="font-size:10.5px;color:var(--ko-t3)">' + koEsc(r.campo || '') + '</div></td>'
         + '<td>' + koEsc(r.pad || '\u2014') + '</td>'
+        + '<td>' + koDimFrec(r) + '</td>'
         + '<td>' + koEnt(r.instalado) + ' ' + koEsc(r.unidad) + '</td>'
         + '<td>' + koEnt(r.demanda_fmax) + ' ' + koEsc(r.unidad)
         + (koDimBase === 'motor' && r.techo_motor != null
@@ -3440,6 +3463,8 @@ function koPintarDim(){
       + '<span><i style="background:var(--ko-warn)"></i>60 a 90&nbsp;%</span>'
       + '<span><i style="background:var(--ko-crit)"></i>90&nbsp;% o m&aacute;s</span>'
       + '<span>La marca blanca sobre la barra indica d&oacute;nde quedar&iacute;a el equipo recomendado.</span>'
+      + '<span>Un factor de proyecci&oacute;n alto significa que la unidad opera lejos de su '
+      + 'frecuencia m&aacute;xima: la demanda usada para decidir es en buena parte c&aacute;lculo, no medici&oacute;n.</span>'
       + '</div></div>';
   }
 
