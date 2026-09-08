@@ -1256,6 +1256,11 @@ function keLibro(ExcelJS, d, meta){
           + '. Se registran desde Captura de datos de campo.' : '',
       d.setup.length < d.operacional.length);
   lin('Registros de protecciones', d.protecciones.length);
+  lin('Puntos en el detalle', (d.detalle || []).length,
+      (d.detalle || []).length
+        ? 'Ultima ronda, valores crudos por punto. Hoja Detalle.'
+        : 'Sin detalle disponible.',
+      !(d.detalle || []).length);
   lin('Rondas en el historico', (d.historico || []).length,
       (d.historico || []).length
         ? 'Ultimos 24 meses. Hojas Historico, Variacion y Consolidado.'
@@ -1629,6 +1634,134 @@ function keLibro(ExcelJS, d, meta){
     va.getCell(fila, 1).font = { size:8, color:{ argb:KE_C.gris2 } };
   }
 
+  /* ── Detalle punto por punto ──
+     Una fila por unidad y una columna por punto de medicion. Las columnas
+     se arman desde lo que realmente se capturo, no desde una lista fija:
+     si Captura empieza a registrar un punto nuevo aparece solo.
+
+     Va aparte de Operacional a proposito. Operacional se lee de un
+     vistazo, una fila por unidad; con setenta columnas dejaria de servir
+     para eso. Aqui se viene a revisar una unidad a fondo. */
+  if (d.detalle && d.detalle.length){
+    /* Orden de columnas: por grupo de nodo siguiendo el recorrido de la
+       cadena, y dentro de cada grupo por el orden del catalogo. */
+    const ORDEN_GRUPO = ['PST entrada','Convertidor 1','Convertidor 2','Bus',
+                         'VFD salida','SUT salida','Temperaturas',
+                         'Sensor de fondo','Otros'];
+    const puntos = new Map();
+    d.detalle.forEach(r => {
+      if (!puntos.has(r.punto_codigo)){
+        puntos.set(r.punto_codigo, { cod:r.punto_codigo, etq:r.etiqueta,
+                                     grupo:r.grupo, orden:r.orden,
+                                     uds:new Set() });
+      }
+      if (r.unidad_med) puntos.get(r.punto_codigo).uds.add(r.unidad_med);
+    });
+    const cols = [...puntos.values()].sort((a, b) => {
+      const ga = ORDEN_GRUPO.indexOf(a.grupo), gb = ORDEN_GRUPO.indexOf(b.grupo);
+      if (ga !== gb) return (ga < 0 ? 99 : ga) - (gb < 0 ? 99 : gb);
+      if (a.orden !== b.orden) return a.orden - b.orden;
+      return a.cod.localeCompare(b.cod);
+    });
+
+    const filas = new Map();
+    d.detalle.forEach(r => {
+      if (!filas.has(r.unidad)){
+        filas.set(r.unidad, { unidad:r.unidad, campo:r.campo, pad:r.pad,
+                              fecha:r.fecha, v:{}, dudoso:{} });
+      }
+      const f = filas.get(r.unidad);
+      f.v[r.punto_codigo] = r.valor;
+      /* Un valor marcado como no valido en captura se conserva pero se
+         distingue: borrarlo escondería que se midió y se descartó. */
+      if (r.valido === false) f.dudoso[r.punto_codigo] = true;
+    });
+
+    const det = wb.addWorksheet('Detalle', {
+      views: [{ state:'frozen', xSplit:4, ySplit:5 }],
+      pageSetup: { paperSize:9, orientation:'landscape', fitToPage:true, fitToWidth:1 }
+    });
+    det.getCell('A1').value = 'Detalle por punto de medicion \u00b7 ' + meta.ambito;
+    det.getCell('A1').font = { bold:true, size:13, color:{ argb:KE_C.azul } };
+    det.getCell('A2').value = 'Ultima ronda de cada unidad, valores tal como se registraron en campo '
+      + '(sin normalizar). Es la vista para revisar una unidad a fondo o rastrear un dato dudoso.';
+    det.getCell('A2').font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+
+    const FIJAS = ['Unidad','Campo','PAD','Fecha'];
+    const ANCHO = [11, 13, 13, 12];
+    /* Tres filas de cabecera: grupo, etiqueta y unidad de medida. Sin el
+       grupo, setenta columnas de codigos son ilegibles. */
+    const F_GRP = 3, F_ETQ = 4, F_UDS = 5;
+    FIJAS.forEach((t, i) => {
+      det.getColumn(i + 1).width = ANCHO[i];
+      det.mergeCells(F_GRP, i + 1, F_UDS, i + 1);
+      const c = det.getCell(F_GRP, i + 1);
+      c.value = t;
+      c.font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+      c.alignment = { vertical:'middle', horizontal:'center', wrapText:true };
+    });
+
+    let cx = FIJAS.length + 1;
+    let grpIni = cx, grpAct = null;
+    const cerrarGrupo = (hasta) => {
+      if (grpAct == null || hasta < grpIni) return;
+      if (hasta > grpIni) det.mergeCells(F_GRP, grpIni, F_GRP, hasta);
+      const g = det.getCell(F_GRP, grpIni);
+      g.value = grpAct;
+      g.font = { bold:true, size:9, color:{ argb:'FFFFFFFF' } };
+      g.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+      g.alignment = { horizontal:'center' };
+    };
+    cols.forEach(p => {
+      if (p.grupo !== grpAct){ cerrarGrupo(cx - 1); grpAct = p.grupo; grpIni = cx; }
+      det.getColumn(cx).width = 11;
+      const e = det.getCell(F_ETQ, cx);
+      e.value = p.etq;
+      e.font = { bold:true, size:8, color:{ argb:KE_C.gris } };
+      e.alignment = { horizontal:'center', wrapText:true };
+      const u = det.getCell(F_UDS, cx);
+      /* Un punto capturado con dos unidades distintas entre pozos mezcla
+         escalas en la misma columna. Se marca en vez de ocultarlo. */
+      const lista = [...p.uds];
+      u.value = lista.length > 1 ? lista.join(' / ') + ' \u26a0' : (lista[0] || '');
+      u.font = { size:8, italic:true,
+                 color:{ argb: lista.length > 1 ? KE_C.naranja : KE_C.gris2 } };
+      u.alignment = { horizontal:'center' };
+      p.col = cx;
+      cx += 1;
+    });
+    cerrarGrupo(cx - 1);
+    det.getRow(F_ETQ).height = 26;
+
+    let fy = F_UDS + 1;
+    [...filas.values()].sort((a, b) => a.unidad.localeCompare(b.unidad)).forEach(f => {
+      det.getCell(fy, 1).value = f.unidad;
+      det.getCell(fy, 1).font = { size:9, bold:true };
+      det.getCell(fy, 2).value = f.campo;
+      det.getCell(fy, 3).value = f.pad;
+      det.getCell(fy, 4).value = f.fecha;
+      for (let i = 2; i <= 4; i++) det.getCell(fy, i).font = { size:9 };
+      cols.forEach(p => {
+        const c = det.getCell(fy, p.col);
+        const v = f.v[p.cod];
+        if (v != null) c.value = Number(v);
+        c.numFmt = '#,##0.###';
+        c.font = f.dudoso[p.cod]
+          ? { size:9, italic:true, color:{ argb:KE_C.naranja } }
+          : { size:9 };
+        c.alignment = { horizontal:'right' };
+      });
+      fy += 1;
+    });
+
+    det.autoFilter = { from:{ row:F_ETQ, column:1 }, to:{ row:F_ETQ, column:cx - 1 } };
+    fy += 1;
+    det.getCell(fy, 1).value = 'En ambar: valor marcado como no valido en captura, o punto '
+      + 'capturado con mas de una unidad de medida entre pozos.';
+    det.getCell(fy, 1).font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+  }
+
   /* ── Placas ── */
   keHoja(wb, 'Placas', [
     { k:'unidad', t:'Unidad', w:11 }, { k:'campo', t:'Campo', w:13 },
@@ -1766,6 +1899,16 @@ async function kpExportarEntrega(){
        unico dato opcional del libro. Si falla -por volumen o porque la
        funcion no esta desplegada- el resto del archivo debe salir igual,
        que es lo que la gente necesita casi siempre. */
+    let detalle = [];
+    try {
+      const { data, error } = await sb.rpc('dp_entrega_detalle',
+        { p_campo: c, p_sistema: s });
+      if (error) throw new Error(error.message);
+      detalle = data || [];
+    } catch(e){
+      console.warn('[Kronos-M] Detalle por punto no disponible:', e.message);
+    }
+
     let historico = [];
     try {
       const { data, error } = await sb.rpc('dp_entrega_historico',
@@ -1815,7 +1958,7 @@ async function kpExportarEntrega(){
     const hoy = new Date().toISOString().slice(0, 10);
     const ambito = (c || 'Todos los campos') + (s ? ' · ' + s : '');
     const wb = keLibro(ExcelJS,
-      { operacional, placas, setup, protecciones, propuestas, historico },
+      { operacional, placas, setup, protecciones, propuestas, historico, detalle },
       { ambito: ambito, fecha: hoy });
 
     const buf = await wb.xlsx.writeBuffer();
