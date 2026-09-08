@@ -1228,7 +1228,7 @@ function keLibro(ExcelJS, d, meta){
     pageSetup: { paperSize: 9, orientation: 'portrait',
                  fitToPage: true, fitToWidth: 1 } });
 
-  [3, 22, 12, 12, 12, 12, 12, 16].forEach((w, i) => { cb.getColumn(i + 1).width = w; });
+  [3, 30, 12, 12, 12, 12, 12, 16].forEach((w, i) => { cb.getColumn(i + 1).width = w; });
 
   const tit = (fila, txt, sub) => {
     cb.mergeCells(fila, 2, fila, 8);
@@ -1349,7 +1349,13 @@ function keLibro(ExcelJS, d, meta){
     f += 1;
     const filaIni = f;
     BANDAS.forEach(([nom, rango, test, color]) => {
-      cb.getCell(f, 2).value = nom;
+      /* El rango va escrito en la celda, no como nota.
+         Dos motivos. Uno: una nota no se ve hasta pasar el raton, y esto
+         es justo lo que hace falta para leer la tabla. Dos, y decisivo:
+         las notas escriben legacyDrawing y la barra de datos escribe una
+         extension x14; ExcelJS las emite en orden invalido -extLst antes
+         de legacyDrawing- y Excel descarta la hoja entera al abrirla. */
+      cb.getCell(f, 2).value = nom + '  (' + rango + ')';
       cb.getCell(f, 2).font = { size:9, bold:true, color:{ argb:color } };
       cb.getCell(f, 2).alignment = { indent:1 };
       let tot = 0;
@@ -1368,7 +1374,6 @@ function keLibro(ExcelJS, d, meta){
          longitud se lee sola sin competir con la cifra. */
       cb.getCell(f, 8).value = tot || null;
       cb.getCell(f, 8).font = { size:8, color:{ argb:'FF9AA7B4' } };
-      cb.getCell(f, 2).note = rango;
       f += 1;
     });
     cb.addConditionalFormatting({
