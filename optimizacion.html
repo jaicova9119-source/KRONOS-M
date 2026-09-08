@@ -3171,8 +3171,11 @@ let koPanel   = 'tap';   // 'tap' | 'dim'
 let koMargen  = 85;      // objetivo de utilizacion, %
 let KO_DIM    = null;    // filas de opt_dimensionamiento()
 let KO_LIB    = null;    // resumen de opt_liberables()
-let koDimNodo = 'VFD';   // nodo mostrado en la tabla
+let koDimNodo  = 'VFD';   // nodo mostrado en la tabla
 let koDimSoloSobra = true;
+let koDimCampo = '';     // '' = todos
+let koDimBase  = 'demanda';
+let KO_DIM_SEL = new Set();   // pozos marcados para la propuesta
 
 async function koCargarDim(){
   const sb = koCliente();
@@ -3180,8 +3183,8 @@ async function koCargarDim(){
   /* Las dos en paralelo: el resumen no depende del detalle y esperar en
      serie duplica el tiempo de la pantalla. */
   const [d, l] = await Promise.all([
-    sb.rpc('opt_dimensionamiento', { p_util_objetivo: koMargen }),
-    sb.rpc('opt_liberables',       { p_util_objetivo: koMargen }),
+    sb.rpc('opt_dimensionamiento', { p_util_objetivo: koMargen, p_base: koDimBase }),
+    sb.rpc('opt_liberables',       { p_util_objetivo: koMargen, p_base: koDimBase }),
   ]);
   if (d.error) throw d.error;
   if (l.error) throw l.error;
@@ -3204,6 +3207,75 @@ function koDimBarra(util, instalado, recomendado){
        + '</div><span>' + u.toFixed(0) + '%</span></div>';
 }
 
+/* Exportacion de la propuesta.
+   CSV porque es lo que se abre en Excel sin pedir nada, y con punto y coma
+   porque en configuracion regional en espanol la coma es separador decimal
+   y un CSV con comas queda en una sola columna. */
+function koDimExportar(){
+  const filas = KO_DIM.filter(r => KO_DIM_SEL.has(r.pozo + '|' + r.nodo));
+  if (!filas.length) return;
+  const cab = ['Pozo','Campo','PAD','Nodo','Instalado','Unidad','Demanda proyectada',
+               'Utilizacion %','Techo por motor','Recomendado','Libera',
+               'Motor marca','Motor modelo','Motor serial','Motor I nominal',
+               'Motor I medida','Motor util %','Serial equipo','Marca','Modelo',
+               'f operacion','f maxima','Lectura','Base','Veredicto'];
+  const q = v => {
+    const t = (v == null ? '' : String(v));
+    return /[;"\n]/.test(t) ? '"' + t.replace(/"/g,'""') + '"' : t;
+  };
+  const cuerpo = filas.map(r => [
+    r.pozo, r.campo, r.pad, r.nodo, r.instalado, r.unidad, r.demanda_fmax,
+    r.util_actual_pct, r.techo_motor, r.recomendado,
+    (r.recomendado != null && Number(r.recomendado) < Number(r.instalado)*0.95)
+      ? r.instalado + ' ' + r.unidad : '',
+    r.motor_marca, r.motor_modelo, r.motor_serial, r.motor_i_nominal,
+    r.motor_i_medida, r.motor_util_pct, r.serial, r.marca, r.modelo,
+    r.f_op_hz, r.f_max, r.lectura_fecha, r.base_usada, r.veredicto,
+  ].map(q).join(';'));
+
+  const hoy = new Date().toISOString().slice(0,10);
+  const enc = [
+    'Propuesta de redimensionamiento de equipo de superficie',
+    'Generado;' + hoy,
+    'Criterio;' + (koDimBase === 'motor' ? 'techo por motor' : 'demanda proyectada a f maxima'),
+    'Utilizacion objetivo;' + koMargen + '%',
+    'Campo;' + (koDimCampo || 'todos'),
+    'Unidades;' + filas.length,
+    '',
+  ].join('\n');
+
+  /* BOM para que Excel reconozca los acentos; sin el, "Utilizacion" sale
+     con caracteres raros y el archivo parece corrupto. */
+  const blob = new Blob(['\ufeff' + enc + cab.join(';') + '\n' + cuerpo.join('\n')],
+                        { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Redimensionamiento ' + (koDimCampo || 'flota') + ' ' + hoy + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+function koDimCopiar(){
+  const filas = KO_DIM.filter(r => KO_DIM_SEL.has(r.pozo + '|' + r.nodo));
+  if (!filas.length) return;
+  const L = ['*Propuesta de redimensionamiento*',
+             'Criterio: ' + (koDimBase === 'motor' ? 'techo por motor' : 'demanda a f máx')
+             + ' · objetivo ' + koMargen + '%', ''];
+  filas.forEach(r => {
+    L.push('• *' + r.pozo + '* (' + (r.pad || '—') + ')');
+    L.push('   ' + r.nodo + ': ' + koEnt(r.instalado) + ' ' + r.unidad
+           + ' → ' + koEnt(r.recomendado) + ' ' + r.unidad
+           + '  (uso ' + r.util_actual_pct + '%)');
+    if (r.motor_i_nominal) {
+      L.push('   Motor: ' + (r.motor_modelo || r.motor_marca || 's/d')
+             + ' · ' + koEnt(r.motor_i_nominal) + ' A nom'
+             + (r.motor_util_pct != null ? ' · uso ' + r.motor_util_pct + '%' : ''));
+    }
+    L.push('   Libera: ' + koEnt(r.instalado) + ' ' + r.unidad);
+  });
+  navigator.clipboard?.writeText(L.join('\n'));
+}
+
 function koPintarDim(){
   const v = document.getElementById('koVista');
   document.getElementById('koBack').style.display = 'none';
@@ -3219,7 +3291,26 @@ function koPintarDim(){
   /* ── Resumen: cuantos equipos de cada tamano quedan disponibles ──
      Es la respuesta corta. Se muestran solo los tamanos grandes primero
      porque son los que valen la pena mover. */
-  const lib = (KO_LIB || []).filter(r => r.nodo === koDimNodo);
+  /* El resumen se recalcula en el cliente cuando hay campo seleccionado:
+     opt_liberables lo acepta como parametro, pero volver a la base por cada
+     cambio de campo agrega una espera que no aporta nada. */
+  const lib = koDimCampo
+    ? (() => {
+        const m = new Map();
+        KO_DIM.filter(r => r.nodo === koDimNodo && r.campo === koDimCampo
+                        && r.recomendado != null
+                        && Number(r.recomendado) < Number(r.instalado) * 0.95)
+              .forEach(r => {
+                const k = String(r.instalado);
+                if (!m.has(k)) m.set(k, { nodo:r.nodo, unidad:r.unidad, tamano:r.instalado,
+                                          equipos:0, baja:new Set() });
+                const e = m.get(k); e.equipos++; e.baja.add(r.recomendado);
+              });
+        return [...m.values()]
+          .map(e => ({ ...e, baja_a:[...e.baja].sort((a,b)=>a-b).join(', ') }))
+          .sort((a,b) => b.tamano - a.tamano);
+      })()
+    : (KO_LIB || []).filter(r => r.nodo === koDimNodo);
   let h = '';
 
   /* SUT y PST comparten la demanda medida en kVA. Decirlo aqui y no en
@@ -3240,7 +3331,13 @@ function koPintarDim(){
   }
 
   /* ── Controles ────────────────────────────────────────────────────── */
+  const campos = [...new Set(KO_DIM.map(r => r.campo).filter(Boolean))].sort();
   h += '<div class="ko-cfg">'
+    + '<div class="g"><label>Campo</label><select id="koDimCampo">'
+    + '<option value="">Todos</option>'
+    + campos.map(c => '<option value="' + koEsc(c) + '"'
+        + (c === koDimCampo ? ' selected' : '') + '>' + koEsc(c) + '</option>').join('')
+    + '</select></div>'
     + '<div class="g"><label>Nodo</label><select id="koDimNodo">'
     + ['VFD','SUT','PST'].map(n =>
         '<option value="' + n + '"' + (n === koDimNodo ? ' selected' : '') + '>'
@@ -3248,6 +3345,10 @@ function koPintarDim(){
     + '</select></div>'
     + '<div class="g"><label>Utilizaci&oacute;n objetivo</label>'
     + '<input type="number" id="koDimMargen" min="60" max="95" step="5" value="' + koMargen + '"></div>'
+    + '<div class="g"><label>Base del c&aacute;lculo</label><select id="koDimBase">'
+    + '<option value="demanda"' + (koDimBase === 'demanda' ? ' selected' : '') + '>Demanda a f m&aacute;x</option>'
+    + '<option value="motor"'   + (koDimBase === 'motor'   ? ' selected' : '') + '>Techo por motor</option>'
+    + '</select></div>'
     + '<div class="g"><label>Mostrar</label><select id="koDimFiltro">'
     + '<option value="1"' + (koDimSoloSobra ? ' selected' : '') + '>Solo sobredimensionados</option>'
     + '<option value="0"' + (!koDimSoloSobra ? ' selected' : '') + '>Todas las unidades</option>'
@@ -3255,13 +3356,19 @@ function koPintarDim(){
     /* Que el margen sea visible y movible no es adorno: es la unica
        decision de criterio del analisis, y quien decide debe poder ver
        cuanto cambia la respuesta al endurecerlo. */
-    + '<div class="nota">El equipo recomendado es el escal&oacute;n m&aacute;s peque&ntilde;o que '
-    + 'existe en la flota y que cubre la demanda proyectada a frecuencia m&aacute;xima con esa '
-    + 'holgura. Mueva el objetivo para ver cu&aacute;nto cambia la lista.</div>'
-    + '</div>';
+    + '<div class="nota">' + (koDimBase === 'motor'
+        ? 'Prueba de esfuerzo: dimensiona contra lo que ver&iacute;a el nodo si el motor '
+          + 'llegara a su corriente de placa. Es muy conservador —un motor al 35&nbsp;% en un pozo '
+          + 'en declinaci&oacute;n no llega ah&iacute;— pero si aun as&iacute; el equipo sobra, '
+          + 'la decisi&oacute;n es incontestable.'
+        : 'El equipo recomendado es el escal&oacute;n m&aacute;s peque&ntilde;o que existe en la '
+          + 'flota y que cubre la demanda proyectada a la frecuencia m&aacute;xima de dise&ntilde;o '
+          + 'con esa holgura. Mueva el objetivo para ver cu&aacute;nto cambia la lista.')
+    + '</div></div>';
 
   /* ── Tabla ────────────────────────────────────────────────────────── */
-  let filas = KO_DIM.filter(r => r.nodo === koDimNodo);
+  let filas = KO_DIM.filter(r => r.nodo === koDimNodo
+                              && (!koDimCampo || r.campo === koDimCampo));
   if (koDimSoloSobra){
     filas = filas.filter(r => r.recomendado != null && Number(r.recomendado) < Number(r.instalado) * 0.95);
   }
@@ -3273,19 +3380,48 @@ function koPintarDim(){
          : 'Sin datos de este nodo.')
       + '</div></div>';
   } else {
+    const nSel = filas.filter(r => KO_DIM_SEL.has(r.pozo + '|' + r.nodo)).length;
     h += '<div class="ko-card"><div class="ct"><b>Unidades</b>'
-      + '<span>' + filas.length + ' de ' + KO_DIM.filter(r => r.nodo === koDimNodo).length + '</span></div>'
+      + '<span>' + filas.length + ' de ' + KO_DIM.filter(r => r.nodo === koDimNodo).length
+      + (nSel ? ' &middot; ' + nSel + ' marcadas' : '') + '</span></div>'
+      + '<div class="ko-bar2" style="margin:0 0 11px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">'
+      + '<button class="ko-chip" id="koDimTodos">Marcar los ' + filas.length + ' visibles</button>'
+      + '<button class="ko-chip" id="koDimNada">Quitar marcas</button>'
+      + '<span style="flex:1"></span>'
+      + '<button class="ko-chip" id="koDimCsv"' + (nSel ? '' : ' disabled') + '>Exportar CSV</button>'
+      + '<button class="ko-chip" id="koDimCopy"' + (nSel ? '' : ' disabled') + '>Copiar resumen</button>'
+      + '</div>'
       + '<div class="ko-scroll"><table class="ko-t"><thead><tr>'
+      + '<th style="width:26px"></th>'
       + '<th>Unidad</th><th>PAD</th><th>Instalado</th><th>Demanda</th>'
-      + '<th>Utilizaci&oacute;n</th><th>Recomendado</th><th>Libera</th><th>Lectura</th>'
+      + '<th>Utilizaci&oacute;n</th><th>Recomendado</th><th>Libera</th>'
+      /* El equipo de fondo va en la misma fila: sustentar un cambio de
+         superficie obligaba a abrir otra pantalla para saber que hay abajo. */
+      + '<th>Motor instalado</th><th>Lectura</th>'
       + '</tr></thead><tbody>';
 
     filas.forEach(r => {
       const sobra = r.recomendado != null && Number(r.recomendado) < Number(r.instalado) * 0.95;
-      h += '<tr><td><b>' + koEsc(r.pozo) + '</b></td>'
+      const id = r.pozo + '|' + r.nodo;
+      const mot = r.motor_i_nominal
+        ? koEnt(r.motor_i_nominal) + ' A'
+          + (r.motor_util_pct != null ? ' &middot; ' + r.motor_util_pct + '%' : '')
+          + (r.motor_modelo || r.motor_marca
+             ? '<div style="font-size:10.5px;color:var(--ko-t3)">'
+               + koEsc([r.motor_marca, r.motor_modelo].filter(Boolean).join(' ')) + '</div>'
+             : '')
+        : '<span style="color:var(--ko-t3)">sin placa</span>';
+      h += '<tr>'
+        + '<td style="text-align:center"><input type="checkbox" data-sel="' + koEsc(id) + '"'
+        + (KO_DIM_SEL.has(id) ? ' checked' : '') + '></td>'
+        + '<td><b>' + koEsc(r.pozo) + '</b>'
+        + '<div style="font-size:10.5px;color:var(--ko-t3)">' + koEsc(r.campo || '') + '</div></td>'
         + '<td>' + koEsc(r.pad || '\u2014') + '</td>'
         + '<td>' + koEnt(r.instalado) + ' ' + koEsc(r.unidad) + '</td>'
-        + '<td>' + koEnt(r.demanda_fmax) + ' ' + koEsc(r.unidad) + '</td>'
+        + '<td>' + koEnt(r.demanda_fmax) + ' ' + koEsc(r.unidad)
+        + (koDimBase === 'motor' && r.techo_motor != null
+           ? '<div style="font-size:10.5px;color:var(--ko-t3)">techo ' + koEnt(r.techo_motor) + '</div>'
+           : '') + '</td>'
         + '<td>' + koDimBarra(r.util_actual_pct, r.instalado, r.recomendado) + '</td>'
         + '<td>' + (r.recomendado != null
                      ? koEnt(r.recomendado) + ' ' + koEsc(r.unidad)
@@ -3293,6 +3429,7 @@ function koPintarDim(){
         + '<td>' + (sobra
                      ? '<b style="color:var(--ko-green)">' + koEnt(r.instalado) + ' ' + koEsc(r.unidad) + '</b>'
                      : '\u2014') + '</td>'
+        + '<td>' + mot + '</td>'
         + '<td>' + koEsc(r.lectura_fecha || '\u2014') + '</td></tr>';
     });
 
@@ -3317,6 +3454,40 @@ function koPintarDim(){
 
   document.getElementById('koDimNodo').onchange = e => {
     koDimNodo = e.target.value; koPintarDim();
+  };
+  document.getElementById('koDimCampo').onchange = e => {
+    koDimCampo = e.target.value; koPintarDim();
+  };
+  document.querySelectorAll('[data-sel]').forEach(c => {
+    c.onchange = () => {
+      if (c.checked) KO_DIM_SEL.add(c.dataset.sel); else KO_DIM_SEL.delete(c.dataset.sel);
+      koPintarDim();
+    };
+  });
+  const bt = document.getElementById('koDimTodos');
+  if (bt) bt.onclick = () => {
+    filas.forEach(r => KO_DIM_SEL.add(r.pozo + '|' + r.nodo)); koPintarDim();
+  };
+  const bn = document.getElementById('koDimNada');
+  if (bn) bn.onclick = () => { KO_DIM_SEL.clear(); koPintarDim(); };
+  const bc = document.getElementById('koDimCsv');
+  if (bc) bc.onclick = koDimExportar;
+  const bp = document.getElementById('koDimCopy');
+  if (bp) bp.onclick = () => {
+    koDimCopiar();
+    bp.textContent = 'Copiado';
+    setTimeout(() => { bp.textContent = 'Copiar resumen'; }, 1600);
+  };
+  document.getElementById('koDimBase').onchange = async e => {
+    koDimBase = e.target.value;
+    KO_DIM = null; koPintarDim();
+    try { await koCargarDim(); } catch(err){
+      document.getElementById('koVista').innerHTML =
+        '<div class="ko-card"><div class="ko-vacio">No se pudo recalcular.<br>'
+        + koEsc(err.message) + '</div></div>';
+      return;
+    }
+    koPintarDim();
   };
   document.getElementById('koDimFiltro').onchange = e => {
     koDimSoloSobra = e.target.value === '1'; koPintarDim();
