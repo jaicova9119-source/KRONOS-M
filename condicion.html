@@ -1092,13 +1092,29 @@ async function keExcelJS(){
    uniformidad es lo que permite pivotear sin sorpresas. */
 function keHoja(wb, nombre, cols, filas, opciones){
   const o = opciones || {};
+  /* Con titulo, la cabecera baja dos filas y el panel se congela ahi.
+     Una hoja suelta en un libro de nueve pestanas necesita decir que es:
+     el nombre de la pestana se corta y no admite explicacion. */
+  const desp = o.titulo ? 2 : 0;
   const ws = wb.addWorksheet(nombre, {
-    views: [{ state: 'frozen', ySplit: 1 }],
+    views: [{ state: 'frozen', ySplit: 1 + desp }],
     pageSetup: { paperSize: 9, orientation: 'landscape',
                  fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
   });
-  ws.columns = cols.map(c => ({ header: c.t, key: c.k, width: c.w || 14 }));
-  const enc = ws.getRow(1);
+  ws.columns = cols.map(c => ({ key: c.k, width: c.w || 14 }));
+
+  if (o.titulo){
+    ws.getCell('A1').value = o.titulo;
+    ws.getCell('A1').font = { bold:true, size:13, color:{ argb:KE_C.azul } };
+    if (o.sub){
+      ws.getCell('A2').value = o.sub;
+      ws.getCell('A2').font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+    }
+  }
+
+  const fEnc = 1 + desp;
+  cols.forEach((c, i) => { ws.getCell(fEnc, i + 1).value = c.t; });
+  const enc = ws.getRow(fEnc);
   enc.font = { bold: true, size: 9, color: { argb: KE_C.blanco } };
   enc.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: KE_C.azul } };
   enc.alignment = { vertical: 'middle', wrapText: true };
@@ -1118,7 +1134,8 @@ function keHoja(wb, nombre, cols, filas, opciones){
     }
   });
   if (filas.length)
-    ws.autoFilter = { from: 'A1', to: { row: 1, column: cols.length } };
+    ws.autoFilter = { from: { row: fEnc, column: 1 },
+                      to:   { row: fEnc, column: cols.length } };
   return ws;
 }
 
@@ -1308,7 +1325,9 @@ function keLibro(ExcelJS, d, meta){
     { k:'t_intake_f', t:'T intake °F', w:10, f:V1 },
     { k:'vib_x', t:'Vibracion X', w:10, f:'0.00' },
     { k:'vib_y', t:'Vibracion Y', w:10, f:'0.00' }
-  ], d.operacional, { vacioSi: x => !x.fecha });
+  ], d.operacional, { vacioSi: x => !x.fecha,
+      titulo: 'Datos operacionales \u00b7 ultima ronda \u00b7 ' + meta.ambito,
+      sub: 'Una fila por unidad con su lectura mas reciente. Las unidades sin lectura aparecen atenuadas.' });
 
   /* ── Historico ──
      Mismas columnas que Operacional para que las dos hojas se lean igual,
@@ -1365,7 +1384,11 @@ function keLibro(ExcelJS, d, meta){
       { k:'t_intake_f', t:'T intake °F', w:10, f:V1 },
       { k:'vib_x', t:'Vibracion X', w:10, f:'0.00' },
       { k:'vib_y', t:'Vibracion Y', w:10, f:'0.00' }
-    ], d.historico, {});
+    ], d.historico, {
+      titulo: 'Historico de rondas \u00b7 ' + meta.ambito,
+      sub: 'Todas las rondas de los ultimos 24 meses. La capacidad y la carga se resuelven a la '
+         + 'fecha de cada ronda y no con el equipo instalado hoy: un cambio de equipo mueve el '
+         + 'porcentaje aunque la corriente no cambie.' });
 
     /* ── Variacion ──
        La hoja que se mira. Diez metricas con su valor y su cambio contra
@@ -1653,7 +1676,12 @@ function keLibro(ExcelJS, d, meta){
       { k:'reduccion_kw', t:'Cambio de consumo kW', w:16,
         f:'[Green]"\u2193 "#,##0.0;[Red]"\u2191 "#,##0.0;[Color15]"\u2192 "0.0' },
       { k:'nota', t:'Nota', w:34 }, { k:'motivo', t:'Motivo', w:28 }
-    ], d.propuestas);
+    ], d.propuestas, {
+      titulo: 'Propuesta de optimizacion energetica \u00b7 ' + meta.ambito,
+      sub: 'Cambio de TAP por condicion de operacion. Se listan TODAS las unidades del ambito: '
+         + 'las que aun no tienen propuesta aparecen atenuadas, para ver cuantas faltan por evaluar.',
+      vacioSi: x => !x.estado
+    });
 
   /* ── Configuracion ── */
   if (d.setup.length)
@@ -1754,15 +1782,23 @@ async function kpExportarEntrega(){
     /* Las propuestas no se filtran por campo en la base: opt_propuestas
        no lo conoce. Se cruzan aqui contra las unidades del ambito, que
        es lo mismo y evita tocar esa funcion. */
-    let propuestas = [];
+    /* Se parte de TODAS las unidades del ambito y se cruzan las propuestas
+       encima. Listar solo las que tienen propuesta oculta la pregunta mas
+       util del ejercicio: cuantas faltan por evaluar. Las que no tienen
+       quedan con el resto de columnas vacias y la hoja las atenua. */
+    let propuestas = operacional.map(x => ({ unidad: x.unidad, campo: x.campo }));
     try {
       const { data } = await sb.rpc('opt_propuestas');
-      const enAmbito = new Map(operacional.map(x => [x.unidad, x.campo]));
-      propuestas = (data || [])
-        .filter(p => enAmbito.has(p.pozo)
-                  && p.estado !== 'descartada')
-        .map(p => ({
-          unidad: p.pozo, campo: enAmbito.get(p.pozo), estado: p.estado,
+      const conProp = new Map();
+      (data || [])
+        .filter(p => p.estado !== 'descartada')
+        .forEach(p => conProp.set(p.pozo, p));
+
+      propuestas = operacional.map(x => {
+        const p = conProp.get(x.unidad);
+        if (!p) return { unidad: x.unidad, campo: x.campo };
+        return {
+          unidad: x.unidad, campo: x.campo, estado: p.estado,
           creado_en: (p.creado_en || '').slice(0, 10),
           f_max_previa_hz: p.f_max_previa_hz,
           f_max_propuesta: p.f_max_propuesta,
@@ -1772,7 +1808,8 @@ async function kpExportarEntrega(){
             ? p.tap_solicitado_v - p.tap_previo_v : null,
           kw_previo: p.kw_previo, reduccion_kw: p.reduccion_kw,
           nota: p.nota, motivo: p.motivo
-        }));
+        };
+      });
     } catch(e){ console.warn('[Kronos-M] Propuestas no disponibles:', e.message); }
 
     const hoy = new Date().toISOString().slice(0, 10);
