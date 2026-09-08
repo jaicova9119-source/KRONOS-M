@@ -1215,40 +1215,277 @@ function keLibro(ExcelJS, d, meta){
   const HZ = '0.0" Hz"';     const PCT = '0.0"%"';
   const FP = '0.00';         const F3 = '0.000';
 
-  /* ── Cobertura ── */
-  const cb = wb.addWorksheet('Cobertura', {
-    pageSetup: { paperSize: 9, fitToPage: true, fitToWidth: 1 } });
-  cb.columns = [{ width: 3 }, { width: 40 }, { width: 14 }, { width: 60 }];
-  cb.getCell('B2').value = 'Datos operacionales · ' + meta.ambito;
-  cb.getCell('B2').font = { bold: true, size: 14, color: { argb: KE_C.azul } };
-  cb.getCell('B3').value = 'Fecha de emision: ' + meta.fecha;
-  cb.getCell('B3').font = { size: 10, color: { argb: KE_C.gris } };
+  /* ── Resumen ──
+     Es la hoja que se abre primero y por eso decide la impresion del
+     archivo entero. Lleva cifras grandes, bandas de carga con barra y la
+     lista corta de unidades que piden atencion; el detalle vive en las
+     otras hojas.
 
-  const sinLectura = d.operacional.filter(x => !x.fecha);
-  const atrasadas  = d.operacional.filter(x => x.dias_sin_medir > 90);
-  let f = 5;
+     Las barras son formato condicional nativo, no imagenes: escalan al
+     imprimir, no se pixelan y se recalculan solas si alguien filtra. */
+  const cb = wb.addWorksheet('Resumen', {
+    views: [{ showGridLines: false }],
+    pageSetup: { paperSize: 9, orientation: 'portrait',
+                 fitToPage: true, fitToWidth: 1 } });
+
+  [3, 22, 12, 12, 12, 12, 12, 16].forEach((w, i) => { cb.getColumn(i + 1).width = w; });
+
+  const tit = (fila, txt, sub) => {
+    cb.mergeCells(fila, 2, fila, 8);
+    const c = cb.getCell(fila, 2);
+    c.value = txt;
+    c.font = { bold: true, size: 11, color: { argb: KE_C.azul } };
+    if (sub){
+      cb.mergeCells(fila + 1, 2, fila + 1, 8);
+      const s2 = cb.getCell(fila + 1, 2);
+      s2.value = sub;
+      s2.font = { size: 8.5, italic: true, color: { argb: KE_C.gris2 } };
+      return fila + 2;
+    }
+    return fila + 1;
+  };
+
+  /* Banda de encabezado: color solido de lado a lado. Es lo unico del
+     libro que existe solo para que se vea bien. */
+  for (let r = 1; r <= 3; r++){
+    for (let c = 1; c <= 8; c++){
+      cb.getCell(r, c).fill = { type:'pattern', pattern:'solid',
+                                fgColor:{ argb: KE_C.azul } };
+    }
+  }
+  cb.getRow(1).height = 8; cb.getRow(2).height = 26; cb.getRow(3).height = 14;
+  cb.getCell(2, 2).value = 'Monitoreo de condicion \u00b7 ' + meta.ambito;
+  cb.getCell(2, 2).font = { bold:true, size:16, color:{ argb:'FFFFFFFF' } };
+  cb.getCell(3, 2).value = 'Emitido el ' + meta.fecha;
+  cb.getCell(3, 2).font = { size:9, color:{ argb:'FFD6E4F0' } };
+
+  /* ── Datos que alimentan el tablero ─────────────────────────────── */
+  const conL   = d.operacional.filter(x => x.fecha);
+  const sinL   = d.operacional.filter(x => !x.fecha);
+  const atras  = d.operacional.filter(x => x.dias_sin_medir > 90);
+  const alDia  = conL.filter(x => !(x.dias_sin_medir > 90));
+
+  /* La ultima ronda de cada unidad dentro del historico: es donde viven
+     los porcentajes de carga, que operacional no trae. */
+  const ultCarga = new Map();
+  (d.historico || []).forEach(r => ultCarga.set(r.unidad, r));
+  const cargas = [...ultCarga.values()];
+
+  const propAbiertas = (d.propuestas || []).filter(p => p.estado);
+  const kwPot = propAbiertas.reduce((a, p) =>
+    a + (Number(p.reduccion_kw) < 0 ? -Number(p.reduccion_kw) : 0), 0);
+
+  /* ── Tarjetas ─────────────────────────────────────────────────────
+     Cifra grande arriba y etiqueta pequena abajo. Se usa una franja de
+     color a la izquierda en vez de rellenar la tarjeta entera: rellena
+     compite con los numeros y cansa a la tercera tarjeta. */
+  const tarjeta = (col, ancho, etq, val, nota, color) => {
+    cb.mergeCells(5, col, 5, col + ancho - 1);
+    cb.mergeCells(6, col, 6, col + ancho - 1);
+    cb.mergeCells(7, col, 7, col + ancho - 1);
+    const e = cb.getCell(5, col), v = cb.getCell(6, col), n = cb.getCell(7, col);
+    e.value = etq;
+    e.font = { size:8, bold:true, color:{ argb:KE_C.gris } };
+    e.alignment = { horizontal:'left', indent:1, vertical:'bottom' };
+    v.value = val;
+    v.font = { size:22, bold:true, color:{ argb: color || KE_C.azul } };
+    v.alignment = { horizontal:'left', indent:1, vertical:'middle' };
+    n.value = nota || '';
+    n.font = { size:8, color:{ argb:KE_C.gris2 } };
+    n.alignment = { horizontal:'left', indent:1, vertical:'top' };
+    for (let r = 5; r <= 7; r++){
+      cb.getCell(r, col).border = {
+        left: { style:'thick', color:{ argb: color || KE_C.azul } },
+        top:    r === 5 ? { style:'hair', color:{ argb:'FFE2E8EE' } } : undefined,
+        bottom: r === 7 ? { style:'hair', color:{ argb:'FFE2E8EE' } } : undefined,
+      };
+    }
+  };
+  cb.getRow(4).height = 10;
+  cb.getRow(5).height = 13; cb.getRow(6).height = 30; cb.getRow(7).height = 13;
+
+  tarjeta(2, 2, 'UNIDADES EN EL AMBITO', d.operacional.length,
+          conL.length + ' con lectura');
+  tarjeta(4, 2, 'AL DIA', alDia.length,
+          'ronda de los ultimos 90 dias', KE_C.verde);
+  tarjeta(6, 2, 'RONDA VENCIDA', atras.length,
+          atras.length ? 'mas de 90 dias sin medir' : 'ninguna',
+          atras.length ? KE_C.naranja : KE_C.verde);
+  tarjeta(8, 1, 'SIN LECTURA', sinL.length, 'nunca medidas',
+          sinL.length ? KE_C.rojo : KE_C.verde);
+
+  let f = 9;
+
+  /* ── Carga de la cadena por banda ─────────────────────────────────
+     Cuatro nodos y cinco bandas. Interesa el reparto, no el promedio:
+     una flota con la mitad al 20 % y la otra al 95 % promedia 57 % y ese
+     numero no describe a ninguna unidad. */
+  if (cargas.length){
+    f = tit(f, 'Carga de la cadena',
+      'Reparto de unidades por nivel de utilizacion en la ultima ronda de cada una. '
+      + 'La barra es proporcional al numero de unidades.');
+
+    const BANDAS = [
+      ['Muy holgado', 'menos de 40 %',   x => x < 40,             KE_C.verde],
+      ['Holgado',     'de 40 a 60 %',    x => x >= 40 && x < 60,  KE_C.verde],
+      ['Normal',      'de 60 a 90 %',    x => x >= 60 && x < 90,  KE_C.azul2],
+      ['Ajustado',    'de 90 a 100 %',   x => x >= 90 && x < 100, KE_C.naranja],
+      ['Topado',      '100 % o mas',     x => x >= 100,           KE_C.rojo],
+    ];
+    const NODOS = [['carga_vfd_pct','Variador'], ['carga_sut_pct','SUT'],
+                   ['carga_pst_pct','PST'], ['carga_motor_pct','Motor']];
+
+    const enc = f;
+    cb.getCell(enc, 2).value = 'Nivel';
+    NODOS.forEach((n, i) => { cb.getCell(enc, 3 + i).value = n[1]; });
+    cb.getCell(enc, 7).value = 'Total';
+    cb.getCell(enc, 8).value = 'Reparto';
+    for (let c = 2; c <= 8; c++){
+      const h = cb.getCell(enc, c);
+      h.font = { bold:true, size:8.5, color:{ argb:'FFFFFFFF' } };
+      h.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+      h.alignment = { horizontal: c === 2 ? 'left' : 'center', indent: c === 2 ? 1 : 0 };
+    }
+    f += 1;
+    const filaIni = f;
+    BANDAS.forEach(([nom, rango, test, color]) => {
+      cb.getCell(f, 2).value = nom;
+      cb.getCell(f, 2).font = { size:9, bold:true, color:{ argb:color } };
+      cb.getCell(f, 2).alignment = { indent:1 };
+      let tot = 0;
+      NODOS.forEach((n, i) => {
+        const q = cargas.filter(x => x[n[0]] != null && test(Number(x[n[0]]))).length;
+        tot += q;
+        const c = cb.getCell(f, 3 + i);
+        c.value = q || null;
+        c.font = { size:9.5 };
+        c.alignment = { horizontal:'center' };
+      });
+      cb.getCell(f, 7).value = tot || null;
+      cb.getCell(f, 7).font = { size:9.5, bold:true };
+      cb.getCell(f, 7).alignment = { horizontal:'center' };
+      /* La barra vive en su propia columna con el mismo valor: asi la
+         longitud se lee sola sin competir con la cifra. */
+      cb.getCell(f, 8).value = tot || null;
+      cb.getCell(f, 8).font = { size:8, color:{ argb:'FF9AA7B4' } };
+      cb.getCell(f, 2).note = rango;
+      f += 1;
+    });
+    cb.addConditionalFormatting({
+      ref: 'H' + filaIni + ':H' + (f - 1),
+      /* cfvo es obligatorio: sin los dos puntos de referencia -minimo y
+         maximo del rango- ExcelJS falla al escribir el archivo, no al
+         definir la regla. */
+      rules: [{ type:'dataBar', gradient:false, showValue:true,
+                cfvo: [{ type:'num', value:0 }, { type:'max' }],
+                color: { argb: KE_C.azul2 } }],
+    });
+    f += 1;
+  }
+
+  /* ── Unidades que piden atencion ──────────────────────────────────
+     Se listan con el motivo, no solo el nombre: una lista de codigos
+     obliga a ir a buscar por que esta cada uno ahi. */
+  const alertas = [];
+  cargas.forEach(x => {
+    const m = [];
+    if (x.carga_motor_pct >= 100) m.push('motor al ' + x.carga_motor_pct + ' %');
+    else if (x.carga_motor_pct >= 90) m.push('motor al ' + x.carga_motor_pct + ' %');
+    if (x.carga_vfd_pct >= 100) m.push('variador al ' + x.carga_vfd_pct + ' %');
+    else if (x.carga_vfd_pct >= 90) m.push('variador al ' + x.carga_vfd_pct + ' %');
+    if (x.carga_sut_pct >= 95) m.push('SUT al ' + x.carga_sut_pct + ' %');
+    if (x.vfd_desbal_i_pct >= 10) m.push('desbalance de corriente ' + x.vfd_desbal_i_pct + ' %');
+    if (m.length) alertas.push({ unidad:x.unidad, campo:x.campo, fecha:x.fecha,
+                                 motivo:m.join(' \u00b7 '),
+                                 peor: Math.max(Number(x.carga_motor_pct) || 0,
+                                                Number(x.carga_vfd_pct) || 0) });
+  });
+  atras.forEach(x => alertas.push({ unidad:x.unidad, campo:x.campo, fecha:x.fecha,
+    motivo: x.dias_sin_medir + ' dias sin ronda', peor: 0 }));
+
+  if (alertas.length){
+    f = tit(f, 'Requieren atencion',
+      'Unidades con algun nodo al 90 % o mas, desbalance sobre 10 % o ronda vencida.');
+    const enc2 = f;
+    ['Unidad','Campo','Ultima ronda','Motivo'].forEach((t, i) => {
+      const anch = [2, 3, 4, 5];
+      const c = cb.getCell(enc2, anch[i]);
+      c.value = t;
+      c.font = { bold:true, size:8.5, color:{ argb:'FFFFFFFF' } };
+      c.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+      c.alignment = { horizontal:'left', indent:1 };
+    });
+    cb.mergeCells(enc2, 5, enc2, 8);
+    f += 1;
+    alertas.sort((a, b) => b.peor - a.peor).slice(0, 15).forEach(a => {
+      cb.getCell(f, 2).value = a.unidad;
+      cb.getCell(f, 2).font = { size:9, bold:true };
+      cb.getCell(f, 2).alignment = { indent:1 };
+      cb.getCell(f, 3).value = a.campo;
+      cb.getCell(f, 4).value = a.fecha || '\u2014';
+      cb.mergeCells(f, 5, f, 8);
+      cb.getCell(f, 5).value = a.motivo;
+      cb.getCell(f, 5).font = { size:9,
+        color:{ argb: a.peor >= 100 ? KE_C.rojo : a.peor >= 90 ? KE_C.naranja : KE_C.gris } };
+      [3, 4].forEach(c => { cb.getCell(f, c).font = { size:9 }; });
+      f += 1;
+    });
+    if (alertas.length > 15){
+      cb.getCell(f, 2).value = 'y ' + (alertas.length - 15) + ' mas \u00b7 la lista completa esta en Operacional';
+      cb.getCell(f, 2).font = { size:8.5, italic:true, color:{ argb:KE_C.gris2 } };
+      f += 1;
+    }
+    f += 1;
+  }
+
+  /* ── Optimizacion ─────────────────────────────────────────────── */
+  if (d.propuestas && d.propuestas.length){
+    f = tit(f, 'Optimizacion energetica');
+    const lineas = [
+      ['Unidades con propuesta vigente', propAbiertas.length + ' de ' + d.propuestas.length],
+      ['Reduccion estimada si se ejecutan', kwPot ? Math.round(kwPot) + ' kW' : 'sin estimar'],
+      ['Unidades sin evaluar', (d.propuestas.length - propAbiertas.length)],
+    ];
+    lineas.forEach(([e, v]) => {
+      cb.getCell(f, 2).value = e;
+      cb.getCell(f, 2).font = { size:9 };
+      cb.getCell(f, 2).alignment = { indent:1 };
+      cb.mergeCells(f, 4, f, 5);
+      cb.getCell(f, 4).value = v;
+      cb.getCell(f, 4).font = { size:10, bold:true, color:{ argb:KE_C.azul } };
+      f += 1;
+    });
+    f += 1;
+  }
+
+  /* ── Cobertura del dato ───────────────────────────────────────────
+     Va al final y no al principio: es control de calidad del archivo, no
+     el mensaje. Pero se conserva completo porque es lo que evita que
+     alguien lea un vacio como un cero. */
+  f = tit(f, 'Cobertura del dato',
+    'Que tan completo esta este archivo. Un hueco no es un cero.');
   const lin = (etq, val, nota, alerta) => {
     cb.getCell(f, 2).value = etq;
-    cb.getCell(f, 2).font = { size: 10 };
-    const c = cb.getCell(f, 3);
+    cb.getCell(f, 2).font = { size:9 };
+    cb.getCell(f, 2).alignment = { indent:1 };
+    cb.mergeCells(f, 4, f, 5);
+    const c = cb.getCell(f, 4);
     c.value = val;
-    c.font = { bold: true, size: 11,
-               color: { argb: alerta ? KE_C.naranja : KE_C.azul } };
-    c.alignment = { horizontal: 'left' };
+    c.font = { bold:true, size:10, color:{ argb: alerta ? KE_C.naranja : KE_C.azul } };
     if (nota){
-      cb.getCell(f, 4).value = nota;
-      cb.getCell(f, 4).font = { size: 9, italic: true, color: { argb: KE_C.gris2 } };
+      cb.mergeCells(f, 6, f, 8);
+      cb.getCell(f, 6).value = nota;
+      cb.getCell(f, 6).font = { size:8, italic:true, color:{ argb:KE_C.gris2 } };
+      cb.getCell(f, 6).alignment = { wrapText:true, vertical:'top' };
+      cb.getRow(f).height = Math.max(14, Math.ceil(String(nota).length / 40) * 10 + 4);
     }
     f += 1;
   };
-  lin('Unidades en el archivo', d.operacional.length);
-  lin('Con lectura operacional', d.operacional.length - sinLectura.length);
-  lin('Sin ninguna lectura', sinLectura.length,
-      sinLectura.length ? sinLectura.map(x => x.unidad).join(', ') : '',
-      sinLectura.length > 0);
-  lin('Con lectura de mas de 90 dias', atrasadas.length,
-      atrasadas.length ? atrasadas.map(x => x.unidad + ' (' + x.dias_sin_medir
-        + ' d)').join(', ') : '', atrasadas.length > 0);
+  lin('Unidades sin ninguna lectura', sinL.length,
+      sinL.length ? sinL.map(x => x.unidad).join(', ') : '', sinL.length > 0);
+  lin('Con lectura de mas de 90 dias', atras.length,
+      atras.length ? atras.map(x => x.unidad + ' (' + x.dias_sin_medir + ' d)').join(', ') : '',
+      atras.length > 0);
   lin('Unidades con datos de placa', d.placas.length);
   lin('Unidades con configuracion de variador', d.setup.length,
       d.setup.length < d.operacional.length
@@ -1264,30 +1501,28 @@ function keLibro(ExcelJS, d, meta){
   lin('Rondas en el historico', (d.historico || []).length,
       (d.historico || []).length
         ? 'Ultimos 24 meses. Hojas Historico, Variacion y Consolidado.'
-        : 'Sin historico disponible: el libro sale sin esas dos hojas.',
+        : 'Sin historico disponible: el libro sale sin esas hojas.',
       !(d.historico || []).length);
-  lin('Propuestas de optimizacion vigentes', d.propuestas.length);
 
   f += 1;
-  cb.getCell(f, 2).value = 'Que trae cada hoja';
-  cb.getCell(f, 2).font = { bold: true, size: 11, color: { argb: KE_C.azul } };
-  f += 1;
-  [['Operacional', 'Ultima lectura de cada unidad, etapa por etapa: entrada del '
-      + 'PST, convertidores, bus DC, salida del variador, salida del SUT y sensor '
-      + 'de fondo. Las unidades sin lectura salen con las celdas vacias.'],
-   ['Placas', 'Identidad y datos de placa del equipo instalado hoy en cada unidad.'],
-   ['Propuestas', 'Cambios de TAP propuestos y su efecto estimado sobre el consumo.'],
-   ['Configuracion VFD', 'Parametros vigentes del variador de cada unidad.'],
-   ['Protecciones', 'Una fila por unidad y proteccion, con su ajuste y sus '
-      + 'tiempos. En formato largo para poder pivotear.']
+  f = tit(f, 'Que trae cada hoja');
+  [['Operacional', 'Ultima lectura de cada unidad, etapa por etapa.'],
+   ['Detalle', 'Todos los puntos medidos en la ultima ronda, sin normalizar.'],
+   ['Historico', 'Todas las rondas de los ultimos 24 meses.'],
+   ['Variacion', 'Cambio de cada metrica contra la ronda anterior.'],
+   ['Consolidado', 'Una fila por unidad con su deriva del periodo.'],
+   ['Placas', 'Datos de placa del equipo instalado hoy.'],
+   ['Propuestas', 'Cambios de TAP propuestos y su efecto sobre el consumo.'],
+   ['Configuracion VFD', 'Parametros vigentes del variador.'],
+   ['Protecciones', 'Ajustes de proteccion por unidad, en formato largo.']
   ].forEach(([h, t]) => {
     cb.getCell(f, 2).value = h;
-    cb.getCell(f, 2).font = { bold: true, size: 9.5, color: { argb: KE_C.azul2 } };
-    cb.getCell(f, 2).alignment = { vertical: 'top' };
+    cb.getCell(f, 2).font = { bold:true, size:9, color:{ argb:KE_C.azul2 } };
+    cb.getCell(f, 2).alignment = { vertical:'top', indent:1 };
+    cb.mergeCells(f, 4, f, 8);
     cb.getCell(f, 4).value = t;
-    cb.getCell(f, 4).font = { size: 9 };
-    cb.getCell(f, 4).alignment = { wrapText: true, vertical: 'top' };
-    cb.getRow(f).height = Math.max(16, Math.ceil(t.length / 72) * 12 + 6);
+    cb.getCell(f, 4).font = { size:8.5 };
+    cb.getCell(f, 4).alignment = { wrapText:true, vertical:'top' };
     f += 1;
   });
 
