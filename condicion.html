@@ -5316,14 +5316,12 @@ function kpRenderPlacaEquipos(p){
     }
 
     campos.forEach(c => {
-      const [nom, val, ud] = c;
-      /* El derrateo solo se puede cruzar en los campos cuya columna se
-         conoce; hoy el motor. En el resto se muestra el valor sin marca
-         en vez de suponer una correspondencia. */
-      let clave = null;
-      if (nd.rol === 'MOTOR' && /^Corriente/.test(nom)) clave = nd.clave_i;
-      if (nd.rol === 'MOTOR' && /^Tensi/.test(nom))     clave = nd.clave_v;
-      const d = clave ? der[clave] : null;
+      /* La columna de origen viene en el propio campo, cuarta posicion.
+         Antes se deducia del texto del rotulo con expresiones regulares y
+         eso fallaba en cuanto dos campos compartian nombre: las dos
+         potencias del motor se llaman ambas "Potencia". */
+      const [nom, val, ud, col] = c;
+      const d = col ? der[col] : null;
 
       h += '<div class="l' + (d ? ' der' : '') + '">'
         +  '<span class="n" title="' + kpEsc(nom) + '">' + kpEsc(nom) + '</span>'
@@ -5338,8 +5336,9 @@ function kpRenderPlacaEquipos(p){
 
     /* Motivo del derrateo, una sola vez por ficha: repetirlo en cada
        campo llenaria la tarjeta con la misma frase. */
-    const motivos = [...new Set((nd.rol === 'MOTOR'
-      ? [nd.clave_i, nd.clave_v] : []).map(k => der[k] && der[k].motivo).filter(Boolean))];
+    /* Motivos de todos los campos derrateados de esta ficha, sin repetir. */
+    const motivos = [...new Set(campos
+      .map(c => c[3] && der[c[3]] && der[c[3]].motivo).filter(Boolean))];
     if (motivos.length){
       h += '<div class="vacio">Derrateo: ' + kpEsc(motivos.join(' \u00b7 ')) + '</div>';
     }
