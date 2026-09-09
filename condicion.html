@@ -5332,14 +5332,35 @@ function kpRenderPlacaEquipos(p){
       const [nom, val, ud, col] = c;
       const d = col ? der[col] : null;
 
+      /* Los campos en °C se muestran en °F, que es como se leen en campo,
+         con la conversión debajo en pequeño. La base los guarda en °C
+         porque así vienen las hojas del fabricante, y tener que convertir
+         mentalmente para contrastar contra lo medido invita al error. */
+      const enC = (ud === '\u00b0C') && typeof val === 'number';
+      const vF  = enC ? kpTempF(val) : null;
+
+      const princ = enC && vF != null
+        ? kpNum(Math.round(vF * 10) / 10) + '<em>\u00b0F</em>'
+        : (typeof val === 'number' ? kpNum(val) : kpEsc(val))
+          + (ud ? '<em>' + kpEsc(ud) + '</em>' : '');
+
+      /* Las dos líneas pequeñas conviven: la conversión y, si lo hay, el
+         valor de placa antes del derrateo. */
+      const subs = [];
+      if (enC && vF != null) subs.push(kpNum(val) + ' \u00b0C');
+      if (d){
+        const dpF = (enC && Number.isFinite(d.placa)) ? kpTempF(d.placa) : null;
+        subs.push('de ' + (dpF != null
+                    ? kpNum(Math.round(dpF * 10) / 10) + ' \u00b0F'
+                    : kpNum(d.placa) + (ud ? ' ' + kpEsc(ud) : ''))
+                  + ' de placa'
+                  + (d.pct != null ? ' \u00b7 ' + kpPct(d.pct) + ' %' : ''));
+      }
+
       h += '<div class="l' + (d ? ' der' : '') + '">'
         +  '<span class="n" title="' + kpEsc(nom) + '">' + kpEsc(nom) + '</span>'
-        +  '<span class="v">'
-        +  (typeof val === 'number' ? kpNum(val) : kpEsc(val))
-        +  (ud ? '<em>' + kpEsc(ud) + '</em>' : '')
-        +  (d ? '<span class="orig">de ' + kpNum(d.placa) + (ud ? ' ' + kpEsc(ud) : '')
-                + ' de placa' + (d.pct != null ? ' \u00b7 ' + kpPct(d.pct) + ' %' : '')
-                + '</span>' : '')
+        +  '<span class="v">' + princ
+        +  subs.map(x => '<span class="orig">' + x + '</span>').join('')
         +  '</span></div>';
     });
 
