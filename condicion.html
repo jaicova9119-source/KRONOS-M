@@ -359,15 +359,24 @@ body{background:var(--kp-page);color:var(--kp-ink);
 /* Placa de equipos: una ficha por nodo. Etiquetas pequenas y valor a la
    derecha, en dos columnas por ficha. Las tarjetas de KPI servian para
    cinco cifras; para cuarenta datos organizados por equipo no. */
-.kp-plc{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
-.kp-plc .f{border:1px solid var(--kp-line);border-radius:9px;overflow:hidden;
-  background:var(--kp-card)}
+/* Flex y no grid: con rejilla, cuatro fichas en tres columnas dejaban la
+   ultima fila ocupando un tercio y el resto en blanco. Con flex-grow las
+   fichas de la ultima fila reparten el ancho sobrante entre ellas. */
+.kp-plc{display:flex;flex-wrap:wrap;gap:12px}
+.kp-plc .f{flex:1 1 300px;min-width:0;border:1px solid var(--kp-line);
+  border-radius:9px;overflow:hidden;background:var(--kp-card)}
 .kp-plc .h{padding:9px 12px;background:var(--surface-2);border-bottom:1px solid var(--kp-line)}
 .kp-plc .h .t{font-size:12.5px;font-weight:600;color:var(--t1)}
 .kp-plc .h .s{font-size:10.5px;color:var(--kp-ink3);margin-top:1px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .kp-plc .h .s b{color:var(--kp-ink2);font-weight:600}
-.kp-plc .b{padding:4px 12px 9px}
+/* Los datos fluyen en columnas segun el ancho de la ficha. Una ficha que
+   queda sola en su fila ocupa todo el ancho, y con una sola columna de
+   datos se veria medio vacia; asi aprovecha el espacio en vez de
+   estirarse. */
+.kp-plc .b{padding:4px 12px 9px;display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:0 18px;align-content:start}
+.kp-plc .b .vacio{grid-column:1/-1}
 .kp-plc .l{display:flex;align-items:baseline;gap:8px;padding:3.5px 0;
   border-bottom:1px dotted var(--kp-line)}
 .kp-plc .l:last-child{border-bottom:0}
