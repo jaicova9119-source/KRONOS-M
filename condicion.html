@@ -402,9 +402,20 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-ser-chip.off{opacity:.42}
 .kp-ser-chip.off i{background:var(--t3)!important}
 .kp-ser-barra{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
-.kp-ser-lec{font-family:var(--f-mono,monospace);font-size:11.5px;color:var(--t2);
-  min-height:17px;margin-top:6px;line-height:1.5}
-.kp-ser-lec b{color:var(--t1)}
+/* Recuadro flotante junto al cursor, como en el analizador: leer al pie
+   obliga a bajar la vista y volver, y con el cursor moviendose se pierde
+   la referencia de donde se estaba mirando. */
+.kp-ser-tip{position:absolute;z-index:6;pointer-events:none;display:none;
+  background:var(--panel,#fff);border:1px solid var(--rule,#dfe5ea);border-radius:8px;
+  box-shadow:0 6px 22px rgba(0,0,0,.16);padding:9px 11px;min-width:190px;
+  font-family:var(--f-mono,monospace);font-size:11.5px;line-height:1.6}
+.kp-ser-tip .h{font-weight:700;color:var(--t1);margin-bottom:5px;
+  padding-bottom:4px;border-bottom:1px solid var(--rule3,#eee);font-size:11px}
+.kp-ser-tip .r{display:flex;align-items:center;gap:7px;white-space:nowrap}
+.kp-ser-tip .r i{width:8px;height:8px;border-radius:2px;flex-shrink:0}
+.kp-ser-tip .r span{flex:1;color:var(--t2)}
+.kp-ser-tip .r b{color:var(--t1);font-weight:600}
+.kp-ser-tip .r em{color:var(--t3);font-style:normal;font-size:10.5px}
 .kp-chain-hint{display:block;margin-top:8px;font-size:11.5px;color:var(--kp-ink3)}
 .kp-chain-hint .sol-movil{display:none}
 .kp-leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--kp-ink2)}
@@ -4795,8 +4806,14 @@ function kpSerDibujar(){
   if (!cont || !KP_SER) return;
   const series = (KP_SER.series || []).filter(s => KP_SER_ON.has(s.canal));
 
-  const W = 1000, ML = 8, MR = 8, MT = 12, MB = 26;
+  const W = 1000, MR = 8, MT = 12, MB = 26;
   const nVis = Math.max(1, series.length);
+  /* En superpuesto se reserva una columna de eje por canal, como en el
+     analizador: con escalas independientes, una curva sin su eje no dice
+     de que valor a que valor se movio. En separado cada carril ya lleva
+     su rango escrito y no hace falta. */
+  const AXW = (!KP_SER_SEP && series.length) ? Math.max(34, Math.min(52, 420 / nVis)) : 0;
+  const ML  = AXW ? 6 + AXW * nVis : 8;
   /* En separado el alto crece con el numero de canales: repartir 300 px
      entre doce daria carriles de 22 px, donde una banda no se ve. */
   const H  = KP_SER_SEP ? MT + MB + Math.max(56, Math.min(78, 300 / nVis)) * nVis : 300;
@@ -4838,11 +4855,14 @@ function kpSerDibujar(){
   if (!series.length){
     s += '<text x="' + (W/2) + '" y="' + (MT + ih/2) + '" text-anchor="middle" font-size="13" '
       +  'fill="var(--t3)" font-family="inherit">Ning&uacute;n canal seleccionado</text>';
+    const t0x = document.getElementById('kpSerTip');
     cont.innerHTML = s + '</svg>';
+    if (t0x) cont.appendChild(t0x);
     return;
   }
 
   const hCarril = ih / nVis;
+  const ejes = [];
   series.forEach((sr, k) => {
     const def = KP_SER_DEF.find(d => d[0] === sr.canal) || [,'', '#666'];
     const col = def[2];
@@ -4877,6 +4897,7 @@ function kpSerDibujar(){
     if (piso > 0 && (hi - lo) < piso){ lo = med - piso / 2; hi = med + piso / 2; }
     const m = (hi - lo) * 0.08; lo -= m; hi += m;
     const Y = v => yTop + hUso - (v - lo) / (hi - lo) * hUso;
+    if (AXW) ejes.push({ lo, hi, col, ud: sr.unidad || '', Y });
 
     /* Banda min-max como poligono cerrado: arriba los maximos, de vuelta
        por los minimos. */
@@ -4915,11 +4936,33 @@ function kpSerDibujar(){
     }
   });
 
+  /* Columnas de eje. Cuatro marcas por canal: mas apretaria los numeros
+     y menos deja de servir para leer un valor intermedio. */
+  ejes.forEach((e, k) => {
+    const xr = 6 + AXW * k + AXW - 7;
+    s += '<line x1="' + (xr + 3) + '" y1="' + MT + '" x2="' + (xr + 3) + '" y2="' + (MT + ih)
+      +  '" stroke="' + e.col + '" stroke-opacity="0.55" stroke-width="1.25"/>';
+    for (let q = 0; q <= 3; q++){
+      const v = e.lo + (e.hi - e.lo) * (q / 3);
+      const y = e.Y(v);
+      s += '<text x="' + xr + '" y="' + (y + 3.2) + '" text-anchor="end" font-size="9.5" '
+        +  'fill="' + e.col + '" font-family="inherit">' + kpNum(v) + '</text>';
+    }
+    if (e.ud) s += '<text x="' + xr + '" y="' + (MT + ih + 15) + '" text-anchor="end" '
+      +  'font-size="9" fill="' + e.col + '" fill-opacity="0.75" font-family="inherit">'
+      +  kpEsc(e.ud) + '</text>';
+  });
+
   s += '<line id="kpSerCur" x1="-9" y1="' + MT + '" x2="-9" y2="' + (MT + ih)
     +  '" stroke="var(--acc,#0C5292)" stroke-width="1" stroke-dasharray="3 3"/>';
   s += '<rect id="kpSerSel" x="0" y="' + MT + '" width="0" height="' + ih
     +  '" fill="var(--acc,#0C5292)" fill-opacity="0.12" stroke="none"/>';
+  /* El recuadro vive fuera del SVG y sobrevive al repintado: recrearlo en
+     cada dibujo lo haria parpadear al mover el cursor. */
+  const tip = document.getElementById('kpSerTip');
   cont.innerHTML = s + '</svg>';
+  cont.appendChild(tip || Object.assign(document.createElement('div'),
+    { id:'kpSerTip', className:'kp-ser-tip' }));
   kpSerInteraccion(zT0, zT1, ML, iw);
 }
 
@@ -4927,7 +4970,8 @@ function kpSerDibujar(){
    el dedo funcione igual que con el raton en la caseta. */
 function kpSerInteraccion(zT0, zT1, ML, iw){
   const svg = document.getElementById('kpSerSvg');
-  const lec = document.getElementById('kpSerLec');
+  const tip = document.getElementById('kpSerTip');
+  const caja = document.getElementById('kpSerBox');
   if (!svg) return;
   const W = 1000;
   const aT = px => zT0 + (px - ML) / iw * (zT1 - zT0);
@@ -4941,18 +4985,22 @@ function kpSerInteraccion(zT0, zT1, ML, iw){
   const sel = document.getElementById('kpSerSel');
 
   const leer = t => {
-    const partes = [];
+    const filas = [];
     (KP_SER.series || []).filter(s => KP_SER_ON.has(s.canal)).forEach(s => {
       const i = Math.round((t - Date.parse(s.desde)) / (s.paso_seg * 1000));
       if (i < 0 || i >= s.max.length || s.max[i] == null) return;
-      const d = KP_SER_DEF.find(x => x[0] === s.canal) || [,''];
+      const d = KP_SER_DEF.find(x => x[0] === s.canal) || [, '', '#666'];
       const a = s.min[i], b = s.max[i];
-      const txt = (Math.abs(b - a) < Math.abs(b) * 0.001)
+      /* Un valor cuando el cubo es plano, el rango cuando no: mostrar
+         siempre "215-215" es ruido, y mostrar siempre el promedio
+         escondería que en esos cinco minutos hubo una excursión. */
+      const txt = (Math.abs(b - a) < Math.abs(b || 1) * 0.001)
         ? kpNum(b) : kpNum(a) + '\u2013' + kpNum(b);
-      partes.push('<span style="color:' + d[2] + '">\u25a0</span> ' + d[1]
-                  + ' <b>' + txt + '</b> ' + (s.unidad || ''));
+      filas.push('<div class="r"><i style="background:' + d[2] + '"></i>'
+        + '<span>' + d[1] + '</span><b>' + txt + '</b>'
+        + '<em>' + (s.unidad || '') + '</em></div>');
     });
-    return partes.join(' &nbsp; ');
+    return filas.join('');
   };
 
   svg.addEventListener('pointermove', ev => {
@@ -4962,9 +5010,26 @@ function kpSerInteraccion(zT0, zT1, ML, iw){
       const x0 = Math.min(arr0, px), x1 = Math.max(arr0, px);
       sel.setAttribute('x', x0); sel.setAttribute('width', x1 - x0);
     }
-    if (lec) lec.innerHTML =
-      '<b>' + new Date(t).toLocaleString('es-CO', { day:'2-digit', month:'short',
-        hour:'2-digit', minute:'2-digit', hour12:false }) + '</b> &nbsp; ' + leer(t);
+    if (tip && caja){
+      const filas = leer(t);
+      if (!filas){ tip.style.display = 'none'; return; }
+      tip.innerHTML = '<div class="h">' + new Date(t).toLocaleString('es-CO',
+        { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', hour12:false })
+        + '</div>' + filas;
+      tip.style.display = 'block';
+      /* Se posiciona en pixeles reales de la caja, no en coordenadas del
+         SVG: el SVG escala y el recuadro no. Y salta al otro lado cerca
+         del borde derecho para no salirse. */
+      const rc = caja.getBoundingClientRect();
+      const px = ev.clientX - rc.left, py = ev.clientY - rc.top;
+      const anchoTip = tip.offsetWidth || 200;
+      tip.style.left = (px + anchoTip + 24 > rc.width ? px - anchoTip - 14 : px + 14) + 'px';
+      tip.style.top  = Math.max(4, Math.min(rc.height - tip.offsetHeight - 4, py - 12)) + 'px';
+    }
+  });
+  svg.addEventListener('pointerleave', () => {
+    if (tip) tip.style.display = 'none';
+    if (cur) { cur.setAttribute('x1', -9); cur.setAttribute('x2', -9); }
   });
   svg.addEventListener('pointerdown', ev => {
     arr0 = aPx(ev); svg.setPointerCapture(ev.pointerId); ev.preventDefault();
@@ -5035,8 +5100,8 @@ function kpRenderSeries(){
     +  '<button class="kp-chip" id="kpSerReset" style="display:none">Ver los 15 d&iacute;as</button>'
     +  '<span style="font-size:11.5px;color:var(--t3)">Arrastra sobre la gr&aacute;fica para ampliar</span>'
     +  '</div>'
-    +  '<div class="kp-ser" id="kpSerBox"></div>'
-    +  '<div class="kp-ser-lec" id="kpSerLec"></div></div>';
+    +  '<div class="kp-ser" id="kpSerBox"><div class="kp-ser-tip" id="kpSerTip"></div></div>'
+    +  '</div>';
   return h;
 }
 
