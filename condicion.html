@@ -370,6 +370,28 @@ body{background:var(--kp-page);color:var(--kp-ink);
   scrollbar-width:none;overscroll-behavior-x:contain}
 .kp-chain-wrap::-webkit-scrollbar{display:none}
 .kp-chain{width:100%;height:auto;display:block}
+.kp-cmp-fondo{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.5);
+  display:flex;align-items:flex-start;justify-content:center;padding:16px;overflow:auto}
+.kp-cmp{background:var(--panel,#fff);color:var(--t1);border-radius:12px;
+  max-width:720px;width:100%;margin:auto;padding:20px}
+.kp-cmp h3{margin:0 0 3px;font-size:15px}
+.kp-cmp .sub{font-size:12px;color:var(--t3);margin:0 0 14px;line-height:1.5}
+.kp-cmp-et{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--t3);margin:15px 0 7px;padding-bottom:4px;border-bottom:1px solid var(--rule3,#eee)}
+.kp-cmp-g{display:grid;grid-template-columns:repeat(auto-fill,minmax(236px,1fr));gap:8px 16px}
+.kp-cmp-c{display:flex;align-items:center;gap:8px}
+.kp-cmp-c label{flex:1;min-width:0;font-size:12.5px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.kp-cmp-c label b{color:var(--kp-crit,#C62828);font-weight:600}
+.kp-cmp-c input{width:92px;flex-shrink:0;font:13px/1.4 inherit;padding:5px 7px;
+  border:1px solid var(--rule,#dfe5ea);border-radius:6px;background:var(--panel2,#fff);
+  color:var(--t1);text-align:right}
+.kp-cmp-c input.mal{border-color:var(--kp-crit,#C62828);background:#FFF5F5}
+.kp-cmp-c .ud{font-size:11px;color:var(--t3);width:34px;flex-shrink:0}
+.kp-cmp-pie{display:flex;gap:8px;justify-content:flex-end;align-items:center;
+  margin-top:18px;flex-wrap:wrap}
+.kp-cmp-msg{flex:1;font-size:12px;color:var(--t2);min-width:180px}
+.kp-cmp-msg.err{color:var(--kp-crit,#C62828)}
 .kp-ser{position:relative}
 .kp-ser svg{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
 .kp-ser-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
@@ -3336,6 +3358,7 @@ async function kpVerPozo(codigo){
   /* Estado de la grafica por unidad: si no se reinicia, al abrir otro
      pozo se conservaria el zoom y los canales del anterior. */
   KP_SER = null; KP_SER_ON = null; KP_SER_ZOOM = null;
+  KP_CMP = null;
   KP_SER = await kpCargarSeries(codigo);
 
   let pozoId = null;
@@ -3391,6 +3414,11 @@ async function kpVerPozo(codigo){
     + (med && med.rondas ? ' &middot; ' + med.rondas + ' rondas' : '')
     + (med && med.inicio_corrida ? ' &middot; corrida desde ' + med.inicio_corrida : '');
 
+  /* Los faltantes se consultan aqui porque hasta este punto no se conoce
+     el id de la medicion. Con su propio try: si falla, la unidad se
+     muestra igual y solo falta el aviso. */
+  if (mc && mc.id) KP_CMP = await kpCargarFaltantes(mc.id);
+
   KP_EV = evs;
   /* Los controles se cablean tras insertar el HTML de las secciones; se
      agenda aqui para no depender de donde termine el render. */
@@ -3406,8 +3434,34 @@ async function kpVerPozo(codigo){
        5 contexto       -> informacion sobre el dato, al final */
 
   if (med){
+    /* El aviso de campos sin dato va en el bloque de estado, junto a la
+       ronda a la que pertenece, y no en una seccion aparte: es una
+       propiedad de esa lectura, no del pozo. */
+    let cmpHtml = '';
+    if (KP_CMP && KP_CMP.n_faltantes > 0){
+      cmpHtml = '<div style="margin-top:14px;padding:11px 13px;border-radius:9px;'
+        + 'background:var(--panel2,#f6f8fa);border-left:3px solid var(--kp-warn,#B26A00);'
+        + 'display:flex;gap:12px;align-items:center;flex-wrap:wrap">'
+        + '<div style="flex:1;min-width:220px;font-size:12.5px;line-height:1.5">'
+        + '<b>' + KP_CMP.n_faltantes + ' campo(s) sin dato en esta ronda</b>'
+        + (KP_CMP.n_obligatorios ? ', ' + KP_CMP.n_obligatorios + ' de ellos obligatorios' : '')
+        + '.<br><span style="color:var(--t3)">'
+        + (KP_CMP.puede_editar
+            ? 'Puede completarlos si tiene la lectura de campo.'
+            : 'Solo un supervisor o administrador puede completarlos.')
+        + '</span></div>'
+        + (KP_CMP.puede_editar
+            ? '<button class="kp-chip" id="kpCmpBtn" style="font-weight:600">Completar datos</button>'
+            : '')
+        + '</div>';
+      setTimeout(() => {
+        const b = document.getElementById('kpCmpBtn');
+        if (b) b.onclick = kpCmpAbrir;
+      }, 0);
+    }
+
     sec.push(kpSeccion('resumen', 'Estado de la unidad',
-      kpSubRonda(mc), kpRenderResumen(med, bal), { plegable:false }));
+      kpSubRonda(mc), kpRenderResumen(med, bal) + cmpHtml, { plegable:false }));
 
     sec.push(kpSeccion('cadena', 'Cadena de potencia',
       'Cada etapa contra su propia nominal de placa',
@@ -4553,6 +4607,177 @@ let KP_SER_ZOOM = null;   // [t0, t1] en ms, null = ventana completa
    disponible para comparar la FORMA de dos curvas, que es lo unico para
    lo que sirve de verdad. */
 let KP_SER_SEP  = true;
+
+/* ── Completar una ronda ────────────────────────────────────────────────
+   Rellena solo lo que quedo vacio. Corregir un valor ya capturado es otra
+   operacion y no se mezcla aqui: un formulario de relleno que pueda pisar
+   una medicion real es una via silenciosa de perder dato.
+
+   El boton solo aparece para supervisor y admin, pero eso es cortesia: la
+   restriccion de verdad la aplica dp_completar_ronda con mi_rol(). */
+
+let KP_CMP = null;   // resultado de dp_ronda_faltantes
+
+async function kpCargarFaltantes(medicionId){
+  if (!medicionId) return null;
+  try {
+    const { data, error } = await kpCliente()
+      .rpc('dp_ronda_faltantes', { p_medicion_id: medicionId });
+    if (error) throw error;
+    return (data && data.ok) ? data : null;
+  } catch(e){
+    console.warn('[Kronos-M] Faltantes no disponibles:', e.message);
+    return null;
+  }
+}
+
+const KP_CAB_ETQ = {
+  frecuencia_operacion_hz: ['Frecuencia de operación', 'Hz'],
+  frec_setpoint_hz:        ['Setpoint de frecuencia', 'Hz'],
+  hsc:                     ['HSC', 'Hz'],
+  lsc:                     ['LSC', 'Hz'],
+  control_mode:            ['Modo de control', ''],
+};
+
+function kpCmpAbrir(){
+  if (!KP_CMP) return;
+  const d = KP_CMP;
+  let f = document.getElementById('kpCmpFondo');
+  if (f) f.remove();
+  f = document.createElement('div');
+  f.id = 'kpCmpFondo'; f.className = 'kp-cmp-fondo';
+
+  const campo = (id, etq, ud, obl, min, max, dec, tipo, completo) => {
+    const paso = tipo === 'text' ? '' :
+      ' step="' + (dec ? (1 / Math.pow(10, dec)).toFixed(dec) : '1') + '"'
+      + (min != null ? ' min="' + min + '"' : '')
+      + (max != null ? ' max="' + max + '"' : '');
+    return '<div class="kp-cmp-c">'
+      + '<label for="' + id + '" title="' + kpEsc(completo || etq) + '">' + kpEsc(etq)
+      + (obl ? ' <b>*</b>' : '') + '</label>'
+      + '<input id="' + id + '" type="' + (tipo || 'number') + '"' + paso
+      + (min != null ? ' data-min="' + min + '"' : '')
+      + (max != null ? ' data-max="' + max + '"' : '') + '>'
+      + '<span class="ud">' + kpEsc(ud || '') + '</span></div>';
+  };
+
+  let h = '<div class="kp-cmp"><h3>Completar datos de la ronda</h3>'
+    + '<div class="sub">' + kpEsc(d.pozo) + ' &middot; '
+    + kpFechaCorta(d.medido_en) + ' &middot; ' + d.n_faltantes + ' campo(s) sin dato'
+    + (d.n_obligatorios ? ' &middot; <b>' + d.n_obligatorios + ' obligatorio(s)</b>' : '')
+    + '<br>Solo se rellenan los campos vac&iacute;os. Lo ya capturado no se toca desde aqu&iacute;. '
+    + 'Cada valor queda registrado como completado, con su autor y su fecha.</div>';
+
+  const cab = (d.cabecera_faltante || []).filter(k => KP_CAB_ETQ[k]);
+  if (cab.length){
+    h += '<div class="kp-cmp-et">Cabecera de la ronda</div><div class="kp-cmp-g">';
+    cab.forEach(k => {
+      const [etq, ud] = KP_CAB_ETQ[k];
+      h += campo('cmp_cab_' + k, etq, ud, false, null, null, 2,
+                 k === 'control_mode' ? 'text' : 'number');
+    });
+    h += '</div>';
+  }
+
+  /* Agrupado por etapa y en el orden del catalogo: es el mismo recorrido
+     que hace el tecnico en campo, del PST al sensor de fondo. */
+  const porEtapa = new Map();
+  (d.faltantes || []).forEach(x => {
+    const e = x.etapa || 'OTROS';
+    if (!porEtapa.has(e)) porEtapa.set(e, []);
+    porEtapa.get(e).push(x);
+  });
+  porEtapa.forEach((xs, et) => {
+    h += '<div class="kp-cmp-et">' + kpEsc(et.replace(/_/g, ' ')) + '</div><div class="kp-cmp-g">';
+    xs.forEach(x => {
+      /* La etiqueta corta primero: con tres columnas, "Angulo fasorial
+         corriente fase A entrada PST" se recorta a "Angulo fa..." y no
+         distingue la fase A de la B, que es lo unico que importa aqui.
+         El nombre completo queda en el tooltip. */
+      h += campo('cmp_' + x.punto_codigo, x.corto || x.nombre || x.punto_codigo,
+                 x.unidad, x.obligatorio, x.rango_min, x.rango_max, x.decimales,
+                 null, x.nombre);
+    });
+    h += '</div>';
+  });
+
+  h += '<div class="kp-cmp-pie">'
+    + '<span class="kp-cmp-msg" id="kpCmpMsg">Deje en blanco lo que no tenga. '
+    + 'Un dato inventado es peor que un hueco.</span>'
+    + '<button class="kp-chip" id="kpCmpCancel">Cancelar</button>'
+    + '<button class="kp-chip" id="kpCmpOk" style="font-weight:600">Guardar</button>'
+    + '</div></div>';
+
+  f.innerHTML = h;
+  document.body.appendChild(f);
+
+  f.onclick = ev => { if (ev.target === f) f.remove(); };
+  document.getElementById('kpCmpCancel').onclick = () => f.remove();
+
+  /* Validacion en vivo contra el rango del catalogo, solo donde el rango
+     aplica: cuando la unidad de captura difiere de la canonica, la RPC no
+     lo envia y aqui no se marca nada. */
+  f.querySelectorAll('input[type=number]').forEach(i => {
+    i.oninput = () => {
+      const v = parseFloat(i.value);
+      const mn = i.dataset.min != null ? parseFloat(i.dataset.min) : null;
+      const mx = i.dataset.max != null ? parseFloat(i.dataset.max) : null;
+      const mal = i.value !== '' && Number.isFinite(v)
+                && ((mn != null && v < mn) || (mx != null && v > mx));
+      i.classList.toggle('mal', mal);
+    };
+  });
+
+  document.getElementById('kpCmpOk').onclick = () => kpCmpGuardar(d, f);
+}
+
+async function kpCmpGuardar(d, f){
+  const msg = document.getElementById('kpCmpMsg');
+  const btn = document.getElementById('kpCmpOk');
+
+  if (f.querySelector('input.mal')){
+    msg.textContent = 'Hay valores fuera del rango esperado. Revíselos antes de guardar.';
+    msg.className = 'kp-cmp-msg err';
+    return;
+  }
+
+  const valores = [];
+  (d.faltantes || []).forEach(x => {
+    const i = document.getElementById('cmp_' + x.punto_codigo);
+    if (i && i.value !== '') {
+      valores.push({ punto_codigo: x.punto_codigo, valor: i.value, unidad: x.unidad });
+    }
+  });
+  const cabecera = {};
+  (d.cabecera_faltante || []).forEach(k => {
+    const i = document.getElementById('cmp_cab_' + k);
+    if (i && i.value !== '') cabecera[k] = i.value;
+  });
+
+  if (!valores.length && !Object.keys(cabecera).length){
+    msg.textContent = 'No hay nada que guardar.';
+    msg.className = 'kp-cmp-msg err';
+    return;
+  }
+
+  btn.disabled = true; btn.textContent = 'Guardando…';
+  msg.className = 'kp-cmp-msg';
+  try {
+    const { data, error } = await kpCliente().rpc('dp_completar_ronda', {
+      p_medicion_id: d.medicion_id, p_valores: valores, p_cabecera: cabecera,
+    });
+    if (error) throw error;
+    if (!data || data.ok === false) throw new Error((data && data.error) || 'no se guardó');
+    f.remove();
+    /* Se recarga la unidad entera: al completar el sensor de fondo cambian
+       la cadena de potencia, los avisos y el estado, no solo esta lista. */
+    kpAbrir(d.pozo);
+  } catch(e){
+    btn.disabled = false; btn.textContent = 'Guardar';
+    msg.textContent = 'No se guardó: ' + e.message;
+    msg.className = 'kp-cmp-msg err';
+  }
+}
 
 async function kpCargarSeries(pozo){
   try {
