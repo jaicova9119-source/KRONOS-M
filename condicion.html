@@ -370,6 +370,19 @@ body{background:var(--kp-page);color:var(--kp-ink);
   scrollbar-width:none;overscroll-behavior-x:contain}
 .kp-chain-wrap::-webkit-scrollbar{display:none}
 .kp-chain{width:100%;height:auto;display:block}
+.kp-ser{position:relative}
+.kp-ser svg{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
+.kp-ser-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.kp-ser-chip{border:1px solid var(--kp-line,#dfe5ea);background:var(--panel,#fff);
+  border-radius:14px;padding:4px 11px;font-size:12px;cursor:pointer;color:var(--t2);
+  display:inline-flex;align-items:center;gap:6px;font-family:inherit}
+.kp-ser-chip i{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+.kp-ser-chip.off{opacity:.42}
+.kp-ser-chip.off i{background:var(--t3)!important}
+.kp-ser-barra{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.kp-ser-lec{font-family:var(--f-mono,monospace);font-size:11.5px;color:var(--t2);
+  min-height:17px;margin-top:6px;line-height:1.5}
+.kp-ser-lec b{color:var(--t1)}
 .kp-chain-hint{display:block;margin-top:8px;font-size:11.5px;color:var(--kp-ink3)}
 .kp-chain-hint .sol-movil{display:none}
 .kp-leg{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--kp-ink2)}
@@ -3320,6 +3333,11 @@ async function kpVerPozo(codigo){
   document.getElementById("kpTitulo").textContent = codigo;
   document.getElementById("kpSub").innerHTML = "Cargando&hellip;";
 
+  /* Estado de la grafica por unidad: si no se reinicia, al abrir otro
+     pozo se conservaria el zoom y los canales del anterior. */
+  KP_SER = null; KP_SER_ON = null; KP_SER_ZOOM = null;
+  KP_SER = await kpCargarSeries(codigo);
+
   let pozoId = null;
   try { pozoId = await kpIdDe(codigo); } catch(e){}
   if (!pozoId){
@@ -3374,6 +3392,9 @@ async function kpVerPozo(codigo){
     + (med && med.inicio_corrida ? ' &middot; corrida desde ' + med.inicio_corrida : '');
 
   KP_EV = evs;
+  /* Los controles se cablean tras insertar el HTML de las secciones; se
+     agenda aqui para no depender de donde termine el render. */
+  setTimeout(kpSerCablear, 0);
   const angosta = window.matchMedia('(max-width:640px)').matches;
   const sec = [];
 
@@ -3391,6 +3412,16 @@ async function kpVerPozo(codigo){
     sec.push(kpSeccion('cadena', 'Cadena de potencia',
       'Cada etapa contra su propia nominal de placa',
       kpRenderMedicion(med), { cerrada:false }));
+  }
+
+  if (KP_SER && (KP_SER.series || []).length){
+    const s0 = KP_SER.series[0];
+    const t1 = new Date(Date.parse(s0.desde) + s0.paso_seg * 1000 * (s0.max.length - 1));
+    sec.push(kpSeccion('serie', 'Tendencia de la descarga',
+      KP_SER.series.length + ' canales &middot; hasta el '
+      + t1.toLocaleDateString('es-CO', { day:'2-digit', month:'short' })
+      + ' &middot; banda de m&iacute;nimo y m&aacute;ximo en cubos de 5 minutos',
+      kpRenderSeries(), { cerrada: angosta }));
   }
 
   if (tend.length){
@@ -4486,6 +4517,304 @@ function kpFiltrarBitacora(boton){
 /* ============================================================
    RENDER DE LA MEDICION ELECTRICA
    ============================================================ */
+/* ── Tendencia de 15 dias ────────────────────────────────────────────────
+   Los datos vienen del analizador en cubos de 5 minutos con minimo y
+   maximo. Se dibuja la BANDA entre ambos, no una linea: cada cubo agrupa
+   60 muestras y pintar solo el centro escondería las excursiones cortas,
+   que es justo lo que se quiere ver en una tendencia.
+
+   Cada canal tiene su propia escala vertical: conviven 65 Hz con 3.089 V
+   y 1,2 G. Un eje comun dejaria todo plano menos la tension. */
+
+/* Los cuatro primeros -frecuencia, corriente A, presion y temperatura de
+   motor- son los que se muestran por defecto, asi que llevan los colores
+   mas separados entre si. Antes corriente A y temperatura de motor eran
+   dos rojos casi iguales y con las dos activas no se distinguian. */
+const KP_SER_DEF = [
+  ['f_out',    'Frecuencia',        '#0C5292'],
+  ['i_out_a',  'Corriente A',       '#C62828'],
+  ['pip',      'Presión admisión',  '#2E7D32'],
+  ['t_motor',  'Temp. motor',       '#6A1B9A'],
+  ['i_out_b',  'Corriente B',       '#EF6C00'],
+  ['i_out_c',  'Corriente C',       '#F9A825'],
+  ['v_out',    'Tensión salida',    '#00695C'],
+  ['v_motor',  'Tensión motor',     '#0097A7'],
+  ['i_motor',  'Corriente motor',   '#AD1457'],
+  ['t_intake', 'Temp. admisión',    '#5D4037'],
+  ['vib_x',    'Vibración X',       '#4527A0'],
+  ['vib_y',    'Vibración Y/Z',     '#37474F'],
+];
+
+let KP_SER      = null;   // series crudas del pozo
+let KP_SER_ON   = null;   // canales visibles
+let KP_SER_ZOOM = null;   // [t0, t1] en ms, null = ventana completa
+/* Separado por defecto: con escalas independientes, cuatro bandas
+   superpuestas se pisan y no se distingue cual sube. Superpuesto sigue
+   disponible para comparar la FORMA de dos curvas, que es lo unico para
+   lo que sirve de verdad. */
+let KP_SER_SEP  = true;
+
+async function kpCargarSeries(pozo){
+  try {
+    const { data, error } = await kpCliente().rpc('dp_series_pozo', { p_pozo: pozo });
+    if (error) throw error;
+    return (data && data.ok) ? data : null;
+  } catch(e){
+    console.warn('[Kronos-M] Tendencia no disponible:', e.message);
+    return null;
+  }
+}
+
+function kpSerDibujar(){
+  const cont = document.getElementById('kpSerBox');
+  if (!cont || !KP_SER) return;
+  const series = (KP_SER.series || []).filter(s => KP_SER_ON.has(s.canal));
+
+  const W = 1000, ML = 8, MR = 8, MT = 12, MB = 26;
+  const nVis = Math.max(1, series.length);
+  /* En separado el alto crece con el numero de canales: repartir 300 px
+     entre doce daria carriles de 22 px, donde una banda no se ve. */
+  const H  = KP_SER_SEP ? MT + MB + Math.max(56, Math.min(78, 300 / nVis)) * nVis : 300;
+  const iw = W - ML - MR, ih = H - MT - MB;
+
+  /* Rango temporal: el de la ventana completa o el del zoom. */
+  let t0 = Infinity, t1 = -Infinity;
+  (KP_SER.series || []).forEach(s => {
+    const a = Date.parse(s.desde);
+    const b = a + s.paso_seg * 1000 * (s.max.length - 1);
+    if (a < t0) t0 = a;
+    if (b > t1) t1 = b;
+  });
+  const zT0 = KP_SER_ZOOM ? KP_SER_ZOOM[0] : t0;
+  const zT1 = KP_SER_ZOOM ? KP_SER_ZOOM[1] : t1;
+  const X = t => ML + (t - zT0) / (zT1 - zT0) * iw;
+
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" '
+        + 'xmlns="http://www.w3.org/2000/svg" id="kpSerSvg">';
+
+  /* Rejilla y marcas de tiempo. El paso se elige segun el rango visible
+     para que al ampliar aparezcan horas y no siga mostrando dias. */
+  const span = zT1 - zT0;
+  const paso = span > 10*86400000 ? 86400000*2
+             : span > 3*86400000  ? 86400000
+             : span > 12*3600000  ? 6*3600000
+             : span > 3*3600000   ? 3600000 : 900000;
+  const fmt = span > 3*86400000
+    ? (d => d.toLocaleDateString('es-CO', { day:'2-digit', month:'short' }))
+    : (d => d.toLocaleString('es-CO', { day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false }));
+  for (let t = Math.ceil(zT0 / paso) * paso; t <= zT1; t += paso){
+    const x = X(t);
+    s += '<line x1="' + x.toFixed(1) + '" y1="' + MT + '" x2="' + x.toFixed(1)
+      +  '" y2="' + (MT + ih) + '" stroke="var(--rule3,#eee)" stroke-width="1"/>'
+      +  '<text x="' + x.toFixed(1) + '" y="' + (H - 8) + '" text-anchor="middle" '
+      +  'font-size="10" fill="var(--t3)" font-family="inherit">' + fmt(new Date(t)) + '</text>';
+  }
+
+  if (!series.length){
+    s += '<text x="' + (W/2) + '" y="' + (MT + ih/2) + '" text-anchor="middle" font-size="13" '
+      +  'fill="var(--t3)" font-family="inherit">Ning&uacute;n canal seleccionado</text>';
+    cont.innerHTML = s + '</svg>';
+    return;
+  }
+
+  const hCarril = ih / nVis;
+  series.forEach((sr, k) => {
+    const def = KP_SER_DEF.find(d => d[0] === sr.canal) || [,'', '#666'];
+    const col = def[2];
+    /* Cada canal ocupa su franja en separado, o el alto completo en
+       superpuesto. Todo lo demas del trazado es identico. */
+    const yTop = KP_SER_SEP ? MT + hCarril * k : MT;
+    const hUso = (KP_SER_SEP ? hCarril : ih) - (KP_SER_SEP ? 10 : 0);
+    const paso_ms = sr.paso_seg * 1000;
+    const base = Date.parse(sr.desde);
+
+    /* Escala propia por canal, calculada SOBRE EL TRAMO VISIBLE. Si se
+       calculara sobre los 15 dias, al ampliar en un dia plano la curva
+       seguiria pegada a una esquina en vez de llenar el alto. */
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < sr.max.length; i++){
+      const t = base + paso_ms * i;
+      if (t < zT0 || t > zT1) continue;
+      const a = sr.min[i], b = sr.max[i];
+      if (a != null && a < lo) lo = a;
+      if (b != null && b > hi) hi = b;
+    }
+    if (!isFinite(lo)) return;
+    if (hi === lo){ hi = lo + Math.max(1e-6, Math.abs(lo) * 0.01); lo -= (hi - lo); }
+    /* Piso de escala del 2 % de la magnitud del canal, el mismo criterio
+       del analizador. Sin el, la frecuencia con su rango de 65,0 a 65,3
+       se estira a todo el alto y cada paso de cuantizacion se vuelve un
+       pico de pantalla completa: la curva parece oscilar violentamente
+       cuando en realidad esta plana. Los canales con recorrido amplio no
+       se ven afectados porque ya superan ese piso. */
+    const med  = (lo + hi) / 2;
+    const piso = Math.abs(med) * 0.02;
+    if (piso > 0 && (hi - lo) < piso){ lo = med - piso / 2; hi = med + piso / 2; }
+    const m = (hi - lo) * 0.08; lo -= m; hi += m;
+    const Y = v => yTop + hUso - (v - lo) / (hi - lo) * hUso;
+
+    /* Banda min-max como poligono cerrado: arriba los maximos, de vuelta
+       por los minimos. */
+    const arr = [], aba = [];
+    for (let i = 0; i < sr.max.length; i++){
+      const t = base + paso_ms * i;
+      if (t < zT0 || t > zT1) continue;
+      if (sr.max[i] == null) continue;
+      arr.push(X(t).toFixed(1) + ',' + Y(sr.max[i]).toFixed(1));
+      aba.push(X(t).toFixed(1) + ',' + Y(sr.min[i]).toFixed(1));
+    }
+    if (!arr.length) return;
+    aba.reverse();
+    s += '<polygon points="' + arr.concat(aba).join(' ') + '" fill="' + col
+      +  '" fill-opacity="0.20" stroke="none"/>'
+      +  '<polyline points="' + arr.join(' ') + '" fill="none" stroke="' + col
+      +  '" stroke-width="1.1" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>';
+
+    if (KP_SER_SEP){
+      /* Nombre y rango del carril. Sin el rango, dos carriles con la
+         misma forma parecen el mismo movimiento aunque uno varie 0,3 Hz
+         y el otro 60 A. */
+      if (k) s += '<line x1="' + ML + '" y1="' + yTop.toFixed(1) + '" x2="' + (W - MR)
+        +  '" y2="' + yTop.toFixed(1) + '" stroke="var(--rule3,#eee)" stroke-width="1"/>';
+      /* Halo blanco bajo el texto: cuando la curva sube hasta el borde
+         superior del carril, la etiqueta le quedaba encima y ninguna de
+         las dos se leia. paint-order dibuja el trazo antes del relleno. */
+      const halo = ' paint-order="stroke" stroke="var(--panel,#fff)" stroke-width="3" '
+                 + 'stroke-linejoin="round"';
+      s += '<text x="' + (ML + 4) + '" y="' + (yTop + 11) + '" font-size="10" font-weight="600" '
+        +  'fill="' + col + '" font-family="inherit"' + halo + '>' + def[1] + '</text>'
+        +  '<text x="' + (W - MR - 4) + '" y="' + (yTop + 11) + '" font-size="9.5" '
+        +  'text-anchor="end" fill="var(--t3)" font-family="inherit"' + halo + '>'
+        +  kpNum(lo + (hi - lo) * 0.08) + ' a ' + kpNum(hi - (hi - lo) * 0.08)
+        +  ' ' + (sr.unidad || '') + '</text>';
+    }
+  });
+
+  s += '<line id="kpSerCur" x1="-9" y1="' + MT + '" x2="-9" y2="' + (MT + ih)
+    +  '" stroke="var(--acc,#0C5292)" stroke-width="1" stroke-dasharray="3 3"/>';
+  s += '<rect id="kpSerSel" x="0" y="' + MT + '" width="0" height="' + ih
+    +  '" fill="var(--acc,#0C5292)" fill-opacity="0.12" stroke="none"/>';
+  cont.innerHTML = s + '</svg>';
+  kpSerInteraccion(zT0, zT1, ML, iw);
+}
+
+/* Cursor y seleccion para ampliar. Pointer Events para que arrastrar con
+   el dedo funcione igual que con el raton en la caseta. */
+function kpSerInteraccion(zT0, zT1, ML, iw){
+  const svg = document.getElementById('kpSerSvg');
+  const lec = document.getElementById('kpSerLec');
+  if (!svg) return;
+  const W = 1000;
+  const aT = px => zT0 + (px - ML) / iw * (zT1 - zT0);
+  const aPx = ev => {
+    const r = svg.getBoundingClientRect();
+    return (ev.clientX - r.left) / r.width * W;
+  };
+
+  let arr0 = null;
+  const cur = document.getElementById('kpSerCur');
+  const sel = document.getElementById('kpSerSel');
+
+  const leer = t => {
+    const partes = [];
+    (KP_SER.series || []).filter(s => KP_SER_ON.has(s.canal)).forEach(s => {
+      const i = Math.round((t - Date.parse(s.desde)) / (s.paso_seg * 1000));
+      if (i < 0 || i >= s.max.length || s.max[i] == null) return;
+      const d = KP_SER_DEF.find(x => x[0] === s.canal) || [,''];
+      const a = s.min[i], b = s.max[i];
+      const txt = (Math.abs(b - a) < Math.abs(b) * 0.001)
+        ? kpNum(b) : kpNum(a) + '\u2013' + kpNum(b);
+      partes.push('<span style="color:' + d[2] + '">\u25a0</span> ' + d[1]
+                  + ' <b>' + txt + '</b> ' + (s.unidad || ''));
+    });
+    return partes.join(' &nbsp; ');
+  };
+
+  svg.addEventListener('pointermove', ev => {
+    const px = aPx(ev), t = aT(px);
+    cur.setAttribute('x1', px); cur.setAttribute('x2', px);
+    if (arr0 != null){
+      const x0 = Math.min(arr0, px), x1 = Math.max(arr0, px);
+      sel.setAttribute('x', x0); sel.setAttribute('width', x1 - x0);
+    }
+    if (lec) lec.innerHTML =
+      '<b>' + new Date(t).toLocaleString('es-CO', { day:'2-digit', month:'short',
+        hour:'2-digit', minute:'2-digit', hour12:false }) + '</b> &nbsp; ' + leer(t);
+  });
+  svg.addEventListener('pointerdown', ev => {
+    arr0 = aPx(ev); svg.setPointerCapture(ev.pointerId); ev.preventDefault();
+  });
+  const fin = ev => {
+    if (arr0 == null) return;
+    const px = aPx(ev);
+    /* Un arrastre corto es un toque para leer, no una seleccion: sin este
+       umbral cada clic ampliaba a un rango de milisegundos. */
+    if (Math.abs(px - arr0) > 12){
+      const a = aT(Math.min(arr0, px)), b = aT(Math.max(arr0, px));
+      KP_SER_ZOOM = [a, b];
+      kpSerDibujar();
+      const bz = document.getElementById('kpSerReset');
+      if (bz) bz.style.display = '';
+    }
+    arr0 = null;
+    if (sel) sel.setAttribute('width', 0);
+  };
+  svg.addEventListener('pointerup', fin);
+  svg.addEventListener('pointercancel', () => { arr0 = null; sel.setAttribute('width', 0); });
+}
+
+function kpSerCablear(){
+  const box = document.getElementById('kpSerBox');
+  if (!box || !KP_SER) return;
+  document.querySelectorAll('[data-ser]').forEach(b => {
+    b.onclick = () => {
+      const c = b.dataset.ser;
+      /* No se permite apagar el ultimo canal: una grafica sin nada no
+         comunica que se apago todo, parece que fallo la carga. */
+      if (KP_SER_ON.has(c) && KP_SER_ON.size === 1) return;
+      if (KP_SER_ON.has(c)) KP_SER_ON.delete(c); else KP_SER_ON.add(c);
+      b.classList.toggle('off', !KP_SER_ON.has(c));
+      kpSerDibujar();
+    };
+  });
+  const r = document.getElementById('kpSerReset');
+  if (r) r.onclick = () => {
+    KP_SER_ZOOM = null; r.style.display = 'none'; kpSerDibujar();
+  };
+  const md = document.getElementById('kpSerModo');
+  if (md) md.onclick = () => {
+    KP_SER_SEP = !KP_SER_SEP;
+    md.textContent = KP_SER_SEP ? 'Superponer' : 'Separar';
+    kpSerDibujar();
+  };
+  kpSerDibujar();
+}
+
+function kpRenderSeries(){
+  if (!KP_SER || !(KP_SER.series || []).length) return '';
+  const hay = new Set(KP_SER.series.map(s => s.canal));
+  const defs = KP_SER_DEF.filter(d => hay.has(d[0]));
+  if (!KP_SER_ON){
+    /* Arranca con cuatro canales y no con doce: doce bandas superpuestas
+       no se leen, y el resto esta a un toque. */
+    KP_SER_ON = new Set(['f_out', 'i_out_a', 'pip', 't_motor'].filter(c => hay.has(c)));
+    if (!KP_SER_ON.size) defs.slice(0, 4).forEach(d => KP_SER_ON.add(d[0]));
+  }
+  let h = '<div class="kp-card"><div class="kp-ser-chips">';
+  defs.forEach(([c, n, col]) => {
+    h += '<button class="kp-ser-chip' + (KP_SER_ON.has(c) ? '' : ' off') + '" data-ser="' + c
+      +  '"><i style="background:' + col + '"></i>' + n + '</button>';
+  });
+  h += '</div><div class="kp-ser-barra">'
+    +  '<button class="kp-chip" id="kpSerModo">' + (KP_SER_SEP ? 'Superponer' : 'Separar') + '</button>'
+    +  '<button class="kp-chip" id="kpSerReset" style="display:none">Ver los 15 d&iacute;as</button>'
+    +  '<span style="font-size:11.5px;color:var(--t3)">Arrastra sobre la gr&aacute;fica para ampliar</span>'
+    +  '</div>'
+    +  '<div class="kp-ser" id="kpSerBox"></div>'
+    +  '<div class="kp-ser-lec" id="kpSerLec"></div></div>';
+  return h;
+}
+
 function kpRenderMedicion(m){
   const val   = m.valores || {};
   const placa = m.placa || {};

@@ -4258,7 +4258,7 @@ const DP_CANALES = [
   ['t_motor',    'Temperatura de motor',  'F'],
   ['t_intake',   'Temperatura de admision','F'],
   ['vib_x',      'Vibracion X',           'g'],
-  ['vib_y',      'Vibracion Y',           'g'],
+  ['vib_y',      'Vibracion Y/Z',         'g'],
 ];
 
 /* El analizador nombra sus canales por `role`. Se mapea al nombre estable
@@ -4269,11 +4269,17 @@ const DP_ROLE = {
   v_out:'vout', v_motor:'vmotor', i_motor:'imotor',
   pip:'pip', t_motor:'tmotor', t_intake:'tintake',
   vib_x:'vibx', vib_y:'viby',
+  /* Baker Hughes reporta el segundo eje como Z y Triol como Y. Se
+     guarda bajo un solo canal: son el mismo eje transversal y tenerlos
+     separados partiria la serie al cambiar de marca de variador. */
 };
 
 function dpBuscarCanal(u, clave){
   const r = DP_ROLE[clave];
   if (r && u.ch[r] && u.ch[r].n) return u.ch[r];
+  /* Alias de role para el eje transversal, que cambia de nombre segun la
+     marca del variador. */
+  if (clave === 'vib_y' && u.ch.vibz && u.ch.vibz.n) return u.ch.vibz;
   /* Respaldo por etiqueta: los formatos no siempre traen el mismo role y
      un canal ausente se veria como una unidad sin datos. */
   const pats = {
@@ -4287,7 +4293,11 @@ function dpBuscarCanal(u, clave){
     pip:/intake pres|pip\b/i,
     t_motor:/motor temp|temp.*motor/i,
     t_intake:/intake temp|temp.*intake/i,
-    vib_x:/vib.*x/i, vib_y:/vib.*y/i,
+    /* El eje va tras un separador que puede ser espacio, guion o guion
+       bajo. Con \\b no basta: el guion bajo cuenta como caracter de
+       palabra y "VIB_Y" no encontraba limite. */
+    vib_x:/vib.*[^a-z0-9]x(?![a-z])/i,
+    vib_y:/vib.*[^a-z0-9][yz](?![a-z])/i,
   };
   const p = pats[clave];
   if (!p) return null;
