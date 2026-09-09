@@ -356,6 +356,31 @@ body{background:var(--kp-page);color:var(--kp-ink);
    El borde va en tono neutro y no verde: no hay umbral definido para
    estos puntos, y pintarlos de verde afirma que estan bien sin ninguna
    referencia que lo sostenga. */
+/* Placa de equipos: una ficha por nodo. Etiquetas pequenas y valor a la
+   derecha, en dos columnas por ficha. Las tarjetas de KPI servian para
+   cinco cifras; para cuarenta datos organizados por equipo no. */
+.kp-plc{display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:12px}
+.kp-plc .f{border:1px solid var(--kp-line);border-radius:9px;overflow:hidden;
+  background:var(--kp-card)}
+.kp-plc .h{padding:9px 12px;background:var(--surface-2);border-bottom:1px solid var(--kp-line)}
+.kp-plc .h .t{font-size:12.5px;font-weight:600;color:var(--t1)}
+.kp-plc .h .s{font-size:10.5px;color:var(--kp-ink3);margin-top:1px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kp-plc .h .s b{color:var(--kp-ink2);font-weight:600}
+.kp-plc .b{padding:4px 12px 9px}
+.kp-plc .l{display:flex;align-items:baseline;gap:8px;padding:3.5px 0;
+  border-bottom:1px dotted var(--kp-line)}
+.kp-plc .l:last-child{border-bottom:0}
+.kp-plc .l .n{font-size:11px;color:var(--kp-ink3);flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.kp-plc .l .v{font-size:12.5px;font-weight:600;color:var(--t1);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+.kp-plc .l .v em{font-size:10.5px;font-weight:400;color:var(--kp-ink3);
+  font-style:normal;margin-left:2px}
+.kp-plc .l.der .v{color:var(--kp-warn)}
+.kp-plc .l .orig{display:block;font-size:10px;font-weight:400;color:var(--kp-ink3);
+  text-align:right;margin-top:1px}
+.kp-plc .vacio{font-size:11px;color:var(--kp-ink3);padding:8px 0 4px;font-style:italic}
 .kp-tmp{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
 .kp-tmp .c{background:var(--kp-card);border:1px solid var(--kp-line);
   border-left:3px solid var(--kp-ink3);border-radius:7px;padding:7px 10px}
@@ -3399,6 +3424,7 @@ async function kpVerPozo(codigo){
   KP_CMP = null; KP_DER = null;
   KP_SER = await kpCargarSeries(codigo);
   KP_DER = await kpCargarDerrateos(codigo);
+  KP_PLC = await kpCargarPlacaEquipos(codigo);
 
   let pozoId = null;
   try { pozoId = await kpIdDe(codigo); } catch(e){}
@@ -4657,6 +4683,18 @@ let KP_SER_SEP  = true;
 
 let KP_CMP = null;   // resultado de dp_ronda_faltantes
 let KP_DER = null;   // derrateos por columna de placa
+let KP_PLC = null;   // ficha de placa por equipo
+
+async function kpCargarPlacaEquipos(pozo){
+  try {
+    const { data, error } = await kpCliente().rpc('dp_placa_equipos', { p_pozo: pozo });
+    if (error) throw error;
+    return (data && data.ok) ? data : null;
+  } catch(e){
+    console.warn('[Kronos-M] Placa de equipos no disponible:', e.message);
+    return null;
+  }
+}
 
 async function kpCargarDerrateos(pozo){
   try {
@@ -5234,30 +5272,86 @@ function kpRenderMedicion(m){
     h += '</div>';
   }
 
-  if (placa.motor_i_nominal_a || placa.motor_potencia_hp){
-    h += '<h2>Placa</h2>';
-    h += '<p class="hint">Origen: ' + (placa.fuente || 'no indicado')
-      +  (placa.actualizado_en ? ' &middot; actualizada ' + String(placa.actualizado_en).slice(0,10) : '')
+  if (KP_PLC && KP_PLC.nodos){
+    h += '<h2>Placa de equipos</h2>';
+    h += '<p class="hint">Del desfasador al motor. Origen: '
+      +  kpEsc(KP_PLC.fuente || placa.fuente || 'no indicado')
+      +  (KP_PLC.actualizado_en
+            ? ' &middot; actualizada ' + String(KP_PLC.actualizado_en).slice(0,10) : '')
       +  '</p>';
-    h += '<div class="kp-kpis" style="margin-bottom:8px">';
-    const pl = [
-      ['Motor', placa.motor_potencia_hp, 'hp'],
-      ['Tensi&oacute;n motor', placa.motor_v_nominal_v, 'V'],
-      ['Corriente motor', placa.motor_i_nominal_a, 'A'],
-      ['Corriente VFD', placa.vfd_i_nominal_a, 'A'],
-      ['Motores', placa.n_motores, ''],
-      ['Aislamiento', placa.motor_clase_aisl, '']
-    ];
-    pl.forEach(x => {
-      if (x[1] == null) return;
-      const vv = (typeof x[1] === 'number') ? kpNum(x[1]) : x[1];
-      h += '<div class="kp-kpi"><div class="k">' + x[0] + '</div>'
-        +  '<div class="v">' + vv + (x[2] ? '<small>' + x[2] + '</small>' : '') + '</div></div>';
-    });
-    h += '</div>';
+    h += kpRenderPlacaEquipos(KP_PLC);
   }
 
   return h;
+}
+
+function kpRenderPlacaEquipos(p){
+  const der = p.derrateos || {};
+  let h = '<div class="kp-plc" style="margin-bottom:8px">';
+
+  (p.nodos || []).forEach(nd => {
+    const campos = (nd.campos || []).filter(c => c[1] != null && c[1] !== '');
+    const eq = nd.equipo || null;
+    /* Un nodo sin ningun dato ni equipo no se dibuja: una ficha vacia
+       ocupa lo mismo que una llena y no dice nada. Un nodo con equipo
+       pero sin datos si aparece, porque saber que hay un SUT instalado
+       del que no se registro la placa es informacion. */
+    if (!campos.length && !eq) return;
+
+    h += '<div class="f"><div class="h">'
+      +  '<div class="t">' + kpEsc(nd.titulo || nd.rol) + '</div>';
+    if (eq){
+      const ident = [eq.marca, eq.modelo].filter(Boolean).join(' ');
+      h += '<div class="s" title="' + kpEsc(ident + (eq.serial ? ' · ' + eq.serial : '')) + '">'
+        +  (ident ? '<b>' + kpEsc(ident) + '</b>' : '<span>sin marca ni modelo</span>')
+        +  (eq.serial ? ' &middot; serie ' + kpEsc(eq.serial) : '')
+        +  '</div>';
+    } else {
+      h += '<div class="s">sin equipo asociado en el inventario</div>';
+    }
+    h += '</div><div class="b">';
+
+    if (!campos.length){
+      h += '<div class="vacio">Sin datos de placa registrados.</div>';
+    }
+
+    campos.forEach(c => {
+      const [nom, val, ud] = c;
+      /* El derrateo solo se puede cruzar en los campos cuya columna se
+         conoce; hoy el motor. En el resto se muestra el valor sin marca
+         en vez de suponer una correspondencia. */
+      let clave = null;
+      if (nd.rol === 'MOTOR' && /^Corriente/.test(nom)) clave = nd.clave_i;
+      if (nd.rol === 'MOTOR' && /^Tensi/.test(nom))     clave = nd.clave_v;
+      const d = clave ? der[clave] : null;
+
+      h += '<div class="l' + (d ? ' der' : '') + '">'
+        +  '<span class="n" title="' + kpEsc(nom) + '">' + kpEsc(nom) + '</span>'
+        +  '<span class="v">'
+        +  (typeof val === 'number' ? kpNum(val) : kpEsc(val))
+        +  (ud ? '<em>' + kpEsc(ud) + '</em>' : '')
+        +  (d ? '<span class="orig">de ' + kpNum(d.placa) + (ud ? ' ' + kpEsc(ud) : '')
+                + ' de placa' + (d.pct != null ? ' \u00b7 ' + kpPct(d.pct) + ' %' : '')
+                + '</span>' : '')
+        +  '</span></div>';
+    });
+
+    /* Motivo del derrateo, una sola vez por ficha: repetirlo en cada
+       campo llenaria la tarjeta con la misma frase. */
+    const motivos = [...new Set((nd.rol === 'MOTOR'
+      ? [nd.clave_i, nd.clave_v] : []).map(k => der[k] && der[k].motivo).filter(Boolean))];
+    if (motivos.length){
+      h += '<div class="vacio">Derrateo: ' + kpEsc(motivos.join(' \u00b7 ')) + '</div>';
+    }
+
+    if (eq && eq.instalado_el){
+      h += '<div class="vacio">Instalado el ' + String(eq.instalado_el).slice(0,10)
+        +  (eq.run ? ' \u00b7 corrida ' + kpEsc(eq.run) : '') + '</div>';
+    }
+    h += '</div></div>';
+  });
+
+  return h + '</div>';
 }
 
 function kpDibujarCadena(nodos, val){
