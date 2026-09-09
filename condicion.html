@@ -350,6 +350,22 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-kpi .v small{font-size:12px;font-weight:400;color:var(--kp-ink2);margin-left:3px}
 .kp-kpi .r{font-size:12px;color:var(--kp-ink2);margin-bottom:8px}
 
+/* Temperaturas: son once puntos de lectura y con tarjetas de KPI ocupaban
+   media pantalla para decir once numeros. Chips estrechos, valor mediano
+   y la conversion debajo en tono apagado.
+   El borde va en tono neutro y no verde: no hay umbral definido para
+   estos puntos, y pintarlos de verde afirma que estan bien sin ninguna
+   referencia que lo sostenga. */
+.kp-tmp{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:8px}
+.kp-tmp .c{background:var(--kp-card);border:1px solid var(--kp-line);
+  border-left:3px solid var(--kp-ink3);border-radius:7px;padding:7px 10px}
+.kp-tmp .k{font-size:9.5px;letter-spacing:.7px;text-transform:uppercase;
+  color:var(--kp-ink3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kp-tmp .v{font-size:17px;font-weight:600;margin:2px 0 0;line-height:1.2;
+  font-variant-numeric:tabular-nums}
+.kp-tmp .v small{font-size:10.5px;font-weight:400;color:var(--kp-ink2);margin-left:2px}
+.kp-tmp .c2{font-size:10.5px;color:var(--kp-ink3);font-variant-numeric:tabular-nums}
+
 .kp-grp{padding:8px 15px;background:var(--surface-2);border-bottom:1px solid var(--kp-line);
   font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--kp-ink3)}
 .kp-rule{padding:12px 15px;border-bottom:1px solid var(--kp-line);display:flex;
@@ -2480,7 +2496,12 @@ function kpCalcularCadena(val, placa){
     const nominal = e.nom && placa ? placa[e.nom] : null;
     const pct = nominal ? (ip / nominal * 100) : null;
     const kvaNom = e.nom_kva && placa ? placa[e.nom_kva] : null;
+    /* Se cruza por el MISMO nombre de columna con el que se leyó la
+       nominal. Si el catálogo de derrateos usa otro nombre no aparece
+       nada, que es preferible a emparejar por aproximación. */
+    const der = (KP_DER && e.nom) ? KP_DER[e.nom] : null;
     out.push({
+      derrateo: der || null,
       nodo: e.nodo, detalle: e.detalle,
       tipo: e.tipo || 'trafo', zona: e.zona || 'sup',
       kva_nom: kvaNom || null,
@@ -2549,8 +2570,14 @@ function kpTemperaturas(val){
     ['temp_igbt_u_c','IGBT U'], ['temp_igbt_v_c','IGBT V'], ['temp_igbt_w_c','IGBT W'],
     ['temp_pst_c','PST'], ['temp_sut_c','SUT']
   ];
+  /* Se devuelven las dos escalas. En campo se lee y se habla en °F, pero
+     la placa del equipo y las hojas del fabricante vienen en °C, y tener
+     que convertir mentalmente para contrastar contra un limite invita al
+     error. */
   return defs.filter(d => kpTempF(val[d[0]]) != null)
-             .map(d => ({ nombre: d[1], valor: kpTempF(val[d[0]]) }));
+             .map(d => ({ nombre: d[1],
+                          valor: kpTempF(val[d[0]]),
+                          valor_c: Number(val[d[0]]) }));
 }
 
 /* ============================================================
@@ -3369,8 +3396,9 @@ async function kpVerPozo(codigo){
   /* Estado de la grafica por unidad: si no se reinicia, al abrir otro
      pozo se conservaria el zoom y los canales del anterior. */
   KP_SER = null; KP_SER_ON = null; KP_SER_ZOOM = null;
-  KP_CMP = null;
+  KP_CMP = null; KP_DER = null;
   KP_SER = await kpCargarSeries(codigo);
+  KP_DER = await kpCargarDerrateos(codigo);
 
   let pozoId = null;
   try { pozoId = await kpIdDe(codigo); } catch(e){}
@@ -4628,6 +4656,18 @@ let KP_SER_SEP  = true;
    restriccion de verdad la aplica dp_completar_ronda con mi_rol(). */
 
 let KP_CMP = null;   // resultado de dp_ronda_faltantes
+let KP_DER = null;   // derrateos por columna de placa
+
+async function kpCargarDerrateos(pozo){
+  try {
+    const { data, error } = await kpCliente().rpc('dp_derrateos_pozo', { p_pozo: pozo });
+    if (error) throw error;
+    return (data && data.ok) ? (data.por_columna || {}) : {};
+  } catch(e){
+    console.warn('[Kronos-M] Derrateos no disponibles:', e.message);
+    return {};
+  }
+}
 
 async function kpCargarFaltantes(medicionId){
   if (!medicionId) return null;
@@ -5181,10 +5221,15 @@ function kpRenderMedicion(m){
   if (tmp.length){
     h += '<h2>Temperaturas</h2>';
     h += '<p class="hint">Puntos medidos en el gabinete y transformadores</p>';
-    h += '<div class="kp-kpis" style="margin-bottom:8px">';
+    h += '<div class="kp-tmp" style="margin-bottom:8px">';
     tmp.forEach(t => {
-      h += '<div class="kp-kpi"><div class="k">' + t.nombre + '</div>'
-        +  '<div class="v">' + kpNum(t.valor) + '<small>\u00b0F</small></div></div>';
+      h += '<div class="c"><div class="k" title="' + kpEsc(t.nombre) + '">'
+        +  kpEsc(t.nombre) + '</div>'
+        +  '<div class="v">' + kpNum(t.valor) + '<small>\u00b0F</small></div>'
+        +  (Number.isFinite(t.valor_c)
+             ? '<div class="c2">' + kpNum(Math.round(t.valor_c * 10) / 10) + ' \u00b0C</div>'
+             : '')
+        +  '</div>';
     });
     h += '</div>';
   }
@@ -5297,7 +5342,17 @@ function kpDibujarCadena(nodos, val){
       (nd.kva != null ? kpNum(nd.kva) + ' kVA demandados'
         + (nd.kva_nom ? ' de ' + kpNum(nd.kva_nom) + ' kVA de placa' : '') : null),
       (nd.desbal_i != null ? 'Desbalance de corriente ' + kpPct(nd.desbal_i) + ' %' : null),
-      (nd.desbal_v != null ? 'Desbalance de tension ' + kpPct(nd.desbal_v) + ' %' : null)
+      (nd.desbal_v != null ? 'Desbalance de tension ' + kpPct(nd.desbal_v) + ' %' : null),
+      /* Si la nominal contra la que se compara está derrateada, decirlo y
+         mostrar la de placa. Un nodo al 99 % de una nominal reducida no
+         está en la misma situación que uno al 99 % de su placa, y sin
+         este dato las dos lecturas se ven idénticas. */
+      (nd.derrateo
+        ? '\nDERRATEADO: se compara contra ' + kpNum(nd.derrateo.aplicado)
+          + ' de ' + kpNum(nd.derrateo.placa) + ' de placa'
+          + (nd.derrateo.pct != null ? ' (' + kpPct(nd.derrateo.pct) + ' %)' : '')
+          + (nd.derrateo.motivo ? '\nMotivo: ' + nd.derrateo.motivo : '')
+        : null)
     ].filter(Boolean).join('\n');
 
     s += '<g><title>' + esc(det) + '</title>';
@@ -5325,6 +5380,13 @@ function kpDibujarCadena(nodos, val){
     s += kpSimbolo(nd.tipo || nd.nodo, cx, yc + 34, col);
 
     s += cab(nd.nodo, cx, yc + 72, 13, 600, 'var(--t1)', max);
+    /* Un punto junto al nombre avisa del derrateo sin abrir el detalle:
+       si hay que pasar el cursor para enterarse, en una revisión rápida
+       nadie se entera. */
+    if (nd.derrateo){
+      s += '<circle cx="' + (cx + Math.min(max, nd.nodo.length * 7) / 2 + 7) + '" cy="'
+        +  (yc + 68) + '" r="3.2" fill="' + KP_HEX.warn + '"><title>Nominal derrateada</title></circle>';
+    }
     s += cab(pct == null ? 'Sin placa' : (Math.round(pct * 10) / 10) + ' %',
              cx, yc + 94, pct == null ? 12 : 19, 700,
              pct == null ? 'var(--t3)' : col, max);
