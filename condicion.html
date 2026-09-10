@@ -2751,19 +2751,36 @@ function kpBalanceRectificadores(val){
   };
 }
 
-/* Umbrales de FP y THD: los de FP son criterio operativo comun en
-   O&G; los de THD de tension en salida de VFD no aplican como falla
-   porque la onda PWM distorsiona por diseno. Se marcan como
-   informativos y no como hallazgo. */
+/* Umbrales de FP y THD, diferenciados por punto de medida.
+   FP: los cortes 0.80 y 0.85 son criterio de red y solo se evaluan en
+   la entrada PST. En la salida del VFD el rectificador desacopla, la
+   red no ve ese reactivo y el indicador pasa a ser informativo.
+   THD de tension: en salida de VFD no aplica como falla porque la onda
+   PWM distorsiona por diseno. Se marca como informativo, no hallazgo.
+   Ninguna alerta de este panel debe recomendar capacitores aguas abajo
+   del inversor. */
 function kpCalidadEnergia(val){
   const p = [];
   const punto = (pref, nombre, esSalidaVfd) => {
     const fp = val[pref+'_fp'], thdv = val[pref+'_thdv'], thdi = val[pref+'_thd'];
     if (fp == null && thdv == null && thdi == null) return;
     const al = [];
-    if (fp != null){
+    /* Los umbrales de 0.80 y 0.85 son criterio de RED: facturacion,
+       penalizacion y capacidad del alimentador. Aguas abajo del
+       rectificador no aplican. El puente desacopla y el reactivo del
+       motor lo suministra el bus DC, de modo que la red no lo ve ni lo
+       factura: en una misma unidad la entrada puede marcar 0.97 y la
+       salida 0.76. En la salida del VFD un cos(fi) bajo no es no
+       conformidad sino indicio de motor sobreexcitado o subcargado, y
+       se reporta como informativo. Lo que si cuesta ahi es la corriente
+       adicional en cable, devanado y secundario del SUT. */
+    if (fp != null && !esSalidaVfd){
       if (fp <= 0.80)      al.push({t:'crit', m:'Factor de potencia ' + fp.toFixed(2) + ' (critico si es 0.80 o menos)'});
       else if (fp <= 0.85) al.push({t:'warn', m:'Factor de potencia ' + fp.toFixed(2) + ' (atencion si es 0.85 o menos)'});
+    } else if (fp != null && fp <= 0.85){
+      al.push({t:'info', m:'Factor de potencia ' + fp.toFixed(2) + ' en salida del inversor. '
+        + 'El umbral de red no aplica en este punto: el rectificador desacopla y la red no ve este '
+        + 'reactivo. Es indicador de carga y flujo del motor, no una no conformidad.'});
     }
     if (thdv != null && esSalidaVfd)
       al.push({t:'info', m:'THD de tension ' + thdv.toFixed(1) + ' %. Valor esperable en salida de VFD sin filtro senoidal: la onda PWM distorsiona por diseno. No es falla.'});
@@ -2777,9 +2794,17 @@ function kpCalidadEnergia(val){
        se verifico contra 25 mediciones de la flota y se cumple en 24 con
        diferencia menor a 0,03.
 
-       Separarlos importa porque llevan a acciones distintas: el
-       desplazamiento se corrige con compensacion reactiva, la distorsion
-       con filtrado. Un capacitor no arregla armonicos. */
+       Separarlos importa porque llevan a acciones distintas, pero la
+       accion depende del PUNTO DE MEDIDA.
+       En la ENTRADA (red): el desplazamiento se corrige con compensacion
+       reactiva y la distorsion con filtrado. Un capacitor no arregla
+       armonicos.
+       En la SALIDA del VFD: no se instalan capacitores aguas abajo del
+       inversor. El capacitor ve la conmutacion PWM como escalones de
+       tension y devuelve picos de corriente de carga que disparan el
+       equipo por sobrecorriente y pueden destruir los IGBT. Todos los
+       fabricantes lo prohiben. Alli el cos(fi) bajo se atiende sobre la
+       relacion V/Hz, el tap del SUT y el punto de carga del motor. */
     const ang = val[pref+'_ang_a'];
     const fpDesp = (ang != null) ? Math.cos(Math.abs(ang) * Math.PI / 180) : null;
     const fpDist = (thdi != null) ? 1 / Math.sqrt(1 + Math.pow(thdi / 100, 2)) : null;
@@ -2795,14 +2820,30 @@ function kpCalidadEnergia(val){
     if (ang != null && ang > 2){
       al.push({t:'warn', m:'Desfase adelantado ' + ang.toFixed(0) + '\u00b0. '
         + 'En una unidad con ESP la carga es inductiva y el angulo deberia ser negativo: '
-        + 'revisar si hay compensacion capacitiva o si el instrumento invirtio el signo.'});
+        + (esSalidaVfd
+            ? 'en salida de VFD revisar primero si la unidad tiene filtro senoidal, cuyos '
+              + 'capacitores drenan corriente casi fija y adelantan el angulo cuando el motor '
+              + 'esta poco cargado; si no lo tiene, revisar el signo del instrumento.'
+            : 'revisar si hay compensacion capacitiva o si el instrumento invirtio el signo.')});
     }
     if (domina && fp != null && fp < 0.85){
-      al.push({t:'info', m: domina === 'desplazamiento'
-        ? 'El factor de potencia bajo viene del DESPLAZAMIENTO (cos φ ' + fpDesp.toFixed(2)
-          + '), no de los armonicos. Se corrige con compensacion reactiva; un filtro no lo mejora.'
-        : 'El factor de potencia bajo viene de la DISTORSION (THD de corriente ' + thdi.toFixed(1)
-          + ' %). Los capacitores no lo corrigen; hace falta filtrado.'});
+      let msg;
+      if (domina === 'desplazamiento'){
+        msg = esSalidaVfd
+          ? 'El factor de potencia bajo viene del DESPLAZAMIENTO (cos φ ' + fpDesp.toFixed(2)
+            + '). NO instalar capacitores en la salida del variador: la conmutacion PWM los somete '
+            + 'a picos de corriente que disparan el equipo y pueden danar los IGBT. Verificar '
+            + 'relacion V/Hz, tap del SUT y amperaje contra placa del motor.'
+          : 'El factor de potencia bajo viene del DESPLAZAMIENTO (cos φ ' + fpDesp.toFixed(2)
+            + '), no de los armonicos. Se corrige con compensacion reactiva; un filtro no lo mejora.';
+      } else {
+        msg = esSalidaVfd
+          ? 'El factor de potencia bajo viene de la DISTORSION (THD de corriente ' + thdi.toFixed(1)
+            + ' %). En salida de VFD esto se atiende con filtro senoidal, nunca con capacitores.'
+          : 'El factor de potencia bajo viene de la DISTORSION (THD de corriente ' + thdi.toFixed(1)
+            + ' %). Los capacitores no lo corrigen; hace falta filtrado.';
+      }
+      al.push({t:'info', m: msg});
     }
 
     p.push({
@@ -5461,7 +5502,9 @@ function kpRenderMedicion(m){
     h += '<h2>Calidad de energ&iacute;a</h2>';
     h += '<p class="hint">El &aacute;ngulo &#966; del tri&aacute;ngulo es el factor de potencia de '
       +  'desplazamiento. El factor de potencia total incluye adem&aacute;s la distorsi&oacute;n, '
-      +  'y separar ambos indica si corresponde compensaci&oacute;n reactiva o filtrado.</p>';
+      +  'y separar ambos indica si corresponde compensaci&oacute;n reactiva o filtrado. '
+      +  'Ese criterio aplica a la entrada desde la red; en la salida del variador el factor '
+      +  'de potencia es un indicador de carga y flujo del motor, no una no conformidad.</p>';
     h += kpRenderCalidad(cal);
   }
 
