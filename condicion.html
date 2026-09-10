@@ -2612,12 +2612,24 @@ function kpProm(vs){
   if (!l.length) return null;
   return l.reduce((a,b) => a + b, 0) / l.length;
 }
+/* NEMA define el desbalance sobre las TRES fases. Calcularlo con dos
+   subestima el resultado: el promedio sale de un conjunto incompleto y
+   la desviacion maxima se mide contra el, de modo que si las dos fases
+   registradas son las parecidas, un desbalance real se reporta cerca de
+   cero. Es peor que no dar el dato, porque un numero bajo se lee como
+   una unidad sana. Con fases faltantes se devuelve null y la seccion de
+   revision explica por que no hay numero. */
 function kpDesbal(vs){
+  if (!vs || vs.length < 3) return null;
   const l = vs.filter(v => v != null && isFinite(v));
-  if (l.length < 2) return null;
+  if (l.length !== vs.length) return null;
   const p = kpProm(l);
   if (!p) return null;
   return Math.max.apply(null, l.map(v => Math.abs(v - p))) / p * 100;
+}
+function kpFaltan(vs){
+  if (!vs) return null;
+  return vs.filter(v => v == null || !isFinite(v)).length;
 }
 function kpEstadoCarga(pct){
   if (pct == null) return 'none';
@@ -2731,6 +2743,8 @@ function kpCalcularCadena(val, placa){
       kva: (vp != null) ? RT3 * vp * ip / 1000 : null,
       desbal_i: ii ? kpDesbal(ii) : null,
       desbal_v: kpDesbal(vv),
+      faltan_i: ii ? kpFaltan(ii) : null,
+      faltan_v: kpFaltan(vv),
       carga_pct: pct,
       estado: nominal ? kpEstadoCarga(pct) : 'none'
     });
@@ -3799,7 +3813,7 @@ async function kpVerPozo(codigo){
     }
 
     sec.push(kpSeccion('resumen', 'Estado de la unidad',
-      kpSubRonda(mc), kpRenderResumen(med, bal) + cmpHtml, { plegable:false }));
+      kpSubRonda(mc), kpRenderResumen(med, bal, ctx) + cmpHtml, { plegable:false }));
 
     sec.push(kpSeccion('cadena', 'Cadena de potencia',
       'Cada etapa contra su propia nominal de placa',
@@ -3929,7 +3943,7 @@ function kpSubRonda(mc){
    carga el motor, si las corrientes vienen parejas, como reparten los
    dos puentes y como esta el factor de potencia en la acometida.
    El resto esta abajo para quien quiera entrar en detalle.        */
-function kpRenderResumen(med, bal){
+function kpRenderResumen(med, bal, ctx){
   const val = med.valores || {}, placa = med.placa || {};
   const mc  = med.medicion || {};
   const cad = kpCalcularCadena(val, placa);
@@ -4032,6 +4046,18 @@ function kpRenderResumen(med, bal){
         nota(e, n.nodo + ': desbalance de tensi\u00f3n ' + kpPct(n.desbal_v) + ' %',
              'NEMA MG-1 marca derateo del motor desde 1 %');
     }
+    /* Fases incompletas: no se reporta desbalance, pero tampoco se calla.
+       Un hueco en la ronda no es lo mismo que una unidad balanceada, y sin
+       decirlo la ausencia de aviso se lee como que todo esta bien. */
+    if (n.faltan_v > 0 && n.faltan_v < 3 && n.nodo.indexOf('VFD salida') < 0){
+      nota('warn', n.nodo + ': desbalance de tensi\u00f3n no evaluable',
+           'Faltan ' + n.faltan_v + ' de 3 fases en esta ronda. NEMA exige las tres: '
+           + 'con dos el resultado queda subestimado y no se reporta.');
+    }
+    if (n.faltan_i > 0 && n.faltan_i < 3){
+      nota('warn', n.nodo + ': desbalance de corriente no evaluable',
+           'Faltan ' + n.faltan_i + ' de 3 fases en esta ronda.');
+    }
   });
 
   if (b && b.diferencia_pct != null && b.diferencia_pct > 5){
@@ -4062,11 +4088,36 @@ function kpRenderResumen(med, bal){
       kpNumF(tmot) + ' \u00b0F de ' + kpNumF(tmax) + ' \u00b0F de placa');
   }
 
+  /* Bitacora abierta. Un registro pendiente o en seguimiento es una
+     condicion viva del pozo: pertenece arriba, junto a lo que se sale de
+     rango, no enterrada en una seccion plegada al final. El caso que lo
+     motivo: perdida de datos del sensor de fondo con sospecha de perdida
+     de aislamiento, dejada como pendiente, invisible en la vista inicial. */
+  const bitAb = (ctx && ctx.bitacora ? ctx.bitacora : []).filter(b => {
+    const e = String(b.estado || '').toLowerCase();
+    return e.indexOf('pendiente') >= 0 || e.indexOf('seguimiento') >= 0;
+  });
+  bitAb.slice(0, 5).forEach(b => {
+    const sev = String(b.severidad || '').toLowerCase();
+    const niv = (sev.indexOf('crit') >= 0 || sev.indexOf('alta') >= 0) ? 'crit' : 'warn';
+    const f = b.ocurrido_en ? String(b.ocurrido_en).slice(0, 10) : 'sin fecha';
+    let txt = String(b.observaciones || b.recomendaciones || 'Sin descripci\u00f3n');
+    if (txt.length > 180) txt = txt.slice(0, 177) + '\u2026';
+    nota(niv,
+      kpEsc(b.categoria || 'Bit\u00e1cora') + ' \u00b7 '
+        + kpEsc(b.estado || 'abierta') + ' \u00b7 ' + kpEsc(f),
+      kpEsc(txt));
+  });
+  if (bitAb.length > 5){
+    nota('warn', (bitAb.length - 5) + ' registro(s) abierto(s) m\u00e1s en bit\u00e1cora',
+         'Ver la secci\u00f3n Contexto y calidad del dato');
+  }
+
   av.sort((x, y) => (x.nivel === 'crit' ? 0 : 1) - (y.nivel === 'crit' ? 0 : 1));
 
-  h += '<div class="kp-sub" style="margin-top:18px">Requiere revisi&oacute;n</div>';
+  h += '<div class="kp-sub" style="margin-top:18px">Requiere revisi&oacute;n o seguimiento</div>';
   if (!av.length){
-    h += '<div class="kp-ok">Nada fuera de rango en esta ronda.'
+    h += '<div class="kp-ok">Nada fuera de rango ni pendiente en esta ronda.'
       +  (sf.length ? '' : ' Ten en cuenta que el sensor de fondo no se midi&oacute;.')
       +  '</div>';
   } else {
