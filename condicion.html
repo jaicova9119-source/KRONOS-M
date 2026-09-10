@@ -2752,6 +2752,95 @@ function kpCalcularCadena(val, placa){
   return out;
 }
 
+/* ============================================================
+   REFERENCIA A TIERRA EN EL SECUNDARIO DEL SUT
+   ============================================================
+   El desbalance fase-fase no ve una degradacion de aislamiento. La
+   fuente sigue entregando un sistema simetrico, asi que V_ab, V_ac y
+   V_bc quedan parejos aunque una fase se este yendo a tierra. Lo que se
+   mueve es la REFERENCIA: en una estrella con neutro aterrizado las
+   tres tensiones fase-tierra valen V_LL / raiz(3), y si el aislamiento
+   de una fase se degrada en un empalme o en el MLE esa fase baja hacia
+   tierra mientras las otras dos suben. En una falla franca la fase
+   afectada cae casi a cero y las otras dos llegan a V_LL.
+
+   El discriminante es comparar los dos desbalances y, sobre todo, mirar
+   el PATRON, no el porcentaje:
+     una fase por debajo del 40 % de lo esperado -> FASE A TIERRA
+     fase-tierra alto + fase-fase bajo           -> asimetria a revisar
+     los dos altos                               -> origen aguas arriba
+     las tres por encima de lo esperado en ~raiz(3) -> se registraron
+       tensiones linea-linea en los campos fase-tierra
+
+   VALIDACION
+   El criterio se contrasto contra el historico de la flota: de 264
+   mediciones con las tres tensiones a tierra, 240 quedan por debajo de
+   2 %, lo que confirma que la referencia de medida es estable y que los
+   casos altos no son artefactos. En CYC-16 la ronda del 2 de enero de
+   2026 marco la fase B en 8 V contra 1344 esperados; el megado del 9 de
+   abril devolvio 0 Mohm con IP y DAR en cero y el equipo salio a
+   workover por subsuelo aterrizado. El patron precedio al ensayo en 97
+   dias. En cada unidad senalada la fase baja es siempre la misma a lo
+   largo de meses, cosa que un error de referencia o de instrumento no
+   produce.
+
+   CONDICIONES DE VALIDEZ
+   - Solo aplica si el secundario del SUT esta aterrizado, solido o por
+     resistencia. En un sistema flotante las tensiones a tierra las fija
+     la capacitancia distribuida y el desbalance no significa nada.
+   - Medicion en verdadero valor eficaz. Sobre la salida del variador
+     viaja tension de modo comun a la frecuencia de conmutacion, que un
+     instrumento de valor medio no lee bien.
+   ============================================================ */
+const KP_FASES_TIERRA = [
+  ['A', 'sutout_v_ag'],
+  ['B', 'sutout_v_bg'],
+  ['C', 'sutout_v_cg']
+];
+
+function kpReferenciaTierra(val, cad){
+  const vg = KP_FASES_TIERRA.map(f => val[f[1]]);
+  const faltan = kpFaltan(vg);
+  if (faltan === 3) return { estado:'sin_medir' };
+  if (faltan > 0)   return { estado:'incompleta', faltan:faltan };
+
+  const nodo = cad.filter(n => n.nodo === 'SUT salida')[0] || null;
+  const vll  = nodo ? nodo.v_prom : null;
+  const desbalVg  = kpDesbal(vg);
+  const desbalVll = nodo ? nodo.desbal_v : null;
+  const esperado  = (vll != null) ? vll / RT3 : null;
+
+  let iMin = 0, iMax = 0;
+  vg.forEach((v, i) => { if (v < vg[iMin]) iMin = i; if (v > vg[iMax]) iMax = i; });
+
+  let causa = 'indeterminada';
+  if (esperado != null && vg.every(v => v > 1.30 * esperado)){
+    /* Las tres por encima de V_LL/raiz(3), tipicamente en factor raiz(3):
+       se registro tension linea-linea en campos de fase-tierra. */
+    causa = 'captura';
+  } else if (esperado != null && vg[iMin] < 0.40 * esperado){
+    causa = 'fase_tierra';
+  } else if (desbalVg != null){
+    if (desbalVg <= 2) causa = 'ok';
+    else if (desbalVll != null && desbalVll > 2) causa = 'aguas_arriba';
+    else causa = 'asimetria';
+  }
+  const nivel = (causa === 'fase_tierra') ? 'crit'
+              : (causa === 'captura') ? 'warn'
+              : (desbalVg == null) ? 'none'
+              : (desbalVg > 8 ? 'crit' : (desbalVg > 2 ? 'warn' : 'ok'));
+
+  return {
+    estado:'medida',
+    fases: KP_FASES_TIERRA.map((f, i) => ({ fase:f[0], v:vg[i] })),
+    v_prom: kpProm(vg), esperado: esperado,
+    desbal_vg: desbalVg, desbal_vll: desbalVll,
+    fase_baja: KP_FASES_TIERRA[iMin][0], v_baja: vg[iMin],
+    fase_alta: KP_FASES_TIERRA[iMax][0], v_alta: vg[iMax],
+    causa: causa, nivel: nivel
+  };
+}
+
 function kpBalanceRectificadores(val){
   const i1 = kpProm([val.conv1_i_a, val.conv1_i_b, val.conv1_i_c]);
   const i2 = kpProm([val.conv2_i_a, val.conv2_i_b, val.conv2_i_c]);
@@ -3948,6 +4037,7 @@ function kpRenderResumen(med, bal, ctx){
   const mc  = med.medicion || {};
   const cad = kpCalcularCadena(val, placa);
   const b   = (bal && bal.length) ? bal[bal.length - 1] : kpBalanceRectificadores(val);
+  const tie = kpReferenciaTierra(val, cad);
 
   let h = '';
 
@@ -4019,6 +4109,26 @@ function kpRenderResumen(med, bal, ctx){
       +  'temperaturas y vibraci&oacute;n quedan sin evaluar.</p>';
   }
 
+  /* ---- Referencia a tierra ---------------------------------------
+     Se muestra junto al sensor de fondo y no dentro de la cadena de
+     potencia porque no es una etapa: es una medida sobre el mismo nodo
+     del SUT que responde otra pregunta. */
+  if (tie.estado === 'medida'){
+    h += '<div class="kp-sub" style="margin-top:16px">Referencia a tierra &middot; secundario SUT</div>';
+    h += '<div class="kp-chips">';
+    tie.fases.forEach(f => {
+      h += '<div class="kp-dato"><div class="k">Fase ' + f.fase + ' a tierra</div>'
+        +  '<div class="v">' + kpNum(f.v) + '<small>V</small></div></div>';
+    });
+    if (tie.esperado != null){
+      h += '<div class="kp-dato"><div class="k">Esperado V<sub>LL</sub>/&radic;3</div>'
+        +  '<div class="v">' + kpNum(tie.esperado) + '<small>V</small></div></div>';
+    }
+    h += '<div class="kp-dato"><div class="k">Desbalance a tierra</div>'
+      +  '<div class="v">' + kpPct(tie.desbal_vg) + '<small>%</small></div></div>';
+    h += '</div>';
+  }
+
   /* ---- Que revisar ------------------------------------------------
      Recorre lo medido y deja arriba solo lo que se sale de rango. Es
      lo que reemplaza a las cuatro tarjetas: en vez de mostrar cuatro
@@ -4086,6 +4196,67 @@ function kpRenderResumen(med, bal, ctx){
     if (pct >= 90) nota(pct >= 100 ? 'crit' : 'warn',
       'Temperatura de motor al ' + pct.toFixed(0) + ' % del l\u00edmite',
       kpNumF(tmot) + ' \u00b0F de ' + kpNumF(tmax) + ' \u00b0F de placa');
+  }
+
+  /* Referencia a tierra. El desbalance fase-fase no detecta degradacion
+     de aislamiento; el fase-tierra si. */
+  if (tie.estado === 'medida' && tie.causa === 'fase_tierra'){
+    nota('crit',
+      'Fase ' + tie.fase_baja + ' pr\u00e1cticamente a tierra en secundario SUT',
+      kpNum(tie.v_baja) + ' V contra ' + kpNum(tie.esperado) + ' V esperados'
+        + (tie.desbal_vll != null
+            ? ', con fase-fase balanceada en ' + kpPct(tie.desbal_vll) + ' %' : '')
+        + '. Patr\u00f3n de equipo de subsuelo aterrizado: el sistema tolera la falla y '
+        + 'la unidad sigue operando, pero una segunda falla en otra fase es '
+        + 'cortocircuito franco. Programar ensayo de aislamiento sobre motor y cable.');
+  } else if (tie.estado === 'medida' && tie.causa === 'asimetria'){
+    nota(tie.nivel === 'ok' ? 'warn' : tie.nivel,
+      'Desplazamiento del neutro ' + kpPct(tie.desbal_vg) + ' % en secundario SUT',
+      'Fase ' + tie.fase_baja + ' en ' + kpNum(tie.v_baja) + ' V'
+        + (tie.esperado != null ? ' contra ' + kpNum(tie.esperado) + ' V esperados' : '')
+        + '. La asimetr\u00eda est\u00e1 en la referencia a tierra y no en la fuente: '
+        + 'revisar empalmes, MLE y penetrador.');
+  } else if (tie.estado === 'medida' && tie.causa === 'aguas_arriba'){
+    nota(tie.nivel,
+      'Desbalance fase-tierra ' + kpPct(tie.desbal_vg) + ' % en secundario SUT',
+      'La tensi\u00f3n fase-fase tambi\u00e9n est\u00e1 desbalanceada ('
+        + kpPct(tie.desbal_vll) + ' %): el origen es aguas arriba, no una '
+        + 'degradaci\u00f3n de aislamiento en el pozo.');
+  } else if (tie.estado === 'medida' && tie.causa === 'captura'){
+    nota('warn', 'Tensiones a tierra por encima de lo posible',
+      'Las tres superan V<sub>LL</sub>/&radic;3 en un factor cercano a &radic;3. '
+        + 'Probable registro de tensi\u00f3n l\u00ednea-l\u00ednea en los campos '
+        + 'fase-tierra. Corregir la ronda antes de interpretarla.');
+  } else if (tie.estado === 'incompleta'){
+    nota('warn', 'Referencia a tierra no evaluable en secundario SUT',
+      'Faltan ' + tie.faltan + ' de 3 tensiones fase-tierra en esta ronda.');
+  }
+
+  /* Cruce con el sensor de fondo. La via habitual de comunicacion de un
+     sensor ESP es el punto estrella del motor contra tierra, sobre el
+     mismo cable de potencia. Una degradacion de aislamiento colapsa esa
+     via, asi que el sensor deja de enviar proceso mientras la
+     alimentacion sigue presente: CT y Vt con lectura, presion y
+     temperatura en blanco. Esa combinacion aparece antes de que la
+     falla sea franca, y junto a un desplazamiento del neutro deja de ser
+     coincidencia. */
+  const sfProceso = ['sf_pip_psi','sf_pdesc_psi','sf_t_motor_c',
+                     'sf_t_intake_c','sf_vib_x_g','sf_vib_y_g']
+    .filter(c => vivo(val[c])).length;
+  const sfAlim = ['sf_ct_ma','sf_vt_v'].filter(c => vivo(val[c])).length;
+
+  if (sfAlim > 0 && sfProceso === 0){
+    const conTierra = (tie.estado === 'medida'
+      && (tie.causa === 'fase_tierra' || tie.causa === 'asimetria'));
+    nota(conTierra ? 'crit' : 'warn',
+      'Sensor de fondo alimentado pero sin datos de proceso',
+      conTierra
+        ? 'Coincide con desplazamiento del neutro en el secundario del SUT. Los dos '
+          + 's\u00edntomas comparten causa probable: la comunicaci\u00f3n del sensor va por '
+          + 'el punto estrella hacia tierra y una degradaci\u00f3n de aislamiento colapsa '
+          + 'esa v\u00eda. Priorizar ensayo de aislamiento sobre motor y cable.'
+        : 'Hay CT y Vt pero no presi\u00f3n ni temperatura. Verificar la v\u00eda de '
+          + 'comunicaci\u00f3n por el punto estrella y programar ensayo de aislamiento.');
   }
 
   /* Bitacora abierta. Un registro pendiente o en seguimiento es una
