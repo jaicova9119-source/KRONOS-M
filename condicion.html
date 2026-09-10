@@ -387,6 +387,12 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-plc .l .v em{font-size:10.5px;font-weight:400;color:var(--kp-ink3);
   font-style:normal;margin-left:2px}
 .kp-plc .l.der .v{color:var(--kp-warn)}
+/* El run life se separa con una linea llena y no punteada: es un dato de
+   la corrida, no de la placa, y mezclarlo sin distincion sugiere que
+   viene grabado en el equipo. */
+.kp-plc .l.runlife{border-top:1px solid var(--kp-line);border-bottom:0;
+  margin-top:4px;padding-top:7px;grid-column:1/-1}
+.kp-plc .l.runlife .n{color:var(--kp-ink2);font-weight:600}
 .kp-plc .l .orig{display:block;font-size:10px;font-weight:400;color:var(--kp-ink3);
   text-align:right;margin-top:1px}
 .kp-plc .vacio{font-size:11px;color:var(--kp-ink3);padding:8px 0 4px;font-style:italic}
@@ -1612,6 +1618,8 @@ function keLibro(ExcelJS, d, meta){
    ['Historico', 'Todas las rondas de los ultimos 24 meses.'],
    ['Variacion', 'Cambio de cada metrica contra la ronda anterior.'],
    ['Consolidado', 'Una fila por unidad con su deriva del periodo.'],
+   ['Run life', 'Tiempo de corrida y clasificación de riesgo por unidad.'],
+   ['Umbrales', 'Criterios de clasificación y de dónde sale cada uno.'],
    ['Placas', 'Datos de placa del equipo instalado hoy.'],
    ['Propuestas', 'Cambios de TAP propuestos y su efecto sobre el consumo.'],
    ['Configuracion VFD', 'Parametros vigentes del variador.'],
@@ -2114,6 +2122,151 @@ function keLibro(ExcelJS, d, meta){
     det.getCell(fy, 1).font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
   }
 
+  /* ── Run life ──
+     Una fila por unidad con el tiempo de corrida y el estado de sus
+     indicadores. El color va sobre el NIVEL DE RIESGO, no sobre el run
+     life: una corrida larga con todo sano no es un problema, y pintarla
+     de rojo por su edad haria que se atienda antes que una corrida corta
+     con el aislamiento cayendo. */
+  if (d.runlife && d.runlife.length){
+    const rl = wb.addWorksheet('Run life', {
+      views: [{ state:'frozen', xSplit:1, ySplit:5 }],
+      pageSetup: { paperSize:9, orientation:'landscape', fitToPage:true, fitToWidth:1 }
+    });
+
+    rl.getCell('A1').value = 'Run life y clasificación de riesgo · ' + meta.ambito;
+    rl.getCell('A1').font = { bold:true, size:13, color:{ argb:KE_C.azul } };
+    rl.getCell('A2').value = 'El run life es contexto, no eje de riesgo: el nivel lo determinan los '
+      + 'indicadores medidos. Una corrida extendida solo suma cuando ya hay algo en alerta.';
+    rl.getCell('A2').font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+
+    /* Procedencia de los umbrales, arriba y no al pie: si el lector no
+       sabe que son referencias de industria y no la historia de esta
+       flota, va a tomarlos por medidos. */
+    const refs = (d.umbrales || []).filter(u => u.procedencia === 'referencia').length;
+    const hist = (d.umbrales || []).filter(u => u.procedencia === 'historico').length;
+    rl.getCell('A3').value = hist
+      ? hist + ' umbral(es) calculados con el histórico propio y ' + refs + ' tomados de referencias de industria.'
+      : 'Todos los umbrales son referencias de industria: la flota aún no tiene corridas '
+        + 'cerradas suficientes para calcular un MTBF propio. Se reemplazarán al cargar el histórico.';
+    rl.getCell('A3').font = { size:9, italic:true,
+      color:{ argb: hist ? KE_C.gris2 : KE_C.naranja } };
+
+    const cols = [
+      ['Unidad', 12], ['Campo', 13], ['PAD', 13],
+      ['Nivel', 11], ['Puntaje', 8], ['Cobertura', 12],
+      ['Run life (días)', 12], ['Banda', 20], ['Instalado', 11], ['Corrida', 8],
+      ['Motor', 22], ['Serie', 13],
+      ['Carga motor %', 11], ['Carga VFD %', 11], ['Temp motor °F', 11],
+      ['Desbal. I %', 10], ['Aislamiento MΩ', 12], ['Prueba aisl.', 11], ['IP', 7],
+      ['Última ronda', 11], ['Días sin ronda', 11],
+      ['Observaciones', 62],
+    ];
+    const F = 5;
+    cols.forEach((c, i) => {
+      rl.getColumn(i + 1).width = c[1];
+      const h = rl.getCell(F, i + 1);
+      h.value = c[0];
+      h.font = { bold:true, size:8.5, color:{ argb:'FFFFFFFF' } };
+      h.fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+      h.alignment = { horizontal:'center', wrapText:true, vertical:'middle' };
+    });
+    rl.getRow(F).height = 26;
+
+    const colorNivel = n =>
+      n === 'Crítico'  ? KE_C.fRojo :
+      n === 'Atención' ? KE_C.fNaranja :
+      n === 'Vigilar'  ? KE_C.fAzul :
+      n === 'Sin datos'? KE_C.fGris : null;
+    const textoNivel = n =>
+      n === 'Crítico'  ? KE_C.rojo :
+      n === 'Atención' ? KE_C.naranja :
+      n === 'Vigilar'  ? KE_C.azul2 :
+      n === 'Sin datos'? KE_C.gris : KE_C.verde;
+
+    let f = F + 1;
+    d.runlife.forEach(r => {
+      const v = [r.unidad, r.campo, r.pad, r.nivel, r.puntaje, r.cobertura,
+                 r.run_dias, r.run_banda, r.instalado_el, r.corrida,
+                 [r.motor_marca, r.motor_modelo].filter(Boolean).join(' '), r.motor_serial,
+                 r.carga_motor_pct, r.carga_vfd_pct, r.temp_motor_f, r.desbalance_i_pct,
+                 r.aislamiento_mohm, r.aisl_fecha, r.aisl_ip,
+                 r.ultima_ronda, r.dias_sin_ronda, r.observaciones];
+      v.forEach((x, i) => {
+        const c = rl.getCell(f, i + 1);
+        c.value = (x === null || x === undefined || x === '') ? null : x;
+        c.font = { size:9 };
+        if (i >= 4 && i !== 7 && i !== 10 && i !== 21) c.alignment = { horizontal:'center' };
+      });
+      rl.getCell(f, 1).font = { size:9, bold:true };
+      /* El color tiñe la fila completa hasta la última métrica, no solo
+         la celda de nivel: en una tabla de 22 columnas una celda pintada
+         se pierde. */
+      const bg = colorNivel(r.nivel);
+      if (bg){
+        for (let i = 1; i <= cols.length; i++){
+          rl.getCell(f, i).fill = { type:'pattern', pattern:'solid', fgColor:{ argb:bg } };
+        }
+      }
+      rl.getCell(f, 4).font = { size:9, bold:true, color:{ argb:textoNivel(r.nivel) } };
+      /* Cobertura parcial en ámbar: un veredicto apoyado en dos de cinco
+         indicadores no merece la misma confianza que uno completo. */
+      if (r.cobertura === 'Insuficiente' || r.cobertura === 'Sin datos'){
+        rl.getCell(f, 6).font = { size:9, bold:true, color:{ argb:KE_C.naranja } };
+      }
+      rl.getCell(f, 22).alignment = { wrapText:true, vertical:'top' };
+      f += 1;
+    });
+
+    rl.autoFilter = { from:{ row:F, column:1 }, to:{ row:F, column:cols.length } };
+
+    /* Barra sobre el run life: comunica la dispersión de la flota sin
+       sugerir que un valor alto sea malo, para eso está el color del
+       nivel. */
+    if (f > F + 1){
+      rl.addConditionalFormatting({
+        ref: 'G' + (F + 1) + ':G' + (f - 1),
+        rules: [{ type:'dataBar', gradient:false, showValue:true,
+                  cfvo: [{ type:'num', value:0 }, { type:'max' }],
+                  color: { argb: KE_C.azul2 } }],
+      });
+    }
+
+    f += 1;
+    rl.getCell(f, 1).value = 'Niveles: Crítico ≥ 4 puntos · Atención ≥ 2 · Vigilar = 1 · '
+      + 'Cada indicador suma 2 si está en crítico y 1 si está en atención. '
+      + 'La corrida extendida suma 1 solo cuando ya hay otro indicador en alerta.';
+    rl.getCell(f, 1).font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+    f += 1;
+    rl.getCell(f, 1).value = 'Cobertura: cuántos de los 5 indicadores tienen dato. '
+      + 'Un "Normal" con cobertura insuficiente significa normal en lo que se midió, no verificado.';
+    rl.getCell(f, 1).font = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+
+    /* ── Umbrales ──
+       En su propia hoja para que el criterio quede documentado junto al
+       resultado: una matriz de riesgo sin sus umbrales a la vista no se
+       puede discutir ni auditar. */
+    if (d.umbrales && d.umbrales.length){
+      keHoja(wb, 'Umbrales', [
+        { k:'clave', t:'Indicador', w:20 },
+        { k:'atencion', t:'Atención', w:11, f:V1 },
+        { k:'critico', t:'Crítico', w:11, f:V1 },
+        { k:'unidad', t:'Unidad', w:9 },
+        { k:'sentido', t:'Se alerta al', w:11 },
+        { k:'campo', t:'Campo', w:13 },
+        { k:'procedencia', t:'Procedencia', w:13 },
+        { k:'nota', t:'Nota', w:70 },
+      ], d.umbrales.map(u => ({ ...u,
+          sentido: u.sentido === 'menor' ? 'bajar de' : 'superar' })), {
+        titulo: 'Umbrales de clasificación',
+        sub: 'La procedencia distingue lo calculado con la historia de esta flota de lo tomado '
+           + 'de referencias externas. Un umbral supuesto que se presenta sin decirlo termina '
+           + 'citándose como si fuera medido.',
+        vacioSi: x => x.procedencia !== 'historico'
+      });
+    }
+  }
+
   /* ── Placas ── */
   keHoja(wb, 'Placas', [
     { k:'unidad', t:'Unidad', w:11 }, { k:'campo', t:'Campo', w:13 },
@@ -2251,6 +2404,19 @@ async function kpExportarEntrega(){
        unico dato opcional del libro. Si falla -por volumen o porque la
        funcion no esta desplegada- el resto del archivo debe salir igual,
        que es lo que la gente necesita casi siempre. */
+    let runlife = [], umbrales = [];
+    try {
+      const [rl, um] = await Promise.all([
+        sb.rpc('dp_run_life',           { p_campo: c, p_sistema: s }),
+        sb.rpc('dp_umbrales_vigentes'),
+      ]);
+      if (rl.error) throw new Error(rl.error.message);
+      runlife  = rl.data || [];
+      umbrales = um.data || [];
+    } catch(e){
+      console.warn('[Kronos-M] Run life no disponible:', e.message);
+    }
+
     let detalle = [], puntos = [];
     try {
       const [dd, pp] = await Promise.all([
@@ -2314,7 +2480,8 @@ async function kpExportarEntrega(){
     const hoy = new Date().toISOString().slice(0, 10);
     const ambito = (c || 'Todos los campos') + (s ? ' · ' + s : '');
     const wb = keLibro(ExcelJS,
-      { operacional, placas, setup, protecciones, propuestas, historico, detalle, puntos },
+      { operacional, placas, setup, protecciones, propuestas, historico, detalle, puntos,
+        runlife, umbrales },
       { ambito: ambito, fecha: hoy });
 
     const buf = await wb.xlsx.writeBuffer();
@@ -5294,6 +5461,23 @@ function kpRenderMedicion(m){
   return h;
 }
 
+/* Tiempo transcurrido en texto legible. Se dan los dias siempre porque
+   es la cifra que se compara entre unidades, y el equivalente en años y
+   meses porque "1.847 dias" no se dimensiona de un vistazo. */
+function kpDesde(fechaIso){
+  if (!fechaIso) return null;
+  const t = Date.parse(String(fechaIso).slice(0, 10));
+  if (!Number.isFinite(t)) return null;
+  const dias = Math.floor((Date.now() - t) / 86400000);
+  if (dias < 0) return null;
+  const a = Math.floor(dias / 365), m = Math.floor((dias % 365) / 30);
+  const partes = [];
+  if (a) partes.push(a + (a === 1 ? ' año' : ' años'));
+  if (m) partes.push(m + (m === 1 ? ' mes' : ' meses'));
+  if (!partes.length) partes.push(dias + (dias === 1 ? ' día' : ' días'));
+  return { dias, txt: partes.join(' ') };
+}
+
 function kpRenderPlacaEquipos(p){
   const der = p.derrateos || {};
   let h = '<div class="kp-plc" style="margin-bottom:8px">';
@@ -5373,9 +5557,23 @@ function kpRenderPlacaEquipos(p){
       h += '<div class="vacio">Derrateo: ' + kpEsc(motivos.join(' \u00b7 ')) + '</div>';
     }
 
-    if (eq && eq.instalado_el){
+    /* En el motor, el tiempo desde la instalación ES el run life de la
+       corrida, y merece la misma jerarquía que los datos de placa: es el
+       número por el que se pregunta primero. En el resto de equipos basta
+       con la fecha al pie. */
+    const desde = eq ? kpDesde(eq.instalado_el) : null;
+    if (nd.rol === 'MOTOR' && desde){
+      h += '<div class="l runlife"><span class="n">Run life actual</span>'
+        +  '<span class="v">' + kpNum(desde.dias) + '<em>días</em>'
+        +  '<span class="orig">' + desde.txt + ' desde el '
+        +  String(eq.instalado_el).slice(0,10) + '</span></span></div>';
+    }
+
+    if (eq && eq.instalado_el && nd.rol !== 'MOTOR'){
       h += '<div class="vacio">Instalado el ' + String(eq.instalado_el).slice(0,10)
         +  (eq.run ? ' \u00b7 corrida ' + kpEsc(eq.run) : '') + '</div>';
+    } else if (nd.rol === 'MOTOR' && eq && eq.run){
+      h += '<div class="vacio">Corrida ' + kpEsc(eq.run) + '</div>';
     }
     h += '</div></div>';
   });
