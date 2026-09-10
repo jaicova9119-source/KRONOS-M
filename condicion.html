@@ -4104,12 +4104,11 @@ function kpRenderResumen(med, bal, ctx){
   }
 
   /* ---- Sensor de fondo -------------------------------------------
-     Se muestra aparte porque es el unico bloque que habla de la bomba
-     y no de la instalacion electrica. Cuando no viene, se dice: en la
-     flota solo una de cada cuarenta rondas lo trae, y un hueco mudo
-     haria pensar que el equipo esta bien cuando en realidad nadie lo
-     midio.                                                          */
-  /* Los ceros no son mediciones: un PIP de 0 psi o una vibracion de 0 g
+     Los valores no se pintan aqui: ya estan en la cadena de potencia y
+     repetirlos duplicaba la lectura. Se conserva el calculo porque de el
+     salen dos cosas que si van arriba: el mensaje de estado vacio y la
+     deteccion de sensor alimentado sin datos de proceso.
+     Los ceros no son mediciones: un PIP de 0 psi o una vibracion de 0 g
      con la unidad operando es un campo que quedo vacio. Se descartan
      igual que el 0 F de las temperaturas. */
   const vivo = (v) => v != null && Number(v) !== 0;
@@ -4125,47 +4124,11 @@ function kpRenderResumen(med, bal, ctx){
   ].map(d => [d[0], d[1], d[2], d[3](val[d[0]])])
    .filter(d => d[3] != null);
 
-  h += '<div class="kp-sub" style="margin-top:16px">Sensor de fondo</div>';
-  if (sf.length){
-    h += '<div class="kp-chips">';
-    sf.forEach(d => {
-      h += '<div class="kp-dato"><div class="k">' + d[1] + '</div>'
-        +  '<div class="v">' + d[3] + '<small>' + d[2] + '</small></div></div>';
-    });
-    /* El delta se calcula en F, no en C convertido: una diferencia de
-       temperatura no se convierte con la formula de una temperatura,
-       y el tecnico compara este numero contra referencias en F. */
-    const tm = kpTempF(val.sf_t_motor_c), ti = kpTempF(val.sf_t_intake_c);
-    if (tm != null && ti != null){
-      h += '<div class="kp-dato"><div class="k">\u0394T motor-intake</div>'
-        +  '<div class="v">' + (tm - ti).toFixed(1) + '<small>\u00b0F</small></div></div>';
-    }
-    h += '</div>';
-  } else {
-    h += '<p class="hint" style="margin:2px 0 0">No se registr&oacute; en esta ronda. '
-      +  'Sin estos valores no hay lectura de la bomba: presi&oacute;n de entrada, '
-      +  'temperaturas y vibraci&oacute;n quedan sin evaluar.</p>';
-  }
-
   /* ---- Referencia a tierra ---------------------------------------
-     Se muestra junto al sensor de fondo y no dentro de la cadena de
-     potencia porque no es una etapa: es una medida sobre el mismo nodo
-     del SUT que responde otra pregunta. */
-  if (tie.estado === 'medida'){
-    h += '<div class="kp-sub" style="margin-top:16px">Referencia a tierra &middot; secundario SUT</div>';
-    h += '<div class="kp-chips">';
-    tie.fases.forEach(f => {
-      h += '<div class="kp-dato"><div class="k">Fase ' + f.fase + ' a tierra</div>'
-        +  '<div class="v">' + kpNum(f.v) + '<small>V</small></div></div>';
-    });
-    if (tie.esperado != null){
-      h += '<div class="kp-dato"><div class="k">Esperado V<sub>LL</sub>/&radic;3</div>'
-        +  '<div class="v">' + kpNum(tie.esperado) + '<small>V</small></div></div>';
-    }
-    h += '<div class="kp-dato"><div class="k">Desbalance a tierra</div>'
-      +  '<div class="v">' + kpPct(tie.desbal_vg) + '<small>%</small></div></div>';
-    h += '</div>';
-  }
+     Tampoco se pintan los valores: las tres tensiones y el esperado
+     estan en la ficha del SUT en la cadena de potencia. Aqui solo
+     interesa el veredicto, y sale por la seccion de revision cuando hay
+     algo que decir. Si esta todo parejo, esta pantalla no dice nada. */
 
   /* ---- Que revisar ------------------------------------------------
      Recorre lo medido y deja arriba solo lo que se sale de rango. Es
