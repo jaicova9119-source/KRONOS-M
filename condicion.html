@@ -2700,6 +2700,10 @@ const KP_ETAPAS = [
   {nodo:'SUT salida', detalle:'Al cable', tipo:'trafo', zona:'sup', nom_kva:'sut_kva',
    i:['sutout_i_a','sutout_i_b','sutout_i_c'],
    v:['sutout_v_ab','sutout_v_ac','sutout_v_bc'],
+   /* Unica etapa con medida contra tierra. El desbalance fase-fase no ve
+      una degradacion de aislamiento: la fuente sigue simetrica y lo que
+      se mueve es la referencia. */
+   vg:['sutout_v_ag','sutout_v_bg','sutout_v_cg'],
    nom:'sut_i_nominal_a'},
 
   /* Mismo valor medido que el SUT, contra el nominal del motor. */
@@ -2731,6 +2735,34 @@ function kpCalcularCadena(val, placa){
        nominal. Si el catálogo de derrateos usa otro nombre no aparece
        nada, que es preferible a emparejar por aproximación. */
     const der = (KP_DER && e.nom) ? KP_DER[e.nom] : null;
+
+    /* Referencia a tierra de la etapa, cuando la declara. Un nodo puede
+       estar perfecto en carga y en desbalance fase-fase y tener una fase
+       a tierra: sin esto la tarjeta sale verde. */
+    const vg = e.vg ? e.vg.map(c => val[c]) : null;
+    const faltanVg = vg ? kpFaltan(vg) : null;
+    const desbalVg = vg ? kpDesbal(vg) : null;
+    const vgEsperado = (vp != null) ? vp / RT3 : null;
+    let faseBajaVg = null, vMinVg = null, causaTierra = null;
+    if (vg && faltanVg === 0){
+      let iM = 0;
+      vg.forEach((v, i) => { if (v < vg[iM]) iM = i; });
+      faseBajaVg = ['A','B','C'][iM];
+      vMinVg = vg[iM];
+      if (vgEsperado != null && vg.every(v => v > 1.30 * vgEsperado)) causaTierra = 'captura';
+      else if (vgEsperado != null && vMinVg < 0.40 * vgEsperado)      causaTierra = 'fase_tierra';
+      else if (desbalVg != null && desbalVg > 2)                      causaTierra = 'asimetria';
+      else causaTierra = 'ok';
+    }
+    const estBase = nominal ? kpEstadoCarga(pct) : 'none';
+    const estTie  = (causaTierra === 'fase_tierra') ? 'crit'
+                  : (causaTierra === 'asimetria' || causaTierra === 'captura') ? 'warn'
+                  : null;
+    const rank = { none:0, ok:1, warn:2, crit:3 };
+    const estFinal = estTie
+      ? ((rank[estBase] || 0) >= rank[estTie] ? estBase : estTie)
+      : estBase;
+
     out.push({
       derrateo: der || null,
       nodo: e.nodo, detalle: e.detalle,
@@ -2745,8 +2777,14 @@ function kpCalcularCadena(val, placa){
       desbal_v: kpDesbal(vv),
       faltan_i: ii ? kpFaltan(ii) : null,
       faltan_v: kpFaltan(vv),
+      vg: (vg && faltanVg === 0) ? vg : null,
+      desbal_vg: desbalVg,
+      faltan_vg: faltanVg,
+      vg_esperado: vgEsperado,
+      fase_baja_vg: faseBajaVg,
+      causa_tierra: causaTierra,
       carga_pct: pct,
-      estado: nominal ? kpEstadoCarga(pct) : 'none'
+      estado: estFinal
     });
   });
   return out;
@@ -6152,6 +6190,24 @@ function kpDibujarCadena(nodos, val){
         + (nd.kva_nom ? ' de ' + kpNum(nd.kva_nom) + ' kVA de placa' : '') : null),
       (nd.desbal_i != null ? 'Desbalance de corriente ' + kpPct(nd.desbal_i) + ' %' : null),
       (nd.desbal_v != null ? 'Desbalance de tension ' + kpPct(nd.desbal_v) + ' %' : null),
+      (nd.vg
+        ? 'Fase-tierra  A ' + kpNum(nd.vg[0]) + '  B ' + kpNum(nd.vg[1])
+          + '  C ' + kpNum(nd.vg[2]) + ' V'
+          + (nd.vg_esperado != null ? '  (esperado ' + kpNum(nd.vg_esperado) + ' V)' : '')
+        : null),
+      (nd.desbal_vg != null
+        ? 'Desbalance fase-tierra ' + kpPct(nd.desbal_vg) + ' %' : null),
+      (nd.causa_tierra === 'fase_tierra'
+        ? '\\nFASE ' + nd.fase_baja_vg + ' PRACTICAMENTE A TIERRA'
+          + '\\nEl desbalance fase-fase no lo detecta. Programar ensayo de aislamiento.'
+        : null),
+      (nd.causa_tierra === 'asimetria'
+        ? '\\nDesplazamiento del neutro: revisar empalmes, MLE y penetrador.' : null),
+      (nd.causa_tierra === 'captura'
+        ? '\\nLas tres tensiones a tierra superan lo posible: probable registro '
+          + 'de tension linea-linea en campos fase-tierra.' : null),
+      (nd.faltan_vg > 0 && nd.faltan_vg < 3
+        ? 'Fase-tierra no evaluable: faltan ' + nd.faltan_vg + ' de 3 fases' : null),
       /* Si la nominal contra la que se compara está derrateada, decirlo y
          mostrar la de placa. Un nodo al 99 % de una nominal reducida no
          está en la misma situación que uno al 99 % de su placa, y sin
