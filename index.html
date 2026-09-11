@@ -3902,8 +3902,14 @@ function actualizarEstadoConexion() {
     badge.className = "sync-badge offline";
     text.textContent = pendientes ? `Sin conexión (${pendientes} por guardar)` : "Sin conexión";
   } else if (pendientes) {
-    badge.className = "sync-badge pending";
-    text.textContent = `Sincronizando ${pendientes}...`;
+    /* Hay conexion y hay cola: "sincronizando" solo es cierto mientras los
+       reintentos no hayan fallado. Pasados dos intentos el problema no es
+       la red, y decir "sincronizando" oculta que algo esta trabado. */
+    const trabados = colaOffline.filter(i => (i.intentos || 0) >= 2).length;
+    badge.className = "sync-badge " + (trabados === pendientes ? "offline" : "pending");
+    text.textContent = trabados === pendientes
+      ? `${pendientes} sin sincronizar`
+      : `Sincronizando ${pendientes}...`;
   } else {
     badge.className = "sync-badge";
     text.textContent = "Conectado";
@@ -4585,21 +4591,42 @@ let sincronizando = false;
 async function sincronizarColaOffline() {
   if (sincronizando || !navigator.onLine || !colaOffline.length) return;
   sincronizando = true;
-  const pendientesRestantes = [];
-  for (const item of colaOffline) {
-    try {
-      await ejecutarOperacion(item.tipo, item.payload);
-    } catch (e) {
-      item.intentos = (item.intentos || 0) + 1;
-      if (item.intentos < 5) pendientesRestantes.push(item);
-      console.warn("No se pudo sincronizar, se reintentará:", item, e);
+  /* El try/finally no es adorno: sin el, un error no atrapado dentro del
+     bucle dejaba el candado en true para siempre y la cola no se volvia a
+     intentar hasta recargar la pagina, con el indicador mintiendo
+     "Sincronizando N..." de forma permanente. */
+  try {
+    const pendientesRestantes = [];
+    for (const item of colaOffline) {
+      try {
+        await ejecutarOperacion(item.tipo, item.payload);
+      } catch (e) {
+        item.intentos = (item.intentos || 0) + 1;
+        /* Se guarda el error real en el item. Un 400 de PostgREST trae el
+           codigo y el detalle, que es lo unico que permite saber si falta
+           una columna, si el valor rompe un CHECK o si el id no es uuid. */
+        item.ultimoError = {
+          codigo: e && e.code ? e.code : null,
+          mensaje: e && e.message ? e.message : String(e),
+          detalle: e && e.details ? e.details : null,
+          pista: e && e.hint ? e.hint : null,
+          fecha: new Date().toISOString()
+        };
+        /* Nunca se descarta. Descartar al quinto intento borraba en silencio
+           un cambio que el usuario creia guardado; es preferible que quede
+           visible y estorbando hasta que alguien lo resuelva. */
+        pendientesRestantes.push(item);
+        console.warn("No se pudo sincronizar [" + item.tipo + "]:", item.ultimoError, item.payload);
+      }
     }
-  }
-  colaOffline = pendientesRestantes;
-  guardarCola();
-  if (colaOffline.length === 0) {
-    toast("Todo sincronizado con Supabase");
-    await cargarEquipos();
+    colaOffline = pendientesRestantes;
+    guardarCola();
+    if (colaOffline.length === 0) {
+      toast("Todo sincronizado con Supabase");
+      await cargarEquipos();
+    }
+  } finally {
+    sincronizando = false;
   }
 }
 
