@@ -35,33 +35,39 @@
 html[data-tema="claro"]{
   color-scheme:light;
 
-  --bg:#F1F3F4;          /* fondo de pagina */
+  --bg:#EDF0F2;          /* fondo de pagina */
   --surface:#FFFFFF;     /* tarjeta, panel, fila */
-  --surface-2:#E9ECEE;   /* campo, cabecera de tabla, chip */
-  --surface-3:#DDE1E4;   /* realce, barra de progreso */
-  --line:#C8CDD1;
-  --line-soft:#E3E6E9;
+  --surface-2:#E7EBEE;   /* campo, cabecera de tabla, chip */
+  --surface-3:#D9DFE4;   /* realce, barra de progreso */
+  --line:#C3CAD0;
+  --line-soft:#E1E6EA;
 
-  --t1:#1B1F23;          /* texto principal y cifras */
-  --t2:#545C63;          /* texto secundario */
-  --t3:#7D858C;          /* rotulo, unidad, apoyo */
+  --t1:#15191D;          /* texto principal y cifras */
+  --t2:#4C555C;          /* texto secundario */
+  --t3:#6E777F;          /* rotulo, unidad, apoyo */
 
-  --brand:#134B70;       /* barra superior */
+  --brand:#0F3F5E;       /* barra superior */
   --brand-t:#FFFFFF;
-  --accent:#2F6EA8;      /* interaccion: enlace, foco, seleccion */
-  --accent-soft:#E4EDF6;
-  --accent-line:#B9D0E5;
+  --accent:#1F6399;      /* interaccion: enlace, foco, seleccion */
+  --accent-soft:#E2EDF7;
+  --accent-line:#B3CDE3;
   --on-accent:#FFFFFF;
 
-  --ok:#356951;    --ok-bg:#E4EFE9;
-  --warn:#96590F;  --warn-bg:#F7EBD8;
-  --crit:#AC3329;  --crit-bg:#F7E3E1;
-  --alto:#C79312;  --alto-bg:#F8F0D9;   /* extremo de la rampa */
-  --null:#787F85;  --null-bg:#ECEEF0;
-
+  --ok:#25664A;    --ok-bg:#E0EDE6;
+  --warn:#8A5108;  --warn-bg:#F7EAD4;
+  --crit:#A32A20;  --crit-bg:#F8E1DE;
+  --alto:#7A5A05;  --alto-bg:#F6EFD5;   /* extremo de la rampa */
+  --null:#6E777F;  --null-bg:#EAEDEF;
 
   --serie-1:#1E4E7A; --serie-2:#2F6EA8; --serie-3:#4C89BE; --serie-4:#6FA3CE;
   --serie-5:#93BCDD; --serie-6:#B6D0E8; --serie-7:#8B9298;
+
+  /* Rampa categorica de las tendencias: doce canales que deben poder
+     distinguirse entre si, no una escala. Verificada sobre blanco. */
+  --ser-1:#0C5292;  --ser-2:#C62828;  --ser-3:#2E7D32;  --ser-4:#6A1B9A;
+  --ser-5:#B35A00;  --ser-6:#8A6A0B;  --ser-7:#00695C;  --ser-8:#0A7F94;
+  --ser-9:#AD1457;  --ser-10:#5D4037; --ser-11:#4527A0; --ser-12:#37474F;
+
   --sombra:0 1px 2px rgba(20,26,32,.07), 0 6px 18px rgba(20,26,32,.06);
   --sombra-alta:0 10px 32px rgba(20,26,32,.16);
   --velo:rgba(20,26,32,.42);
@@ -71,36 +77,43 @@ html[data-tema="claro"]{
 html[data-tema="oscuro"]{
   color-scheme:dark;
 
-  --bg:#181B1F;
-  --surface:#212529;
-  --surface-2:#2A2F35;
-  --surface-3:#343A42;
-  --line:#3B424A;
-  --line-soft:#2B3037;
+  --bg:#10141A;
+  --surface:#1B2127;
+  --surface-2:#242C34;
+  --surface-3:#303A44;
+  --line:#3A444F;
+  --line-soft:#232B33;
 
-  --t1:#E7EAED;
-  --t2:#A4ABB3;
-  --t3:#767E86;
+  --t1:#EEF2F5;
+  --t2:#B3BCC5;
+  --t3:#8A939D;
 
-  --brand:#0E2436;
-  --brand-t:#E7EAED;
-  --accent:#74A9DC;
-  --accent-soft:#1E2E3D;
-  --accent-line:#2F4A63;
-  --on-accent:#0E1418;
+  --brand:#0B1A28;
+  --brand-t:#EEF2F5;
+  --accent:#7CB4E8;
+  --accent-soft:#17293A;
+  --accent-line:#2E4A63;
+  --on-accent:#0B1015;
 
-  --ok:#6FA88A;    --ok-bg:#1D2A24;
-  --warn:#E0913F;  --warn-bg:#332614;
-  --crit:#E0685A;  --crit-bg:#331E1B;
-  --alto:#EFC04E;  --alto-bg:#332B14;
-  --null:#767E86;  --null-bg:#262A2F;
+  --ok:#63BE91;    --ok-bg:#13291F;
+  --warn:#EFA243;  --warn-bg:#33260F;
+  --crit:#F4776A;  --crit-bg:#331A17;
+  --alto:#F5CB55;  --alto-bg:#332A10;
+  --null:#8A939D;  --null-bg:#222930;
 
+  --serie-1:#A7C9E8; --serie-2:#7CB4E8; --serie-3:#5A87B4; --serie-4:#47708F;
+  --serie-5:#3A5B73; --serie-6:#2E4757; --serie-7:#8A939D;
 
-  --serie-1:#A7C9E8; --serie-2:#74A9DC; --serie-3:#5A87B4; --serie-4:#47708F;
-  --serie-5:#3A5B73; --serie-6:#2E4757; --serie-7:#767E86;
-  --sombra:0 1px 2px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.34);
-  --sombra-alta:0 10px 32px rgba(0,0,0,.55);
-  --velo:rgba(0,0,0,.62);
+  /* Misma rampa categorica, recalculada sobre la tarjeta oscura. No es la
+     de claro aclarada: los tonos frios necesitan mas luminancia que los
+     calidos para leerse igual sobre grafito. */
+  --ser-1:#6FB1EA;  --ser-2:#F2796B;  --ser-3:#6BC28E;  --ser-4:#C08BE0;
+  --ser-5:#F5A65A;  --ser-6:#E8C557;  --ser-7:#4FBFAE;  --ser-8:#5CC9DA;
+  --ser-9:#E883AE;  --ser-10:#C3A493; --ser-11:#9D8CE8; --ser-12:#9FADB9;
+
+  --sombra:0 1px 2px rgba(0,0,0,.55), 0 6px 18px rgba(0,0,0,.38);
+  --sombra-alta:0 10px 32px rgba(0,0,0,.6);
+  --velo:rgba(0,0,0,.66);
 }
 /* ---------- Tipografia ----------
    IBM Plex Sans para interfaz, IBM Plex Mono para toda cifra medida:
@@ -119,6 +132,16 @@ html[data-tema]{
    html[data-tema] gana en especificidad sobre el :root de cada archivo. */
 html[data-tema]{
   /* index.html */
+  /* Estos cuatro se usaban en el codigo con un respaldo claro y nunca
+     estuvieron definidos: --panel caia a #fff en los dos temas, que es
+     lo que dejaba las tarjetas del diagrama blancas en modo oscuro. */
+  --panel:var(--surface);
+  --panel2:var(--surface-2);
+  --acc:var(--accent);
+  --rule3:var(--line-soft);
+  --rule:var(--line);
+  --f-mono:var(--mono);
+
   --bg-0:var(--surface);
   --bg-1:var(--bg);
   --bg-2:var(--surface-2);
@@ -3544,10 +3567,10 @@ function kpDemDonut(gr, kwTot){
   ).join('');
 
   return '<div class="kd-don"><svg width="132" height="132" viewBox="0 0 132 132">'
-    + '<circle cx="66" cy="66" r="' + R + '" fill="none" stroke="rgba(255,255,255,.07)" '
+    + '<circle cx="66" cy="66" r="' + R + '" fill="none" stroke="var(--surface-3)" '
     +   'stroke-width="' + SW + '"></circle>'
     + anillos
-    + '<text x="66" y="62" text-anchor="middle" fill="#fff" font-size="20" '
+    + '<text x="66" y="62" text-anchor="middle" fill="var(--t1)" font-size="20" '
     +   'font-weight="600">' + kwTot.toFixed(0) + '</text>'
     + '<text x="66" y="79" text-anchor="middle" fill="var(--t3)" font-size="11">kW</text>'
     + '</svg><div class="lg">' + leyenda + '</div></div>';
@@ -5146,18 +5169,18 @@ function kpFiltrarBitacora(boton){
    mas separados entre si. Antes corriente A y temperatura de motor eran
    dos rojos casi iguales y con las dos activas no se distinguian. */
 const KP_SER_DEF = [
-  ['f_out',    'Frecuencia',        '#0C5292'],
-  ['i_out_a',  'Corriente A',       '#C62828'],
-  ['pip',      'Presión admisión',  '#2E7D32'],
-  ['t_motor',  'Temp. motor',       '#6A1B9A'],
-  ['i_out_b',  'Corriente B',       '#EF6C00'],
-  ['i_out_c',  'Corriente C',       '#F9A825'],
-  ['v_out',    'Tensión salida',    '#00695C'],
-  ['v_motor',  'Tensión motor',     '#0097A7'],
-  ['i_motor',  'Corriente motor',   '#AD1457'],
-  ['t_intake', 'Temp. admisión',    '#5D4037'],
-  ['vib_x',    'Vibración X',       '#4527A0'],
-  ['vib_y',    'Vibración Y/Z',     '#37474F'],
+  ['f_out',      'Frecuencia',           'var(--ser-1)'],
+  ['i_out_a',    'Corriente A',          'var(--ser-2)'],
+  ['pip',        'Presión admisión',     'var(--ser-3)'],
+  ['t_motor',    'Temp. motor',          'var(--ser-4)'],
+  ['i_out_b',    'Corriente B',          'var(--ser-5)'],
+  ['i_out_c',    'Corriente C',          'var(--ser-6)'],
+  ['v_out',      'Tensión salida',       'var(--ser-7)'],
+  ['v_motor',    'Tensión motor',        'var(--ser-8)'],
+  ['i_motor',    'Corriente motor',      'var(--ser-9)'],
+  ['t_intake',   'Temp. admisión',       'var(--ser-10)'],
+  ['vib_x',      'Vibración X',          'var(--ser-11)'],
+  ['vib_y',      'Vibración Y/Z',        'var(--ser-12)'],
 ];
 
 let KP_SER      = null;   // series crudas del pozo
@@ -5438,7 +5461,7 @@ function kpSerDibujar(){
   const hCarril = ih / nVis;
   const ejes = [];
   series.forEach((sr, k) => {
-    const def = KP_SER_DEF.find(d => d[0] === sr.canal) || [,'', '#666'];
+    const def = KP_SER_DEF.find(d => d[0] === sr.canal) || [,'', 'var(--t3)'];
     const col = def[2];
     /* Cada canal ocupa su franja en separado, o el alto completo en
        superpuesto. Todo lo demas del trazado es identico. */
@@ -5563,7 +5586,7 @@ function kpSerInteraccion(zT0, zT1, ML, iw){
     (KP_SER.series || []).filter(s => KP_SER_ON.has(s.canal)).forEach(s => {
       const i = Math.round((t - Date.parse(s.desde)) / (s.paso_seg * 1000));
       if (i < 0 || i >= s.max.length || s.max[i] == null) return;
-      const d = KP_SER_DEF.find(x => x[0] === s.canal) || [, '', '#666'];
+      const d = KP_SER_DEF.find(x => x[0] === s.canal) || [, '', 'var(--t3)'];
       const a = s.min[i], b = s.max[i];
       /* Un valor cuando el cubo es plano, el rango cuando no: mostrar
          siempre "215-215" es ruido, y mostrar siempre el promedio
@@ -6161,13 +6184,13 @@ function kpDibujarCadena(nodos, val){
       (nd.desbal_vg != null
         ? 'Desbalance fase-tierra ' + kpPct(nd.desbal_vg) + ' %' : null),
       (nd.causa_tierra === 'fase_tierra'
-        ? '\\nFASE ' + nd.fase_baja_vg + ' PRACTICAMENTE A TIERRA'
-          + '\\nEl desbalance fase-fase no lo detecta. Programar ensayo de aislamiento.'
+        ? 'FASE ' + nd.fase_baja_vg + ' PRACTICAMENTE A TIERRA'
+          + 'El desbalance fase-fase no lo detecta. Programar ensayo de aislamiento.'
         : null),
       (nd.causa_tierra === 'asimetria'
-        ? '\\nDesplazamiento del neutro: revisar empalmes, MLE y penetrador.' : null),
+        ? 'Desplazamiento del neutro: revisar empalmes, MLE y penetrador.' : null),
       (nd.causa_tierra === 'captura'
-        ? '\\nLas tres tensiones a tierra superan lo posible: probable registro '
+        ? 'Las tres tensiones a tierra superan lo posible: probable registro '
           + 'de tension linea-linea en campos fase-tierra.' : null),
       (nd.faltan_vg > 0 && nd.faltan_vg < 3
         ? 'Fase-tierra no evaluable: faltan ' + nd.faltan_vg + ' de 3 fases' : null),
@@ -6197,12 +6220,12 @@ function kpDibujarCadena(nodos, val){
         +  'stroke="' + col + '" stroke-width="2" stroke-dasharray="1 5" '
         +  'stroke-linecap="round"/>'
         +  '<rect x="' + (cx - 13) + '" y="' + (yTerr - 12) + '" width="26" height="14" rx="2" '
-        +  'fill="#fff" stroke="var(--t3)" stroke-width="1.2"/>'
+        +  'fill="var(--panel)" stroke="var(--t3)" stroke-width="1.2"/>'
         +  cab('cable', cx + 26, yTerr - 2, 9, 400, 'var(--t3)', 60, 'start');
     }
 
     s += '<rect x="' + x + '" y="' + yc + '" width="' + w + '" height="' + hc + '" rx="9" '
-      +  'fill="#fff" stroke="' + col + '" stroke-width="1.5"/>'
+      +  'fill="var(--panel)" stroke="' + col + '" stroke-width="1.5"/>'
       +  '<rect x="' + x + '" y="' + yc + '" width="' + w + '" height="5" rx="2.5" fill="' + col + '"/>';
 
     s += kpSimbolo(nd.tipo || nd.nodo, cx, yc + 34, col);
@@ -6281,7 +6304,7 @@ function kpDibujarCadena(nodos, val){
 
   const xS = mx, yS = yTerr + 34, wS = Math.min(4 * (w + gap) - gap, anchoTot - mx * 2 - w - gap * 2);
   s += '<rect x="' + xS + '" y="' + yS + '" width="' + wS + '" height="' + hCard + '" rx="9" '
-    +  'fill="#fff" stroke="var(--kp-line,#e4e9ee)" stroke-width="1.5" '
+    +  'fill="var(--panel)" stroke="var(--kp-line,#e4e9ee)" stroke-width="1.5" '
     +  'stroke-dasharray="' + (hay ? '0' : '4 4') + '"/>'
     +  cab('SENSOR DE FONDO', xS + 14, yS + 20, 9.5, 700, 'var(--t3)', wS - 28, 'start');
 
