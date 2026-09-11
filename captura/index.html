@@ -188,6 +188,16 @@
   .card-bitacora .ic{background:var(--danger-bg);color:var(--danger);}
   .card-setup .ic{background:var(--surface-2);color:var(--titulo);}
   .card-aislamiento .ic{background:var(--ok-bg);color:var(--ok);}
+/* Rejilla de fases. Tres lecturas por fase son nueve casillas: en un
+   telefono no caben como campos sueltos con etiqueta cada uno, y
+   apiladas se pierde de vista que son la misma prueba en tres tiempos.
+   Cuatro columnas con encabezado una sola vez. */
+.ais-fases{display:grid;grid-template-columns:22px repeat(3,1fr);gap:6px;
+  align-items:center;margin-top:4px}
+.ais-fases .hdr{font-size:10px;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--ink-faint);text-align:center;padding-bottom:2px}
+.ais-fases .fase{font-weight:700;color:var(--ink-soft);text-align:center;font-size:13px}
+.ais-fases input{width:100%;text-align:right;font-variant-numeric:tabular-nums}
   .card-nuevo .ic{background:var(--naranja-bg);color:var(--orange);}
   .card-hpum .ic{background:var(--hpum-bg);color:var(--hpum);}
   .card-ubh .ic{background:var(--ubh-bg);color:var(--ubh);}
@@ -564,9 +574,9 @@
              La tarjeta se queda como enlace en lugar de desaparecer: quien
              la buscaba tiene que encontrar a donde ir. -->
         <div class="action-card card-aislamiento" data-sistemas="BES,HPUM,UBH"
-             onclick="irAEnsayos()">
+             onclick="abrirAislamiento()">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub">Se registra en Ensayos Electricos &middot; abre Kronos-M</div></div>
+          <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub">Queda pendiente de firma en Ensayos Electricos</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M7 17L17 7M17 7h-6M17 7v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
       </div>
@@ -713,39 +723,112 @@
       <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
       <div class="sys-banner bes">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
-        <div><div class="t">Prueba de aislamiento</div><div class="s">Pruebas_Aislamiento</div></div>
+        <div><div class="t">Prueba de aislamiento</div><div class="s">Entra a Ensayos Electricos como pendiente de firma</div></div>
       </div>
       <form id="form-aislamiento">
         <div class="group-card">
           <div class="field"><label>Unidad</label><select id="ais-pozo"></select></div>
           <div class="grid-fields">
             <div class="field"><label>Fecha de prueba</label><input type="date" id="ais-fecha"></div>
-            <div class="field"><label>Equipo de medicion</label><input id="ais-equipo" placeholder="Ej: Megger MIT525"></div>
+            <div class="field"><label>Que se ensayo</label>
+              <select id="ais-componente">
+                <option value="MOTOR_CABLE">Motor + cable, desde superficie</option>
+                <option value="MOTOR">Solo motor, en bornes</option>
+                <option value="CABLE">Solo cable</option>
+                <option value="SUT">SUT</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-label"><span class="bar"></span>Condiciones de la prueba</div>
+        <div class="group-card">
+          <div class="grid-fields">
+            <div class="field"><label>Temperatura de devanado</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-temp"
+                   oninput="aisNotaTemp()"><span class="unit">&deg;C</span></div>
+            </div>
+            <div class="field"><label>Tension de prueba</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-vprueba"
+                   placeholder="1000"><span class="unit">V</span></div>
+            </div>
+          </div>
+          <div class="readonly-note" id="ais-nota-temp">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
+            Sin temperatura de devanado la lectura no se puede corregir a 40 &deg;C y no entra a la tendencia. Queda como referencia puntual.
           </div>
           <div class="grid-fields">
-            <div class="field"><label>Aislamiento</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-aislamiento"><span class="unit">MΩ</span></div>
+            <div class="field"><label>Temp. ambiente</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-temp-amb"><span class="unit">&deg;C</span></div>
             </div>
-            <div class="field"><label>DAR</label><input type="number" step="any" id="ais-dar"></div>
-            <div class="field"><label>IP</label><input type="number" step="any" id="ais-ip"></div>
+            <div class="field"><label>Humedad</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-humedad"><span class="unit">%</span></div>
+            </div>
+            <div class="field"><label>Horas de paro</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-paro"><span class="unit">h</span></div>
+            </div>
           </div>
           <div class="grid-fields">
-            <div class="field"><label>Balance A-C</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ac"><span class="unit">Ω</span></div>
+            <div class="field"><label>Megger</label><input id="ais-equipo" placeholder="Ej: Megger MIT525"></div>
+            <div class="field"><label>Serie del equipo</label><input id="ais-equipo-serie"></div>
+          </div>
+        </div>
+
+        <div class="section-label"><span class="bar"></span>Resistencia de aislamiento</div>
+        <div class="group-card">
+          <div class="field"><label>Unidad de lectura del megger</label>
+            <select id="ais-unidad">
+              <option value="Mohm">M&Omega; megaohmios</option>
+              <option value="Gohm">G&Omega; gigaohmios</option>
+              <option value="kohm">k&Omega; kiloohmios</option>
+              <option value="Tohm">T&Omega; teraohmios</option>
+            </select>
+          </div>
+          <div class="ais-fases">
+            <div class="hdr"></div><div class="hdr">30 s</div><div class="hdr">1 min</div><div class="hdr">10 min</div>
+            <div class="fase">A</div>
+            <input class="mono-input" type="number" step="any" id="ais-a-30s">
+            <input class="mono-input" type="number" step="any" id="ais-a-1min">
+            <input class="mono-input" type="number" step="any" id="ais-a-10min">
+            <div class="fase">B</div>
+            <input class="mono-input" type="number" step="any" id="ais-b-30s">
+            <input class="mono-input" type="number" step="any" id="ais-b-1min">
+            <input class="mono-input" type="number" step="any" id="ais-b-10min">
+            <div class="fase">C</div>
+            <input class="mono-input" type="number" step="any" id="ais-c-30s">
+            <input class="mono-input" type="number" step="any" id="ais-c-1min">
+            <input class="mono-input" type="number" step="any" id="ais-c-10min">
+          </div>
+          <div class="readonly-note">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
+            DAR e IP los calcula el sistema con estas lecturas. La de 1 minuto es la unica obligatoria.
+          </div>
+        </div>
+
+        <div class="section-label"><span class="bar"></span>Resistencia entre fases</div>
+        <div class="group-card">
+          <div class="grid-fields">
+            <div class="field"><label>A-B</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ab"><span class="unit">&Omega;</span></div>
             </div>
-            <div class="field"><label>Balance A-B</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ab"><span class="unit">Ω</span></div>
+            <div class="field"><label>A-C</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ac"><span class="unit">&Omega;</span></div>
             </div>
-            <div class="field"><label>Balance B-C</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-bc"><span class="unit">Ω</span></div>
+            <div class="field"><label>B-C</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-bc"><span class="unit">&Omega;</span></div>
             </div>
           </div>
-          <div class="field"><label>Realizo</label><input id="ais-realizo" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>
-          <div class="field"><label>Observaciones</label><textarea id="ais-obs" rows="3" placeholder="Condiciones de la prueba, hallazgos..."></textarea></div>
+        </div>
+
+        <div class="group-card">
+          <div class="field"><label>Realizo</label><input id="ais-realizo" readonly
+               style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>
+          <div class="field"><label>Observaciones</label><textarea id="ais-obs" rows="3"
+               placeholder="Condiciones de la prueba, hallazgos..."></textarea></div>
         </div>
       </form>
       <div class="submit-bar">
-        <button class="btn-primary" onclick="guardarAislamiento()">Guardar prueba
+        <button class="btn-primary" onclick="guardarAislamiento()">Guardar y enviar a firma
           <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
@@ -3542,33 +3625,31 @@ function abrirBitacora(){
   ir('bitacora-form');
 }
 
-/* Ensayos Electricos vive en la aplicacion principal, en otro origen, asi
-   que es una navegacion y no una pantalla de este archivo. Se abre en la
-   misma pestana a proposito: en el PAD, con una sola mano, varias pestanas
-   se pierden. */
-function irAEnsayos(){
-  if (!confirm('La prueba de aislamiento se registra en Ensayos Electricos, '
-    + 'dentro de Kronos-M. Alli el ensayo queda firmado, con dictamen IEEE 43 '
-    + 'e informe.\n\n¿Abrir Kronos-M?')) return;
-  window.location.href = 'https://kronos-m.onrender.com/';
-}
-
-/* Formulario anterior. Queda sin punto de entrada desde el inicio: escribia
-   en datapredictiva.pruebas_aislamiento, una tabla separada de la del modulo,
-   y sin temperatura de devanado sus lecturas no se pueden corregir a 40 C ni
-   comparar con nada. No se borra el codigo para no perder la referencia de
-   que campos se capturaban en campo, que es util cuando se ajuste el
-   formulario del modulo. */
 function abrirAislamiento(){
   aisIdActual = dpNuevoId();
   document.getElementById('ais-realizo').value = tecnicoActual;
   document.getElementById('ais-fecha').value   = dpFechaLocal();
-  document.getElementById('ais-pozo').value  = '';
-  document.getElementById('ais-equipo').value = '';
-  ['ais-aislamiento','ais-dar','ais-ip','ais-balance-ab','ais-balance-ac','ais-balance-bc']
+  document.getElementById('ais-pozo').value    = '';
+  document.getElementById('ais-componente').value = 'MOTOR_CABLE';
+  document.getElementById('ais-unidad').value     = 'Mohm';
+  ['ais-temp','ais-vprueba','ais-temp-amb','ais-humedad','ais-paro',
+   'ais-equipo','ais-equipo-serie','ais-obs',
+   'ais-balance-ab','ais-balance-ac','ais-balance-bc',
+   'ais-a-30s','ais-a-1min','ais-a-10min',
+   'ais-b-30s','ais-b-1min','ais-b-10min',
+   'ais-c-30s','ais-c-1min','ais-c-10min']
     .forEach(function(id){ var e = document.getElementById(id); if(e) e.value = ''; });
-  document.getElementById('ais-obs').value = '';
+  aisNotaTemp();
   ir('aislamiento-form');
+}
+
+/* El aviso solo aparece mientras falta la temperatura. Un aviso que
+   siempre esta deja de leerse. */
+function aisNotaTemp(){
+  var n = document.getElementById('ais-nota-temp');
+  if (!n) return;
+  var t = document.getElementById('ais-temp');
+  n.style.display = (t && t.value !== '') ? 'none' : '';
 }
 
 function guardarBitacora(){
@@ -3601,33 +3682,77 @@ function guardarBitacora(){
 }
 
 /* ===================== GUARDADO REAL: PRUEBA DE AISLAMIENTO ===================== */
+/* Se manda lo tecleado tal cual, con la unidad del megger. La conversion a
+   megaohmios la hace trg_normalizar_ir en la base a partir de las columnas
+   _ing: si se convirtiera aqui, habria dos implementaciones de la misma
+   regla y tarde o temprano una se queda atras. */
+function aisFase(letra){
+  var f = {
+    fase:     letra.toUpperCase(),
+    ir_30s:   valNum('ais-' + letra + '-30s'),
+    ir_1min:  valNum('ais-' + letra + '-1min'),
+    ir_10min: valNum('ais-' + letra + '-10min')
+  };
+  if (f.ir_30s == null && f.ir_1min == null && f.ir_10min == null) return null;
+  return f;
+}
+
 function guardarAislamiento(){
   var pozo = document.getElementById('ais-pozo').value;
   if(!pozo){ alert('Selecciona un pozo.'); return; }
-  var aislamiento = document.getElementById('ais-aislamiento').value;
-  if(!aislamiento){ alert('El valor de Aislamiento es obligatorio.'); return; }
+
+  var fases = ['a','b','c'].map(aisFase).filter(function(f){ return f; });
+  if(!fases.length){
+    alert('Registra al menos una fase. La lectura de 1 minuto es la que sostiene el ensayo.');
+    return;
+  }
+  var sinUnMinuto = fases.filter(function(f){ return f.ir_1min == null; });
+  if(sinUnMinuto.length){
+    alert('Falta la lectura de 1 minuto en la fase '
+      + sinUnMinuto.map(function(f){ return f.fase; }).join(', ') + '.');
+    return;
+  }
+
+  /* La temperatura no se exige: en campo no siempre hay con que medirla, y
+     un ensayo sin temperatura vale mas que ningun ensayo. Pero se avisa,
+     porque sin ella el punto no entra a la tendencia. */
+  if (valNum('ais-temp') == null){
+    if(!confirm('Sin temperatura de devanado la lectura no se corrige a 40 grados '
+      + 'y no entra a la grafica de tendencia.\n\nGuardar de todos modos?')) return;
+  }
 
   if(!aisIdActual) aisIdActual = dpNuevoId();
 
   var payload = {
-    id: aisIdActual,
-    pozo: pozo,
-    fecha_prueba: document.getElementById('ais-fecha').value,
-    equipo_medicion: document.getElementById('ais-equipo').value,
-    aislamiento_mohm: valNum('ais-aislamiento'),
-    dar: valNum('ais-dar'),
-    ip: valNum('ais-ip'),
-    balance_ab_ohm: valNum('ais-balance-ab'),
-    balance_ac_ohm: valNum('ais-balance-ac'),
-    balance_bc_ohm: valNum('ais-balance-bc'),
-    realizado_por: dpNombreTecnico(),
-    observaciones: document.getElementById('ais-obs').value
-    /* creado_por lo sella la base con el correo de la sesion. */
+    id:             aisIdActual,
+    pozo:           pozo,
+    fecha:          document.getElementById('ais-fecha').value,
+    componente:     document.getElementById('ais-componente').value,
+    alcance:        'RUTINA',
+    motivo:         'Ronda de campo',
+    unidad_ingreso: document.getElementById('ais-unidad').value,
+    temp_devanado:  valNum('ais-temp'),
+    temp_ambiente:  valNum('ais-temp-amb'),
+    humedad:        valNum('ais-humedad'),
+    horas_paro:     valNum('ais-paro'),
+    v_prueba:       valNum('ais-vprueba'),
+    megger:         document.getElementById('ais-equipo').value,
+    megger_serie:   document.getElementById('ais-equipo-serie').value,
+    tecnico:        dpNombreTecnico(),
+    observaciones:  document.getElementById('ais-obs').value,
+    fases:          fases,
+    bobinas: {
+      AB: valNum('ais-balance-ab'),
+      AC: valNum('ais-balance-ac'),
+      BC: valNum('ais-balance-bc')
+    }
+    /* El ejecutante y el estado los sella la base con la sesion. */
   };
 
   var boton = event.target.closest('button');
-  guardarOEncolar('dp_guardar_aislamiento', payload, boton,
-    'Prueba guardada.', 'Aislamiento ' + pozo,
+  guardarOEncolar('dp_guardar_ensayo_campo', payload, boton,
+    'Ensayo guardado. Queda pendiente de firma en Ensayos Electricos.',
+    'Aislamiento ' + pozo,
     function(){ aisIdActual = null; });
 }
 
