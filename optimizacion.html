@@ -421,6 +421,15 @@ table.ko-t tr.cl{cursor:pointer}
 table.ko-t tr.cl:hover td{background:var(--surface-2)}
 table.ko-t .pz{font-weight:600;color:var(--t1)}
 table.ko-t .sd{color:var(--ko-null)}
+
+/* Tabla de dos columnas etiqueta/valor. El nowrap general sirve para la
+   rejilla de unidades, donde cada celda es una cifra corta, pero aqui las
+   etiquetas son frases: "Tension primaria nominal del SUT" no cabe junto a
+   su valor en un telefono y empujaba la columna derecha fuera de la
+   tarjeta. La etiqueta puede partirse; el valor nunca, porque partir
+   "480 V" en dos lineas se lee peor que apilar. */
+table.ko-kv{max-width:460px}
+table.ko-kv td:first-child{white-space:normal;padding-right:12px}
 /* Flecha y color como canales separados: la flecha dice hacia donde se
    mueve la magnitud, el color si eso conviene. */
 .ko-d{display:inline-flex;align-items:center;gap:3px;font-weight:600;
@@ -498,6 +507,17 @@ table.ko-t tr.mk td{background:var(--accent-soft)}
 .ko-vacio{padding:24px 14px;text-align:center;color:var(--ko-t3);font-size:13.5px}
 
 @media(max-width:640px){
+  /* Apilado: en 360 px de ancho util no hay sitio para dos columnas con
+     frases a la izquierda y cifras con unidad a la derecha. */
+  table.ko-kv{max-width:none}
+  table.ko-kv tr{display:block;padding:7px 0;border-bottom:1px solid var(--ko-line2)}
+  table.ko-kv tr:last-child{border-bottom:none}
+  table.ko-kv td{display:block;text-align:left;padding:0;border-bottom:none;
+    white-space:normal}
+  table.ko-kv td:first-child{font-size:11px;line-height:1.35;margin-bottom:2px}
+  table.ko-kv td:last-child{font-size:13.5px}
+  table.ko-kv td:last-child:empty{display:none}
+
   .ko-wrap{padding:14px}
   .ko-hero{grid-template-columns:repeat(2,1fr)}
   .ko-h .v{font-size:22px}
@@ -2664,7 +2684,7 @@ function koPintarDetalle(){
 
   h += '<div class="ko-card"><div class="ct"><b>Entradas</b>'
     + '<span>&Uacute;ltima corrida cargada</span></div>'
-    + '<table class="ko-t" style="max-width:460px"><tbody>' + ent
+    + '<table class="ko-t ko-kv"><tbody>' + ent
     + '</tbody></table></div>';
 
   h += '<div class="ko-card"><div class="ct"><b>Cadena de c&aacute;lculo</b>'
