@@ -576,7 +576,7 @@
         <div class="action-card card-aislamiento" data-sistemas="BES,HPUM,UBH"
              onclick="abrirAislamiento()">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
-          <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub">Queda pendiente de firma en Ensayos Electricos</div></div>
+          <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub" id="home-ais-sub">Queda pendiente de firma en Ensayos Electricos</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M7 17L17 7M17 7h-6M17 7v6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
       </div>
@@ -723,7 +723,7 @@
       <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
       <div class="sys-banner bes">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg></div>
-        <div><div class="t">Prueba de aislamiento</div><div class="s">Entra a Ensayos Electricos como pendiente de firma</div></div>
+        <div><div class="t">Prueba de aislamiento</div><div class="s" id="ais-banner-sub">Entra a Ensayos Electricos como pendiente de firma</div></div>
       </div>
       <form id="form-aislamiento">
         <div class="group-card">
@@ -784,7 +784,31 @@
               <option value="Tohm">T&Omega; teraohmios</option>
             </select>
           </div>
-          <div class="ais-fases">
+          <div id="ais-bes-lectura" class="hidden">
+            <div class="field"><label>Fase medida</label>
+              <select id="ais-fase-medida">
+                <option value="A">Fase A</option>
+                <option value="B">Fase B</option>
+                <option value="C">Fase C</option>
+              </select>
+            </div>
+            <div class="grid-fields">
+              <div class="field"><label>30 s</label>
+                <input class="mono-input" type="number" step="any" id="ais-u-30s"></div>
+              <div class="field"><label>1 min</label>
+                <input class="mono-input" type="number" step="any" id="ais-u-1min"></div>
+              <div class="field"><label>10 min</label>
+                <input class="mono-input" type="number" step="any" id="ais-u-10min"></div>
+            </div>
+            <div class="readonly-note">
+              <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
+              El motor BES es una estrella con el neutro en el fondo del pozo: las tres fases
+              estan unidas ahi abajo, asi que una lectura a tierra mide el conjunto completo.
+              Se anota cual fase se uso para poder comparar entre rondas.
+            </div>
+          </div>
+
+          <div id="ais-tres-fases" class="ais-fases">
             <div class="hdr"></div><div class="hdr">30 s</div><div class="hdr">1 min</div><div class="hdr">10 min</div>
             <div class="fase">A</div>
             <input class="mono-input" type="number" step="any" id="ais-a-30s">
@@ -1342,6 +1366,22 @@ function guardarOEncolar(rpc, payload, boton, mensajeExito, etiqueta, alAsegurar
       asegurado(true, body);
       var extra = '';
       if (body.duplicado) extra = '\n\nEste registro ya estaba guardado; no se duplico.';
+      /* El valor corregido se muestra en campo a proposito: si salio bajo, el
+         equipo todavia esta desenergizado y el megado se puede repetir ahi
+         mismo. Sabido al dia siguiente ya no sirve para decidir nada. */
+      else if (body.ir40_1min != null) {
+        extra = '\n\nCorregido a 40 C: ' + body.ir40_1min + ' Mohm'
+              + '  (medido ' + body.ir_1min + ', Kt ' + body.kt + ')';
+        if (body.dar != null) extra += '\nDAR ' + body.dar;
+        if (body.ip  != null) extra += '   IP ' + body.ip;
+        if (body.kt_nota) extra += '\n\n' + body.kt_nota;
+        if (body.sin_corrida) extra += '\n\nNo se resolvio la corrida para esta fecha.';
+      }
+      else if (body.ir_1min != null) {
+        extra = '\n\nSin temperatura no se corrigio a 40 C: queda '
+              + body.ir_1min + ' Mohm como referencia puntual.';
+        if (body.sin_corrida) extra += '\n\nNo se resolvio la corrida para esta fecha.';
+      }
       else if (body.guardados != null) {
         extra = '\n\n' + body.guardados + ' valores guardados.';
         if (body.ignorados && body.ignorados.length)
@@ -3635,10 +3675,25 @@ function abrirAislamiento(){
   ['ais-temp','ais-vprueba','ais-temp-amb','ais-humedad','ais-paro',
    'ais-equipo','ais-equipo-serie','ais-obs',
    'ais-balance-ab','ais-balance-ac','ais-balance-bc',
+   'ais-u-30s','ais-u-1min','ais-u-10min',
    'ais-a-30s','ais-a-1min','ais-a-10min',
    'ais-b-30s','ais-b-1min','ais-b-10min',
    'ais-c-30s','ais-c-1min','ais-c-10min']
     .forEach(function(id){ var e = document.getElementById(id); if(e) e.value = ''; });
+  /* BES registra una sola lectura a tierra; el resto de sistemas sigue con
+     las tres fases. La eleccion no la hace el formulario sino el sistema ya
+     seleccionado en la pantalla anterior, para que el tecnico no tenga que
+     decidir nada que ya decidio. */
+  var esBES = (sistemaActual === 'BES');
+  document.getElementById('ais-bes-lectura').classList.toggle('hidden', !esBES);
+  document.getElementById('ais-tres-fases').classList.toggle('hidden', esBES);
+  document.getElementById('ais-fase-medida').value = 'A';
+
+  var bsub = document.getElementById('ais-banner-sub');
+  if (bsub) bsub.textContent = esBES
+    ? 'Queda en la corrida de la unidad, sin firma'
+    : 'Entra a Ensayos Electricos como pendiente de firma';
+
   aisNotaTemp();
   ir('aislamiento-form');
 }
@@ -3698,6 +3753,9 @@ function aisFase(letra){
 }
 
 function guardarAislamiento(){
+  var boton = event.target.closest('button');
+  if (sistemaActual === 'BES') { guardarAislamientoBES(boton); return; }
+
   var pozo = document.getElementById('ais-pozo').value;
   if(!pozo){ alert('Selecciona un pozo.'); return; }
 
@@ -3749,9 +3807,66 @@ function guardarAislamiento(){
     /* El ejecutante y el estado los sella la base con la sesion. */
   };
 
-  var boton = event.target.closest('button');
   guardarOEncolar('dp_guardar_ensayo_campo', payload, boton,
     'Ensayo guardado. Queda pendiente de firma en Ensayos Electricos.',
+    'Aislamiento ' + pozo,
+    function(){ aisIdActual = null; });
+}
+
+/* ===================== GUARDADO REAL: AISLAMIENTO BES =====================
+   Camino aparte porque el registro es otro: una sola lectura a tierra, anclada
+   a la corrida y no a la maquina, y sin ciclo de firma. Se envia lo tecleado
+   con la unidad del megger; la conversion, DAR, IP y la correccion a 40 C las
+   hace la base con fn_kt_ieee43, la misma funcion que usa el modulo de
+   Ensayos. */
+function guardarAislamientoBES(boton){
+  var pozo = document.getElementById('ais-pozo').value;
+  if(!pozo){ alert('Selecciona un pozo.'); return; }
+
+  var ir1 = valNum('ais-u-1min');
+  if(ir1 == null){
+    alert('Falta la lectura de 1 minuto. Es la que sostiene el ensayo.');
+    return;
+  }
+
+  /* La temperatura no se exige, pero aqui el aviso es mas duro que en el resto
+     de maquinas: en fondo de pozo se pasa de 85 C con normalidad y sin
+     corregir la lectura puede parecer excelente estando el motor mediocre. */
+  if (valNum('ais-temp') == null){
+    if(!confirm('Sin temperatura de devanado la lectura no se corrige a 40 grados.\n\n'
+      + 'En BES eso cambia el resultado por mucho: 560 Mohm medidos a 92 grados '
+      + 'son 82 Mohm corregidos.\n\nGuardar de todos modos?')) return;
+  }
+
+  if(!aisIdActual) aisIdActual = dpNuevoId();
+
+  var payload = {
+    id:              aisIdActual,
+    pozo:            pozo,
+    fecha_prueba:    document.getElementById('ais-fecha').value,
+    componente:      document.getElementById('ais-componente').value,
+    fase_medida:     document.getElementById('ais-fase-medida').value,
+    unidad_ingreso:  document.getElementById('ais-unidad').value,
+    ir_30s_ing:      valNum('ais-u-30s'),
+    ir_1min_ing:     ir1,
+    ir_10min_ing:    valNum('ais-u-10min'),
+    temp_devanado:   valNum('ais-temp'),
+    temp_ambiente:   valNum('ais-temp-amb'),
+    humedad:         valNum('ais-humedad'),
+    horas_paro:      valNum('ais-paro'),
+    v_prueba:        valNum('ais-vprueba'),
+    equipo_medicion: document.getElementById('ais-equipo').value,
+    megger_serie:    document.getElementById('ais-equipo-serie').value,
+    realizado_por:   dpNombreTecnico(),
+    balance_ab_ohm:  valNum('ais-balance-ab'),
+    balance_ac_ohm:  valNum('ais-balance-ac'),
+    balance_bc_ohm:  valNum('ais-balance-bc'),
+    observaciones:   document.getElementById('ais-obs').value
+    /* La corrida la resuelve la base por la fecha del ensayo. */
+  };
+
+  guardarOEncolar('dp_guardar_aislamiento', payload, boton,
+    'Ensayo guardado en la corrida de la unidad.',
     'Aislamiento ' + pozo,
     function(){ aisIdActual = null; });
 }
@@ -4308,6 +4423,15 @@ function adaptarHome(){
     }
     if(!ok) bloqueadas++;
   });
+
+  /* En BES el ensayo ya no viaja a Ensayos Electricos: se queda en la
+     corrida de la unidad y nace cerrado. La tarjeta tiene que decirlo,
+     porque prometer una firma que nadie va a pedir hace que el tecnico
+     espere una revision que no existe. */
+  var aisSub = document.getElementById('home-ais-sub');
+  if (aisSub) aisSub.textContent = (sistemaActual === 'BES')
+    ? 'Queda en la corrida de la unidad, sin firma'
+    : 'Queda pendiente de firma en Ensayos Electricos';
 
   var aviso = document.getElementById('home-aviso');
   var avisoSis = document.getElementById('home-aviso-sis');
