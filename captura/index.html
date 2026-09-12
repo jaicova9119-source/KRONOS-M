@@ -779,6 +779,10 @@
           <div class="field"><label>Unidad de lectura del megger</label>
             <select id="ais-unidad">
               <option value="Mohm">M&Omega; megaohmios</option>
+              <!-- Ohmios va en la lista porque un devanado en falla a tierra
+                   marca unidades de ohmio, y obligar al tecnico a convertir de
+                   cabeza a megaohmios es invitar a un error de seis ceros. -->
+              <option value="ohm">&Omega; ohmios &middot; falla a tierra</option>
               <option value="Gohm">G&Omega; gigaohmios</option>
               <option value="kohm">k&Omega; kiloohmios</option>
               <option value="Tohm">T&Omega; teraohmios</option>
