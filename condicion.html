@@ -581,6 +581,13 @@ body{background:var(--kp-page);color:var(--kp-ink);
 .kp-dato .v{font-size:15px;font-weight:600;margin-top:2px;
   font-variant-numeric:tabular-nums;white-space:nowrap}
 .kp-dato .v small{font-size:10.5px;font-weight:400;color:var(--kp-ink2);margin-left:2px}
+/* La casilla de aislamiento necesita color y una linea de pie con la
+   fecha: un valor de hace un ano se lee distinto a uno de ayer. */
+.kp-dato.ok{border-left:3px solid var(--kp-ok)}
+.kp-dato.warn{border-left:3px solid var(--kp-warn)}
+.kp-dato.crit{border-left:3px solid var(--kp-crit)}
+.kp-dato.none{border-left:3px solid var(--kp-null)}
+.kp-dato .d{font-size:10px;color:var(--kp-ink3);margin-top:3px;letter-spacing:.2px}
 
 /* Avisos: solo aparece lo que se sale de rango. Cuando no hay nada,
    una linea verde vale mas que cuatro tarjetas repitiendo cifras. */
@@ -2587,6 +2594,21 @@ function kpNum(v){
   return (Math.abs(n) >= 100) ? n.toFixed(0) : n.toFixed(2);
 }
 
+/* La resistencia de aislamiento abarca doce ordenes de magnitud: de 2 ohmios
+   en un devanado aterrizado a miles de megaohmios en uno sano. Escrito siempre
+   en megaohmios, un corto sale como "0.000002" y nadie lo lee. Se elige la
+   unidad segun la magnitud, que es como lo dice el megger. */
+function kpIR(mohm){
+  if (mohm == null) return '\u2014';
+  const n = Number(mohm);
+  if (!isFinite(n)) return '\u2014';
+  if (n === 0) return '0';
+  if (n >= 1000)  return (n/1000).toFixed(n >= 10000 ? 0 : 2) + ' G\u03a9';
+  if (n >= 1)     return (n >= 100 ? n.toFixed(0) : n.toFixed(2)) + ' M\u03a9';
+  if (n >= 0.001) return (n*1000).toFixed(n >= 0.1 ? 0 : 1) + ' k\u03a9';
+  return (n*1e6).toFixed(n >= 1e-5 ? 0 : 2) + ' \u03a9';
+}
+
 /* Los porcentajes llevan siempre un decimal. Con kpNum, una carga de
    119.58 % se redondeaba a "120" en el resumen y salia "119.6" en la
    cadena: dos cifras distintas del mismo dato en la misma pantalla. */
@@ -4120,7 +4142,9 @@ function kpRenderResumen(med, bal, ctx){
      -- si la frecuencia no es la esperada, todo lo demas se lee
      distinto -- asi que suben aqui.                                */
   const op = [];
-  const chip = (k, v, u) => { if (v != null && v !== '') op.push({k, v, u: u || ''}); };
+  const chip = (k, v, u, cls, d) => {
+    if (v != null && v !== '') op.push({k, v, u: u || '', cls: cls || '', d: d || ''});
+  };
   chip('Frecuencia',  kpNum(mc.frecuencia_hz), 'Hz');
   chip('Setpoint',    kpNum(mc.setpoint_hz), 'Hz');
   chip('HSC',         kpNum(mc.hsc), 'Hz');
@@ -4128,11 +4152,38 @@ function kpRenderResumen(med, bal, ctx){
   chip('Modo',        mc.control_mode ? kpEsc(mc.control_mode) : null);
   chip('Condici\u00f3n', mc.condicion ? kpEsc(mc.condicion) : null);
 
+  /* Aislamiento: la unica casilla que no viene de la ronda sino del ultimo
+     ensayo. Va aqui porque decide si el equipo puede seguir operando, y hoy
+     esa informacion vivia enterrada al final de la pagina.
+
+     Tres estados, no dos. Un valor sin corregir a 40 C no se pinta en verde:
+     no se puede juzgar contra ningun umbral, y darle color de conforme seria
+     afirmar algo que el dato no sostiene. Y la ausencia de ensayo se dice, en
+     lugar de omitir la casilla: hoy son 36 de 45 unidades, y ese vacio es un
+     hallazgo, no un espacio en blanco. */
+  const ultAis = (ctx && ctx.aislamiento && ctx.aislamiento.length)
+    ? ctx.aislamiento[0] : null;
+
+  if (ultAis){
+    const juzgable = ultAis.dictamen !== 'REFERENCIA';
+    const valor    = juzgable ? ultAis.ir40 : ultAis.ir_1min;
+    let pie = ultAis.fecha_prueba || '';
+    if (juzgable){
+      if (ultAis.umbral != null) pie += ' \u00b7 m\u00ednimo ' + kpIR(ultAis.umbral);
+    } else {
+      pie += ' \u00b7 sin corregir a 40 \u00b0C';
+    }
+    chip('Aislamiento', kpIR(valor), '', ultAis.dictamen_cls || 'none', pie);
+  } else {
+    chip('Aislamiento', '\u2014', '', 'none', 'Sin ensayo registrado');
+  }
+
   if (op.length){
     h += '<div class="kp-chips">';
     op.forEach(x => {
-      h += '<div class="kp-dato"><div class="k">' + x.k + '</div>'
-        +  '<div class="v">' + x.v + (x.u ? '<small>' + x.u + '</small>' : '') + '</div></div>';
+      h += '<div class="kp-dato ' + x.cls + '"><div class="k">' + x.k + '</div>'
+        +  '<div class="v">' + x.v + (x.u ? '<small>' + x.u + '</small>' : '') + '</div>'
+        +  (x.d ? '<div class="d">' + x.d + '</div>' : '') + '</div>';
     });
     h += '</div>';
   }
@@ -5042,6 +5093,92 @@ function kpEstadoIP(ip){
   return { cls:'crit', txt:'IP bajo' };
 }
 
+/* Tendencia de aislamiento.
+   Escala logaritmica, y no es una preferencia estetica: los valores reales van
+   de 2 ohmios a miles de megaohmios. En escala lineal un devanado aterrizado y
+   uno sano quedan los dos pegados al eje y la grafica no dice nada.
+   Solo entran los puntos corregidos a 40 C. Mezclar lecturas corregidas con
+   crudas dibujaria una caida donde solo hubo un dia mas caluroso. */
+function kpAisTendencia(ais, umbral){
+  const pts = (ais || [])
+    .filter(a => a.ir40 != null && Number(a.ir40) > 0)
+    .map(a => ({ f: a.fecha_prueba, v: Number(a.ir40),
+                 cls: a.dictamen_cls || 'none', corrida: a.corrida }))
+    .sort((a, b) => (a.f < b.f ? -1 : a.f > b.f ? 1 : 0));
+
+  if (pts.length < 2) return '';
+
+  /* Con dos puntos una grafica es una raya que sugiere una trayectoria que no
+     se ha observado. Se dice la variacion y ya. */
+  if (pts.length === 2){
+    const d = (pts[1].v - pts[0].v) / pts[0].v * 100;
+    const cae = d < 0;
+    return '<p class="hint" style="margin-top:8px">Dos ensayos corregidos: '
+      + kpIR(pts[0].v) + ' el ' + pts[0].f + ' y ' + kpIR(pts[1].v) + ' el ' + pts[1].f
+      + ' \u00b7 ' + (cae ? 'ca\u00edda' : 'aumento') + ' de '
+      + Math.abs(d).toFixed(0) + ' %</p>';
+  }
+
+  const W = 640, H = 200, ML = 62, MR = 14, MT = 14, MB = 30;
+  const vals = pts.map(p => p.v);
+  if (umbral != null && umbral > 0) vals.push(Number(umbral));
+  const lo = Math.log10(Math.min.apply(null, vals) / 3);
+  const hi = Math.log10(Math.max.apply(null, vals) * 3);
+  const x = i => ML + (W - ML - MR) * (pts.length === 1 ? 0.5 : i / (pts.length - 1));
+  const y = v => MT + (H - MT - MB) * (1 - (Math.log10(v) - lo) / (hi - lo));
+
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" '
+        + 'style="margin-top:10px;overflow:visible" role="img" '
+        + 'aria-label="Tendencia de resistencia de aislamiento corregida a 40 grados">';
+
+  /* Una linea por decada: en escala logaritmica las intermedias no ayudan. */
+  for (let e = Math.ceil(lo); e <= Math.floor(hi); e++){
+    const yy = y(Math.pow(10, e));
+    s += '<line x1="' + ML + '" y1="' + yy.toFixed(1) + '" x2="' + (W - MR)
+      +  '" y2="' + yy.toFixed(1) + '" stroke="var(--kp-line)" stroke-width="1"/>'
+      +  '<text x="' + (ML - 8) + '" y="' + (yy + 4).toFixed(1) + '" text-anchor="end" '
+      +  'font-size="10" fill="var(--kp-ink3)">' + kpIR(Math.pow(10, e)) + '</text>';
+  }
+
+  if (umbral != null && umbral > 0){
+    const yu = y(Number(umbral));
+    s += '<line x1="' + ML + '" y1="' + yu.toFixed(1) + '" x2="' + (W - MR)
+      +  '" y2="' + yu.toFixed(1) + '" stroke="var(--kp-crit)" stroke-width="1.4" '
+      +  'stroke-dasharray="5 4"/>'
+      +  '<text x="' + (W - MR) + '" y="' + (yu - 5).toFixed(1) + '" text-anchor="end" '
+      +  'font-size="10" fill="var(--kp-crit)">m\u00ednimo IEEE 43</text>';
+  }
+
+  let d = '';
+  pts.forEach((p, i) => { d += (i ? ' L' : 'M') + x(i).toFixed(1) + ' ' + y(p.v).toFixed(1); });
+  s += '<path d="' + d + '" fill="none" stroke="var(--kp-ink3)" stroke-width="1.6"/>';
+
+  pts.forEach((p, i) => {
+    /* Un cambio de corrida es un motor distinto. Sin marcarlo, sustituir el
+       equipo se lee como una recuperacion del aislamiento. */
+    if (i && p.corrida != null && pts[i-1].corrida != null && p.corrida !== pts[i-1].corrida){
+      const xm = (x(i) + x(i-1)) / 2;
+      s += '<line x1="' + xm.toFixed(1) + '" y1="' + MT + '" x2="' + xm.toFixed(1)
+        +  '" y2="' + (H - MB) + '" stroke="var(--kp-ink3)" stroke-width="1" '
+        +  'stroke-dasharray="2 4"/>'
+        +  '<text x="' + (xm + 4).toFixed(1) + '" y="' + (MT + 10)
+        +  '" font-size="9" fill="var(--kp-ink3)">corrida ' + p.corrida + '</text>';
+    }
+    const col = p.cls === 'crit' ? 'var(--kp-crit)'
+              : p.cls === 'warn' ? 'var(--kp-warn)' : 'var(--kp-ok)';
+    s += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(p.v).toFixed(1)
+      +  '" r="4" fill="' + col + '"/>';
+    if (i === 0 || i === pts.length - 1 || pts.length <= 6){
+      s += '<text x="' + x(i).toFixed(1) + '" y="' + (H - MB + 16)
+        +  '" text-anchor="middle" font-size="9.5" fill="var(--kp-ink3)">'
+        +  (p.f || '').slice(2) + '</text>';
+    }
+  });
+
+  s += '</svg>';
+  return s;
+}
+
 function kpRenderContexto(ctx){
   const ais = ctx.aislamiento || [];
   const bit = ctx.bitacora || [];
@@ -5049,9 +5186,18 @@ function kpRenderContexto(ctx){
 
   if (ais.length){
     h += '<h2 style="margin-top:22px">Aislamiento</h2>';
+    const sinCorregir = ais.filter(a => a.dictamen === 'REFERENCIA').length;
     h += '<p class="hint">' + ais.length
       +  (ais.length === 1 ? ' prueba registrada' : ' pruebas registradas')
-      +  ' &middot; referencia IEEE 43 para el &iacute;ndice de polarizaci&oacute;n</p>';
+      +  (ais[0] && ais[0].umbral != null
+            ? ' &middot; m&iacute;nimo IEEE 43 ' + kpIR(ais[0].umbral) : '')
+      /* Se dice cuantas no se pueden juzgar. Un historico de cinco ensayos de
+         los que cuatro no tienen temperatura no es un historico de cinco. */
+      +  (sinCorregir
+            ? ' &middot; ' + sinCorregir + ' sin temperatura de devanado'
+            : '')
+      +  '</p>';
+    h += kpAisTendencia(ais, ais[0] ? ais[0].umbral : null);
     h += '<div class="kp-list" style="margin-bottom:6px">';
     /* Que se ensayo, dicho en palabras. En un BES instalado no se puede
        separar el motor del cable: se mega desde superficie y el valor
@@ -5066,7 +5212,11 @@ function kpRenderContexto(ctx){
     };
 
     ais.forEach(a => {
-      const e = kpEstadoIP(a.ip);
+      /* El dictamen lo resuelve la base contra criterios_ensayo. Antes esta
+         pastilla mostraba solo el indice de polarizacion, que es una sola de
+         las cuatro cosas que deciden si un aislamiento pasa. */
+      const e = { cls: a.dictamen_cls || 'none',
+                  txt: a.dictamen_txt || kpEstadoIP(a.ip).txt };
       const bal = [a.balance_ab, a.balance_ac, a.balance_bc]
         .filter(v => v != null).length;
 
@@ -5083,14 +5233,34 @@ function kpRenderContexto(ctx){
                 + (a.maquina_estado === 'RETIRADA'
                     ? ' &middot; motor ya retirado' : '') + '</div>'
               : '')
-        +  '<div class="dt">Aislamiento ' + kpNum(a.aislamiento) + ' M&Omega;'
-        +  ' &middot; IP ' + kpNum(a.ip) + ' &middot; DAR ' + kpNum(a.dar) + '</div>'
+        /* El valor corregido manda y el crudo va detras entre parentesis: es
+           el corregido el que se compara contra el umbral, pero el crudo es el
+           que el tecnico vio en el megger y el que recuerda. */
+        +  '<div class="dt">'
+        +  (a.ir40 != null
+              ? kpIR(a.ir40) + ' a 40 &deg;C <span class="src">(' + kpIR(a.ir_1min)
+                + ' medido' + (a.temp_devanado != null ? ' a ' + kpNum(a.temp_devanado)
+                + ' &deg;C' : '') + ')</span>'
+              : kpIR(a.ir_1min) + ' sin corregir')
+        +  (a.ip != null ? ' &middot; IP ' + kpNum(a.ip) : '')
+        +  (a.dar != null ? ' &middot; DAR ' + kpNum(a.dar) : '')
+        +  '</div>'
         +  '<div class="src">'
         +  (a.componente ? (COMP[a.componente] || a.componente) : '')
         +  (a.alcance === 'RUTINA' ? ' &middot; rutina de campo' : '')
         +  (bal ? ' &middot; balance ' + kpNum(a.balance_ab) + ' / '
                   + kpNum(a.balance_ac) + ' / ' + kpNum(a.balance_bc) + ' \u03a9' : '')
+        +  (a.fases === 1 && a.fase_medida && a.fase_medida !== 'CONJUNTO'
+              ? ' &middot; fase ' + a.fase_medida : '')
+        +  (a.corrida != null ? ' &middot; corrida ' + a.corrida : '')
         +  (a.equipo ? ' &middot; ' + a.equipo : '') + '</div>'
+        /* Dos registros del mismo dia sobre el mismo serial casi siempre son el
+           mismo ensayo cargado dos veces. No se ocultan: uno de los dos puede
+           tener la escala mal, y esconderlo perpetuaria el error. */
+        +  (a.posible_duplicado
+              ? '<div class="src" style="margin-top:4px;color:var(--kp-warn)">'
+                + 'Otro ensayo con la misma fecha y serial: verificar si est&aacute; '
+                + 'duplicado.</div>' : '')
         /* Dos salvedades que cambian como se lee el numero, y que sin
            decirlas hacen comparar cosas que no son comparables. */
         +  (a.corregible === false
