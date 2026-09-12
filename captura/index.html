@@ -774,6 +774,27 @@
           </div>
         </div>
 
+        <div class="section-label"><span class="bar"></span>Resistencia entre fases</div>
+        <div class="group-card">
+          <div class="grid-fields">
+            <div class="field"><label>A-B</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ab"><span class="unit">&Omega;</span></div>
+            </div>
+            <div class="field"><label>A-C</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ac"><span class="unit">&Omega;</span></div>
+            </div>
+            <div class="field"><label>B-C</label>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-bc"><span class="unit">&Omega;</span></div>
+            </div>
+          </div>
+          <div class="readonly-note">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
+            Se mide primero. Si las tres resistencias son parejas, la estrella esta
+            integra y basta una lectura de aislamiento; si una se sale, hay que
+            registrar las tres fases a tierra.
+          </div>
+        </div>
+
         <div class="section-label"><span class="bar"></span>Resistencia de aislamiento</div>
         <div class="group-card">
           <div class="field"><label>Unidad de lectura del megger</label>
@@ -830,21 +851,6 @@
           <div class="readonly-note">
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
             DAR e IP los calcula el sistema con estas lecturas. La de 1 minuto es la unica obligatoria.
-          </div>
-        </div>
-
-        <div class="section-label"><span class="bar"></span>Resistencia entre fases</div>
-        <div class="group-card">
-          <div class="grid-fields">
-            <div class="field"><label>A-B</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ab"><span class="unit">&Omega;</span></div>
-            </div>
-            <div class="field"><label>A-C</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-ac"><span class="unit">&Omega;</span></div>
-            </div>
-            <div class="field"><label>B-C</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-bc"><span class="unit">&Omega;</span></div>
-            </div>
           </div>
         </div>
 
