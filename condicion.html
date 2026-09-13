@@ -5208,244 +5208,314 @@ function kpAisTendencia(ais, umbral){
    comparar motores distintos. La corrida anterior no se oculta ni se colapsa:
    en CHB-05 es justo donde se ve la degradacion que termino en falla a tierra,
    y esa trayectoria es lo que permite anticipar la siguiente. */
-/* Grafica de ensayos: tres paneles con el mismo eje de tiempo.
+/* ============================================================
+   GRAFICA DE ENSAYOS DE AISLAMIENTO
+   ============================================================
+   Mismo comportamiento que la tendencia de la descarga: canales que se
+   encienden y apagan, superpuesto o separado, y recorrido por puntos con
+   recuadro de valores. Tener dos motores de grafica distintos en la misma
+   pantalla obliga a aprender dos formas de leer lo mismo.
 
-   Uno solo no alcanza. La resistencia va en escala logaritmica porque abarca
-   de ohmios a gigaohmios; IP y DAR son razones que viven entre 1 y 5; el
-   balance entre fases son unidades de ohmio. Meterlos en un mismo eje aplasta
-   dos de los tres.
+   Diferencias obligadas por el dato: aqui los ensayos caen en fechas
+   irregulares —a veces meses de diferencia, a veces nueve dias— asi que el
+   eje es ordinal y la fecha va escrita bajo cada punto. Con un eje
+   proporcional, seis ensayos de 2025 quedarian amontonados y el de 2024
+   solo en un extremo.
 
-   Se grafica la lectura del megohmetro, no la corregida: es la evidencia, y en
-   BES la correccion es dudosa porque el megado desde superficie abarca cientos
-   de metros de cable con gradiente termico en serie con el devanado.
+   La resistencia va en logaritmo y el resto en lineal. Y un cero no se
+   descarta: es el megohmetro por debajo de su rango, o sea la evidencia de
+   la falla. Se dibuja en el piso del carril con marca propia. */
 
-   El eje de tiempo es ordinal, no proporcional: con ensayos separados por meses
-   irregulares, un eje a escala deja racimos ilegibles y huecos vacios. */
-function kpAisGraficas(ais){
+let KP_AIS     = null;
+let KP_AIS_ON  = null;
+let KP_AIS_SEP = true;
+
+const KP_AIS_DEF = [
+  ['ir',     'R medida',      'var(--ser-1,#0C5292)', true ],
+  ['ir40',   'R a 40 \u00b0C','var(--ser-2,#7A4FB6)', true ],
+  ['ip',     'IP',            'var(--ser-3,#1C7C54)', false],
+  ['dar',    'DAR',           'var(--ser-4,#B26A00)', false],
+  ['bal_ab', 'Balance A-B',   'var(--ser-5,#A33A3A)', false],
+  ['bal_ac', 'Balance A-C',   'var(--ser-6,#2E6E8E)', false],
+  ['bal_bc', 'Balance B-C',   'var(--ser-7,#6B7A3A)', false],
+  ['temp',   'Temp. devanado','var(--ser-8,#8E5A2E)', false]
+];
+
+function kpAisValor(p, c){
+  switch (c){
+    case 'ir':     return p.ir_1min;
+    case 'ir40':   return p.ir40;
+    case 'ip':     return p.ip;
+    case 'dar':    return p.dar;
+    case 'bal_ab': return p.balance_ab;
+    case 'bal_ac': return p.balance_ac;
+    case 'bal_bc': return p.balance_bc;
+    case 'temp':   return p.temp_devanado;
+  }
+  return null;
+}
+
+function kpAisFmt(c, v){
+  if (v == null) return '\u2014';
+  if (c === 'ir' || c === 'ir40') return Number(v) === 0 ? 'fuera de rango' : kpIR(v);
+  if (c === 'temp') return kpNum(v) + ' \u00b0C';
+  if (c.indexOf('bal_') === 0) return kpNum(v) + ' \u03a9';
+  return Number(v).toFixed(2);
+}
+
+function kpRenderAisGrafica(ais){
   const pts = (ais || []).slice().sort((a, b) =>
-    (a.fecha_prueba < b.fecha_prueba ? -1 : a.fecha_prueba > b.fecha_prueba ? 1 : 0));
-  if (pts.length < 2) {
-    if (pts.length === 1) return '';
-    return '';
+    String(a.fecha_prueba).localeCompare(String(b.fecha_prueba)));
+  if (pts.length < 2) return '';
+
+  KP_AIS = { pts: pts, umbral: pts[0] ? pts[0].umbral : null };
+  const hay = KP_AIS_DEF.filter(d => pts.some(p => kpAisValor(p, d[0]) != null));
+  if (!hay.length) return '';
+  if (!KP_AIS_ON){
+    const enc = hay.filter(d => d[3]).map(d => d[0]);
+    KP_AIS_ON = new Set(enc.length ? enc : [hay[0][0]]);
   }
 
-  const umbral   = pts[0].umbral;
-  const ipAlerta = pts.find(p => p.pi_alerta  != null);
-  const darAlert = pts.find(p => p.dar_alerta != null);
+  let h = '<div class="kp-ser-chips">'
+    + hay.map(d => '<button class="kp-ser-chip' + (KP_AIS_ON.has(d[0]) ? '' : ' off')
+        + '" data-ais="' + d[0] + '"><i style="background:' + d[2] + '"></i>'
+        + d[1] + '</button>').join('')
+    + '</div>'
+    + '<div class="kp-ser-barra">'
+    + '<button class="kp-chip" id="kpAisModo">'
+    + (KP_AIS_SEP ? 'Superponer' : 'Separar') + '</button>'
+    + '<span class="hint">Toque o recorra un ensayo para ver todas sus variables</span>'
+    + '</div>'
+    + '<div id="kpAisBox" style="position:relative"></div>';
 
-  const W = 660, ML = 64, MR = 16;
-  const AL = [ {h:178, t:'Resistencia de aislamiento medida'},
-               {h:128, t:'\u00cdndice de polarizaci\u00f3n y DAR'},
-               {h:112, t:'Resistencia entre fases'} ];
-  const GAP = 34, MT = 18, MB = 26;
-  const H = AL.reduce((s, p) => s + p.h, 0) + GAP * (AL.length - 1) + MT + MB;
-  const top = [];
-  let acc = MT;
-  AL.forEach(p => { top.push(acc); acc += p.h + GAP; });
+  setTimeout(kpAisCablear, 0);
+  return h;
+}
 
-  const X = i => ML + (W - ML - MR) * (pts.length === 1 ? 0.5 : i / (pts.length - 1));
-  const COL = c => c === 'crit' ? 'var(--kp-crit)'
-                 : c === 'warn' ? 'var(--kp-warn)' : 'var(--kp-ok)';
-
-  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" '
-        + 'style="margin-top:10px;overflow:visible" role="img" '
-        + 'aria-label="Ensayos de aislamiento: resistencia, IP, DAR y balance entre fases">';
-
-  const titulo = (k) =>
-    '<text x="' + ML + '" y="' + (top[k] - 6) + '" font-size="10.5" '
-    + 'fill="var(--kp-ink2)" font-weight="600">' + AL[k].t + '</text>';
-
-  const marcasCorrida = (k) => {
-    let o = '';
-    pts.forEach((p, i) => {
-      if (!i) return;
-      const a = pts[i-1].corrida, b = p.corrida;
-      if (a == null || b == null || a === b) return;
-      const xm = (X(i) + X(i-1)) / 2;
-      o += '<line x1="' + xm.toFixed(1) + '" y1="' + top[k] + '" x2="' + xm.toFixed(1)
-        +  '" y2="' + (top[k] + AL[k].h) + '" stroke="var(--kp-ink3)" '
-        +  'stroke-width="1" stroke-dasharray="2 4"/>';
-      if (k === 0){
-        o += '<text x="' + (xm + 4).toFixed(1) + '" y="' + (top[0] + 11)
-          +  '" font-size="9" fill="var(--kp-ink3)">corrida ' + b + '</text>';
-      }
-    });
-    return o;
+function kpAisCablear(){
+  const box = document.getElementById('kpAisBox');
+  if (!box || !KP_AIS) return;
+  document.querySelectorAll('[data-ais]').forEach(b => {
+    b.onclick = () => {
+      const c = b.dataset.ais;
+      /* No se apaga el ultimo canal: una grafica vacia parece un error de
+         carga, no una eleccion del usuario. */
+      if (KP_AIS_ON.has(c) && KP_AIS_ON.size === 1) return;
+      if (KP_AIS_ON.has(c)) KP_AIS_ON.delete(c); else KP_AIS_ON.add(c);
+      b.classList.toggle('off', !KP_AIS_ON.has(c));
+      kpAisDibujar();
+    };
+  });
+  const md = document.getElementById('kpAisModo');
+  if (md) md.onclick = () => {
+    KP_AIS_SEP = !KP_AIS_SEP;
+    md.textContent = KP_AIS_SEP ? 'Superponer' : 'Separar';
+    kpAisDibujar();
   };
+  kpAisDibujar();
+}
 
-  /* ---- Panel 1: resistencia, escala logaritmica ---- */
-  const vIR = pts.map(p => (p.ir_1min != null ? Number(p.ir_1min) : null));
-  const posIR = vIR.filter(v => v != null && v > 0);
-  if (posIR.length){
-    const ref = posIR.concat(umbral != null && umbral > 0 ? [Number(umbral)] : []);
-    const lo = Math.log10(Math.min.apply(null, ref) / 3);
-    const hi = Math.log10(Math.max.apply(null, ref) * 3);
-    const Y = v => top[0] + AL[0].h * (1 - (Math.log10(v) - lo) / (hi - lo));
+function kpAisDibujar(){
+  const cont = document.getElementById('kpAisBox');
+  if (!cont || !KP_AIS) return;
+  const pts = KP_AIS.pts;
+  const vis = KP_AIS_DEF.filter(d => KP_AIS_ON.has(d[0])
+              && pts.some(p => kpAisValor(p, d[0]) != null));
+  if (!vis.length) return;
 
-    s += titulo(0);
-    for (let e = Math.ceil(lo); e <= Math.floor(hi); e++){
-      const yy = Y(Math.pow(10, e));
-      s += '<line x1="' + ML + '" y1="' + yy.toFixed(1) + '" x2="' + (W - MR)
-        +  '" y2="' + yy.toFixed(1) + '" stroke="var(--kp-line)" stroke-width="1"/>'
-        +  '<text x="' + (ML - 8) + '" y="' + (yy + 4).toFixed(1) + '" text-anchor="end" '
-        +  'font-size="9.5" fill="var(--kp-ink3)">' + kpIR(Math.pow(10, e)) + '</text>';
+  const W = 1000, ML = 66, MR = 18, MT = 16;
+  /* El eje de fechas necesita mas alto cuando son muchas y van giradas. */
+  const rot = pts.length > 6;
+  const MB  = rot ? 62 : 34;
+  const hCarril = KP_AIS_SEP ? Math.max(70, Math.min(110, 330 / vis.length)) : 260;
+  const ih = KP_AIS_SEP ? hCarril * vis.length : hCarril;
+  const H  = MT + ih + MB;
+  const X  = i => ML + (W - ML - MR) * (pts.length === 1 ? 0.5 : i / (pts.length - 1));
+
+  let s = '<svg id="kpAisSvg" viewBox="0 0 ' + W + ' ' + H + '" width="100%" '
+        + 'style="overflow:visible;touch-action:pan-y" role="img" '
+        + 'aria-label="Ensayos de aislamiento a lo largo del tiempo">';
+
+  vis.forEach((d, k) => {
+    const c = d[0], col = d[2];
+    const log = (c === 'ir' || c === 'ir40');
+    const yTop = KP_AIS_SEP ? MT + hCarril * k : MT;
+    const hUso = (KP_AIS_SEP ? hCarril : ih) - (KP_AIS_SEP ? 14 : 0);
+
+    const crudos = pts.map(p => kpAisValor(p, c)).map(v => v == null ? null : Number(v));
+    const pos = crudos.filter(v => v != null && v > 0);
+    if (!pos.length) return;
+
+    let lo, hi, Y;
+    if (log){
+      const ref = pos.concat(KP_AIS.umbral ? [Number(KP_AIS.umbral)] : []);
+      lo = Math.log10(Math.min.apply(null, ref) / 3);
+      hi = Math.log10(Math.max.apply(null, ref) * 3);
+      Y = v => yTop + hUso * (1 - (Math.log10(v) - lo) / (hi - lo));
+    } else {
+      const mn = Math.min.apply(null, pos), mx = Math.max.apply(null, pos);
+      /* Margen fijo cuando el canal no varia: sin esto el rango es cero y la
+         linea se pega al borde del carril. */
+      const pad = (mx - mn) < 1e-9 ? Math.max(0.5, Math.abs(mx) * 0.1) : (mx - mn) * 0.25;
+      lo = mn - pad; hi = mx + pad;
+      Y = v => yTop + hUso * (1 - (v - lo) / (hi - lo));
     }
-    if (umbral != null && umbral > 0){
-      const yu = Y(Number(umbral));
-      s += '<line x1="' + ML + '" y1="' + yu.toFixed(1) + '" x2="' + (W - MR)
-        +  '" y2="' + yu.toFixed(1) + '" stroke="var(--kp-crit)" stroke-width="1.4" '
-        +  'stroke-dasharray="5 4"/>'
-        +  '<text x="' + (W - MR) + '" y="' + (yu - 5).toFixed(1) + '" text-anchor="end" '
-        +  'font-size="9.5" fill="var(--kp-crit)">m\u00ednimo IEEE 43</text>';
-    }
-    s += marcasCorrida(0);
 
-    let d = '', abierto = false;
-    pts.forEach((p, i) => {
-      const v = vIR[i];
-      if (v == null || v <= 0){ abierto = false; return; }
-      d += (abierto ? ' L' : ' M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1);
-      abierto = true;
+    /* En superpuesto no se dibujan ejes: cada canal tiene su escala y cuatro
+       columnas de numeros a la izquierda estorban mas de lo que informan. El
+       valor exacto se lee en el recuadro. */
+    if (KP_AIS_SEP){
+      const marcas = log
+        ? (() => { const o = []; for (let e = Math.ceil(lo); e <= Math.floor(hi); e++)
+                     o.push(Math.pow(10, e)); return o.length ? o : [Math.pow(10, lo)]; })()
+        : [lo, (lo + hi) / 2, hi];
+      marcas.forEach(g => {
+        s += '<line x1="' + ML + '" y1="' + Y(g).toFixed(1) + '" x2="' + (W - MR)
+          +  '" y2="' + Y(g).toFixed(1) + '" stroke="var(--kp-line)" stroke-width="1"/>'
+          +  '<text x="' + (ML - 8) + '" y="' + (Y(g) + 4).toFixed(1) + '" text-anchor="end" '
+          +  'font-size="11" fill="var(--kp-ink3)">' + kpAisFmt(c, g) + '</text>';
+      });
+      s += '<text x="' + ML + '" y="' + (yTop + 11) + '" font-size="11.5" '
+        +  'font-weight="600" fill="' + col + '">' + d[1] + '</text>';
+
+      if (log && KP_AIS.umbral){
+        const yu = Y(Number(KP_AIS.umbral));
+        if (yu > yTop && yu < yTop + hUso){
+          s += '<line x1="' + ML + '" y1="' + yu.toFixed(1) + '" x2="' + (W - MR)
+            +  '" y2="' + yu.toFixed(1) + '" stroke="var(--kp-crit)" stroke-width="1.3" '
+            +  'stroke-dasharray="5 4"/>'
+            +  '<text x="' + (W - MR) + '" y="' + (yu - 5).toFixed(1) + '" text-anchor="end" '
+            +  'font-size="10.5" fill="var(--kp-crit)">m\u00ednimo IEEE 43</text>';
+        }
+      }
+    }
+
+    let d2 = '', ab = false;
+    crudos.forEach((v, i) => {
+      if (v == null || v <= 0){ ab = false; return; }
+      d2 += (ab ? ' L' : ' M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1);
+      ab = true;
     });
-    s += '<path d="' + d + '" fill="none" stroke="var(--kp-ink3)" stroke-width="1.6"/>';
+    s += '<path d="' + d2 + '" fill="none" stroke="' + col + '" stroke-width="1.8"/>';
 
-    pts.forEach((p, i) => {
-      const v = vIR[i];
-      /* Un cero no es una medicion: es el megohmetro por debajo de su rango.
-         No se dibuja en la linea —el logaritmo no lo admite— pero tampoco se
-         omite: se marca en el piso, que es donde esta el equipo. */
-      if (v == null || v <= 0){
-        s += '<text x="' + X(i).toFixed(1) + '" y="' + (top[0] + AL[0].h - 12)
-          +  '" text-anchor="middle" font-size="15" fill="var(--kp-crit)">\u25bc</text>'
-          +  '<text x="' + X(i).toFixed(1) + '" y="' + (top[0] + AL[0].h + 1)
-          +  '" text-anchor="middle" font-size="9" font-weight="600" '
-          +  'fill="var(--kp-crit)">fuera de rango</text>';
+    crudos.forEach((v, i) => {
+      if (v == null) return;
+      if (v <= 0){
+        /* El cero se ancla al piso del carril y se enlaza con linea punteada
+           al punto anterior: es un dato, no un hueco, y la caida hasta el
+           piso es exactamente lo que hay que ver. */
+        const yf = yTop + hUso;
+        const prev = crudos.slice(0, i).map((x, j) => [x, j])
+                       .filter(x => x[0] != null && x[0] > 0).pop();
+        if (prev){
+          s += '<line x1="' + X(prev[1]).toFixed(1) + '" y1="' + Y(prev[0]).toFixed(1)
+            +  '" x2="' + X(i).toFixed(1) + '" y2="' + (yf - 4).toFixed(1)
+            +  '" stroke="var(--kp-crit)" stroke-width="1.6" stroke-dasharray="4 3"/>';
+        }
+        s += '<path d="M' + (X(i) - 5).toFixed(1) + ' ' + (yf - 10).toFixed(1)
+          +  ' L' + (X(i) + 5).toFixed(1) + ' ' + (yf - 10).toFixed(1)
+          +  ' L' + X(i).toFixed(1) + ' ' + (yf - 1).toFixed(1) + ' Z" '
+          +  'fill="var(--kp-crit)"/>';
         return;
       }
-      /* El valor va escrito sobre el punto. Una grafica de la que hay que
-         deducir la cifra contando cuadriculas no sirve en campo: el tecnico
-         necesita el numero, y la linea solo le dice hacia donde va. */
-      const arriba = (i === 0) || (vIR[i-1] == null) || (v >= vIR[i-1]);
+      const p = pts[i];
+      const col2 = (c === 'ir' || c === 'ir40')
+        ? (p.dictamen_cls === 'crit' ? 'var(--kp-crit)'
+           : p.dictamen_cls === 'warn' ? 'var(--kp-warn)' : col)
+        : col;
       s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(v).toFixed(1)
-        +  '" r="4" fill="' + COL(p.dictamen_cls) + '"/>'
-        +  '<text x="' + X(i).toFixed(1) + '" y="' + (Y(v) + (arriba ? -9 : 15)).toFixed(1)
-        +  '" text-anchor="middle" font-size="9.5" font-weight="600" '
-        +  'fill="' + COL(p.dictamen_cls) + '">' + kpIR(v) + '</text>';
+        +  '" r="4" fill="' + col2 + '"/>';
     });
-  }
-
-  /* ---- Panel 2: IP y DAR ---- */
-  const serie2 = [
-    { k:'ip',  t:'IP',  col:'var(--ser-3, #3a7bd5)', al: ipAlerta  ? ipAlerta.pi_alerta  : null },
-    { k:'dar', t:'DAR', col:'var(--ser-6, #b06ab3)', al: darAlert ? darAlert.dar_alerta : null }
-  ];
-  const v2 = [];
-  pts.forEach(p => serie2.forEach(x => { if (p[x.k] != null) v2.push(Number(p[x.k])); }));
-  serie2.forEach(x => { if (x.al != null) v2.push(Number(x.al)); });
-  if (v2.length){
-    const lo2 = Math.min(0, Math.min.apply(null, v2));
-    const hi2 = Math.max.apply(null, v2) * 1.15;
-    const Y2 = v => top[1] + AL[1].h * (1 - (v - lo2) / (hi2 - lo2));
-    s += titulo(1);
-    [lo2, (lo2 + hi2) / 2, hi2].forEach(g => {
-      s += '<line x1="' + ML + '" y1="' + Y2(g).toFixed(1) + '" x2="' + (W - MR)
-        +  '" y2="' + Y2(g).toFixed(1) + '" stroke="var(--kp-line)" stroke-width="1"/>'
-        +  '<text x="' + (ML - 8) + '" y="' + (Y2(g) + 4).toFixed(1) + '" text-anchor="end" '
-        +  'font-size="9.5" fill="var(--kp-ink3)">' + g.toFixed(1) + '</text>';
-    });
-    s += marcasCorrida(1);
-    serie2.forEach((x, si) => {
-      if (x.al != null){
-        s += '<line x1="' + ML + '" y1="' + Y2(x.al).toFixed(1) + '" x2="' + (W - MR)
-          +  '" y2="' + Y2(x.al).toFixed(1) + '" stroke="' + x.col + '" stroke-width="1" '
-          +  'stroke-dasharray="3 3" opacity=".55"/>'
-          +  '<text x="' + (W - MR) + '" y="' + (Y2(x.al) - 4).toFixed(1)
-          +  '" text-anchor="end" font-size="9" fill="' + x.col + '" opacity=".8">'
-          +  'alerta ' + x.t + ' ' + Number(x.al).toFixed(2) + '</text>';
-      }
-      let d = '', ab = false;
-      pts.forEach((p, i) => {
-        if (p[x.k] == null){ ab = false; return; }
-        d += (ab ? ' L' : ' M') + X(i).toFixed(1) + ' ' + Y2(Number(p[x.k])).toFixed(1);
-        ab = true;
-      });
-      s += '<path d="' + d + '" fill="none" stroke="' + x.col + '" stroke-width="1.6"/>';
-      pts.forEach((p, i) => {
-        if (p[x.k] == null) return;
-        const vv = Number(p[x.k]);
-        s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y2(vv).toFixed(1)
-          +  '" r="3" fill="' + x.col + '"/>'
-          +  '<text x="' + X(i).toFixed(1) + '" y="'
-          +  (Y2(vv) + (si ? 15 : -8)).toFixed(1) + '" text-anchor="middle" '
-          +  'font-size="9" font-weight="600" fill="' + x.col + '">'
-          +  vv.toFixed(2) + '</text>';
-      });
-      s += '<text x="' + (ML + 4 + si * 52) + '" y="' + (top[1] + 11)
-        +  '" font-size="9.5" fill="' + x.col + '" font-weight="600">' + x.t + '</text>';
-    });
-  }
-
-  /* ---- Panel 3: balance entre fases ---- */
-  const serie3 = [
-    { k:'balance_ab', t:'A-B', col:'var(--ser-1, #2a9d8f)' },
-    { k:'balance_ac', t:'A-C', col:'var(--ser-2, #e9c46a)' },
-    { k:'balance_bc', t:'B-C', col:'var(--ser-4, #e76f51)' }
-  ];
-  const v3 = [];
-  pts.forEach(p => serie3.forEach(x => { if (p[x.k] != null) v3.push(Number(p[x.k])); }));
-  if (v3.length){
-    const mn = Math.min.apply(null, v3), mx = Math.max.apply(null, v3);
-    /* Margen fijo cuando las tres fases coinciden: sin esto el rango es cero y
-       las tres lineas se superponen sobre el borde del panel. */
-    const pad = (mx - mn) < 0.2 ? 0.5 : (mx - mn) * 0.25;
-    const lo3 = mn - pad, hi3 = mx + pad;
-    const Y3 = v => top[2] + AL[2].h * (1 - (v - lo3) / (hi3 - lo3));
-    s += titulo(2);
-    [lo3, (lo3 + hi3) / 2, hi3].forEach(g => {
-      s += '<line x1="' + ML + '" y1="' + Y3(g).toFixed(1) + '" x2="' + (W - MR)
-        +  '" y2="' + Y3(g).toFixed(1) + '" stroke="var(--kp-line)" stroke-width="1"/>'
-        +  '<text x="' + (ML - 8) + '" y="' + (Y3(g) + 4).toFixed(1) + '" text-anchor="end" '
-        +  'font-size="9.5" fill="var(--kp-ink3)">' + g.toFixed(1) + ' \u03a9</text>';
-    });
-    s += marcasCorrida(2);
-    serie3.forEach((x, si) => {
-      let d = '', ab = false;
-      pts.forEach((p, i) => {
-        if (p[x.k] == null){ ab = false; return; }
-        d += (ab ? ' L' : ' M') + X(i).toFixed(1) + ' ' + Y3(Number(p[x.k])).toFixed(1);
-        ab = true;
-      });
-      s += '<path d="' + d + '" fill="none" stroke="' + x.col + '" stroke-width="1.6" '
-        +  'opacity=".85"/>';
-      /* Las tres fases suelen coincidir, asi que solo se rotula la primera:
-         tres numeros identicos apilados sobre el mismo punto no se leen. Si
-         una se separa, se rotula tambien, que es cuando importa. */
-      pts.forEach((p, i) => {
-        if (p[x.k] == null) return;
-        const vv = Number(p[x.k]);
-        const ab = Number(p.balance_ab);
-        if (si && Math.abs(vv - ab) < 0.05) return;
-        s += '<text x="' + X(i).toFixed(1) + '" y="' + (Y3(vv) - 7).toFixed(1)
-          +  '" text-anchor="middle" font-size="9" font-weight="600" '
-          +  'fill="' + x.col + '">' + vv.toFixed(1) + '</text>';
-      });
-      s += '<text x="' + (ML + 4 + si * 40) + '" y="' + (top[2] + 11)
-        +  '" font-size="9.5" fill="' + x.col + '" font-weight="600">' + x.t + '</text>';
-    });
-  }
-
-  /* ---- Eje de tiempo, comun a los tres ---- */
-  const yEje = H - MB + 14;
-  pts.forEach((p, i) => {
-    if (i !== 0 && i !== pts.length - 1 && pts.length > 7
-        && !(i && pts[i-1].corrida !== p.corrida)) return;
-    s += '<text x="' + X(i).toFixed(1) + '" y="' + yEje
-      +  '" text-anchor="middle" font-size="9.5" fill="var(--kp-ink3)">'
-      +  (p.fecha_prueba || '').slice(2) + '</text>';
   });
 
-  s += '</svg>';
-  return s;
+  /* Marca de cambio de corrida: a partir de ahi es otro motor, y sin la marca
+     un equipo nuevo se lee como una recuperacion del aislamiento. */
+  pts.forEach((p, i) => {
+    if (!i) return;
+    const a = pts[i-1].corrida, b = p.corrida;
+    if (a == null || b == null || a === b) return;
+    const xm = (X(i) + X(i-1)) / 2;
+    s += '<line x1="' + xm.toFixed(1) + '" y1="' + MT + '" x2="' + xm.toFixed(1)
+      +  '" y2="' + (MT + ih) + '" stroke="var(--kp-ink2)" stroke-width="1.2" '
+      +  'stroke-dasharray="3 4"/>'
+      +  '<text x="' + (xm + 5).toFixed(1) + '" y="' + (MT + ih + 12)
+      +  '" font-size="10.5" fill="var(--kp-ink2)" font-weight="600">corrida '
+      +  b + '</text>';
+  });
+
+  /* Todas las fechas, giradas cuando son muchas. La fecha de cada ensayo es
+     parte del dato: sin ella no se sabe si una caida ocurrio en un mes o en
+     dos anos. */
+  pts.forEach((p, i) => {
+    const f = String(p.fecha_prueba || '');
+    s += rot
+      ? '<text transform="translate(' + X(i).toFixed(1) + ',' + (MT + ih + 24)
+        + ') rotate(-38)" text-anchor="end" font-size="11" '
+        + 'fill="var(--kp-ink3)">' + f + '</text>'
+      : '<text x="' + X(i).toFixed(1) + '" y="' + (MT + ih + 20)
+        + '" text-anchor="middle" font-size="11" fill="var(--kp-ink3)">' + f + '</text>';
+  });
+
+  s += '<line id="kpAisCur" x1="-9" y1="' + MT + '" x2="-9" y2="' + (MT + ih)
+    +  '" stroke="var(--acc,#0C5292)" stroke-width="1" stroke-dasharray="3 3"/>';
+
+  const tip = document.getElementById('kpAisTip');
+  cont.innerHTML = s + '</svg>';
+  cont.appendChild(tip || Object.assign(document.createElement('div'),
+    { id:'kpAisTip', className:'kp-ser-tip' }));
+  kpAisInteraccion(ML, W - ML - MR);
+}
+
+function kpAisInteraccion(ML, iw){
+  const svg = document.getElementById('kpAisSvg');
+  const tip = document.getElementById('kpAisTip');
+  const cur = document.getElementById('kpAisCur');
+  if (!svg || !KP_AIS) return;
+  const W = 1000, pts = KP_AIS.pts;
+
+  const mover = ev => {
+    const r = svg.getBoundingClientRect();
+    const px = (ev.clientX - r.left) / r.width * W;
+    const t = pts.length === 1 ? 0 : (px - ML) / iw * (pts.length - 1);
+    const i = Math.max(0, Math.min(pts.length - 1, Math.round(t)));
+    const p = pts[i];
+    const x = ML + iw * (pts.length === 1 ? 0.5 : i / (pts.length - 1));
+    if (cur){ cur.setAttribute('x1', x); cur.setAttribute('x2', x); }
+
+    /* El recuadro lista todas las variables del ensayo, no solo las visibles:
+       al detenerse en un punto lo que se quiere es la foto completa de ese
+       dia, incluido el balance entre fases. */
+    let html = '<div class="h">' + (p.fecha_prueba || '')
+      + (p.corrida != null ? ' &middot; corrida ' + p.corrida : '') + '</div>';
+    KP_AIS_DEF.forEach(d => {
+      const v = kpAisValor(p, d[0]);
+      if (v == null) return;
+      html += '<div class="r"><i style="background:' + d[2] + '"></i>'
+        + d[1] + '<b style="margin-left:auto">' + kpAisFmt(d[0], v) + '</b></div>';
+    });
+    if (p.temp_devanado == null){
+      html += '<div class="r" style="opacity:.7">Sin temperatura de devanado</div>';
+    }
+    if (p.dictamen_txt){
+      html += '<div class="r" style="margin-top:4px;opacity:.85"><b>'
+        + p.dictamen_txt + '</b></div>';
+    }
+
+    tip.innerHTML = html;
+    tip.style.display = 'block';
+    const rel = (x / W) * r.width;
+    tip.style.left = Math.max(4, Math.min(r.width - 190, rel + 12)) + 'px';
+    tip.style.top  = '8px';
+  };
+
+  const salir = () => {
+    tip.style.display = 'none';
+    if (cur){ cur.setAttribute('x1', -9); cur.setAttribute('x2', -9); }
+  };
+
+  svg.addEventListener('pointermove', mover);
+  svg.addEventListener('pointerdown', mover);
+  svg.addEventListener('pointerleave', salir);
 }
 
 function kpRenderAislamiento(ais){
@@ -5460,7 +5530,7 @@ function kpRenderAislamiento(ais){
          distintas. */
       +  (sinTemp ? ' &middot; ' + sinTemp + ' sin temperatura de devanado' : '')
       +  '</p>';
-    h += kpAisGraficas(ais);
+    h += kpRenderAisGrafica(ais);
     /* Que se ensayo, dicho en palabras. En un BES instalado no se puede
        separar el motor del cable: se mega desde superficie y el valor
        incluye la fuga del cable, asi que sale por debajo del motor solo
