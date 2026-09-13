@@ -1776,7 +1776,9 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
   <div class="panel-body">
     <div class="hint-box">&#8505;&#65039; Estos cambios quedan registrados para reportarse a quien actualiza SAP, con fecha y usuario — no se sobrescriben sin dejar rastro como en Excel.</div>
-    <div class="field"><label>Descripción</label><input id="e-desc" list="dl-descripciones"/></div>
+    <div class="field"><label>Descripción</label><input id="e-desc" list="dl-descripciones"/>
+      <div id="prop-box-desc" class="prop-box" style="display:none"></div>
+    </div>
     <div class="field">
       <label>Descripción técnica ampliada</label>
       <textarea id="e-desctec" rows="3"
@@ -4665,6 +4667,27 @@ async function ejecutarOperacion(tipo, payload) {
         if (e3) throw e3;
       }
     }
+    /* Descripcion de SAP: ademas de escribirla, deja cada equipo desalineado y
+       registra la solicitud. El registro va primero: si algo falla despues, es
+       preferible una solicitud de mas que un maestro cambiado sin rastro. */
+    if (payload.propagacionDesc && payload.propagacionDesc.ids
+        && payload.propagacionDesc.ids.length) {
+      const pend = payload.propagacionDesc.pendientes || [];
+      for (let i = 0; i < pend.length; i += 80) {
+        const { error: e4 } = await sb.from("campos_pendientes")
+          .insert(pend.slice(i, i + 80));
+        if (e4) throw e4;
+      }
+      const idsd = payload.propagacionDesc.ids;
+      for (let i = 0; i < idsd.length; i += 80) {
+        const lote = idsd.slice(i, i + 80);
+        const { error: e5 } = await sb.from("equipos")
+          .update({ descripcion: payload.propagacionDesc.descripcion,
+                    estado_sincronizacion: "pendiente_actualizar_sap" })
+          .in("id", lote);
+        if (e5) throw e5;
+      }
+    }
   }
 }
 
@@ -4718,7 +4741,8 @@ let propHermanosCache = null;
 
 /* Clasifica los equipos que comparten marca y modelo con el que se edita.
    Devuelve null cuando no hay familia identificable. */
-function propCalcularHermanos(marca, modelo, excluirId) {
+function propCalcularHermanos(marca, modelo, excluirId, campo) {
+  campo = campo || "descripcion_tecnica";
   const m = propNorm(marca), mo = propNorm(modelo);
   if (!m || !mo) return null;
 
@@ -4728,11 +4752,12 @@ function propCalcularHermanos(marca, modelo, excluirId) {
   if (!hermanos.length) return null;
 
   return {
+    campo: campo,
     marca: marca.trim(),
     modelo: modelo.trim(),
     todos: hermanos,
-    vacios: hermanos.filter(e => !String(e.descripcion_tecnica || "").trim()),
-    conTexto: hermanos.filter(e => String(e.descripcion_tecnica || "").trim()),
+    vacios: hermanos.filter(e => !String(e[campo] || "").trim()),
+    conTexto: hermanos.filter(e => String(e[campo] || "").trim()),
   };
 }
 
@@ -4740,8 +4765,9 @@ function propCalcularHermanos(marca, modelo, excluirId) {
    Sirve para ofrecer "usar la que ya existe" en vez de volver a teclearla. */
 function propTextoDominante(hermanos) {
   const conteo = new Map();
+  const campo = hermanos.campo || "descripcion_tecnica";
   hermanos.conTexto.forEach(e => {
-    const t = String(e.descripcion_tecnica).trim();
+    const t = String(e[campo]).trim();
     conteo.set(t, (conteo.get(t) || 0) + 1);
   });
   let mejor = null, mejorN = 0;
@@ -4749,16 +4775,36 @@ function propTextoDominante(hermanos) {
   return mejor ? { texto: mejor, n: mejorN, variantes: conteo.size } : null;
 }
 
-function propRender() {
-  const box = document.getElementById("prop-box");
+/* Dos campos se propagan por familia de marca y modelo, y no son equivalentes:
+
+   descripcion_tecnica  Campo propio de Kronos-M. Propagarlo solo copia texto.
+   descripcion          Campo de SAP. Propagarlo declara que N equipos tienen
+                        mal la descripcion en SAP, asi que cada uno genera su
+                        pendiente de actualizacion. Es mas util —resuelve de una
+                        vez una familia entera mal descrita— y mas serio, porque
+                        va a llegar como solicitud a quien administra SAP. */
+const PROP_CAMPOS = {
+  descripcion_tecnica: { box: "prop-box",      input: "e-desctec", grupo: "prop-alcance",
+                         etiqueta: "descripción técnica", sap: false },
+  descripcion:         { box: "prop-box-desc", input: "e-desc",    grupo: "propd-alcance",
+                         etiqueta: "descripción", sap: true }
+};
+
+let propHermanosDesc = null;
+
+function propRender(campo) {
+  campo = campo || "descripcion_tecnica";
+  const cfg = PROP_CAMPOS[campo];
+  const box = document.getElementById(cfg.box);
+  if (!box) return;
   if (!equipoSeleccionado) { box.style.display = "none"; return; }
 
   const marca  = document.getElementById("e-marca").value;
   const modelo = document.getElementById("e-modelo").value;
-  const texto  = document.getElementById("e-desctec").value.trim();
+  const texto  = document.getElementById(cfg.input).value.trim();
 
-  const h = propCalcularHermanos(marca, modelo, equipoSeleccionado.id);
-  propHermanosCache = h;
+  const h = propCalcularHermanos(marca, modelo, equipoSeleccionado.id, campo);
+  if (campo === "descripcion") propHermanosDesc = h; else propHermanosCache = h;
 
   if (!h) {
     box.style.display = "none";
@@ -4782,13 +4828,13 @@ function propRender() {
           dom.n + ').</div>'
         : "") +
       '<div class="prop-lista" style="white-space:pre-wrap">' + escaparHtml(dom.texto) + '</div>' +
-      '<button type="button" class="btn-mini" onclick="propUsarTextoHermanos()">Usar esta descripción</button>';
+      '<button type="button" class="btn-mini" onclick="propUsarTextoHermanos(\'' + campo + '\')">Usar esta descripción</button>';
     return;
   }
 
   /* Hay texto escrito: se ofrece llevarlo al resto de la familia. */
   const distintos = h.conTexto.filter(e =>
-    String(e.descripcion_tecnica).trim() !== texto
+    String(e[campo]).trim() !== texto
   );
   const nVacios = h.vacios.length, nDistintos = distintos.length;
 
@@ -4797,7 +4843,7 @@ function propRender() {
     box.style.display = "";
     box.innerHTML =
       '<div class="prop-titulo">Los ' + h.todos.length + ' equipos con ' +
-      h.marca + " · " + h.modelo + ' ya tienen esta misma descripción.</div>';
+      h.marca + " · " + h.modelo + ' ya tienen esta misma ' + cfg.etiqueta + '.</div>';
     return;
   }
 
@@ -4811,26 +4857,30 @@ function propRender() {
   box.style.display = "";
   box.innerHTML =
     '<div class="prop-titulo">Aplicar también a los equipos iguales</div>' +
+    (cfg.sap
+      ? '<div class="mat-stock" style="margin-top:4px">Cada equipo alcanzado queda ' +
+        'pendiente de actualizar en SAP, con su propio registro de solicitud.</div>'
+      : "") +
     '<div style="color:var(--text-2)">' + escaparHtml(h.marca) + " · " +
       escaparHtml(h.modelo) + " — " + h.todos.length + " equipo" +
       (h.todos.length === 1 ? "" : "s") + '</div>' +
 
     '<div class="prop-opcion">' +
-      '<input type="radio" name="prop-alcance" id="prop-no" value="ninguno" checked>' +
-      '<label for="prop-no">Solo este equipo' +
+      '<input type="radio" name="' + cfg.grupo + '" id="' + cfg.grupo + '-no" value="ninguno" checked>' +
+      '<label for="' + cfg.grupo + '-no">Solo este equipo' +
         '<span class="prop-sub">No toca a los demás.</span></label></div>' +
 
     (nVacios
       ? '<div class="prop-opcion">' +
-        '<input type="radio" name="prop-alcance" id="prop-vacios" value="vacios">' +
-        '<label for="prop-vacios">Llenar los ' + nVacios + ' que están sin descripción' +
+        '<input type="radio" name="' + cfg.grupo + '" id="' + cfg.grupo + '-vacios" value="vacios">' +
+        '<label for="' + cfg.grupo + '-vacios">Llenar los ' + nVacios + ' que están sin descripción' +
           '<span class="prop-sub">No sobrescribe nada que ya esté escrito.</span></label></div>'
       : "") +
 
     (nDistintos
       ? '<div class="prop-opcion">' +
-        '<input type="radio" name="prop-alcance" id="prop-todos" value="todos">' +
-        '<label for="prop-todos">Unificar los ' + h.todos.length + ' equipos' +
+        '<input type="radio" name="' + cfg.grupo + '" id="' + cfg.grupo + '-todos" value="todos">' +
+        '<label for="' + cfg.grupo + '-todos">Unificar los ' + h.todos.length + ' equipos' +
           '<span class="prop-sub">Sobrescribe ' + nDistintos +
           ' que hoy tienen un texto distinto. Es la opción para corregir una errata.</span>' +
         '</label></div>'
@@ -4839,24 +4889,28 @@ function propRender() {
     '<div class="prop-lista">' + previa + '</div>';
 }
 
-function propUsarTextoHermanos() {
-  if (!propHermanosCache) return;
-  const dom = propTextoDominante(propHermanosCache);
+function propUsarTextoHermanos(campo) {
+  campo = campo || "descripcion_tecnica";
+  const h = campo === "descripcion" ? propHermanosDesc : propHermanosCache;
+  if (!h) return;
+  const dom = propTextoDominante(h);
   if (!dom) return;
-  document.getElementById("e-desctec").value = dom.texto;
-  propRender();
+  document.getElementById(PROP_CAMPOS[campo].input).value = dom.texto;
+  propRender(campo);
 }
 
 /* Ids a los que se llevara el texto, segun la opcion elegida. */
-function propIdsDestino(textoActual) {
-  const h = propHermanosCache;
+function propIdsDestino(textoActual, campo) {
+  campo = campo || "descripcion_tecnica";
+  const cfg = PROP_CAMPOS[campo];
+  const h = campo === "descripcion" ? propHermanosDesc : propHermanosCache;
   if (!h) return [];
-  const sel = document.querySelector('input[name="prop-alcance"]:checked');
+  const sel = document.querySelector('input[name="' + cfg.grupo + '"]:checked');
   const alcance = sel ? sel.value : "ninguno";
   if (alcance === "vacios") return h.vacios.map(e => e.id);
   if (alcance === "todos") {
     return h.todos
-      .filter(e => String(e.descripcion_tecnica || "").trim() !== textoActual)
+      .filter(e => String(e[campo] || "").trim() !== textoActual)
       .map(e => e.id);
   }
   return [];
@@ -4868,10 +4922,20 @@ function escaparHtml(s) {
     .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-["e-marca", "e-modelo", "e-desctec"].forEach(id => {
+/* Marca y modelo definen la familia, asi que al cambiarlos hay que repintar
+   las dos cajas. Cada texto repinta solo la suya. */
+function propRenderTodo(){ propRender("descripcion_tecnica"); propRender("descripcion"); }
+
+["e-marca", "e-modelo"].forEach(id => {
   const el = document.getElementById(id);
-  if (el) el.addEventListener("input", propRender);
+  if (el) el.addEventListener("input", propRenderTodo);
 });
+(function(){
+  const a = document.getElementById("e-desctec");
+  if (a) a.addEventListener("input", () => propRender("descripcion_tecnica"));
+  const b = document.getElementById("e-desc");
+  if (b) b.addEventListener("input", () => propRender("descripcion"));
+})();
 
 /* ============================================================
    REGISTRAR CAMBIO
@@ -4885,7 +4949,7 @@ document.getElementById("btn-editar-datos").onclick = () => {
   document.getElementById("e-serie").value = equipoSeleccionado.numero_serie || "";
   document.getElementById("e-ubicaciontecnica").value = equipoSeleccionado.ubicacion_tecnica_sap || "";
   document.getElementById("e-desctec").value = equipoSeleccionado.descripcion_tecnica || "";
-  propRender();
+  propRenderTodo();
   abrirPanel("panel-editar");
 };
 
@@ -4936,9 +5000,23 @@ document.getElementById("btn-guardar-editar").onclick = async () => {
      es independiente de si la descripcion tecnica de ESTE equipo cambio:
      puede estar ya correcta y lo que falta es llevarla a los hermanos. */
   const textoTecnico = nuevos.descripcion_tecnica || "";
-  const idsPropagar = textoTecnico ? propIdsDestino(textoTecnico) : [];
+  const idsPropagar = textoTecnico ? propIdsDestino(textoTecnico, "descripcion_tecnica") : [];
 
-  if (!Object.keys(cambios).length && !idsPropagar.length) {
+  /* Propagar la descripcion de SAP no es solo copiar texto: cada equipo
+     alcanzado queda desalineado con SAP y necesita su propio registro de
+     solicitud, igual que si se hubiera editado uno por uno. Sin eso se
+     modificaria el maestro local sin dejar rastro de que hay que pedir la
+     correccion. */
+  const textoDesc = nuevos.descripcion || "";
+  const idsPropagarDesc = textoDesc ? propIdsDestino(textoDesc, "descripcion") : [];
+  const pendientesPropagados = idsPropagarDesc.map(id => {
+    const e = equipos.find(x => x.id === id) || {};
+    return { equipo_id: id, campo: "descripcion",
+             valor_sap: e.descripcion || null, valor_propuesto: textoDesc,
+             estado: "pendiente" };
+  });
+
+  if (!Object.keys(cambios).length && !idsPropagar.length && !idsPropagarDesc.length) {
     toast("No hay cambios para guardar");
     btn.disabled = false; btn.textContent = "Guardar datos";
     return;
@@ -4957,6 +5035,10 @@ document.getElementById("btn-guardar-editar").onclick = async () => {
         equipoId: equipoSeleccionado.id,
         propagacion: idsPropagar.length
           ? { ids: idsPropagar, descripcion_tecnica: textoTecnico }
+          : null,
+        propagacionDesc: idsPropagarDesc.length
+          ? { ids: idsPropagarDesc, descripcion: textoDesc,
+              pendientes: pendientesPropagados }
           : null,
       },
       () => {
@@ -4978,12 +5060,24 @@ document.getElementById("btn-guardar-editar").onclick = async () => {
             }
           });
         }
+        if (idsPropagarDesc.length) {
+          const setd = new Set(idsPropagarDesc);
+          equipos.forEach(e => {
+            if (setd.has(e.id)) {
+              e.descripcion = textoDesc;
+              e.estado_sincronizacion = "pendiente_actualizar_sap";
+              _buscables.delete(e.id);
+            }
+          });
+        }
         localStorage.setItem(CACHE_KEY, JSON.stringify(equipos));
       }
     );
     toast(
       (guardadoDirecto ? "Datos actualizados" : "Sin conexión: guardado en el dispositivo, se sincronizará solo") +
-      (idsPropagar.length ? " · " + idsPropagar.length + " equipos iguales actualizados" : "")
+      (idsPropagar.length ? " · " + idsPropagar.length + " equipos iguales actualizados" : "") +
+      (idsPropagarDesc.length ? " · " + idsPropagarDesc.length +
+        " descripciones propagadas, pendientes de SAP" : "")
     );
     cerrarPanel("panel-editar");
     cerrarPanel("panel-ficha");
