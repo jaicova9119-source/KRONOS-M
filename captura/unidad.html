@@ -945,14 +945,9 @@ function abrirPlaca(){
         +  '<input id="pl-derval-' + esc(c.columna) + '" class="campo mono"'
         +  ' inputmode="decimal" value="'
         +  esc(der && der.valor_placa != null ? der.valor_placa : '') + '">'
-        +  '<label for="pl-dermot-' + esc(c.columna) + '">Motivo</label>'
-        +  '<input id="pl-dermot-' + esc(c.columna) + '" class="campo"'
-        +  ' placeholder="Temperatura de fondo, altitud\u2026" value="'
-        +  esc(der && der.motivo ? der.motivo : '') + '">'
-        +  '<label for="pl-derref-' + esc(c.columna) + '">Referencia</label>'
-        +  '<input id="pl-derref-' + esc(c.columna) + '" class="campo"'
-        +  ' placeholder="Documento o comunicacion del fabricante" value="'
-        +  esc(der && der.referencia ? der.referencia : '') + '">'
+        /* Motivo y referencia se retiraron: en campo no se cuenta con el
+           documento del fabricante que justifica el derrateo, y un campo que
+           siempre se deja vacio solo alarga el formulario. */
         +  '</div></div>';
     }
   });
@@ -1099,8 +1094,6 @@ $('pl-guardar').onclick = function(ev){
         if(!/^-?[0-9]+([.,][0-9]+)?$/.test(vo)){ err = 'valor original de ' + c.etiqueta; return; }
         ajustes[c.columna] = {
           valor_placa: vo,
-          motivo:     (($('pl-dermot-' + c.columna) || {}).value || '').trim(),
-          referencia: (($('pl-derref-' + c.columna) || {}).value || '').trim()
         };
       } else {
         /* Sin marca se retira el ajuste: el valor pasa a ser de placa */
@@ -1127,9 +1120,7 @@ $('pl-guardar').onclick = function(ev){
         PLACA.ajustes = PLACA.ajustes || {};
         Object.keys(ajustes).forEach(function(k){
           if(!ajustes[k].valor_placa) delete PLACA.ajustes[k];
-          else PLACA.ajustes[k] = { valor_placa: ajustes[k].valor_placa,
-                                    motivo: ajustes[k].motivo,
-                                    referencia: ajustes[k].referencia };
+          else PLACA.ajustes[k] = { valor_placa: ajustes[k].valor_placa };
         });
       }
     },
