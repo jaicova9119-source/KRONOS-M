@@ -4226,7 +4226,17 @@ function kpRenderResumen(med, bal, ctx){
       pie += '<br><b style="color:' + c + '">' + ultAis.dictamen_txt + '</b>';
     }
 
-    chip('Aislamiento', kpIR(ultAis.ir_1min), '', ultAis.dictamen_cls || 'none', pie);
+    /* La de 10 minutos es la cifra con la que trabaja el equipo en campo. La
+       de 1 minuto va al lado porque es la que sostiene el dictamen: el minimo
+       de IEEE 43 esta definido sobre ella, y sin verla el veredicto no se
+       puede rastrear. */
+    const princ = ultAis.ir_10min != null ? ultAis.ir_10min : ultAis.ir_1min;
+    if (ultAis.ir_10min != null && ultAis.ir_1min != null){
+      pie = (pie ? pie + ' \u00b7 ' : '') + kpIR(ultAis.ir_1min) + ' a 1 min';
+    }
+    chip('Aislamiento', kpIR(princ)
+      + (ultAis.ir_10min != null ? '<small>10 min</small>' : ''),
+      '', ultAis.dictamen_cls || 'none', pie);
   } else {
     chip('Aislamiento', '\u2014', '', 'none', 'Sin ensayo registrado');
   }
@@ -5270,7 +5280,8 @@ let KP_AIS_ON  = null;
 let KP_AIS_SEP = true;
 
 const KP_AIS_DEF = [
-  ['ir',     'R medida',      'var(--ser-1,#0C5292)', true ],
+  ['ir10',   'R 10 min',      'var(--ser-1,#0C5292)', true ],
+  ['ir',     'R 1 min',       'var(--ser-2,#7A4FB6)', true ],
   ['ip',     'IP',            'var(--ser-3,#1C7C54)', false],
   ['dar',    'DAR',           'var(--ser-4,#B26A00)', false],
   ['bal_ab', 'Balance A-B',   'var(--ser-5,#A33A3A)', false],
@@ -5281,6 +5292,7 @@ const KP_AIS_DEF = [
 
 function kpAisValor(p, c){
   switch (c){
+    case 'ir10':   return p.ir_10min;
     case 'ir':     return p.ir_1min;
     case 'ip':     return p.ip;
     case 'dar':    return p.dar;
@@ -5294,7 +5306,7 @@ function kpAisValor(p, c){
 
 function kpAisFmt(c, v){
   if (v == null) return '\u2014';
-  if (c === 'ir') return Number(v) === 0 ? 'fuera de rango' : kpIR(v);
+  if (c === 'ir' || c === 'ir10') return Number(v) === 0 ? 'fuera de rango' : kpIR(v);
   if (c === 'temp') return kpNum(v) + ' \u00b0C';
   if (c.indexOf('bal_') === 0) return kpNum(v) + ' \u03a9';
   return Number(v).toFixed(2);
@@ -5375,7 +5387,7 @@ function kpAisDibujar(){
 
   vis.forEach((d, k) => {
     const c = d[0], col = d[2];
-    const log = (c === 'ir');
+    const log = (c === 'ir' || c === 'ir10');
     const yTop = KP_AIS_SEP ? MT + hCarril * k : MT;
     const hUso = (KP_AIS_SEP ? hCarril : ih) - (KP_AIS_SEP ? 14 : 0);
 
@@ -5456,7 +5468,7 @@ function kpAisDibujar(){
         return;
       }
       const p = pts[i];
-      const col2 = (c === 'ir')
+      const col2 = (c === 'ir' || c === 'ir10')
         ? (p.dictamen_cls === 'crit' ? 'var(--kp-crit)'
            : p.dictamen_cls === 'warn' ? 'var(--kp-warn)' : col)
         : col;
@@ -5655,9 +5667,12 @@ function kpRenderAislamiento(ais){
         /* La lectura del instrumento, con la temperatura del ensayo como
            contexto cuando se anoto. */
         +  '<div class="dt">'
-        +  kpIR(a.ir_1min)
-        +  (a.temp_devanado != null
-              ? ' <span class="src">a ' + kpNum(a.temp_devanado) + ' &deg;C</span>' : '')
+        +  kpIR(a.ir_10min != null ? a.ir_10min : a.ir_1min)
+        +  (a.ir_10min != null ? ' <span class="src">a 10 min' : ' <span class="src">')
+        +  (a.ir_10min != null && a.ir_1min != null
+              ? ' &middot; ' + kpIR(a.ir_1min) + ' a 1 min' : '')
+        +  (a.temp_devanado != null ? ' &middot; ' + kpNum(a.temp_devanado) + ' &deg;C' : '')
+        +  '</span>'
         +  (a.ip != null ? ' &middot; IP ' + kpNum(a.ip) : '')
         +  (a.dar != null ? ' &middot; DAR ' + kpNum(a.dar) : '')
         +  '</div>'
