@@ -5479,15 +5479,21 @@ function kpAisDibujar(){
      un equipo nuevo se lee como una recuperacion del aislamiento. */
   pts.forEach((p, i) => {
     if (!i) return;
-    const a = pts[i-1].corrida, b = p.corrida;
-    if (a == null || b == null || a === b) return;
+    /* La marca se dibuja al cambiar de grupo, no solo de numero de corrida:
+       en CHB-05 el salto va de "anterior a la 5" a la corrida 5, y ahi es
+       donde esta el cambio de motor aunque el equipo previo no tenga numero. */
+    const ga = pts[i-1].corrida != null ? 'c' + pts[i-1].corrida
+             : pts[i-1].corrida_prev_de != null ? 'p' + pts[i-1].corrida_prev_de : null;
+    const gb = p.corrida != null ? 'c' + p.corrida
+             : p.corrida_prev_de != null ? 'p' + p.corrida_prev_de : null;
+    if (ga == null || gb == null || ga === gb) return;
     const xm = (X(i) + X(i-1)) / 2;
     s += '<line x1="' + xm.toFixed(1) + '" y1="' + MT + '" x2="' + xm.toFixed(1)
       +  '" y2="' + (MT + ih) + '" stroke="var(--kp-ink2)" stroke-width="1.2" '
       +  'stroke-dasharray="3 4"/>'
       +  '<text x="' + (xm + 5).toFixed(1) + '" y="' + (MT + ih + 12)
-      +  '" font-size="10.5" fill="var(--kp-ink2)" font-weight="600">corrida '
-      +  b + '</text>';
+      +  '" font-size="10.5" fill="var(--kp-ink2)" font-weight="600">'
+      +  (p.corrida != null ? 'corrida ' + p.corrida : 'cambio de equipo') + '</text>';
   });
 
   /* Todas las fechas, giradas cuando son muchas. La fecha de cada ensayo es
@@ -5533,16 +5539,15 @@ function kpAisInteraccion(ML, iw){
        al detenerse en un punto lo que se quiere es la foto completa de ese
        dia, incluido el balance entre fases. */
     let html = '<div class="h">' + (p.fecha_prueba || '')
-      + (p.corrida != null ? ' &middot; corrida ' + p.corrida : '') + '</div>';
+      + (p.corrida != null ? ' &middot; corrida ' + p.corrida
+         : p.corrida_prev_de != null ? ' &middot; antes de la ' + p.corrida_prev_de : '')
+      + '</div>';
     KP_AIS_DEF.forEach(d => {
       const v = kpAisValor(p, d[0]);
       if (v == null) return;
       html += '<div class="r"><i style="background:' + d[2] + '"></i>'
         + d[1] + '<b style="margin-left:auto">' + kpAisFmt(d[0], v) + '</b></div>';
     });
-    if (p.temp_devanado == null){
-      html += '<div class="r" style="opacity:.7">Sin temperatura de devanado</div>';
-    }
     if (p.dictamen_txt){
       html += '<div class="r" style="margin-top:4px;opacity:.85"><b>'
         + p.dictamen_txt + '</b></div>';
@@ -5595,24 +5600,38 @@ function kpRenderAislamiento(ais){
        el equipo actual, que seria atribuirle un historial que no es suyo. */
     const grupos = [];
     ais.forEach(a => {
-      const cl = (a.corrida == null) ? '\u2014' : String(a.corrida);
+      /* Los ensayos sin corrida registrada se agrupan por la corrida que vino
+         despues. Pertenecen al equipo previo aunque ese equipo nunca se haya
+         cargado en el maestro, y dejarlos sueltos en "sin identificar" pierde
+         justo la separacion que importa: la del cambio de motor. */
+      const cl = (a.corrida != null) ? 'c' + a.corrida
+               : (a.corrida_prev_de != null) ? 'p' + a.corrida_prev_de : '\u2014';
       let g = grupos.find(x => x.cl === cl);
-      if (!g){ g = { cl: cl, corrida: a.corrida, actual: !!a.corrida_actual, items: [] };
+      if (!g){ g = { cl: cl, corrida: a.corrida, prev: a.corrida_prev_de,
+                     actual: !!a.corrida_actual, items: [] };
                grupos.push(g); }
       g.items.push(a);
     });
 
     grupos.forEach((g, gi) => {
-      let tit;
-      if (g.corrida == null)   tit = 'Sin corrida identificada';
-      else if (g.actual)       tit = 'Corrida actual &middot; ' + g.corrida;
-      else if (gi === 1)       tit = 'Corrida anterior &middot; ' + g.corrida;
-      else                     tit = 'Corrida ' + g.corrida;
+      let tit, nota = '';
+      if (g.corrida != null){
+        tit = g.actual ? 'Corrida actual &middot; ' + g.corrida
+            : (gi === 1 ? 'Corrida anterior &middot; ' + g.corrida
+                        : 'Corrida ' + g.corrida);
+      } else if (g.prev != null){
+        tit = 'Corrida anterior a la ' + g.prev;
+        nota = 'Ese equipo no est&aacute; registrado en el maestro de corridas, '
+             + 'as&iacute; que no se puede nombrar por su n&uacute;mero ni ver su serial.';
+      } else {
+        tit = 'Sin corrida identificada';
+      }
 
       h += '<div class="src" style="margin:14px 0 6px;font-weight:600;'
         +  'text-transform:uppercase;letter-spacing:.5px">' + tit
         +  ' <span style="font-weight:400;text-transform:none;letter-spacing:0">('
         +  g.items.length + (g.items.length === 1 ? ' ensayo' : ' ensayos') + ')</span></div>';
+      if (nota) h += '<p class="hint" style="margin:0 0 8px">' + nota + '</p>';
       h += '<div class="kp-list" style="margin-bottom:6px">';
 
       g.items.forEach(a => {
