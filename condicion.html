@@ -4173,23 +4173,15 @@ function kpRenderResumen(med, bal, ctx){
      ensayo. Va aqui porque decide si el equipo puede seguir operando, y hoy
      esa informacion vivia enterrada al final de la pagina.
 
-     Tres estados, no dos. Un valor sin corregir a 40 C no se pinta en verde:
-     no se puede juzgar contra ningun umbral, y darle color de conforme seria
-     afirmar algo que el dato no sostiene. Y la ausencia de ensayo se dice, en
-     lugar de omitir la casilla: hoy son 36 de 45 unidades, y ese vacio es un
-     hallazgo, no un espacio en blanco. */
+     La ausencia de ensayo se dice en lugar de omitir la casilla: ese vacio es
+     un hallazgo, no un espacio en blanco. */
   const ultAis = (ctx && ctx.aislamiento && ctx.aislamiento.length)
     ? ctx.aislamiento[0] : null;
 
   if (ultAis){
-    /* Manda lo que mostro el megohmetro. El valor corregido a 40 C es un
-       calculo derivado y por debajo de 40 C queda por encima de la lectura:
-       encabezar con el seria reportar mejor de lo que dice la pantalla. */
+    /* La cifra es la del megohmetro. Sin correccion por temperatura no hay
+       ningun valor derivado que explicar ni que contrastar con la evidencia. */
     let pie = ultAis.fecha_prueba || '';
-    if (ultAis.ir40 != null && ultAis.ir_1min != null
-        && Number(ultAis.ir40) < Number(ultAis.ir_1min)){
-      pie += ' \u00b7 ' + kpIR(ultAis.ir40) + ' a 40 \u00b0C';
-    }
 
     /* IP, DAR y balance van en la casilla y no solo en la seccion de abajo:
        son las tres cifras que acompanan a la resistencia en el juicio, y
@@ -5178,7 +5170,7 @@ function kpAisTendencia(ais, umbral){
   if (pts.length === 2){
     const d = (pts[1].v - pts[0].v) / pts[0].v * 100;
     const cae = d < 0;
-    return '<p class="hint" style="margin-top:8px">Dos ensayos corregidos: '
+    return '<p class="hint" style="margin-top:8px">Dos ensayos: '
       + kpIR(pts[0].v) + ' el ' + pts[0].f + ' y ' + kpIR(pts[1].v) + ' el ' + pts[1].f
       + ' \u00b7 ' + (cae ? 'ca\u00edda' : 'aumento') + ' de '
       + Math.abs(d).toFixed(0) + ' %</p>';
@@ -5279,7 +5271,6 @@ let KP_AIS_SEP = true;
 
 const KP_AIS_DEF = [
   ['ir',     'R medida',      'var(--ser-1,#0C5292)', true ],
-  ['ir40',   'R a 40 \u00b0C','var(--ser-2,#7A4FB6)', true ],
   ['ip',     'IP',            'var(--ser-3,#1C7C54)', false],
   ['dar',    'DAR',           'var(--ser-4,#B26A00)', false],
   ['bal_ab', 'Balance A-B',   'var(--ser-5,#A33A3A)', false],
@@ -5291,7 +5282,6 @@ const KP_AIS_DEF = [
 function kpAisValor(p, c){
   switch (c){
     case 'ir':     return p.ir_1min;
-    case 'ir40':   return p.ir40;
     case 'ip':     return p.ip;
     case 'dar':    return p.dar;
     case 'bal_ab': return p.balance_ab;
@@ -5304,7 +5294,7 @@ function kpAisValor(p, c){
 
 function kpAisFmt(c, v){
   if (v == null) return '\u2014';
-  if (c === 'ir' || c === 'ir40') return Number(v) === 0 ? 'fuera de rango' : kpIR(v);
+  if (c === 'ir') return Number(v) === 0 ? 'fuera de rango' : kpIR(v);
   if (c === 'temp') return kpNum(v) + ' \u00b0C';
   if (c.indexOf('bal_') === 0) return kpNum(v) + ' \u03a9';
   return Number(v).toFixed(2);
@@ -5385,7 +5375,7 @@ function kpAisDibujar(){
 
   vis.forEach((d, k) => {
     const c = d[0], col = d[2];
-    const log = (c === 'ir' || c === 'ir40');
+    const log = (c === 'ir');
     const yTop = KP_AIS_SEP ? MT + hCarril * k : MT;
     const hUso = (KP_AIS_SEP ? hCarril : ih) - (KP_AIS_SEP ? 14 : 0);
 
@@ -5466,7 +5456,7 @@ function kpAisDibujar(){
         return;
       }
       const p = pts[i];
-      const col2 = (c === 'ir' || c === 'ir40')
+      const col2 = (c === 'ir')
         ? (p.dictamen_cls === 'crit' ? 'var(--kp-crit)'
            : p.dictamen_cls === 'warn' ? 'var(--kp-warn)' : col)
         : col;
@@ -5577,9 +5567,9 @@ function kpRenderAislamiento(ais){
     h += '<p class="hint">'
       +  (ais[0] && ais[0].umbral != null
             ? 'M&iacute;nimo IEEE 43 ' + kpIR(ais[0].umbral) + ' (kV nominal + 1)' : '')
-      /* Se dice cuantas no traen temperatura: ya no impide el dictamen, pero
-         si limita la comparabilidad entre rondas tomadas en condiciones
-         distintas. */
+      /* Se anota cuantas no traen temperatura. No afecta el dictamen —no hay
+         correccion— pero si la comparabilidad entre rondas tomadas en
+         condiciones distintas. */
       +  (sinTemp ? ' &middot; ' + sinTemp + ' sin temperatura de devanado' : '')
       +  '</p>';
     h += kpRenderAisGrafica(ais);
@@ -5662,16 +5652,12 @@ function kpRenderAislamiento(ais){
                 + (a.maquina_estado === 'RETIRADA'
                     ? ' &middot; motor ya retirado' : '') + '</div>'
               : '')
-        /* El valor corregido manda y el crudo va detras entre parentesis: es
-           el corregido el que se compara contra el umbral, pero el crudo es el
-           que el tecnico vio en el megger y el que recuerda. */
+        /* La lectura del instrumento, con la temperatura del ensayo como
+           contexto cuando se anoto. */
         +  '<div class="dt">'
-        +  kpIR(a.ir_1min) + ' medido'
+        +  kpIR(a.ir_1min)
         +  (a.temp_devanado != null
-              ? ' <span class="src">a ' + kpNum(a.temp_devanado) + ' &deg;C'
-                + (a.ir40 != null ? ', ' + kpIR(a.ir40) + ' corregido a 40 &deg;C' : '')
-                + '</span>'
-              : '')
+              ? ' <span class="src">a ' + kpNum(a.temp_devanado) + ' &deg;C</span>' : '')
         +  (a.ip != null ? ' &middot; IP ' + kpNum(a.ip) : '')
         +  (a.dar != null ? ' &middot; DAR ' + kpNum(a.dar) : '')
         +  '</div>'
@@ -5700,14 +5686,6 @@ function kpRenderAislamiento(ais){
                 + 'duplicado.</div>' : '')
         /* Dos salvedades que cambian como se lee el numero, y que sin
            decirlas hacen comparar cosas que no son comparables. */
-        +  (a.corregible === false
-              ? '<div class="src" style="margin-top:4px">Sin temperatura de '
-                + 'devanado: no se puede corregir a 40 &deg;C ni comparar con '
-                + 'otros ensayos.</div>' : '')
-        +  (a.corregible && a.extrapolado
-              ? '<div class="src" style="margin-top:4px">Correcci&oacute;n a '
-                + '40 &deg;C extrapolada: este motor opera por encima del rango '
-                + 'definido en IEEE 43.</div>' : '')
         +  (a.observaciones ? '<div class="src" style="margin-top:5px;color:var(--kp-ink2)">'
               + a.observaciones + '</div>' : '')
         +  '</div><span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
