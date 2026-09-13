@@ -2598,6 +2598,10 @@ function kpNum(v){
    en un devanado aterrizado a miles de megaohmios en uno sano. Escrito siempre
    en megaohmios, un corto sale como "0.000002" y nadie lo lee. Se elige la
    unidad segun la magnitud, que es como lo dice el megger. */
+/* Dispersion admisible de la resistencia entre fases, en por ciento del
+   promedio. Pendiente de trasladar a criterios_ensayo con su fuente. */
+const KP_DESB_PCT = 5;
+
 function kpIR(mohm){
   if (mohm == null) return '\u2014';
   const n = Number(mohm);
@@ -4182,11 +4186,54 @@ function kpRenderResumen(med, bal, ctx){
        calculo derivado y por debajo de 40 C queda por encima de la lectura:
        encabezar con el seria reportar mejor de lo que dice la pantalla. */
     let pie = ultAis.fecha_prueba || '';
-    if (ultAis.umbral != null) pie += ' \u00b7 m\u00ednimo ' + kpIR(ultAis.umbral);
     if (ultAis.ir40 != null && ultAis.ir_1min != null
         && Number(ultAis.ir40) < Number(ultAis.ir_1min)){
       pie += ' \u00b7 ' + kpIR(ultAis.ir40) + ' a 40 \u00b0C';
     }
+
+    /* IP, DAR y balance van en la casilla y no solo en la seccion de abajo:
+       son las tres cifras que acompanan a la resistencia en el juicio, y
+       tenerlas aqui evita bajar la pagina para saber si un valor conforme lo
+       es con holgura o al filo. */
+    const seg = [];
+    if (ultAis.ip  != null) seg.push('IP ' + kpNum(ultAis.ip));
+    if (ultAis.dar != null) seg.push('DAR ' + kpNum(ultAis.dar));
+    const bal = [ultAis.balance_ab, ultAis.balance_ac, ultAis.balance_bc]
+      .filter(x => x != null).map(Number);
+    let desb = null;
+    if (bal.length === 3){
+      const mn = Math.min.apply(null, bal), mx = Math.max.apply(null, bal);
+      const prom = (bal[0] + bal[1] + bal[2]) / 3;
+      /* Desbalance como dispersion respecto al promedio, que es la forma en que
+         se expresa en las hojas de ensayo de motor. */
+      desb = prom > 0 ? (mx - mn) / prom * 100 : null;
+      seg.push('balance ' + (mx - mn < 0.05
+        ? kpNum(mn) + ' \u03a9'
+        : kpNum(mn) + '\u2013' + kpNum(mx) + ' \u03a9'));
+    } else if (bal.length){
+      seg.push('balance ' + kpNum(bal[0]) + ' \u03a9');
+    }
+    if (seg.length) pie += '<br>' + seg.join(' \u00b7 ');
+
+    /* El desbalance entre fases es otro modo de falla, no una variante del
+       aislamiento bajo: apunta a espira en corto, devanado abierto o empalme
+       malo, y puede aparecer con el aislamiento intacto. Por eso va en linea
+       propia y no se mezcla con el dictamen de IEEE 43.
+       KP_DESB_PCT vive aqui provisionalmente; su lugar es criterios_ensayo,
+       con fuente y validador, como el resto de los umbrales. */
+    if (desb != null && desb >= KP_DESB_PCT){
+      pie += '<br><b style="color:var(--kp-warn)">Desbalance entre fases '
+          +  desb.toFixed(1) + ' %</b>';
+    }
+
+    /* El veredicto escrito, no solo el color del borde: en pantalla al sol el
+       color se pierde, y "no conforme" tiene que poder leerse. */
+    if (ultAis.dictamen_txt && ultAis.dictamen !== 'CONFORME'){
+      const c = ultAis.dictamen_cls === 'crit' ? 'var(--kp-crit)'
+              : ultAis.dictamen_cls === 'warn' ? 'var(--kp-warn)' : 'var(--kp-ink2)';
+      pie += '<br><b style="color:' + c + '">' + ultAis.dictamen_txt + '</b>';
+    }
+
     chip('Aislamiento', kpIR(ultAis.ir_1min), '', ultAis.dictamen_cls || 'none', pie);
   } else {
     chip('Aislamiento', '\u2014', '', 'none', 'Sin ensayo registrado');
@@ -5574,8 +5621,14 @@ function kpRenderAislamiento(ais){
          las cuatro cosas que deciden si un aislamiento pasa. */
       const e = { cls: a.dictamen_cls || 'none',
                   txt: a.dictamen_txt || kpEstadoIP(a.ip).txt };
-      const bal = [a.balance_ab, a.balance_ac, a.balance_bc]
-        .filter(v => v != null).length;
+      const balv = [a.balance_ab, a.balance_ac, a.balance_bc]
+        .filter(v => v != null).map(Number);
+      const bal = balv.length;
+      let desb = null;
+      if (balv.length === 3){
+        const pr = (balv[0] + balv[1] + balv[2]) / 3;
+        if (pr > 0) desb = (Math.max.apply(null, balv) - Math.min.apply(null, balv)) / pr * 100;
+      }
 
       h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"><div>'
         +  '<div><span class="nm">' + (a.fecha_prueba || '\u2014') + '</span>'
@@ -5615,6 +5668,13 @@ function kpRenderAislamiento(ais){
         /* Dos registros del mismo dia sobre el mismo serial casi siempre son el
            mismo ensayo cargado dos veces. No se ocultan: uno de los dos puede
            tener la escala mal, y esconderlo perpetuaria el error. */
+        /* Si las tres fases se separan, se dice en la ficha del ensayo con su
+           cifra: es un hallazgo distinto del aislamiento y lleva a revisar
+           empalmes y devanado, no a programar un cambio por fuga. */
+        +  (desb != null && desb >= KP_DESB_PCT
+              ? '<div class="src" style="margin-top:4px;color:var(--kp-warn)">'
+                + 'Desbalance entre fases ' + desb.toFixed(1) + ' % sobre el promedio: '
+                + 'revisar empalmes y devanado.</div>' : '')
         +  (a.posible_duplicado
               ? '<div class="src" style="margin-top:4px;color:var(--kp-warn)">'
                 + 'Otro ensayo con la misma fecha y serial: verificar si est&aacute; '
