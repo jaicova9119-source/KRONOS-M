@@ -4029,6 +4029,19 @@ async function kpVerPozo(codigo){
   const ev = kpRenderEventos(KP_EV);
   if (ev) sec.push(ev);
 
+  /* Seccion propia y abierta por defecto. Un megado decide si el equipo puede
+     seguir operando: no es un apartado de calidad del dato. */
+  if (ctx && (ctx.aislamiento || []).length){
+    const ais = ctx.aislamiento;
+    const nCor = new Set(ais.map(a => a.corrida).filter(c => c != null)).size;
+    const noConf = ais.filter(a => a.dictamen_cls === 'crit').length;
+    sec.push(kpSeccion('aislamiento', 'Ensayos de aislamiento, IP y DAR',
+      ais.length + (ais.length === 1 ? ' ensayo' : ' ensayos')
+      + (nCor > 1 ? ' &middot; ' + nCor + ' corridas' : '')
+      + (noConf ? ' &middot; ' + noConf + ' fuera de criterio' : ''),
+      kpRenderAislamiento(ais), { cerrada:false }));
+  }
+
   if (ctx){
     sec.push(kpSeccion('contexto', 'Contexto y calidad del dato', null,
       kpRenderContexto(ctx), { cerrada:true }));
@@ -5184,24 +5197,240 @@ function kpAisTendencia(ais, umbral){
   return s;
 }
 
-function kpRenderContexto(ctx){
-  const ais = ctx.aislamiento || [];
-  const bit = ctx.bitacora || [];
-  let h = '';
+/* ============================================================
+   ENSAYOS DE AISLAMIENTO
+   ============================================================
+   Seccion propia y no un apartado dentro de "Contexto y calidad del dato".
+   Un megado decide si el equipo puede seguir operando; enterrarlo junto a los
+   avisos de completitud lo convertia en letra chica.
 
-  if (ais.length){
-    h += '<h2 style="margin-top:22px">Aislamiento</h2>';
+   Los ensayos se agrupan por corrida porque comparar entre corridas es
+   comparar motores distintos. La corrida anterior no se oculta ni se colapsa:
+   en CHB-05 es justo donde se ve la degradacion que termino en falla a tierra,
+   y esa trayectoria es lo que permite anticipar la siguiente. */
+/* Grafica de ensayos: tres paneles con el mismo eje de tiempo.
+
+   Uno solo no alcanza. La resistencia va en escala logaritmica porque abarca
+   de ohmios a gigaohmios; IP y DAR son razones que viven entre 1 y 5; el
+   balance entre fases son unidades de ohmio. Meterlos en un mismo eje aplasta
+   dos de los tres.
+
+   Se grafica la lectura del megohmetro, no la corregida: es la evidencia, y en
+   BES la correccion es dudosa porque el megado desde superficie abarca cientos
+   de metros de cable con gradiente termico en serie con el devanado.
+
+   El eje de tiempo es ordinal, no proporcional: con ensayos separados por meses
+   irregulares, un eje a escala deja racimos ilegibles y huecos vacios. */
+function kpAisGraficas(ais){
+  const pts = (ais || []).slice().sort((a, b) =>
+    (a.fecha_prueba < b.fecha_prueba ? -1 : a.fecha_prueba > b.fecha_prueba ? 1 : 0));
+  if (pts.length < 2) {
+    if (pts.length === 1) return '';
+    return '';
+  }
+
+  const umbral   = pts[0].umbral;
+  const ipAlerta = pts.find(p => p.pi_alerta  != null);
+  const darAlert = pts.find(p => p.dar_alerta != null);
+
+  const W = 660, ML = 64, MR = 16;
+  const AL = [ {h:150, t:'Resistencia de aislamiento medida'},
+               {h:110, t:'\u00cdndice de polarizaci\u00f3n y DAR'},
+               {h:100, t:'Resistencia entre fases'} ];
+  const GAP = 34, MT = 18, MB = 26;
+  const H = AL.reduce((s, p) => s + p.h, 0) + GAP * (AL.length - 1) + MT + MB;
+  const top = [];
+  let acc = MT;
+  AL.forEach(p => { top.push(acc); acc += p.h + GAP; });
+
+  const X = i => ML + (W - ML - MR) * (pts.length === 1 ? 0.5 : i / (pts.length - 1));
+  const COL = c => c === 'crit' ? 'var(--kp-crit)'
+                 : c === 'warn' ? 'var(--kp-warn)' : 'var(--kp-ok)';
+
+  let s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="100%" '
+        + 'style="margin-top:10px;overflow:visible" role="img" '
+        + 'aria-label="Ensayos de aislamiento: resistencia, IP, DAR y balance entre fases">';
+
+  const titulo = (k) =>
+    '<text x="' + ML + '" y="' + (top[k] - 6) + '" font-size="10.5" '
+    + 'fill="var(--kp-ink2)" font-weight="600">' + AL[k].t + '</text>';
+
+  const marcasCorrida = (k) => {
+    let o = '';
+    pts.forEach((p, i) => {
+      if (!i) return;
+      const a = pts[i-1].corrida, b = p.corrida;
+      if (a == null || b == null || a === b) return;
+      const xm = (X(i) + X(i-1)) / 2;
+      o += '<line x1="' + xm.toFixed(1) + '" y1="' + top[k] + '" x2="' + xm.toFixed(1)
+        +  '" y2="' + (top[k] + AL[k].h) + '" stroke="var(--kp-ink3)" '
+        +  'stroke-width="1" stroke-dasharray="2 4"/>';
+      if (k === 0){
+        o += '<text x="' + (xm + 4).toFixed(1) + '" y="' + (top[0] + 11)
+          +  '" font-size="9" fill="var(--kp-ink3)">corrida ' + b + '</text>';
+      }
+    });
+    return o;
+  };
+
+  /* ---- Panel 1: resistencia, escala logaritmica ---- */
+  const vIR = pts.map(p => (p.ir_1min != null ? Number(p.ir_1min) : null));
+  const posIR = vIR.filter(v => v != null && v > 0);
+  if (posIR.length){
+    const ref = posIR.concat(umbral != null && umbral > 0 ? [Number(umbral)] : []);
+    const lo = Math.log10(Math.min.apply(null, ref) / 3);
+    const hi = Math.log10(Math.max.apply(null, ref) * 3);
+    const Y = v => top[0] + AL[0].h * (1 - (Math.log10(v) - lo) / (hi - lo));
+
+    s += titulo(0);
+    for (let e = Math.ceil(lo); e <= Math.floor(hi); e++){
+      const yy = Y(Math.pow(10, e));
+      s += '<line x1="' + ML + '" y1="' + yy.toFixed(1) + '" x2="' + (W - MR)
+        +  '" y2="' + yy.toFixed(1) + '" stroke="var(--kp-line)" stroke-width="1"/>'
+        +  '<text x="' + (ML - 8) + '" y="' + (yy + 4).toFixed(1) + '" text-anchor="end" '
+        +  'font-size="9.5" fill="var(--kp-ink3)">' + kpIR(Math.pow(10, e)) + '</text>';
+    }
+    if (umbral != null && umbral > 0){
+      const yu = Y(Number(umbral));
+      s += '<line x1="' + ML + '" y1="' + yu.toFixed(1) + '" x2="' + (W - MR)
+        +  '" y2="' + yu.toFixed(1) + '" stroke="var(--kp-crit)" stroke-width="1.4" '
+        +  'stroke-dasharray="5 4"/>'
+        +  '<text x="' + (W - MR) + '" y="' + (yu - 5).toFixed(1) + '" text-anchor="end" '
+        +  'font-size="9.5" fill="var(--kp-crit)">m\u00ednimo IEEE 43</text>';
+    }
+    s += marcasCorrida(0);
+
+    let d = '', abierto = false;
+    pts.forEach((p, i) => {
+      const v = vIR[i];
+      if (v == null || v <= 0){ abierto = false; return; }
+      d += (abierto ? ' L' : ' M') + X(i).toFixed(1) + ' ' + Y(v).toFixed(1);
+      abierto = true;
+    });
+    s += '<path d="' + d + '" fill="none" stroke="var(--kp-ink3)" stroke-width="1.6"/>';
+
+    pts.forEach((p, i) => {
+      const v = vIR[i];
+      /* Un cero no es una medicion: es el megohmetro por debajo de su rango.
+         No se dibuja en la linea —el logaritmo no lo admite— pero tampoco se
+         omite: se marca en el piso, que es donde esta el equipo. */
+      if (v == null || v <= 0){
+        s += '<text x="' + X(i).toFixed(1) + '" y="' + (top[0] + AL[0].h - 3)
+          +  '" text-anchor="middle" font-size="15" fill="var(--kp-crit)">\u25bc</text>';
+        return;
+      }
+      s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(v).toFixed(1)
+        +  '" r="4" fill="' + COL(p.dictamen_cls) + '"/>';
+    });
+  }
+
+  /* ---- Panel 2: IP y DAR ---- */
+  const serie2 = [
+    { k:'ip',  t:'IP',  col:'var(--ser-3, #3a7bd5)', al: ipAlerta  ? ipAlerta.pi_alerta  : null },
+    { k:'dar', t:'DAR', col:'var(--ser-6, #b06ab3)', al: darAlert ? darAlert.dar_alerta : null }
+  ];
+  const v2 = [];
+  pts.forEach(p => serie2.forEach(x => { if (p[x.k] != null) v2.push(Number(p[x.k])); }));
+  serie2.forEach(x => { if (x.al != null) v2.push(Number(x.al)); });
+  if (v2.length){
+    const lo2 = Math.min(0, Math.min.apply(null, v2));
+    const hi2 = Math.max.apply(null, v2) * 1.15;
+    const Y2 = v => top[1] + AL[1].h * (1 - (v - lo2) / (hi2 - lo2));
+    s += titulo(1);
+    [lo2, (lo2 + hi2) / 2, hi2].forEach(g => {
+      s += '<line x1="' + ML + '" y1="' + Y2(g).toFixed(1) + '" x2="' + (W - MR)
+        +  '" y2="' + Y2(g).toFixed(1) + '" stroke="var(--kp-line)" stroke-width="1"/>'
+        +  '<text x="' + (ML - 8) + '" y="' + (Y2(g) + 4).toFixed(1) + '" text-anchor="end" '
+        +  'font-size="9.5" fill="var(--kp-ink3)">' + g.toFixed(1) + '</text>';
+    });
+    s += marcasCorrida(1);
+    serie2.forEach((x, si) => {
+      if (x.al != null){
+        s += '<line x1="' + ML + '" y1="' + Y2(x.al).toFixed(1) + '" x2="' + (W - MR)
+          +  '" y2="' + Y2(x.al).toFixed(1) + '" stroke="' + x.col + '" stroke-width="1" '
+          +  'stroke-dasharray="3 3" opacity=".55"/>';
+      }
+      let d = '', ab = false;
+      pts.forEach((p, i) => {
+        if (p[x.k] == null){ ab = false; return; }
+        d += (ab ? ' L' : ' M') + X(i).toFixed(1) + ' ' + Y2(Number(p[x.k])).toFixed(1);
+        ab = true;
+      });
+      s += '<path d="' + d + '" fill="none" stroke="' + x.col + '" stroke-width="1.6"/>';
+      pts.forEach((p, i) => {
+        if (p[x.k] == null) return;
+        s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y2(Number(p[x.k])).toFixed(1)
+          +  '" r="3" fill="' + x.col + '"/>';
+      });
+      s += '<text x="' + (ML + 4 + si * 52) + '" y="' + (top[1] + 11)
+        +  '" font-size="9.5" fill="' + x.col + '" font-weight="600">' + x.t + '</text>';
+    });
+  }
+
+  /* ---- Panel 3: balance entre fases ---- */
+  const serie3 = [
+    { k:'balance_ab', t:'A-B', col:'var(--ser-1, #2a9d8f)' },
+    { k:'balance_ac', t:'A-C', col:'var(--ser-2, #e9c46a)' },
+    { k:'balance_bc', t:'B-C', col:'var(--ser-4, #e76f51)' }
+  ];
+  const v3 = [];
+  pts.forEach(p => serie3.forEach(x => { if (p[x.k] != null) v3.push(Number(p[x.k])); }));
+  if (v3.length){
+    const mn = Math.min.apply(null, v3), mx = Math.max.apply(null, v3);
+    /* Margen fijo cuando las tres fases coinciden: sin esto el rango es cero y
+       las tres lineas se superponen sobre el borde del panel. */
+    const pad = (mx - mn) < 0.2 ? 0.5 : (mx - mn) * 0.25;
+    const lo3 = mn - pad, hi3 = mx + pad;
+    const Y3 = v => top[2] + AL[2].h * (1 - (v - lo3) / (hi3 - lo3));
+    s += titulo(2);
+    [lo3, (lo3 + hi3) / 2, hi3].forEach(g => {
+      s += '<line x1="' + ML + '" y1="' + Y3(g).toFixed(1) + '" x2="' + (W - MR)
+        +  '" y2="' + Y3(g).toFixed(1) + '" stroke="var(--kp-line)" stroke-width="1"/>'
+        +  '<text x="' + (ML - 8) + '" y="' + (Y3(g) + 4).toFixed(1) + '" text-anchor="end" '
+        +  'font-size="9.5" fill="var(--kp-ink3)">' + g.toFixed(1) + ' \u03a9</text>';
+    });
+    s += marcasCorrida(2);
+    serie3.forEach((x, si) => {
+      let d = '', ab = false;
+      pts.forEach((p, i) => {
+        if (p[x.k] == null){ ab = false; return; }
+        d += (ab ? ' L' : ' M') + X(i).toFixed(1) + ' ' + Y3(Number(p[x.k])).toFixed(1);
+        ab = true;
+      });
+      s += '<path d="' + d + '" fill="none" stroke="' + x.col + '" stroke-width="1.6" '
+        +  'opacity=".85"/>';
+      s += '<text x="' + (ML + 4 + si * 40) + '" y="' + (top[2] + 11)
+        +  '" font-size="9.5" fill="' + x.col + '" font-weight="600">' + x.t + '</text>';
+    });
+  }
+
+  /* ---- Eje de tiempo, comun a los tres ---- */
+  const yEje = H - MB + 14;
+  pts.forEach((p, i) => {
+    if (i !== 0 && i !== pts.length - 1 && pts.length > 7
+        && !(i && pts[i-1].corrida !== p.corrida)) return;
+    s += '<text x="' + X(i).toFixed(1) + '" y="' + yEje
+      +  '" text-anchor="middle" font-size="9.5" fill="var(--kp-ink3)">'
+      +  (p.fecha_prueba || '').slice(2) + '</text>';
+  });
+
+  s += '</svg>';
+  return s;
+}
+
+function kpRenderAislamiento(ais){
+  if (!ais || !ais.length) return '';
+  let h = '';
     const sinTemp = ais.filter(a => a.temp_devanado == null).length;
-    h += '<p class="hint">' + ais.length
-      +  (ais.length === 1 ? ' prueba registrada' : ' pruebas registradas')
+    h += '<p class="hint">'
       +  (ais[0] && ais[0].umbral != null
-            ? ' &middot; m&iacute;nimo IEEE 43 ' + kpIR(ais[0].umbral) : '')
-      /* Se dice cuantas no traen temperatura: no impide el dictamen, pero si
-         limita la comparabilidad entre rondas tomadas en condiciones distintas. */
+            ? 'M&iacute;nimo IEEE 43 ' + kpIR(ais[0].umbral) + ' (kV nominal + 1)' : '')
+      /* Se dice cuantas no traen temperatura: ya no impide el dictamen, pero
+         si limita la comparabilidad entre rondas tomadas en condiciones
+         distintas. */
       +  (sinTemp ? ' &middot; ' + sinTemp + ' sin temperatura de devanado' : '')
       +  '</p>';
-    h += kpAisTendencia(ais, ais[0] ? ais[0].umbral : null);
-    h += '<div class="kp-list" style="margin-bottom:6px">';
+    h += kpAisGraficas(ais);
     /* Que se ensayo, dicho en palabras. En un BES instalado no se puede
        separar el motor del cable: se mega desde superficie y el valor
        incluye la fuga del cable, asi que sale por debajo del motor solo
@@ -5214,7 +5443,32 @@ function kpRenderContexto(ctx){
       GENERADOR: 'generador'
     };
 
+    /* Agrupado por corrida, de la mas reciente hacia atras. Los ensayos sin
+       corrida resuelta van al final en su propio grupo en vez de mezclarse con
+       el equipo actual, que seria atribuirle un historial que no es suyo. */
+    const grupos = [];
     ais.forEach(a => {
+      const cl = (a.corrida == null) ? '\u2014' : String(a.corrida);
+      let g = grupos.find(x => x.cl === cl);
+      if (!g){ g = { cl: cl, corrida: a.corrida, actual: !!a.corrida_actual, items: [] };
+               grupos.push(g); }
+      g.items.push(a);
+    });
+
+    grupos.forEach((g, gi) => {
+      let tit;
+      if (g.corrida == null)   tit = 'Sin corrida identificada';
+      else if (g.actual)       tit = 'Corrida actual &middot; ' + g.corrida;
+      else if (gi === 1)       tit = 'Corrida anterior &middot; ' + g.corrida;
+      else                     tit = 'Corrida ' + g.corrida;
+
+      h += '<div class="src" style="margin:14px 0 6px;font-weight:600;'
+        +  'text-transform:uppercase;letter-spacing:.5px">' + tit
+        +  ' <span style="font-weight:400;text-transform:none;letter-spacing:0">('
+        +  g.items.length + (g.items.length === 1 ? ' ensayo' : ' ensayos') + ')</span></div>';
+      h += '<div class="kp-list" style="margin-bottom:6px">';
+
+      g.items.forEach(a => {
       /* El dictamen lo resuelve la base contra criterios_ensayo. Antes esta
          pastilla mostraba solo el indice de polarizacion, que es una sola de
          las cuatro cosas que deciden si un aislamiento pasa. */
@@ -5278,9 +5532,18 @@ function kpRenderContexto(ctx){
         +  (a.observaciones ? '<div class="src" style="margin-top:5px;color:var(--kp-ink2)">'
               + a.observaciones + '</div>' : '')
         +  '</div><span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
+      });
+      h += '</div>';
     });
-    h += '</div>';
-  }
+  return h;
+}
+
+function kpRenderContexto(ctx){
+  const ais = ctx.aislamiento || [];
+  const bit = ctx.bitacora || [];
+  let h = '';
+
+
 
   if (bit.length){
     /* Configuracion son 21 de 37 registros en el historico y taparian
