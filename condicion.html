@@ -5234,9 +5234,9 @@ function kpAisGraficas(ais){
   const darAlert = pts.find(p => p.dar_alerta != null);
 
   const W = 660, ML = 64, MR = 16;
-  const AL = [ {h:150, t:'Resistencia de aislamiento medida'},
-               {h:110, t:'\u00cdndice de polarizaci\u00f3n y DAR'},
-               {h:100, t:'Resistencia entre fases'} ];
+  const AL = [ {h:178, t:'Resistencia de aislamiento medida'},
+               {h:128, t:'\u00cdndice de polarizaci\u00f3n y DAR'},
+               {h:112, t:'Resistencia entre fases'} ];
   const GAP = 34, MT = 18, MB = 26;
   const H = AL.reduce((s, p) => s + p.h, 0) + GAP * (AL.length - 1) + MT + MB;
   const top = [];
@@ -5315,12 +5315,22 @@ function kpAisGraficas(ais){
          No se dibuja en la linea —el logaritmo no lo admite— pero tampoco se
          omite: se marca en el piso, que es donde esta el equipo. */
       if (v == null || v <= 0){
-        s += '<text x="' + X(i).toFixed(1) + '" y="' + (top[0] + AL[0].h - 3)
-          +  '" text-anchor="middle" font-size="15" fill="var(--kp-crit)">\u25bc</text>';
+        s += '<text x="' + X(i).toFixed(1) + '" y="' + (top[0] + AL[0].h - 12)
+          +  '" text-anchor="middle" font-size="15" fill="var(--kp-crit)">\u25bc</text>'
+          +  '<text x="' + X(i).toFixed(1) + '" y="' + (top[0] + AL[0].h + 1)
+          +  '" text-anchor="middle" font-size="9" font-weight="600" '
+          +  'fill="var(--kp-crit)">fuera de rango</text>';
         return;
       }
+      /* El valor va escrito sobre el punto. Una grafica de la que hay que
+         deducir la cifra contando cuadriculas no sirve en campo: el tecnico
+         necesita el numero, y la linea solo le dice hacia donde va. */
+      const arriba = (i === 0) || (vIR[i-1] == null) || (v >= vIR[i-1]);
       s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y(v).toFixed(1)
-        +  '" r="4" fill="' + COL(p.dictamen_cls) + '"/>';
+        +  '" r="4" fill="' + COL(p.dictamen_cls) + '"/>'
+        +  '<text x="' + X(i).toFixed(1) + '" y="' + (Y(v) + (arriba ? -9 : 15)).toFixed(1)
+        +  '" text-anchor="middle" font-size="9.5" font-weight="600" '
+        +  'fill="' + COL(p.dictamen_cls) + '">' + kpIR(v) + '</text>';
     });
   }
 
@@ -5348,7 +5358,10 @@ function kpAisGraficas(ais){
       if (x.al != null){
         s += '<line x1="' + ML + '" y1="' + Y2(x.al).toFixed(1) + '" x2="' + (W - MR)
           +  '" y2="' + Y2(x.al).toFixed(1) + '" stroke="' + x.col + '" stroke-width="1" '
-          +  'stroke-dasharray="3 3" opacity=".55"/>';
+          +  'stroke-dasharray="3 3" opacity=".55"/>'
+          +  '<text x="' + (W - MR) + '" y="' + (Y2(x.al) - 4).toFixed(1)
+          +  '" text-anchor="end" font-size="9" fill="' + x.col + '" opacity=".8">'
+          +  'alerta ' + x.t + ' ' + Number(x.al).toFixed(2) + '</text>';
       }
       let d = '', ab = false;
       pts.forEach((p, i) => {
@@ -5359,8 +5372,13 @@ function kpAisGraficas(ais){
       s += '<path d="' + d + '" fill="none" stroke="' + x.col + '" stroke-width="1.6"/>';
       pts.forEach((p, i) => {
         if (p[x.k] == null) return;
-        s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y2(Number(p[x.k])).toFixed(1)
-          +  '" r="3" fill="' + x.col + '"/>';
+        const vv = Number(p[x.k]);
+        s += '<circle cx="' + X(i).toFixed(1) + '" cy="' + Y2(vv).toFixed(1)
+          +  '" r="3" fill="' + x.col + '"/>'
+          +  '<text x="' + X(i).toFixed(1) + '" y="'
+          +  (Y2(vv) + (si ? 15 : -8)).toFixed(1) + '" text-anchor="middle" '
+          +  'font-size="9" font-weight="600" fill="' + x.col + '">'
+          +  vv.toFixed(2) + '</text>';
       });
       s += '<text x="' + (ML + 4 + si * 52) + '" y="' + (top[1] + 11)
         +  '" font-size="9.5" fill="' + x.col + '" font-weight="600">' + x.t + '</text>';
@@ -5399,6 +5417,18 @@ function kpAisGraficas(ais){
       });
       s += '<path d="' + d + '" fill="none" stroke="' + x.col + '" stroke-width="1.6" '
         +  'opacity=".85"/>';
+      /* Las tres fases suelen coincidir, asi que solo se rotula la primera:
+         tres numeros identicos apilados sobre el mismo punto no se leen. Si
+         una se separa, se rotula tambien, que es cuando importa. */
+      pts.forEach((p, i) => {
+        if (p[x.k] == null) return;
+        const vv = Number(p[x.k]);
+        const ab = Number(p.balance_ab);
+        if (si && Math.abs(vv - ab) < 0.05) return;
+        s += '<text x="' + X(i).toFixed(1) + '" y="' + (Y3(vv) - 7).toFixed(1)
+          +  '" text-anchor="middle" font-size="9" font-weight="600" '
+          +  'fill="' + x.col + '">' + vv.toFixed(1) + '</text>';
+      });
       s += '<text x="' + (ML + 4 + si * 40) + '" y="' + (top[2] + 11)
         +  '" font-size="9.5" fill="' + x.col + '" font-weight="600">' + x.t + '</text>';
     });
