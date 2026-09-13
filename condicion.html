@@ -5745,6 +5745,8 @@ function kpRenderContexto(ctx){
       const sev = String(b.severidad || '').toLowerCase();
       const cls = (sev.indexOf('crit') >= 0 || sev.indexOf('alta') >= 0) ? 'crit'
                 : (sev.indexOf('atenc') >= 0 ? 'warn' : '');
+      const est = String(b.estado || '').toLowerCase();
+      const abierta = est.indexOf('pendiente') >= 0 || est.indexOf('seguimiento') >= 0;
       h += '<div class="kp-rule ' + cls + '" data-cat="'
         +  (b.categoria || 'Sin categor\u00eda') + '"><div>'
         +  '<div><span class="nm">' + (b.categoria || 'Evento') + '</span> '
@@ -5753,14 +5755,53 @@ function kpRenderContexto(ctx){
         +  (b.recomendaciones ? '<div class="src" style="margin-top:4px">Recomendaci&oacute;n: '
               + b.recomendaciones + '</div>' : '')
         +  (b.realizado_por ? '<div class="src">' + b.realizado_por + '</div>' : '')
+        /* El cierre se muestra completo: quien, cuando y que se hizo. Un
+           "Completado" solo no permite distinguir una recomendacion ejecutada
+           de una que alguien marco para quitarsela de encima. */
+        +  (b.nota_cierre
+              ? '<div class="src" style="margin-top:5px;color:var(--kp-ok)">Cierre'
+                + (b.cerrado_en ? ' ' + String(b.cerrado_en).slice(0,10) : '')
+                + (b.cerrado_por ? ' &middot; ' + kpEsc(b.cerrado_por) : '')
+                + ': ' + kpEsc(b.nota_cierre) + '</div>' : '')
         +  '</div>'
+        +  '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">'
         +  '<span class="kp-pill ' + (cls || 'none') + '">'
-        +  (b.estado || b.severidad || '\u2014') + '</span></div>';
+        +  (b.estado || b.severidad || '\u2014') + '</span>'
+        +  (b.id
+              ? '<button class="kp-chip" onclick="kpBitacoraAccion(\'' + b.id + '\','
+                + (abierta ? 'true' : 'false') + ')">'
+                + (abierta ? 'Marcar ejecutado' : 'Reabrir') + '</button>'
+              : '')
+        +  '</div></div>';
     });
     h += '</div>';
   }
 
   return h;
+}
+
+/* Cerrar o reabrir un registro de bitacora. La nota es obligatoria en los dos
+   sentidos: un cierre sin explicacion equivale a borrar el pendiente, y una
+   reapertura sin motivo deja el historial sin sentido. */
+async function kpBitacoraAccion(id, abierta){
+  const texto = prompt(abierta
+    ? '\u00bfQu\u00e9 se hizo? Esta nota queda en el registro.'
+    : '\u00bfPor qu\u00e9 se reabre?');
+  if (texto == null) return;
+  if (!texto.trim()){ alert('Hace falta la nota para poder continuar.'); return; }
+
+  const fn = abierta ? 'dp_cerrar_bitacora' : 'dp_reabrir_bitacora';
+  try {
+    const { data, error } = await kpCliente().rpc(fn, { p_id: id, p_nota: texto });
+    if (error){ alert('No se pudo guardar: ' + error.message); return; }
+    if (data && data.ok === false){ alert(data.error || 'No se pudo guardar'); return; }
+    /* Se recarga la unidad completa: el cambio afecta tanto la bitacora como
+       el bloque de "Requiere revision o seguimiento" del encabezado. */
+    if (typeof kpRecargarUnidad === 'function') kpRecargarUnidad();
+    else location.reload();
+  } catch (e){
+    alert('No se pudo guardar: ' + e.message);
+  }
 }
 
 function kpFiltrarBitacora(boton){
