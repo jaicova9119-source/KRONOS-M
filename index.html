@@ -11345,6 +11345,16 @@ const IH08_CAMPOS = [
     pistas: ["status de usuario", "estado"], excluye: [] },
 ];
 
+/* Campos de ficha que se contrastan. Son exactamente los que el usuario puede
+   corregir en la app y que quedan registrados en campos_pendientes; contrastar
+   otros generaria pendientes que nadie puede atender. */
+const IH08_FICHA = [
+  { campo: "descripcion",           label: "Descripción" },
+  { campo: "marca",                 label: "Marca" },
+  { campo: "modelo",                label: "Modelo" },
+  { campo: "numero_serie",          label: "Número de serie" },
+];
+
 let ih08FilasCrudas = [];
 let ih08Headers = [];
 let ih08Resultado = null;
@@ -11553,10 +11563,26 @@ async function contrastarIH08(filasSap) {
     pendientesPorEquipo.get(m.equipo_id).push(m);
   });
 
+  /* Los campos pendientes son el equivalente de los movimientos para los datos
+     de ficha: marca, modelo, serie, tipo y descripcion. Hasta ahora el
+     contraste no los miraba, asi que una correccion tuya quedaba pendiente
+     para siempre: aunque SAP se actualizara despues con ese mismo valor, nada
+     cerraba el registro. */
+  const { data: camposPend } = await sb
+    .from("campos_pendientes")
+    .select("*")
+    .eq("estado", "pendiente");
+  const camposPorEquipo = new Map();
+  (camposPend || []).forEach(c => {
+    if (!camposPorEquipo.has(c.equipo_id)) camposPorEquipo.set(c.equipo_id, []);
+    camposPorEquipo.get(c.equipo_id).push(c);
+  });
+
   const equiposPorCodigo = new Map();
   equipos.forEach(e => { if (e.codigo_sap) equiposPorCodigo.set(String(e.codigo_sap).trim(), e); });
 
-  const resultado = { ok: [], sincronizados: [], discrepancias: [], nuevosEnSap: [], noEnSap: [] };
+  const resultado = { ok: [], sincronizados: [], discrepancias: [], enEspera: [],
+                      cumplidos: [], nuevosEnSap: [], noEnSap: [] };
   const codigosVistos = new Set();
 
   for (const fila of filasSap) {
@@ -11573,6 +11599,30 @@ async function contrastarIH08(filasSap) {
     if (fila.ubicacion_tecnica_sap && eq.ubicacion_tecnica_sap !== fila.ubicacion_tecnica_sap) {
       diffs.push({ campo: "ubicacion_tecnica_sap", label: "Ubicación técnica SAP", app: eq.ubicacion_tecnica_sap, sap: fila.ubicacion_tecnica_sap });
     }
+
+    /* Datos de ficha. Se comparan sin distinguir mayusculas ni espacios de
+       sobra: "BAKER HUGHES" y "Baker Hughes " son el mismo fabricante, y
+       tratarlos como distintos llenaria el contraste de ruido. */
+    const camposEquipo = camposPorEquipo.get(eq.id) || [];
+    const igual = (a, b) => String(a == null ? "" : a).trim().toLowerCase()
+                         === String(b == null ? "" : b).trim().toLowerCase();
+    IH08_FICHA.forEach(f => {
+      if (!fila[f.campo]) return;
+      if (!igual(eq[f.campo], fila[f.campo])) {
+        diffs.push({ campo: f.campo, label: f.label, app: eq[f.campo], sap: fila[f.campo], ficha: true });
+      }
+    });
+
+    /* Un pendiente cuyo valor propuesto ya aparece en SAP quedo cumplido: la
+       solicitud se atendio. Se cierra aunque el equipo no tenga ninguna
+       diferencia, que es precisamente el caso normal cuando SAP adopto el
+       cambio. */
+    const cumplidos = camposEquipo.filter(c =>
+      fila[c.campo] && igual(c.valor_propuesto, fila[c.campo]));
+    if (cumplidos.length) {
+      resultado.cumplidos.push({ eq, campos: cumplidos });
+    }
+
     if (!diffs.length) {
       resultado.ok.push(eq);
       continue;
@@ -11587,8 +11637,23 @@ async function contrastarIH08(filasSap) {
       if (mov) movimientosQueExplican.push(mov);
       return !!mov;
     });
-    if (explicaTodo) {
+
+    /* Una diferencia en un campo de ficha que coincide con un pendiente abierto
+       NO es discrepancia ni se sobrescribe: es una solicitud que SAP todavia no
+       ha atendido. Pisarla con el valor viejo de SAP borraria el trabajo de
+       correccion y dejaria el pendiente apuntando a una diferencia inexistente. */
+    const enEspera = diffs.filter(d => d.ficha &&
+      camposEquipo.some(c => c.campo === d.campo && igual(c.valor_propuesto, d.app)));
+    const resto = diffs.filter(d => enEspera.indexOf(d) < 0);
+
+    if (enEspera.length && !resto.length) {
+      resultado.enEspera.push({ eq, diffs: enEspera });
+    } else if (explicaTodo) {
       resultado.sincronizados.push({ eq, diffs, movimientos: movimientosQueExplican });
+    } else if (enEspera.length) {
+      /* Mezcla: lo que espera en SAP se respeta y el resto se revisa aparte. */
+      resultado.enEspera.push({ eq, diffs: enEspera });
+      resultado.discrepancias.push({ eq, diffs: resto });
     } else {
       resultado.discrepancias.push({ eq, diffs });
     }
@@ -11611,6 +11676,8 @@ function mostrarResultadoIH08(r) {
     <span class="ih08-count ok">${r.ok.length} sin cambios</span>
     <span class="ih08-count ok">${r.sincronizados.length} sincronizados automáticamente</span>
     <span class="ih08-count danger">${r.discrepancias.length} discrepancias</span>
+    <span class="ih08-count ok">${r.cumplidos.length} solicitudes atendidas en SAP</span>
+    <span class="ih08-count warn">${r.enEspera.length} esperando actualización en SAP</span>
     <span class="ih08-count warn">${r.nuevosEnSap.length} nuevos en SAP</span>
     <span class="ih08-count warn">${r.noEnSap.length} no aparecen en este IH08</span>
   `;
@@ -11622,6 +11689,16 @@ function mostrarResultadoIH08(r) {
   };
 
   grupos.innerHTML =
+    seccion("✅ Solicitudes que SAP ya atendió (se cerrarán)", r.cumplidos, c => `
+      <div class="ih08-item">
+        <div class="ih08-item-titulo">${c.eq.descripcion || c.eq.id_interno}</div>
+        <div class="ih08-item-detalle">${c.campos.map(x => `${x.campo} → ${x.valor_propuesto}`).join(" · ")}</div>
+      </div>`) +
+    seccion("⏳ Esperando que SAP se actualice (no se tocan)", r.enEspera, e => `
+      <div class="ih08-item">
+        <div class="ih08-item-titulo">${e.eq.descripcion || e.eq.id_interno}</div>
+        <div class="ih08-item-detalle">${e.diffs.map(x => `${x.label}: tú propones "${x.app || "—"}", SAP aún dice "${x.sap}"`).join(" · ")}</div>
+      </div>`) +
     seccion("⚠️ Discrepancias (necesitan revisión manual)", r.discrepancias, d => `
       <div class="ih08-item">
         <div class="ih08-item-titulo">${d.eq.descripcion || d.eq.id_interno}</div>
@@ -11647,12 +11724,14 @@ function mostrarResultadoIH08(r) {
     grupos.innerHTML = '<div class="empty">Todo coincide, no hay nada que revisar. 🎉</div>';
   }
 
-  document.getElementById("ih08-btn-aplicar").style.display = r.sincronizados.length ? "" : "none";
+  document.getElementById("ih08-btn-aplicar").style.display =
+    (r.sincronizados.length || r.cumplidos.length) ? "" : "none";
   document.getElementById("ih08-resultado").style.display = "";
 }
 
 async function aplicarSincronizacionesIH08() {
-  if (!ih08Resultado || !ih08Resultado.sincronizados.length) return;
+  if (!ih08Resultado) return;
+  if (!ih08Resultado.sincronizados.length && !ih08Resultado.cumplidos.length) return;
   const hoy = new Date().toISOString().slice(0, 10);
   const btn = document.getElementById("ih08-btn-aplicar");
   btn.disabled = true;
@@ -11664,6 +11743,27 @@ async function aplicarSincronizacionesIH08() {
     await sb.from("equipos").update(cambios).eq("id", s.eq.id);
     for (const m of s.movimientos) {
       await sb.from("movimientos").update({ estado_conciliacion: "confirmado_en_sap" }).eq("id", m.id);
+    }
+  }
+
+  /* Cierre de solicitudes atendidas. Se marca el campo pendiente como
+     confirmado y, si al equipo no le queda ninguno abierto, deja de estar
+     pendiente de actualizar en SAP. */
+  for (const c of ih08Resultado.cumplidos) {
+    for (const cp of c.campos) {
+      await sb.from("campos_pendientes")
+        .update({ estado: "confirmado_en_sap" })
+        .eq("id", cp.id);
+    }
+    const { count } = await sb.from("campos_pendientes")
+      .select("id", { count: "exact", head: true })
+      .eq("equipo_id", c.eq.id)
+      .eq("estado", "pendiente");
+    if (!count) {
+      await sb.from("equipos")
+        .update({ estado_sincronizacion: "sincronizado",
+                  fecha_ultimo_contraste_sap: hoy })
+        .eq("id", c.eq.id);
     }
   }
 
@@ -11679,7 +11779,9 @@ async function aplicarSincronizacionesIH08() {
     if (error) console.warn("No se pudo registrar el resumen de carga (revisa columnas de cargas_ih08):", error);
   });
 
-  toast(ih08Resultado.sincronizados.length + " equipos sincronizados con SAP");
+  toast(ih08Resultado.sincronizados.length + " equipos sincronizados"
+        + (ih08Resultado.cumplidos.length
+             ? " y " + ih08Resultado.cumplidos.length + " solicitudes cerradas" : ""));
   btn.textContent = "Aplicar sincronizaciones automáticas";
   btn.style.display = "none";
   btn.disabled = false;
