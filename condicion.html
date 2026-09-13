@@ -4165,15 +4165,16 @@ function kpRenderResumen(med, bal, ctx){
     ? ctx.aislamiento[0] : null;
 
   if (ultAis){
-    const juzgable = ultAis.dictamen !== 'REFERENCIA';
-    const valor    = juzgable ? ultAis.ir40 : ultAis.ir_1min;
+    /* Manda lo que mostro el megohmetro. El valor corregido a 40 C es un
+       calculo derivado y por debajo de 40 C queda por encima de la lectura:
+       encabezar con el seria reportar mejor de lo que dice la pantalla. */
     let pie = ultAis.fecha_prueba || '';
-    if (juzgable){
-      if (ultAis.umbral != null) pie += ' \u00b7 m\u00ednimo ' + kpIR(ultAis.umbral);
-    } else {
-      pie += ' \u00b7 sin corregir a 40 \u00b0C';
+    if (ultAis.umbral != null) pie += ' \u00b7 m\u00ednimo ' + kpIR(ultAis.umbral);
+    if (ultAis.ir40 != null && ultAis.ir_1min != null
+        && Number(ultAis.ir40) < Number(ultAis.ir_1min)){
+      pie += ' \u00b7 ' + kpIR(ultAis.ir40) + ' a 40 \u00b0C';
     }
-    chip('Aislamiento', kpIR(valor), '', ultAis.dictamen_cls || 'none', pie);
+    chip('Aislamiento', kpIR(ultAis.ir_1min), '', ultAis.dictamen_cls || 'none', pie);
   } else {
     chip('Aislamiento', '\u2014', '', 'none', 'Sin ensayo registrado');
   }
@@ -5097,12 +5098,16 @@ function kpEstadoIP(ip){
    Escala logaritmica, y no es una preferencia estetica: los valores reales van
    de 2 ohmios a miles de megaohmios. En escala lineal un devanado aterrizado y
    uno sano quedan los dos pegados al eje y la grafica no dice nada.
-   Solo entran los puntos corregidos a 40 C. Mezclar lecturas corregidas con
-   crudas dibujaria una caida donde solo hubo un dia mas caluroso. */
+   Se grafica la lectura del megohmetro, no la corregida. En BES la correccion
+   es dudosa: el megado desde superficie abarca cientos de metros de cable con
+   gradiente termico en serie con el devanado, y la temperatura de este al
+   instante de la prueba no se conoce. Para comparar entre rondas sirve mas
+   igualar condiciones —mismas horas de paro— que corregir con un dato
+   incierto. */
 function kpAisTendencia(ais, umbral){
   const pts = (ais || [])
-    .filter(a => a.ir40 != null && Number(a.ir40) > 0)
-    .map(a => ({ f: a.fecha_prueba, v: Number(a.ir40),
+    .filter(a => a.ir_1min != null && Number(a.ir_1min) > 0)
+    .map(a => ({ f: a.fecha_prueba, v: Number(a.ir_1min),
                  cls: a.dictamen_cls || 'none', corrida: a.corrida }))
     .sort((a, b) => (a.f < b.f ? -1 : a.f > b.f ? 1 : 0));
 
@@ -5186,16 +5191,14 @@ function kpRenderContexto(ctx){
 
   if (ais.length){
     h += '<h2 style="margin-top:22px">Aislamiento</h2>';
-    const sinCorregir = ais.filter(a => a.dictamen === 'REFERENCIA').length;
+    const sinTemp = ais.filter(a => a.temp_devanado == null).length;
     h += '<p class="hint">' + ais.length
       +  (ais.length === 1 ? ' prueba registrada' : ' pruebas registradas')
       +  (ais[0] && ais[0].umbral != null
             ? ' &middot; m&iacute;nimo IEEE 43 ' + kpIR(ais[0].umbral) : '')
-      /* Se dice cuantas no se pueden juzgar. Un historico de cinco ensayos de
-         los que cuatro no tienen temperatura no es un historico de cinco. */
-      +  (sinCorregir
-            ? ' &middot; ' + sinCorregir + ' sin temperatura de devanado'
-            : '')
+      /* Se dice cuantas no traen temperatura: no impide el dictamen, pero si
+         limita la comparabilidad entre rondas tomadas en condiciones distintas. */
+      +  (sinTemp ? ' &middot; ' + sinTemp + ' sin temperatura de devanado' : '')
       +  '</p>';
     h += kpAisTendencia(ais, ais[0] ? ais[0].umbral : null);
     h += '<div class="kp-list" style="margin-bottom:6px">';
@@ -5237,11 +5240,12 @@ function kpRenderContexto(ctx){
            el corregido el que se compara contra el umbral, pero el crudo es el
            que el tecnico vio en el megger y el que recuerda. */
         +  '<div class="dt">'
-        +  (a.ir40 != null
-              ? kpIR(a.ir40) + ' a 40 &deg;C <span class="src">(' + kpIR(a.ir_1min)
-                + ' medido' + (a.temp_devanado != null ? ' a ' + kpNum(a.temp_devanado)
-                + ' &deg;C' : '') + ')</span>'
-              : kpIR(a.ir_1min) + ' sin corregir')
+        +  kpIR(a.ir_1min) + ' medido'
+        +  (a.temp_devanado != null
+              ? ' <span class="src">a ' + kpNum(a.temp_devanado) + ' &deg;C'
+                + (a.ir40 != null ? ', ' + kpIR(a.ir40) + ' corregido a 40 &deg;C' : '')
+                + '</span>'
+              : '')
         +  (a.ip != null ? ' &middot; IP ' + kpNum(a.ip) : '')
         +  (a.dar != null ? ' &middot; DAR ' + kpNum(a.dar) : '')
         +  '</div>'
