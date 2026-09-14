@@ -286,6 +286,7 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .est-eq-item{padding:7px 4px;border-bottom:1px solid var(--linea);cursor:pointer}
 .est-eq-item:hover{background:var(--hover)}
 .est-eq-item:last-child{border-bottom:0}
+.est-aviso{font-size:12.5px;color:var(--texto-2);padding:6px 2px 10px}
 </style>
 
 <style id="kx-fondo-hub">
@@ -4985,6 +4986,11 @@ let EST_ABIERTO = new Set();
 let EST_SEL     = null;
 let EST_EQUIPOS = new Map();  // codigo -> equipos ya traidos
 let EST_FILTRO  = "";
+let EST_VER     = 0;      // invalida el memo de coincidencias en cada repintado
+let EST_EQ_HIT  = null;   // codigo de ubicacion -> equipos encontrados
+let EST_EQ_TOTAL = 0;
+let EST_EQ_BUSC = false;
+let EST_TIMER   = null;
 
 async function cargarEstructura() {
   if (EST_NODOS) { estPintar(); return; }
@@ -5026,20 +5032,34 @@ function estVisible(n) {
    "RPCYCO" tiene que revelar la ruta completa hasta ahi, no solo la hoja
    suelta sin contexto de donde esta. */
 function estCoincideRama(n) {
-  if (n._match === EST_FILTRO) return n._matchVal;
+  /* El memo se invalida por version y no por texto: el resultado de la
+     busqueda de equipos llega despues, con el mismo texto, y con memo por
+     texto la rama quedaria marcada como no coincidente para siempre. */
+  if (n._matchVer === EST_VER) return n._matchVal;
   const propio = (n.codigo + " " + (n.denominacion || "")).toLowerCase()
-                 .indexOf(EST_FILTRO) >= 0;
+                 .indexOf(EST_FILTRO) >= 0
+               || (EST_EQ_HIT && EST_EQ_HIT.has(n.codigo));
   const hijos = EST_HIJOS.get(n.codigo) || [];
   const val = propio || hijos.some(estCoincideRama);
-  n._match = EST_FILTRO; n._matchVal = val;
+  n._matchVer = EST_VER; n._matchVal = val;
   return val;
 }
 
 function estPintar() {
   const cont = document.getElementById("est-arbol");
   if (!EST_NODOS) return;
+  EST_VER++;
   const raiz = EST_HIJOS.get("") || [];
   let h = "";
+  if (EST_FILTRO) {
+    if (EST_EQ_BUSC) h += '<div class="est-aviso">Buscando equipos\u2026</div>';
+    else if (EST_EQ_TOTAL) {
+      h += '<div class="est-aviso">' + EST_EQ_TOTAL
+        + (EST_EQ_TOTAL === 1 ? ' equipo encontrado' : ' equipos encontrados')
+        + (EST_EQ_TOTAL > 200 ? ' \u00b7 se muestran los primeros 200' : '')
+        + '</div>';
+    }
+  }
   raiz.forEach(n => { h += estRama(n, 0); });
   cont.innerHTML = h || '<div class="vacio">Nada coincide con la b&uacute;squeda.</div>';
 }
@@ -5067,7 +5087,14 @@ function estRama(n, prof) {
         + (n.n_rama > n.n_directos ? n.n_rama + " en rama" : "")
         + '</span></div>';
 
-  if (EST_SEL === n.codigo && n.n_directos) h += estEquiposHtml(n.codigo);
+  /* Con busqueda activa, los equipos encontrados se muestran bajo su
+     ubicacion sin necesidad de seleccionarla: el punto de buscar es ver donde
+     esta la cosa, no tener que ir a destaparla. */
+  if (EST_FILTRO && EST_EQ_HIT && EST_EQ_HIT.has(n.codigo)) {
+    h += estEquiposHtml(n.codigo, EST_EQ_HIT.get(n.codigo));
+  } else if (!EST_FILTRO && EST_SEL === n.codigo && n.n_directos) {
+    h += estEquiposHtml(n.codigo);
+  }
   if (abierto) hijos.forEach(c => { h += estRama(c, prof + 1); });
   return h;
 }
@@ -5092,8 +5119,8 @@ async function estCargarEquipos(codigo) {
   estPintar();
 }
 
-function estEquiposHtml(codigo) {
-  const lista = EST_EQUIPOS.get(codigo);
+function estEquiposHtml(codigo, listaDada) {
+  const lista = listaDada || EST_EQUIPOS.get(codigo);
   if (!lista) return '<div class="est-eq"><div class="loading">Cargando equipos...</div></div>';
   if (!lista.length) return "";
   return '<div class="est-eq">' + lista.map(e =>
@@ -5108,19 +5135,63 @@ function estEquiposHtml(codigo) {
 /* Se reutiliza la ficha que ya existe. Si el equipo no esta en la lista en
    memoria —la estructura puede alcanzar equipos que el filtro actual no
    trajo— se avisa en vez de abrir una ficha vacia. */
-function estAbrirEquipo(id) {
-  const eq = equipos.find(e => e.id === id);
+/* La busqueda va contra la base, asi que puede encontrar equipos que la lista
+   en memoria no tiene. En ese caso se trae la fila completa antes de abrir la
+   ficha, en vez de rendirse con un aviso. */
+async function estAbrirEquipo(id) {
+  let eq = equipos.find(e => e.id === id);
   if (!eq) {
-    toast("Ese equipo no esta en la lista cargada. Bus" + "calo desde Equipos.");
-    return;
+    const { data, error } = await sb.from("equipos").select("*").eq("id", id).single();
+    if (error || !data) { toast("No se pudo abrir ese equipo"); return; }
+    eq = data;
+    equipos.push(eq);
   }
   cerrarPanel("panel-estructura");
   document.querySelector('[data-tab="inicio"]').click();
   abrirFicha(eq);
 }
 
+/* La caja es una sola y decide sola. Un selector entre "ubicacion" y "equipo"
+   obligaria a saber de antemano en cual de los dos esta lo que uno busca, que
+   es justo lo que no se sabe cuando se busca. */
 function estBuscar() {
-  EST_FILTRO = document.getElementById("est-buscar").value.trim().toLowerCase();
+  const txt = document.getElementById("est-buscar").value.trim();
+  EST_FILTRO = txt.toLowerCase();
+
+  if (EST_TIMER) clearTimeout(EST_TIMER);
+
+  if (txt.length < 3) {
+    EST_EQ_HIT = null; EST_EQ_TOTAL = 0; EST_EQ_BUSC = false;
+    estPintar();
+    return;
+  }
+
+  /* Se repinta ya con lo que se puede resolver en el dispositivo —codigos y
+     denominaciones— y la consulta de equipos entra despues. Asi la escritura
+     nunca se siente trabada. */
+  EST_EQ_BUSC = true;
+  estPintar();
+  EST_TIMER = setTimeout(() => estBuscarEquipos(txt), 350);
+}
+
+async function estBuscarEquipos(txt) {
+  const { data, error } = await sb.rpc("dp_buscar_equipos_estructura",
+    { p_texto: txt, p_limite: 200 });
+
+  /* Si el usuario siguio escribiendo, este resultado ya no corresponde. */
+  if (document.getElementById("est-buscar").value.trim() !== txt) return;
+
+  EST_EQ_BUSC = false;
+  if (error) { EST_EQ_HIT = null; EST_EQ_TOTAL = 0; estPintar(); return; }
+
+  EST_EQ_TOTAL = (data && data.total) || 0;
+  EST_EQ_HIT = new Map();
+  ((data && data.items) || []).forEach(e => {
+    const u = e.ubicacion_tecnica_sap || "";
+    if (!u) return;
+    if (!EST_EQ_HIT.has(u)) EST_EQ_HIT.set(u, []);
+    EST_EQ_HIT.get(u).push(e);
+  });
   estPintar();
 }
 
