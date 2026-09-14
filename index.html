@@ -2707,7 +2707,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 <!-- ===== Programación: registro de una actividad ===== -->
 <div class="panel" id="panel-prog-actividad">
   <div class="panel-header">
-    <button class="icon-btn" onclick="volverAlModulo()">&#8592;</button>
+    <button class="icon-btn" onclick="progVolver()">&#8592;</button>
     <h2 id="prog-act-titulo">Actividad</h2>
   </div>
   <div class="panel-body">
@@ -13084,6 +13084,14 @@ async function progAbrirActividad(id) {
     extra.innerHTML = btnOT;
   }
 
+  /* Los paneles no se apilan: abrir uno cierra el anterior. Se recuerda cual
+     estaba abierto para volver ahi al terminar, en vez de dejar la pantalla en
+     blanco obligando a pulsar "Hoy" otra vez. Y volver al de origen y no
+     siempre a "Hoy" importa: a una actividad se puede llegar desde la semana o
+     desde las no programadas. */
+  const previo = document.querySelector(".panel.open");
+  progPanelPrevio = (previo && previo.id !== "panel-prog-actividad")
+    ? previo.id : "panel-prog-dia";
   abrirPanel("panel-prog-actividad");
 }
 
@@ -13138,6 +13146,14 @@ function progPrecargarJornada() {
    No hace falta inventar otro separador ni tocar el reporte; lo que faltaba
    era una pantalla que no dejara el orden al azar de como se escribio. */
 const PROG_SEP = " / ";
+
+let progPanelPrevio = "panel-prog-dia";
+
+/* Cerrar y volver, en un solo gesto. abrirPanel ya cierra el que estaba
+   abierto, asi que basta con abrir el de origen. */
+function progVolver() {
+  abrirPanel(progPanelPrevio || "panel-prog-dia");
+}
 
 function progCargarPersonal(txt) {
   const cont = document.getElementById("prog-tecnicos");
@@ -13229,7 +13245,7 @@ async function progBorrarJornada(fecha) {
   if (error) { toast("No se pudo borrar: " + error.message); return; }
   if (data && data.ok === false) { toast(data.error); return; }
   toast("Jornada eliminada");
-  cerrarPanel("panel-prog-actividad");
+  progVolver();
   await cargarProgramacionDia();
 }
 
@@ -13276,7 +13292,7 @@ async function progGuardarEjecucion() {
   if (data && data.ok === false) { toast(data.error || "No se pudo guardar"); return; }
 
   toast("Registro guardado");
-  cerrarPanel("panel-prog-actividad");
+  progVolver();
   await cargarProgramacionDia();
 }
 
@@ -13879,7 +13895,7 @@ async function progLimpiarEjecucion() {
   if (data && data.ok === false) { toast(data.error); return; }
 
   toast("Registro de ejecución borrado");
-  cerrarPanel("panel-prog-actividad");
+  progVolver();
   cargarProgramacionDia();
 }
 
@@ -13894,7 +13910,7 @@ async function progEliminarNP() {
   if (data && data.ok === false) { toast(data.error); return; }
 
   toast("Actividad eliminada");
-  cerrarPanel("panel-prog-actividad");
+  progVolver();
   cargarProgramacionDia();
 }
 
