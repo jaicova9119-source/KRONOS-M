@@ -2882,7 +2882,8 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="section-label">DATOS DE LA ORDEN</div>
     <table class="tabla-ficha" id="ot-ficha"></table>
 
-    <div class="field"><label>Disciplina</label>
+    <div class="prog-grid">
+      <div class="field"><label>Disciplina</label>
       <select id="ot-disciplina" onchange="otArmarPuesto()">
         <option value="ELEC">ELEC &#183; El&#233;ctrica</option>
         <option value="EVSD">EVSD &#183; Variadores</option>
@@ -2897,6 +2898,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
              onchange="otValidarPuesto()"/>
       <div id="ot-res-puesto" class="ot-sugerencias"></div>
       <div class="mat-stock" id="ot-puesto-aviso" style="margin-top:4px"></div>
+    </div>
     </div>
     <!-- Cinco datos cortos que antes ocupaban cinco filas completas. -->
     <div class="prog-grid">
@@ -2969,9 +2971,18 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     </div>
 
     <div class="section-label" style="margin-top:18px">TIEMPOS DE PARADA E INTERVENCI&#211;N</div>
+    <!-- No toda intervencion implica parar el equipo. Antes esos tres momentos
+         se dejaban vacios y el formato salia con las casillas en blanco, que se
+         lee como "falto diligenciar" y no como "no aplica". La casilla imprime
+         N/A, que es la respuesta correcta. -->
+    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-bottom:10px">
+      <input type="checkbox" id="ot-sin-parada" style="width:auto" onchange="otToggleParada()"/>
+      El equipo no se par&#243;: imprimir N/A en los tres tiempos
+    </label>
+
     <!-- Fecha y hora van juntas: son un solo dato partido en dos casillas, y
          apiladas obligaban a recorrer seis renglones para tres momentos. -->
-    <div class="prog-grid">
+    <div class="prog-grid" id="ot-bloque-parada">
       <div class="field"><label>Inicio de parada</label>
         <div class="fh"><input id="ot-fi-parada" type="date"/><input id="ot-hi-parada" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM"/></div></div>
       <div class="field"><label>Inicio de intervenci&#243;n</label>
@@ -2984,7 +2995,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <select id="ot-estado-orden"><option>EN PROCESO</option><option>FINALIZADA</option></select>
     </div>
     <div class="field"><label>Ejecutores</label>
-      <input id="ot-ejecutores" placeholder="Ej. Jaime C&#243;rdoba / Ferney Riascos"/>
+      <input id="ot-ejecutores" />
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-weight:normal">
         <input type="checkbox" id="ot-ejec-blanco" style="width:auto" onchange="otToggleEjecutores()"/>
         Dejar en blanco para escribirlos a mano
@@ -3001,10 +3012,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <input type="checkbox" id="ot-rec-equipo" style="width:auto"/> Equipo en orden y aseo</label>
     <div class="field"><label>Observaciones de la entrega</label>
       <textarea id="ot-rec-obs" rows="3"></textarea></div>
-    <div class="field"><label>Nombre de quien recibe</label>
-      <input id="ot-rec-nombre" placeholder="Ej. Yonatan Perea"/></div>
-    <div class="field"><label>&#193;rea de quien recibe</label>
-      <input id="ot-rec-area-txt" placeholder="Ej. Operaciones"/></div>
+    <div class="prog-grid">
+      <div class="field"><label>Nombre de quien recibe</label>
+        <input id="ot-rec-nombre" /></div>
+      <div class="field"><label>&#193;rea de quien recibe</label>
+        <input id="ot-rec-area-txt" /></div>
+    </div>
     <div class="field"><label>Firma de quien recibe</label>
       <div id="ot-firma-vista" style="margin-bottom:6px"></div>
       <div style="display:flex;gap:8px">
@@ -3020,7 +3033,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
     <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()" style="margin-top:18px">Guardar</button>
     <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir o guardar como PDF</button>
-    <button class="btn-secondary" style="margin-top:8px" onclick="otDescargarWord()">Descargar en Word</button>
+
     <!-- El logo viene por defecto en fo016-logo.js, asi que ya no se pide
          cargarlo. La nota sobre margenes del navegador se retiro: ocupaba
          media pantalla en el movil para una indicacion que solo aplica la
@@ -14184,6 +14197,8 @@ function otRender() {
 
   document.getElementById("ot-ejecutores").value = o.ejecutores || a.personal || "";
   document.getElementById("ot-ejec-blanco").checked = !!o.ejecutores_en_blanco;
+  document.getElementById("ot-sin-parada").checked = !!o.sin_parada;
+  otToggleParada();
   otToggleEjecutores();
 
   otEstadoLogo();
@@ -14612,6 +14627,19 @@ document.addEventListener("focusout", (e) => {
   if (el.value !== previo) el.dispatchEvent(new Event("input", { bubbles: true }));
 });
 
+const OT_TIEMPOS = ["ot-fi-parada","ot-hi-parada","ot-fi-interv",
+                    "ot-hi-interv","ot-ff-parada","ot-hf-parada"];
+
+/* Los campos se deshabilitan en vez de ocultarse: si alguien marca la casilla
+   por error, ve que los datos que habia escrito siguen ahi al desmarcarla. */
+function otToggleParada() {
+  const sin = document.getElementById("ot-sin-parada").checked;
+  OT_TIEMPOS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.disabled = sin; el.style.opacity = sin ? ".5" : ""; }
+  });
+}
+
 async function otGuardar(opciones) {
   if (!otDatos) return false;
   const silencioso = !!(opciones && opciones.silencioso);
@@ -14657,6 +14685,7 @@ async function otGuardar(opciones) {
       recepcion_observaciones: otVal("ot-rec-obs"),
       recepcion_nombre: otVal("ot-rec-nombre"),
       recepcion_area_texto: otVal("ot-rec-area-txt"),
+      sin_parada: document.getElementById("ot-sin-parada").checked,
       recepcion_firma: otFirmaDato || null,
     },
   });
@@ -14789,6 +14818,19 @@ function otMapear() {
     fecha_inicio_parada: o.fecha_inicio_parada, hora_inicio_parada: o.hora_inicio_parada,
     fecha_inicio_interv: o.fecha_inicio_interv, hora_inicio_interv: o.hora_inicio_interv,
     fecha_fin_parada:    o.fecha_fin_parada,    hora_fin_parada:    o.hora_fin_parada,
+    /* Va DESPUES de las seis claves porque las sobrescribe: en un objeto
+       literal gana la ultima aparicion. fechaSAP y hora del generador
+       devuelven el texto tal cual cuando no reconocen un formato de fecha, asi
+       que "N/A" se imprime literal sin tocar fo016.js. */
+    ...(function () {
+      const sin = document.getElementById("ot-sin-parada")?.checked ?? !!o.sin_parada;
+      if (!sin) return {};
+      return {
+        fecha_inicio_parada: "N/A", hora_inicio_parada: "N/A",
+        fecha_inicio_interv: "N/A", hora_inicio_interv: "N/A",
+        fecha_fin_parada:    "N/A", hora_fin_parada:    "N/A",
+      };
+    })(),
 
     /* Solo se imprime si la orden queda EN PROCESO */
     avance_pct:   a.avance_pct,
@@ -15194,7 +15236,7 @@ async function otImprimir() {
         v.print();
       } catch (e) {
         retirar();
-        toast("El navegador no permitió imprimir. Use Descargar en Word.");
+        toast("El navegador no permitió imprimir. Revisa el bloqueo de ventanas emergentes.");
       }
     });
   };
