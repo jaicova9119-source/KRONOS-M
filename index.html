@@ -288,6 +288,17 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .est-eq-item:last-child{border-bottom:0}
 .est-aviso{font-size:12.5px;color:var(--texto-2);padding:6px 2px 10px}
 
+/* Rejilla del registro de jornada. El minimo de 220px es lo que decide cuando
+   pasa de una a varias columnas, sin consultas de medios: la caja se acomoda
+   al espacio que tenga, este en un monitor o en un telefono. */
+.prog-grid{display:grid;gap:0 14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.prog-grid .field.corto input{max-width:160px}
+.prog-tec-fila{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.prog-tec-fila input{flex:1}
+.prog-tec-quitar{background:none;border:1px solid var(--linea);border-radius:7px;
+  color:var(--texto-2);cursor:pointer;padding:6px 10px;line-height:1}
+.prog-tec-quitar:hover{color:#B3261E;border-color:#B3261E}
+
 /* El color va en un filete lateral y no en el fondo de la fila: con quince
    equipos seguidos, quince fondos de color compiten entre si y se pierde la
    jerarquia del arbol. El filete se lee de un vistazo y no grita. */
@@ -2702,20 +2713,40 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="prog-jornadas"></div>
 
     <div class="section-label" style="margin-top:18px">REGISTRO DE LA JORNADA</div>
-    <div class="field"><label>Fecha de la jornada</label><input id="prog-e-fecha" type="date" onchange="progCambiarJornada(this.value)"/></div>
-    <div class="field">
-      <label>Estado</label>
-      <select id="prog-e-estado" onchange="progToggleMotivo()">
-        <option value="programada">Programada</option>
-        <option value="en_ejecucion">En ejecución</option>
-        <option value="ejecutada">Ejecutada</option>
-        <option value="no_ejecutada">No ejecutada</option>
-        <option value="reprogramada">Reprogramada</option>
-      </select>
+    <!-- Cinco campos cortos ocupando cada uno el ancho completo obligaban a
+         desplazarse para ver lo que cabe en dos filas. La rejilla se ajusta al
+         ancho disponible: en un monitor caben cuatro, en un telefono se apilan
+         igual que antes. -->
+    <div class="prog-grid">
+      <div class="field"><label>Fecha de la jornada</label><input id="prog-e-fecha" type="date" onchange="progCambiarJornada(this.value)"/></div>
+      <div class="field">
+        <label>Estado</label>
+        <select id="prog-e-estado" onchange="progToggleMotivo()">
+          <option value="programada">Programada</option>
+          <option value="en_ejecucion">En ejecución</option>
+          <option value="ejecutada">Ejecutada</option>
+          <option value="no_ejecutada">No ejecutada</option>
+          <option value="reprogramada">Reprogramada</option>
+        </select>
+      </div>
+      <div class="field corto"><label>Avance acumulado (%)</label><input id="prog-e-avance" type="number" min="0" max="100" step="5"/></div>
+      <div class="field corto"><label>HH eléctricas <b>de esta jornada</b></label><input id="prog-e-hh" type="number" step="0.5" placeholder="Solo del día"/></div>
     </div>
-    <div class="field"><label>Avance acumulado al cierre de la jornada (%)</label><input id="prog-e-avance" type="number" min="0" max="100" step="5"/></div>
-    <div class="field"><label>HH eléctricas <b>de esta jornada</b></label><input id="prog-e-hh" type="number" step="0.5" placeholder="Solo las horas del día, no el acumulado"/></div>
-    <div class="field"><label>Personal que ejecutó</label><input id="prog-e-personal" placeholder="Ej. Yonatan Perea/Ferney Riascos"/></div>
+
+    <!-- El lider es quien firma arriba en el FO-016 y los demas figuran al
+         pie, asi que dejaron de ser un solo campo de texto libre: separarlos
+         aqui evita que el orden en que se escribieron decida quien firma. -->
+    <div class="field">
+      <label>Líder de la actividad</label>
+      <input id="prog-e-lider" placeholder="Quien firma el reporte"/>
+    </div>
+    <div class="field">
+      <label>Técnicos que acompañaron</label>
+      <div id="prog-tecnicos"></div>
+      <button type="button" class="btn-secondary" style="margin-top:6px"
+              onclick="progAgregarTecnico('')">Agregar técnico</button>
+      <div class="mat-stock">Opcional. En el FO-016 el l&iacute;der va sobre la raya de la firma y estos quedan debajo, uno por rengl&oacute;n.</div>
+    </div>
     <div class="field">
       <label>Actividades realizadas</label>
       <textarea id="prog-e-actividades" rows="6" placeholder="Escribe tus notas de campo. Después puedes pedirle al asistente que las redacte."></textarea>
@@ -13083,12 +13114,64 @@ function progPrecargarJornada() {
   document.getElementById("prog-e-avance").value =
     j && j.avance_pct != null ? j.avance_pct : (a.avance_pct != null ? a.avance_pct : "");
   document.getElementById("prog-e-hh").value = j && j.hh_ele != null ? j.hh_ele : "";
-  document.getElementById("prog-e-personal").value =
-    (j && j.personal) || a.personal || cfg.personal || "";
+  progCargarPersonal((j && j.personal) || a.personal || cfg.personal || "");
   document.getElementById("prog-e-actividades").value = (j && j.actividades) || "";
   document.getElementById("prog-e-observaciones").value = (j && j.observaciones) || "";
   document.getElementById("prog-e-motivo").value = a.motivo_no_ejecucion || "";
   progToggleMotivo();
+}
+
+/* El personal viaja como un solo texto separado por barras, que es el formato
+   que el generador del FO-016 ya interpreta: toma el primero como lider y lo
+   pone sobre la raya de la firma, y los demas bajo el rotulo, uno por renglon.
+   No hace falta inventar otro separador ni tocar el reporte; lo que faltaba
+   era una pantalla que no dejara el orden al azar de como se escribio. */
+const PROG_SEP = " / ";
+
+function progCargarPersonal(txt) {
+  const cont = document.getElementById("prog-tecnicos");
+  cont.innerHTML = "";
+  const s = String(txt || "").trim();
+  let lider = "", resto = [];
+
+  if (s) {
+    /* Se parte igual que en el reporte —barra, coma o punto y coma— para que
+       lo que se ve en pantalla sea exactamente lo que va a salir impreso. Los
+       registros anteriores se reinterpretan solos: el primero pasa a ser el
+       lider, que es lo que ya ocurria en la practica al firmar. */
+    const p = s.split(/[\/,;|]+/).map(x => x.trim()).filter(Boolean);
+    lider = p[0] || "";
+    resto = p.slice(1);
+  }
+
+  document.getElementById("prog-e-lider").value = lider;
+  resto.forEach(progAgregarTecnico);
+}
+
+function progAgregarTecnico(nombre) {
+  const cont = document.getElementById("prog-tecnicos");
+  const fila = document.createElement("div");
+  fila.className = "prog-tec-fila";
+  const inp = document.createElement("input");
+  inp.value = typeof nombre === "string" ? nombre : "";
+  inp.placeholder = "Nombre del técnico";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "prog-tec-quitar";
+  btn.textContent = "Quitar";
+  btn.onclick = () => fila.remove();
+  fila.appendChild(inp); fila.appendChild(btn);
+  cont.appendChild(fila);
+  if (!inp.value) inp.focus();
+}
+
+function progComponerPersonal() {
+  const lider = document.getElementById("prog-e-lider").value.trim();
+  const otros = Array.from(document.querySelectorAll("#prog-tecnicos input"))
+    .map(i => i.value.trim()).filter(Boolean);
+  if (!lider && !otros.length) return "";
+  if (!lider) return otros.join(PROG_SEP);
+  return otros.length ? lider + PROG_SEP + otros.join(PROG_SEP) : lider;
 }
 
 function progCambiarJornada(f) {
@@ -13128,7 +13211,7 @@ async function progGuardarEjecucion() {
     return;
   }
 
-  const personal = document.getElementById("prog-e-personal").value.trim();
+  const personal = progComponerPersonal();
   // Se recuerda el personal para no volver a digitarlo en cada actividad
   if (personal) { const c = progCfg(); c.personal = personal; progGuardarCfg(c); }
 
