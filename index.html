@@ -298,6 +298,11 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .prog-tec-quitar{background:none;border:1px solid var(--linea);border-radius:7px;
   color:var(--texto-2);cursor:pointer;padding:6px 10px;line-height:1}
 .prog-tec-quitar:hover{color:#B3261E;border-color:#B3261E}
+/* La fecha escrita con todas las letras bajo el campo. El control nativo
+   muestra los segmentos en el orden del sistema operativo, que no siempre es
+   dia-mes-año, y ahi es donde se cuela el error de escribir 09/08 queriendo
+   decir 8 de septiembre. Leerla completa no deja lugar a duda. */
+.fecha-letra{font-size:12px;color:var(--texto-2);margin-top:4px}
 
 /* El color va en un filete lateral y no en el fondo de la fila: con quince
    equipos seguidos, quince fondos de color compiten entre si y se pierde la
@@ -2718,7 +2723,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
          ancho disponible: en un monitor caben cuatro, en un telefono se apilan
          igual que antes. -->
     <div class="prog-grid">
-      <div class="field"><label>Fecha de la jornada</label><input id="prog-e-fecha" type="date" onchange="progCambiarJornada(this.value)"/></div>
+      <div class="field"><label>Fecha de la jornada</label>
+        <input id="prog-e-fecha" type="date" class="solo-calendario"
+               onchange="progCambiarJornada(this.value);fechaEnLetra('prog-e-fecha')"/>
+        <div class="fecha-letra" id="prog-e-fecha-letra"></div>
+      </div>
       <div class="field">
         <label>Estado</label>
         <select id="prog-e-estado" onchange="progToggleMotivo()">
@@ -13115,6 +13124,8 @@ function progPrecargarJornada() {
     j && j.avance_pct != null ? j.avance_pct : (a.avance_pct != null ? a.avance_pct : "");
   document.getElementById("prog-e-hh").value = j && j.hh_ele != null ? j.hh_ele : "";
   progCargarPersonal((j && j.personal) || a.personal || cfg.personal || "");
+  fechaSoloCalendario(document.getElementById("prog-e-fecha"));
+  fechaEnLetra("prog-e-fecha");
   document.getElementById("prog-e-actividades").value = (j && j.actividades) || "";
   document.getElementById("prog-e-observaciones").value = (j && j.observaciones) || "";
   document.getElementById("prog-e-motivo").value = a.motivo_no_ejecucion || "";
@@ -13172,6 +13183,33 @@ function progComponerPersonal() {
   if (!lider && !otros.length) return "";
   if (!lider) return otros.join(PROG_SEP);
   return otros.length ? lider + PROG_SEP + otros.join(PROG_SEP) : lider;
+}
+
+/* Se bloquea la escritura y se abre el calendario al tocar el campo. Tipear la
+   fecha es justo donde se produce la confusion entre dia y mes; elegirla del
+   calendario no admite ambiguedad. El valor sigue siendo un input date nativo,
+   asi que lo que se guarda no cambia. */
+function fechaSoloCalendario(el) {
+  if (!el || el._soloCal) return;
+  el._soloCal = true;
+  el.addEventListener("keydown", ev => {
+    /* Tab y Escape se dejan pasar para no atrapar el foco. */
+    if (ev.key !== "Tab" && ev.key !== "Escape") ev.preventDefault();
+  });
+  const abrir = () => { try { el.showPicker && el.showPicker(); } catch (e) {} };
+  el.addEventListener("click", abrir);
+  el.addEventListener("focus", abrir);
+}
+
+function fechaEnLetra(id) {
+  const el = document.getElementById(id);
+  const dest = document.getElementById(id + "-letra");
+  if (!el || !dest) return;
+  if (!el.value) { dest.textContent = ""; return; }
+  const p = el.value.split("-");
+  const d = new Date(+p[0], +p[1] - 1, +p[2]);
+  dest.textContent = d.toLocaleDateString("es-CO",
+    { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
 function progCambiarJornada(f) {
