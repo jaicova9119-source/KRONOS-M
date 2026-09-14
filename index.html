@@ -5011,6 +5011,8 @@ let EST_ABIERTO = new Set();
 let EST_SEL     = null;
 let EST_EQUIPOS = new Map();  // codigo -> equipos ya traidos
 let EST_FILTRO  = "";
+let EST_TOKENS  = [];
+let EST_CERRADO = new Set();   // nodos que el usuario cerro a mano con filtro activo
 let EST_VER     = 0;      // invalida el memo de coincidencias en cada repintado
 let EST_EQ_HIT  = null;   // codigo de ubicacion -> equipos encontrados
 let EST_EQ_TOTAL = 0;
@@ -5061,8 +5063,11 @@ function estCoincideRama(n) {
      busqueda de equipos llega despues, con el mismo texto, y con memo por
      texto la rama quedaria marcada como no coincidente para siempre. */
   if (n._matchVer === EST_VER) return n._matchVal;
-  const propio = (n.codigo + " " + (n.denominacion || "")).toLowerCase()
-                 .indexOf(EST_FILTRO) >= 0
+  /* Todas las palabras deben aparecer, en cualquier orden y en cualquiera de
+     los dos campos. "cyc57 pozo" y "pozo cyc57" encuentran lo mismo, que es lo
+     que uno espera al escribir de memoria. */
+  const heno = (n.codigo + " " + (n.denominacion || "")).toLowerCase();
+  const propio = EST_TOKENS.every(t => heno.indexOf(t) >= 0)
                || (EST_EQ_HIT && EST_EQ_HIT.has(n.codigo));
   const hijos = EST_HIJOS.get(n.codigo) || [];
   const val = propio || hijos.some(estCoincideRama);
@@ -5094,7 +5099,8 @@ function estRama(n, prof) {
   const hijos = (EST_HIJOS.get(n.codigo) || []).filter(estVisible);
   /* Con filtro activo las ramas coincidentes se abren solas: obligar a
      desplegar a mano lo que uno acaba de buscar no tiene sentido. */
-  const abierto = EST_ABIERTO.has(n.codigo) || (EST_FILTRO && hijos.length);
+  const abierto = EST_CERRADO.has(n.codigo) ? false
+                : (EST_ABIERTO.has(n.codigo) || (EST_FILTRO && hijos.length));
   const den = n.denominacion
     ? '<span class="est-den">' + escaparHtml(n.denominacion) + '</span>'
     : '<span class="est-den sin">sin denominaci&oacute;n</span>';
@@ -5103,7 +5109,8 @@ function estRama(n, prof) {
         + ' style="padding-left:' + (prof * 16) + 'px"'
         + ' onclick="estClic(\'' + n.codigo + '\')">'
         + '<span class="est-flecha' + (hijos.length ? "" : " hoja") + '">'
-        + (hijos.length ? (abierto ? "&#9662;" : "&#9656;") : "&#8226;") + '</span>'
+        + (hijos.length ? (abierto ? "&#9662;" : "&#9656;")
+                        : (n.n_directos ? "&#9673;" : "&#8226;")) + '</span>'
         + '<span class="est-txt">' + den
         + '<br><span class="est-cod">' + escaparHtml(n.codigo) + '</span></span>'
         + '<span class="est-n">'
@@ -5115,10 +5122,12 @@ function estRama(n, prof) {
   /* Con busqueda activa, los equipos encontrados se muestran bajo su
      ubicacion sin necesidad de seleccionarla: el punto de buscar es ver donde
      esta la cosa, no tener que ir a destaparla. */
-  if (EST_FILTRO && EST_EQ_HIT && EST_EQ_HIT.has(n.codigo)) {
-    h += estEquiposHtml(n.codigo, EST_EQ_HIT.get(n.codigo));
-  } else if (!EST_FILTRO && EST_SEL === n.codigo && n.n_directos) {
+  /* Seleccionar manda sobre la busqueda: si el usuario toca una ubicacion
+     quiere ver TODO lo que hay ahi, no solo lo que coincidio con el texto. */
+  if (EST_SEL === n.codigo && n.n_directos) {
     h += estEquiposHtml(n.codigo);
+  } else if (EST_FILTRO && EST_EQ_HIT && EST_EQ_HIT.has(n.codigo)) {
+    h += estEquiposHtml(n.codigo, EST_EQ_HIT.get(n.codigo));
   }
   if (abierto) hijos.forEach(c => { h += estRama(c, prof + 1); });
   return h;
@@ -5129,10 +5138,15 @@ function estClic(codigo) {
   if (!n) return;
   const hijos = EST_HIJOS.get(codigo) || [];
   if (hijos.length) {
-    if (EST_ABIERTO.has(codigo)) EST_ABIERTO.delete(codigo);
-    else EST_ABIERTO.add(codigo);
+    const abierto = EST_CERRADO.has(codigo) ? false
+                  : (EST_ABIERTO.has(codigo) || (EST_FILTRO && hijos.length));
+    if (abierto) { EST_ABIERTO.delete(codigo); EST_CERRADO.add(codigo); }
+    else         { EST_ABIERTO.add(codigo);    EST_CERRADO.delete(codigo); }
   }
-  EST_SEL = codigo;
+  /* Volver a tocar el nodo seleccionado cierra su lista de equipos. Sin esto,
+     con varias ubicaciones abiertas la pantalla se llena y no hay forma de
+     recogerla. */
+  EST_SEL = (EST_SEL === codigo && !hijos.length) ? null : codigo;
   estPintar();
   if (n.n_directos && !EST_EQUIPOS.has(codigo)) estCargarEquipos(codigo);
 }
@@ -5217,6 +5231,8 @@ async function estAbrirEquipo(id) {
 function estBuscar() {
   const txt = document.getElementById("est-buscar").value.trim();
   EST_FILTRO = txt.toLowerCase();
+  EST_TOKENS = EST_FILTRO.split(/\s+/).filter(Boolean);
+  EST_CERRADO.clear();
 
   if (EST_TIMER) clearTimeout(EST_TIMER);
 
