@@ -323,6 +323,10 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .ot-fila-corta input.ancho2{flex:2 1 220px}
 .ot-quitar{color:var(--danger);cursor:pointer;white-space:nowrap;font-size:13px;
   padding:0 4px}
+/* Campo calculado: se ve, no se edita. El borde punteado y el fondo tenue lo
+   distinguen de una casilla que espera que alguien escriba. */
+input.calculado{background:var(--bg-2);border-style:dashed;color:var(--texto-2);
+  cursor:default}
 
 /* Guardar e imprimir son dos acciones del mismo momento: separadas en dos
    filas parecian pertenecer a secciones distintas. */
@@ -14405,8 +14409,12 @@ function otRenderOperaciones() {
       '<input class="hora24" inputmode="numeric" maxlength="5" placeholder="Fin HH:MM" value="' + (op.hora_final || "") + '" oninput="otOpCampo(' + i + ',\'hora_final\',this.value)"/>' +
       '<input type="number" min="1" step="1" id="ot-cant-' + i + '" value="' + (op.cantidad != null ? op.cantidad : "") + '" ' +
         'oninput="otOpCampo(' + i + ',\'cantidad\',this.value)" placeholder="N° técnicos"/>' +
-      '<input type="number" min="0" step="5" id="ot-dur-' + i + '" value="' + (op.duracion_min != null ? op.duracion_min : "") + '" ' +
-        'oninput="otOpCampo(' + i + ',\'duracion_min\',this.value)" placeholder="Min."/>' +
+      /* Los minutos se calculan con las horas y no se teclean: dejarlos
+         abiertos permite que una correccion de hora quede con la duracion
+         vieja, y el formato saldria con un tiempo que no corresponde a lo que
+         el mismo documento declara. */
+      '<input type="text" readonly id="ot-dur-' + i + '" value="' + (op.duracion_min != null ? op.duracion_min : "") + '" ' +
+        'title="Se calcula con la hora de inicio y fin" placeholder="Min." class="calculado"/>' +
       '<span class="ot-quitar" onclick="otQuitarOperacion(' + i + ')">Quitar</span>' +
     "</div>" +
     '<div class="mat-stock" id="ot-hh-' + i + '" style="margin-top:4px">' + otHHOperacion(op) + "</div>" +
@@ -14526,15 +14534,20 @@ function otOpCampo(i, campo, valor) {
   if (!op) return;
   op[campo] = valor;
 
-  // La duración se deduce de las horas mientras no se escriba a mano
+  /* La duracion se deduce de las horas, y tambien cuando dejan de ser
+     calculables: si se borra una hora, el minuto que quedaba ya no describe
+     nada y mantenerlo seria peor que dejarlo vacio.
+
+     Se respeta el valor que traen los registros antiguos mientras no haya dos
+     horas con que recalcular: esos se cargaron antes de que el calculo
+     existiera y borrarlos perderia el dato sin poder reconstruirlo. */
   if (campo === "hora_inicio" || campo === "hora_final") {
     const d = otMinutos(op.hora_inicio, op.hora_final);
-    if (d != null) {
-      op.duracion_min = d;
-      const inp = document.getElementById("ot-dur-" + i);
-      // Nunca se escribe sobre el campo que tiene el foco
-      if (inp && document.activeElement !== inp) inp.value = d;
-    }
+    const hayAmbas = !!(op.hora_inicio && op.hora_final);
+    if (d != null) op.duracion_min = d;
+    else if (hayAmbas) op.duracion_min = null;
+    const inp = document.getElementById("ot-dur-" + i);
+    if (inp) inp.value = op.duracion_min != null ? op.duracion_min : "";
   }
 
   const nota = document.getElementById("ot-hh-" + i);
