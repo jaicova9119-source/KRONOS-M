@@ -5058,6 +5058,25 @@ function estVisible(n) {
 /* Un nodo se muestra si el o alguno de sus descendientes coincide: buscar
    "RPCYCO" tiene que revelar la ruta completa hasta ahi, no solo la hoja
    suelta sin contexto de donde esta. */
+/* Ademas de separar por espacios, se parte donde cambia de letras a numeros.
+   "PRODUCTOR57" pasa a ser "productor" y "57", y encuentra POZO PRODUCTOR CYC57
+   aunque las dos partes esten separadas por otra palabra. En campo uno escribe
+   rapido y sin espacios; depender de ellos convierte una busqueda de dos
+   segundos en tres intentos. */
+function estTokenizar(txt) {
+  const bruto = String(txt || "").toLowerCase().split(/[\s\-_/.,;]+/).filter(Boolean);
+  const out = [];
+  bruto.forEach(p => {
+    const partes = p.match(/\d+|[^\d]+/g) || [p];
+    /* Fragmentos de una sola letra se descartan: "cyc57" ya se parte bien, pero
+       algo como "a1" dejaria una "a" que coincide con casi todo. Los numeros si
+       se conservan aunque sean cortos, porque suelen ser el dato que
+       identifica. */
+    partes.forEach(x => { if (x.length > 1 || /\d/.test(x)) out.push(x); });
+  });
+  return out.length ? out : bruto;
+}
+
 function estCoincideRama(n) {
   /* El memo se invalida por version y no por texto: el resultado de la
      busqueda de equipos llega despues, con el mismo texto, y con memo por
@@ -5231,7 +5250,7 @@ async function estAbrirEquipo(id) {
 function estBuscar() {
   const txt = document.getElementById("est-buscar").value.trim();
   EST_FILTRO = txt.toLowerCase();
-  EST_TOKENS = EST_FILTRO.split(/\s+/).filter(Boolean);
+  EST_TOKENS = estTokenizar(EST_FILTRO);
   EST_CERRADO.clear();
 
   if (EST_TIMER) clearTimeout(EST_TIMER);
@@ -5247,12 +5266,14 @@ function estBuscar() {
      nunca se siente trabada. */
   EST_EQ_BUSC = true;
   estPintar();
-  EST_TIMER = setTimeout(() => estBuscarEquipos(txt), 350);
+  EST_TIMER = setTimeout(() => estBuscarEquipos(txt, EST_TOKENS.join(" ")), 350);
 }
 
-async function estBuscarEquipos(txt) {
+async function estBuscarEquipos(txt, tokens) {
+  /* Se envian los fragmentos ya separados: la base exige que todos aparezcan,
+     y separarlos aqui evita repetir la misma regla en dos lenguajes. */
   const { data, error } = await sb.rpc("dp_buscar_equipos_estructura",
-    { p_texto: txt, p_limite: 200 });
+    { p_texto: tokens || txt, p_limite: 200 });
 
   /* Si el usuario siguio escribiendo, este resultado ya no corresponde. */
   if (document.getElementById("est-buscar").value.trim() !== txt) return;
