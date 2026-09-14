@@ -303,6 +303,12 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
    dia-mes-año, y ahi es donde se cuela el error de escribir 09/08 queriendo
    decir 8 de septiembre. Leerla completa no deja lugar a duda. */
 .fecha-letra{font-size:12px;color:var(--texto-2);margin-top:4px}
+/* Fecha y hora de un mismo momento, en linea. La hora se queda en su ancho
+   natural porque HH:MM no crece. */
+.fh{display:flex;gap:8px}
+.fh input[type=date]{flex:1;min-width:0}
+.fh .hora24{width:92px;flex:0 0 92px}
+.prog-grid .field.corto select{max-width:220px}
 
 /* El color va en un filete lateral y no en el fondo de la fila: con quince
    equipos seguidos, quince fondos de color compiten entre si y se pierde la
@@ -2892,14 +2898,18 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <div id="ot-res-puesto" class="ot-sugerencias"></div>
       <div class="mat-stock" id="ot-puesto-aviso" style="margin-top:4px"></div>
     </div>
-    <div class="field"><label>N&#186; Aviso</label><input id="ot-aviso"/></div>
-    <div class="field"><label>Autor del aviso</label><input id="ot-autor"/></div>
-    <div class="field"><label>Fecha inicio</label><input id="ot-fecha-inicio" type="date"/></div>
-    <div class="field"><label>Tag equipo</label><input id="ot-tag"/></div>
-    <div class="field"><label>N&#186; inventario</label><input id="ot-inventario"/></div>
+    <!-- Cinco datos cortos que antes ocupaban cinco filas completas. -->
+    <div class="prog-grid">
+      <div class="field"><label>N&#186; Aviso</label><input id="ot-aviso"/></div>
+      <div class="field"><label>Autor del aviso</label><input id="ot-autor"/></div>
+      <div class="field"><label>Fecha inicio</label><input id="ot-fecha-inicio" type="date"/></div>
+      <div class="field"><label>Tag equipo</label><input id="ot-tag"/></div>
+      <div class="field"><label>N&#186; inventario</label><input id="ot-inventario"/></div>
+    </div>
 
     <div class="section-label" style="margin-top:18px">FALLA</div>
     <div class="hint-box">&#8505;&#65039; Escribe para filtrar el cat&#225;logo. Si lo que buscas no est&#225;, escr&#237;belo libre: queda registrado para catalogarlo despu&#233;s.</div>
+    <div class="prog-grid">
     <div class="field"><label>S&#237;ntoma de aver&#237;a</label>
       <input id="ot-sintoma" placeholder="N/A" autocomplete="off"
              oninput="otBuscarFalla('SINTOMA', this.value)" onfocus="otBuscarFalla('SINTOMA', this.value)"/>
@@ -2912,8 +2922,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <input id="ot-componente" placeholder="N/A" autocomplete="off"
              oninput="otBuscarFalla('PARTE', this.value)" onfocus="otBuscarFalla('PARTE', this.value)"/>
       <div id="ot-res-PARTE" class="ot-sugerencias"></div></div>
+    </div>
 
     <div class="section-label" style="margin-top:18px">ESTADO DEL EQUIPO</div>
+    <div class="prog-grid">
     <div class="field"><label>&#191;C&#243;mo encontr&#243; el equipo?</label>
       <select id="ot-estado-ini">
         <option value="">Sin marcar</option>
@@ -2927,6 +2939,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
         <option>OPERANDO</option><option>STAND BY</option>
         <option>EN FALLA</option><option>OPERANDO EN FALLA</option>
       </select>
+    </div>
     </div>
 
     <div class="section-label" style="margin-top:18px">OPERACIONES</div>
@@ -2956,14 +2969,18 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     </div>
 
     <div class="section-label" style="margin-top:18px">TIEMPOS DE PARADA E INTERVENCI&#211;N</div>
-    <div class="field"><label>Inicio de parada</label>
-      <input id="ot-fi-parada" type="date"/><input id="ot-hi-parada" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM" style="margin-top:6px"/></div>
-    <div class="field"><label>Inicio de intervenci&#243;n</label>
-      <input id="ot-fi-interv" type="date"/><input id="ot-hi-interv" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM" style="margin-top:6px"/></div>
-    <div class="field"><label>Fin de parada</label>
-      <input id="ot-ff-parada" type="date"/><input id="ot-hf-parada" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM" style="margin-top:6px"/></div>
+    <!-- Fecha y hora van juntas: son un solo dato partido en dos casillas, y
+         apiladas obligaban a recorrer seis renglones para tres momentos. -->
+    <div class="prog-grid">
+      <div class="field"><label>Inicio de parada</label>
+        <div class="fh"><input id="ot-fi-parada" type="date"/><input id="ot-hi-parada" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM"/></div></div>
+      <div class="field"><label>Inicio de intervenci&#243;n</label>
+        <div class="fh"><input id="ot-fi-interv" type="date"/><input id="ot-hi-interv" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM"/></div></div>
+      <div class="field"><label>Fin de parada</label>
+        <div class="fh"><input id="ot-ff-parada" type="date"/><input id="ot-hf-parada" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM"/></div></div>
+    </div>
 
-    <div class="field"><label>Estado de la orden</label>
+    <div class="field corto"><label>Estado de la orden</label>
       <select id="ot-estado-orden"><option>EN PROCESO</option><option>FINALIZADA</option></select>
     </div>
     <div class="field"><label>Ejecutores</label>
