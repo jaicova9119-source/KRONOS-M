@@ -13225,6 +13225,13 @@ function progAgregarTecnico(nombre) {
   const inp = document.createElement("input");
   inp.value = typeof nombre === "string" ? nombre : "";
   inp.placeholder = "Nombre del técnico";
+  /* Comparten la memoria con lider y ejecutores: es la misma cuadrilla, y
+     separarla en tres listas obligaria a escribir cada nombre tres veces
+     antes de que apareciera sugerido en todas. */
+  if (typeof memPintar === "function") {
+    inp.setAttribute("list", memPintar("personal"));
+    inp.addEventListener("blur", () => memRecordar("personal", inp.value));
+  }
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "prog-tec-quitar";
@@ -16351,6 +16358,100 @@ function firmaPintarVista() {
   cv.addEventListener("pointercancel", firmaFin);
   cv.addEventListener("pointerleave", firmaFin);
 })();
+
+/* ============================================================
+   FECHAS SOLO POR CALENDARIO
+   ============================================================
+   El control nativo muestra los segmentos en el orden del sistema operativo,
+   que no siempre es dia-mes-año. Escribir 08/04 queriendo decir 8 de abril y
+   que quede como 4 de agosto es un error silencioso: la fecha existe, se
+   guarda y nadie la revisa. Elegirla del calendario no admite ambiguedad. */
+(function () {
+  const aplicar = () => document.querySelectorAll('input[type="date"]')
+    .forEach(el => fechaSoloCalendario(el));
+  aplicar();
+  /* Los paneles ya estan en el DOM desde el arranque, pero se repite tras la
+     carga por si alguna vista agrega campos despues. */
+  window.addEventListener("load", aplicar);
+})();
+
+
+/* ============================================================
+   MEMORIA DE CAMPOS ESCRITOS
+   ============================================================
+   Nombres de quien recibe, areas, ejecutores, tags: son pocos y se repiten,
+   pero hoy se vuelven a teclear cada vez y cada quien los escribe distinto
+   —"Operador CCM", "operador de ccm", "Oper. CCM"— lo que despues impide
+   agrupar o buscar.
+
+   Se guardan en el dispositivo, no en la base: son ayudas de digitacion de
+   quien usa el equipo, no datos maestros. Convertirlos en catalogo compartido
+   es otra decision, y mas seria, porque implica quien lo cura.
+
+   Lo escrito nuevo no se bloquea: la lista sugiere, no obliga. */
+const MEM_CLAVE = "kronos_memoria_campos";
+const MEM_TOPE  = 30;
+
+function memLeer() {
+  try { return JSON.parse(localStorage.getItem(MEM_CLAVE) || "{}"); }
+  catch (e) { return {}; }
+}
+
+function memRecordar(clave, valor) {
+  const v = String(valor || "").trim();
+  if (v.length < 2) return;
+  const todo = memLeer();
+  const lista = (todo[clave] || []).filter(x => x.toLowerCase() !== v.toLowerCase());
+  /* El mas reciente primero: lo que se acaba de usar es lo mas probable que
+     se vuelva a usar. */
+  lista.unshift(v);
+  todo[clave] = lista.slice(0, MEM_TOPE);
+  try { localStorage.setItem(MEM_CLAVE, JSON.stringify(todo)); } catch (e) {}
+}
+
+function memPintar(clave) {
+  const id = "mem-dl-" + clave;
+  let dl = document.getElementById(id);
+  if (!dl) {
+    dl = document.createElement("datalist");
+    dl.id = id;
+    document.body.appendChild(dl);
+  }
+  dl.innerHTML = (memLeer()[clave] || [])
+    .map(v => '<option value="' + escaparHtml(v) + '"></option>').join("");
+  return id;
+}
+
+/* Enlaza un campo con su memoria. Se recuerda al salir del campo y no en cada
+   tecla, para no llenar la lista con las palabras a medio escribir. */
+function memEnlazar(inputId, clave) {
+  const el = document.getElementById(inputId);
+  if (!el || el._mem) return;
+  el._mem = true;
+  el.setAttribute("list", memPintar(clave));
+  el.addEventListener("focus", () => memPintar(clave));
+  el.addEventListener("change", () => { memRecordar(clave, el.value); memPintar(clave); });
+  el.addEventListener("blur",   () => { memRecordar(clave, el.value); });
+}
+
+/* Que campos tienen memoria. Se excluyen los que ya tienen catalogo real
+   —puesto, sintoma, causa, parte, materiales— porque ahi la fuente de verdad
+   es la base y no lo que alguien escribio antes en este equipo. */
+const MEM_CAMPOS = [
+  ["ot-autor",         "autor_aviso"],
+  ["ot-tag",           "tag_equipo"],
+  ["ot-inventario",    "inventario"],
+  ["ot-ejecutores",    "personal"],
+  ["ot-rec-nombre",    "recibe_nombre"],
+  ["ot-rec-area-txt",  "recibe_area"],
+  ["prog-e-lider",     "personal"],
+];
+
+function memEnlazarTodo() {
+  MEM_CAMPOS.forEach(([id, clave]) => memEnlazar(id, clave));
+}
+
+window.addEventListener("load", memEnlazarTodo);
 </script>
 </body>
 </html>
