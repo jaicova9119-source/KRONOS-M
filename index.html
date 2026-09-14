@@ -309,6 +309,12 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .fh input[type=date]{flex:1;min-width:0}
 .fh .hora24{width:92px;flex:0 0 92px}
 .prog-grid .field.corto select{max-width:220px}
+/* La casilla N/A va pegada a su etiqueta y no bajo el campo: asi se lee como
+   parte del rotulo del momento y no como una opcion suelta del formulario. */
+.lbl-na{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.lbl-na span{display:flex;align-items:center;gap:5px;font-weight:normal;
+  font-size:12px;color:var(--texto-2);white-space:nowrap}
+.lbl-na input{width:auto;margin:0}
 
 /* El color va en un filete lateral y no en el fondo de la fila: con quince
    equipos seguidos, quince fondos de color compiten entre si y se pierde la
@@ -2971,23 +2977,23 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     </div>
 
     <div class="section-label" style="margin-top:18px">TIEMPOS DE PARADA E INTERVENCI&#211;N</div>
-    <!-- No toda intervencion implica parar el equipo. Antes esos tres momentos
-         se dejaban vacios y el formato salia con las casillas en blanco, que se
-         lee como "falto diligenciar" y no como "no aplica". La casilla imprime
-         N/A, que es la respuesta correcta. -->
-    <label style="display:flex;align-items:center;gap:8px;font-weight:normal;margin-bottom:10px">
-      <input type="checkbox" id="ot-sin-parada" style="width:auto" onchange="otToggleParada()"/>
-      El equipo no se par&#243;: imprimir N/A en los tres tiempos
-    </label>
-
-    <!-- Fecha y hora van juntas: son un solo dato partido en dos casillas, y
-         apiladas obligaban a recorrer seis renglones para tres momentos. -->
+    <!-- N/A por momento y no para los tres juntos. Es frecuente que el equipo
+         no se pare pero si se registre el inicio de intervencion, y que el fin
+         de parada se use como referencia del fin de intervencion. Una casilla
+         unica obligaba a elegir entre dejar todo en blanco —que se lee como
+         "falto diligenciar"— o inventar tiempos de una parada que no hubo. -->
     <div class="prog-grid" id="ot-bloque-parada">
-      <div class="field"><label>Inicio de parada</label>
+      <div class="field">
+        <label class="lbl-na">Inicio de parada
+          <span><input type="checkbox" id="na-fi-parada" onchange="otToggleNA()"/> N/A</span></label>
         <div class="fh"><input id="ot-fi-parada" type="date"/><input id="ot-hi-parada" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM"/></div></div>
-      <div class="field"><label>Inicio de intervenci&#243;n</label>
+      <div class="field">
+        <label class="lbl-na">Inicio de intervenci&#243;n
+          <span><input type="checkbox" id="na-fi-interv" onchange="otToggleNA()"/> N/A</span></label>
         <div class="fh"><input id="ot-fi-interv" type="date"/><input id="ot-hi-interv" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM"/></div></div>
-      <div class="field"><label>Fin de parada</label>
+      <div class="field">
+        <label class="lbl-na">Fin de parada
+          <span><input type="checkbox" id="na-ff-parada" onchange="otToggleNA()"/> N/A</span></label>
         <div class="fh"><input id="ot-ff-parada" type="date"/><input id="ot-hf-parada" class="hora24" inputmode="numeric" maxlength="5" placeholder="HH:MM"/></div></div>
     </div>
 
@@ -3012,17 +3018,24 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <input type="checkbox" id="ot-rec-equipo" style="width:auto"/> Equipo en orden y aseo</label>
     <div class="field"><label>Observaciones de la entrega</label>
       <textarea id="ot-rec-obs" rows="3"></textarea></div>
+    <!-- Los tres datos de quien recibe en una linea: nombre, area y firma son
+         el mismo bloque del formato impreso y se diligencian juntos. -->
     <div class="prog-grid">
       <div class="field"><label>Nombre de quien recibe</label>
-        <input id="ot-rec-nombre" /></div>
+        <input id="ot-rec-nombre" oninput="otFirmaRefrescar()"/></div>
       <div class="field"><label>&#193;rea de quien recibe</label>
         <input id="ot-rec-area-txt" /></div>
-    </div>
-    <div class="field"><label>Firma de quien recibe</label>
-      <div id="ot-firma-vista" style="margin-bottom:6px"></div>
-      <div style="display:flex;gap:8px">
-        <button type="button" class="btn-secondary" style="flex:1" onclick="firmaAbrir()">Firmar en pantalla</button>
-        <button type="button" class="btn-secondary" id="ot-firma-borrar" style="flex:0 0 auto;display:none" onclick="firmaQuitar()">Quitar</button>
+      <div class="field"><label>Firma de quien recibe</label>
+        <select id="ot-firma-modo" onchange="otFirmaRefrescar()">
+          <option value="blanco">En blanco, se firma impreso</option>
+          <option value="trazo">Firmada en pantalla</option>
+          <option value="nombre">Imprimir el nombre escrito</option>
+        </select>
+        <div id="ot-firma-vista" style="margin-top:6px"></div>
+        <div style="display:flex;gap:8px;margin-top:6px" id="ot-firma-botones">
+          <button type="button" class="btn-secondary" style="flex:1" onclick="firmaAbrir()">Firmar en pantalla</button>
+          <button type="button" class="btn-secondary" id="ot-firma-borrar" style="flex:0 0 auto;display:none" onclick="firmaQuitar()">Quitar</button>
+        </div>
       </div>
     </div>
 
@@ -14193,12 +14206,20 @@ function otRender() {
   document.getElementById("ot-rec-nombre").value = o.recepcion_nombre || "";
   document.getElementById("ot-rec-area-txt").value = o.recepcion_area_texto || "";
   otFirmaDato = o.recepcion_firma || "";
-  firmaPintarVista();
+  /* Si no hay modo guardado se deduce del dato: los reportes anteriores solo
+     distinguian entre tener trazo o no tenerlo. */
+  document.getElementById("ot-firma-modo").value =
+    o.firma_modo || (otFirmaDato ? "trazo" : "blanco");
+  otFirmaRefrescar();
 
   document.getElementById("ot-ejecutores").value = o.ejecutores || a.personal || "";
   document.getElementById("ot-ejec-blanco").checked = !!o.ejecutores_en_blanco;
-  document.getElementById("ot-sin-parada").checked = !!o.sin_parada;
-  otToggleParada();
+  const naG = o.na_tiempos || {};
+  OT_MOMENTOS.forEach(m => {
+    const el = document.getElementById(m.na);
+    if (el) el.checked = !!o.sin_parada || !!naG[m.na];
+  });
+  otToggleNA();
   otToggleEjecutores();
 
   otEstadoLogo();
@@ -14627,17 +14648,77 @@ document.addEventListener("focusout", (e) => {
   if (el.value !== previo) el.dispatchEvent(new Event("input", { bubbles: true }));
 });
 
-const OT_TIEMPOS = ["ot-fi-parada","ot-hi-parada","ot-fi-interv",
-                    "ot-hi-interv","ot-ff-parada","ot-hf-parada"];
+/* Cada momento con su casilla, su par de campos y la clave con que se guarda.
+   La marca aplica a fecha y hora a la vez: no tiene sentido una parada con
+   fecha N/A y hora escrita. */
+const OT_MOMENTOS = [
+  { na: "na-fi-parada", fecha: "ot-fi-parada", hora: "ot-hi-parada",
+    kf: "fecha_inicio_parada", kh: "hora_inicio_parada" },
+  { na: "na-fi-interv", fecha: "ot-fi-interv", hora: "ot-hi-interv",
+    kf: "fecha_inicio_interv", kh: "hora_inicio_interv" },
+  { na: "na-ff-parada", fecha: "ot-ff-parada", hora: "ot-hf-parada",
+    kf: "fecha_fin_parada",    kh: "hora_fin_parada" },
+];
 
-/* Los campos se deshabilitan en vez de ocultarse: si alguien marca la casilla
-   por error, ve que los datos que habia escrito siguen ahi al desmarcarla. */
-function otToggleParada() {
-  const sin = document.getElementById("ot-sin-parada").checked;
-  OT_TIEMPOS.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) { el.disabled = sin; el.style.opacity = sin ? ".5" : ""; }
+/* Los campos se deshabilitan en vez de ocultarse: si alguien marca por error,
+   ve que lo que habia escrito sigue ahi al desmarcar. */
+function otToggleNA() {
+  OT_MOMENTOS.forEach(m => {
+    const na = document.getElementById(m.na);
+    if (!na) return;
+    [m.fecha, m.hora].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) { el.disabled = na.checked; el.style.opacity = na.checked ? ".5" : ""; }
+    });
   });
+}
+
+/* Tres formas de resolver la firma de quien recibe, porque en campo se dan las
+   tres: se firma en la tablet, se imprime y se firma a mano, o el nombre
+   escrito hace las veces de constancia. Antes solo existian las dos primeras y
+   la tercera terminaba en un PDF con la raya vacia que alguien tenia que salir
+   a perseguir.
+
+   El nombre se convierte en imagen porque la columna de firma del formato solo
+   admite imagen. Dibujarlo aqui evita tocar fo016.js y deja el control del
+   tamaño y el recorte de este lado. */
+function otFirmaDeNombre(nombre) {
+  const txt = String(nombre || "").trim();
+  if (!txt) return "";
+  const cv = document.createElement("canvas");
+  cv.width = 620; cv.height = 150;
+  const c = cv.getContext("2d");
+  c.fillStyle = "#000";
+  c.textAlign = "center";
+  c.textBaseline = "middle";
+  /* Se reduce la fuente hasta que el nombre quepa: un nombre largo estirado
+     fuera del cuadro saldria recortado en el impreso. */
+  let px = 64;
+  do { c.font = px + "px Georgia, 'Times New Roman', serif"; px -= 2; }
+  while (px > 22 && c.measureText(txt).width > cv.width - 40);
+  c.fillText(txt, cv.width / 2, cv.height / 2);
+  return cv.toDataURL("image/png");
+}
+
+function otFirmaRefrescar() {
+  const modo = document.getElementById("ot-firma-modo");
+  if (!modo) return;
+  const m = modo.value;
+  const vista = document.getElementById("ot-firma-vista");
+  const botones = document.getElementById("ot-firma-botones");
+
+  botones.style.display = (m === "trazo") ? "flex" : "none";
+
+  if (m === "blanco") {
+    vista.innerHTML = '<div class="mat-stock">La raya sale vac&iacute;a para firmar sobre el papel.</div>';
+  } else if (m === "nombre") {
+    const n = (document.getElementById("ot-rec-nombre").value || "").trim();
+    vista.innerHTML = n
+      ? '<img src="' + otFirmaDeNombre(n) + '" alt="" style="max-height:52px">'
+      : '<div class="mat-stock">Escribe el nombre y aparecer&aacute; sobre la raya.</div>';
+  } else {
+    firmaPintarVista();
+  }
 }
 
 async function otGuardar(opciones) {
@@ -14685,7 +14766,10 @@ async function otGuardar(opciones) {
       recepcion_observaciones: otVal("ot-rec-obs"),
       recepcion_nombre: otVal("ot-rec-nombre"),
       recepcion_area_texto: otVal("ot-rec-area-txt"),
-      sin_parada: document.getElementById("ot-sin-parada").checked,
+      na_tiempos: OT_MOMENTOS.reduce((acc, m) => {
+        acc[m.na] = document.getElementById(m.na).checked; return acc;
+      }, {}),
+      firma_modo: document.getElementById("ot-firma-modo").value,
       recepcion_firma: otFirmaDato || null,
     },
   });
@@ -14823,13 +14907,18 @@ function otMapear() {
        devuelven el texto tal cual cuando no reconocen un formato de fecha, asi
        que "N/A" se imprime literal sin tocar fo016.js. */
     ...(function () {
-      const sin = document.getElementById("ot-sin-parada")?.checked ?? !!o.sin_parada;
-      if (!sin) return {};
-      return {
-        fecha_inicio_parada: "N/A", hora_inicio_parada: "N/A",
-        fecha_inicio_interv: "N/A", hora_inicio_interv: "N/A",
-        fecha_fin_parada:    "N/A", hora_fin_parada:    "N/A",
-      };
+      const g = o.na_tiempos || {};
+      /* sin_parada es la version anterior, de una sola casilla para los tres.
+         Se sigue leyendo para que los reportes ya guardados con ella impriman
+         igual que cuando se firmaron. */
+      const todo = !!o.sin_parada;
+      const out = {};
+      OT_MOMENTOS.forEach(m => {
+        const el = document.getElementById(m.na);
+        const na = el ? el.checked : (todo || !!g[m.na]);
+        if (na) { out[m.kf] = "N/A"; out[m.kh] = "N/A"; }
+      });
+      return out;
     })(),
 
     /* Solo se imprime si la orden queda EN PROCESO */
@@ -14849,7 +14938,18 @@ function otMapear() {
                      || o.recepcion_area_texto || "",
       /* La firma se toma del estado en memoria: es lo que el operador
          acaba de trazar, aunque todavía no se haya guardado. */
-      firma:         otFirmaDato || o.recepcion_firma || "",
+      firma: (function () {
+        const m = document.getElementById("ot-firma-modo")?.value || o.firma_modo || "blanco";
+        if (m === "blanco") return "";
+        if (m === "nombre") {
+          const n = (document.getElementById("ot-rec-nombre")?.value || "").trim()
+                    || o.recepcion_nombre || "";
+          /* Se genera al imprimir y no al guardar: asi la firma sigue al
+             nombre si se corrige, sin quedar una imagen vieja pegada. */
+          return otFirmaDeNombre(n);
+        }
+        return otFirmaDato || o.recepcion_firma || "";
+      })(),
     },
   };
 }
@@ -16186,7 +16286,11 @@ function firmaAceptar() {
     return;
   }
   otFirmaDato = imagen;
-  firmaPintarVista();
+  /* Firmar en pantalla implica el modo trazo: no tendria sentido capturar la
+     firma y que el documento saliera con la raya vacia. */
+  const md = document.getElementById("ot-firma-modo");
+  if (md) md.value = "trazo";
+  otFirmaRefrescar();
   firmaCerrar();
   toast("Firma registrada. Recuerde guardar la orden.");
 }
@@ -16195,7 +16299,9 @@ let otFirmaDato = "";
 
 function firmaQuitar() {
   otFirmaDato = "";
-  firmaPintarVista();
+  const md = document.getElementById("ot-firma-modo");
+  if (md && md.value === "trazo") md.value = "blanco";
+  otFirmaRefrescar();
 }
 
 function firmaPintarVista() {
