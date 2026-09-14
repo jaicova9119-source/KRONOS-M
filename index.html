@@ -265,6 +265,27 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 @media (prefers-reduced-motion:reduce){
   *{transition:none !important;animation:none !important;}
 }
+
+/* ---- Estructura de ubicaciones ---- */
+.est-barra{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.est-barra input[type=text],.est-barra input#est-buscar{flex:1;min-width:220px;padding:9px 11px;
+  border:1px solid var(--linea);border-radius:8px;background:var(--fondo);color:var(--texto)}
+.est-check{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--texto-2)}
+.est-nodo{display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer}
+.est-nodo:hover{background:var(--hover)}
+.est-nodo.sel{background:var(--hover)}
+.est-flecha{width:16px;text-align:center;color:var(--texto-2);font-size:11px;flex:0 0 16px}
+.est-flecha.hoja{opacity:.25}
+.est-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.est-cod{font-family:var(--mono,monospace);font-size:12px;color:var(--texto-2)}
+.est-den{font-size:13.5px}
+.est-den.sin{font-style:italic;color:var(--texto-2)}
+.est-n{font-size:11.5px;color:var(--texto-2);white-space:nowrap}
+.est-n b{color:var(--texto)}
+.est-eq{margin:4px 0 10px 26px;border-left:2px solid var(--linea);padding-left:10px}
+.est-eq-item{padding:7px 4px;border-bottom:1px solid var(--linea);cursor:pointer}
+.est-eq-item:hover{background:var(--hover)}
+.est-eq-item:last-child{border-bottom:0}
 </style>
 
 <style id="kx-fondo-hub">
@@ -1641,6 +1662,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-5 9 5-9 5-9-5z"/><path d="M3 9v6l9 5 9-5V9"/></svg>
     Equipos
   </button>
+  <button class="nav-item" data-tab="estructura" data-modulo="activos">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h6v5H4zM14 15h6v5h-6zM14 4h6v5h-6zM7 9v6h7M17 9v6"/></svg>
+    Estructura
+  </button>
   <button class="nav-item" data-tab="resumen" data-modulo="activos">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 15l4-5 3 3 5-7"/></svg>
     Resumen
@@ -1877,6 +1902,23 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
 <!-- ===== Panel: Pendientes ===== -->
 <!-- ===== Panel: Resumen gerencial ===== -->
+<div class="panel" id="panel-estructura">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="cerrarPanel('panel-estructura')">&#8592;</button>
+    <h2>Estructura de ubicaciones</h2>
+  </div>
+  <div class="panel-body">
+    <div class="est-barra">
+      <input id="est-buscar" placeholder="Buscar por c&oacute;digo o denominaci&oacute;n"
+             oninput="estBuscar()" autocomplete="off"/>
+      <label class="est-check">
+        <input type="checkbox" id="est-vacias" onchange="estPintar()"/> Mostrar sin equipos
+      </label>
+    </div>
+    <div id="est-arbol"><div class="loading">Cargando estructura...</div></div>
+  </div>
+</div>
+
 <div class="panel" id="panel-resumen">
   <div class="panel-header">
     <button class="icon-btn" onclick="cerrarPanel('panel-resumen')">&#8592;</button>
@@ -4924,6 +4966,164 @@ function escaparHtml(s) {
 
 /* Marca y modelo definen la familia, asi que al cambiarlos hay que repintar
    las dos cajas. Cada texto repinta solo la suya. */
+
+/* ============================================================================
+   ESTRUCTURA DE UBICACIONES TECNICAS
+   ============================================================================
+   Reproduce la navegacion jerarquica de SAP sobre el maestro local. Se trae el
+   arbol completo en una sola llamada —2481 nodos pesan poco— y el despliegue y
+   la busqueda ocurren en el dispositivo: abrir una rama no cuesta red, que es
+   lo que hace usable esto en campo con senal intermitente.
+
+   El arbol arranca donde empieza a ramificarse. GTEC y GTEC-PF tienen un solo
+   hijo cada uno, y obligar a dar dos clics para llegar a la primera decision
+   real solo agrega ruido. */
+
+let EST_NODOS   = null;   // codigo -> nodo
+let EST_HIJOS   = null;   // codigo padre -> [nodos]
+let EST_ABIERTO = new Set();
+let EST_SEL     = null;
+let EST_EQUIPOS = new Map();  // codigo -> equipos ya traidos
+let EST_FILTRO  = "";
+
+async function cargarEstructura() {
+  if (EST_NODOS) { estPintar(); return; }
+  const cont = document.getElementById("est-arbol");
+  cont.innerHTML = '<div class="loading">Cargando estructura...</div>';
+
+  const { data, error } = await sb.rpc("dp_ubicaciones_arbol");
+  if (error) {
+    cont.innerHTML = '<div class="vacio">No se pudo cargar: ' + escaparHtml(error.message) + '</div>';
+    return;
+  }
+
+  EST_NODOS = new Map();
+  EST_HIJOS = new Map();
+  (data || []).forEach(n => {
+    EST_NODOS.set(n.codigo, n);
+    const p = n.padre || "";
+    if (!EST_HIJOS.has(p)) EST_HIJOS.set(p, []);
+    EST_HIJOS.get(p).push(n);
+  });
+
+  /* Cadenas de un solo hijo se abren solas hasta la primera bifurcacion. */
+  let cur = (EST_HIJOS.get("") || [])[0];
+  while (cur) {
+    const hijos = EST_HIJOS.get(cur.codigo) || [];
+    EST_ABIERTO.add(cur.codigo);
+    cur = hijos.length === 1 ? hijos[0] : null;
+  }
+  estPintar();
+}
+
+function estVisible(n) {
+  if (!document.getElementById("est-vacias").checked && !n.n_rama) return false;
+  if (!EST_FILTRO) return true;
+  return estCoincideRama(n);
+}
+
+/* Un nodo se muestra si el o alguno de sus descendientes coincide: buscar
+   "RPCYCO" tiene que revelar la ruta completa hasta ahi, no solo la hoja
+   suelta sin contexto de donde esta. */
+function estCoincideRama(n) {
+  if (n._match === EST_FILTRO) return n._matchVal;
+  const propio = (n.codigo + " " + (n.denominacion || "")).toLowerCase()
+                 .indexOf(EST_FILTRO) >= 0;
+  const hijos = EST_HIJOS.get(n.codigo) || [];
+  const val = propio || hijos.some(estCoincideRama);
+  n._match = EST_FILTRO; n._matchVal = val;
+  return val;
+}
+
+function estPintar() {
+  const cont = document.getElementById("est-arbol");
+  if (!EST_NODOS) return;
+  const raiz = EST_HIJOS.get("") || [];
+  let h = "";
+  raiz.forEach(n => { h += estRama(n, 0); });
+  cont.innerHTML = h || '<div class="vacio">Nada coincide con la b&uacute;squeda.</div>';
+}
+
+function estRama(n, prof) {
+  if (!estVisible(n)) return "";
+  const hijos = (EST_HIJOS.get(n.codigo) || []).filter(estVisible);
+  /* Con filtro activo las ramas coincidentes se abren solas: obligar a
+     desplegar a mano lo que uno acaba de buscar no tiene sentido. */
+  const abierto = EST_ABIERTO.has(n.codigo) || (EST_FILTRO && hijos.length);
+  const den = n.denominacion
+    ? '<span class="est-den">' + escaparHtml(n.denominacion) + '</span>'
+    : '<span class="est-den sin">sin denominaci&oacute;n</span>';
+
+  let h = '<div class="est-nodo' + (EST_SEL === n.codigo ? " sel" : "") + '"'
+        + ' style="padding-left:' + (prof * 16) + 'px"'
+        + ' onclick="estClic(\'' + n.codigo + '\')">'
+        + '<span class="est-flecha' + (hijos.length ? "" : " hoja") + '">'
+        + (hijos.length ? (abierto ? "&#9662;" : "&#9656;") : "&#8226;") + '</span>'
+        + '<span class="est-txt">' + den
+        + '<br><span class="est-cod">' + escaparHtml(n.codigo) + '</span></span>'
+        + '<span class="est-n">'
+        + (n.n_directos ? '<b>' + n.n_directos + '</b> aqu&iacute;' : "")
+        + (n.n_directos && n.n_rama > n.n_directos ? " &middot; " : "")
+        + (n.n_rama > n.n_directos ? n.n_rama + " en rama" : "")
+        + '</span></div>';
+
+  if (EST_SEL === n.codigo && n.n_directos) h += estEquiposHtml(n.codigo);
+  if (abierto) hijos.forEach(c => { h += estRama(c, prof + 1); });
+  return h;
+}
+
+function estClic(codigo) {
+  const n = EST_NODOS.get(codigo);
+  if (!n) return;
+  const hijos = EST_HIJOS.get(codigo) || [];
+  if (hijos.length) {
+    if (EST_ABIERTO.has(codigo)) EST_ABIERTO.delete(codigo);
+    else EST_ABIERTO.add(codigo);
+  }
+  EST_SEL = codigo;
+  estPintar();
+  if (n.n_directos && !EST_EQUIPOS.has(codigo)) estCargarEquipos(codigo);
+}
+
+async function estCargarEquipos(codigo) {
+  const { data, error } = await sb.rpc("dp_equipos_ubicacion",
+    { p_codigo: codigo, p_incluir_rama: false });
+  EST_EQUIPOS.set(codigo, error ? [] : (data || []));
+  estPintar();
+}
+
+function estEquiposHtml(codigo) {
+  const lista = EST_EQUIPOS.get(codigo);
+  if (!lista) return '<div class="est-eq"><div class="loading">Cargando equipos...</div></div>';
+  if (!lista.length) return "";
+  return '<div class="est-eq">' + lista.map(e =>
+    '<div class="est-eq-item" onclick="event.stopPropagation();estAbrirEquipo(\'' + e.id + '\')">'
+    + '<div>' + escaparHtml(e.descripcion || e.id_interno || "(sin descripci&oacute;n)") + '</div>'
+    + '<div class="est-cod">' + escaparHtml(e.codigo_sap || e.id_interno || "")
+    + (e.numero_serie ? " &middot; serie " + escaparHtml(e.numero_serie) : "")
+    + (e.estado_operativo ? " &middot; " + escaparHtml(e.estado_operativo) : "")
+    + '</div></div>').join("") + '</div>';
+}
+
+/* Se reutiliza la ficha que ya existe. Si el equipo no esta en la lista en
+   memoria —la estructura puede alcanzar equipos que el filtro actual no
+   trajo— se avisa en vez de abrir una ficha vacia. */
+function estAbrirEquipo(id) {
+  const eq = equipos.find(e => e.id === id);
+  if (!eq) {
+    toast("Ese equipo no esta en la lista cargada. Bus" + "calo desde Equipos.");
+    return;
+  }
+  cerrarPanel("panel-estructura");
+  document.querySelector('[data-tab="inicio"]').click();
+  abrirFicha(eq);
+}
+
+function estBuscar() {
+  EST_FILTRO = document.getElementById("est-buscar").value.trim().toLowerCase();
+  estPintar();
+}
+
 function propRenderTodo(){ propRender("descripcion_tecnica"); propRender("descripcion"); }
 
 ["e-marca", "e-modelo"].forEach(id => {
@@ -5242,6 +5442,9 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     if (btn.dataset.tab === "pendientes") {
       abrirPanel("panel-pendientes");
       cargarPendientes();
+    } else if (btn.dataset.tab === "estructura") {
+      abrirPanel("panel-estructura");
+      cargarEstructura();
     } else if (btn.dataset.tab === "resumen") {
       abrirPanel("panel-resumen");
       renderResumen();
