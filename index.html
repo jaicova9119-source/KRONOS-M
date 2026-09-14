@@ -14160,7 +14160,12 @@ function otRender() {
     (j.tiene_formato ? " · formato creado" : "") + "</option>").join("");
 
   const filas = [
-    ["OT", a.numero_ot || "Sin OT asignada"],
+    /* La OT se escribe aqui: hay actividades que se ejecutan antes de que
+       exista la orden y el numero llega dias despues. Sin esto el formato
+       salia con "Sin OT asignada" y habia que rehacerlo por fuera. */
+    ["OT", '<input id="ot-numero-edit" value="' + otEsc(a.numero_ot || "") + '" ' +
+           'placeholder="Sin OT asignada" onchange="otAsignarNumero(this.value)" ' +
+           'style="max-width:260px">'],
     ["Descripción", a.descripcion],
     ["Clase de orden", c.orden],
     ["Clase de actividad", c.actividad],
@@ -14176,7 +14181,9 @@ function otRender() {
   ];
   document.getElementById("ot-ficha").innerHTML = filas
     .filter(([, v]) => v !== null && v !== undefined && v !== "")
-    .map(([k, v]) => "<tr><td>" + k + "</td><td>" + otEsc(v) + "</td></tr>").join("");
+    /* La fila de OT ya viene como HTML; el resto se escapa. */
+    .map(([k, v]) => "<tr><td>" + k + "</td><td>" +
+         (k === "OT" ? v : otEsc(v)) + "</td></tr>").join("");
 
   document.getElementById("ot-puesto").value = o.puesto_responsable || "";
   document.getElementById("ot-res-puesto").innerHTML = "";
@@ -14743,6 +14750,33 @@ function otFirmaRefrescar() {
   } else {
     firmaPintarVista();
   }
+}
+
+/* El numero se guarda contra la actividad, no contra la jornada: una misma
+   orden puede tener varios dias de ejecucion y todos sus formatos deben salir
+   con ella. */
+async function otAsignarNumero(valor) {
+  const v = String(valor || "").trim();
+  const a = otDatos && otDatos.actividad;
+  if (!a) return;
+  if (!v) {
+    toast("Escribe el número de OT");
+    document.getElementById("ot-numero-edit").value = a.numero_ot || "";
+    return;
+  }
+  if (v === (a.numero_ot || "")) return;
+
+  const { data, error } = await sb.rpc("programa_asignar_ot",
+    { p_actividad_id: a.id, p_numero_ot: v });
+  if (error) { toast("No se pudo guardar: " + error.message); return; }
+  if (data && data.ok === false) { toast(data.error); return; }
+
+  a.numero_ot = data.numero_ot;
+  /* Se refrescan los dos sitios donde aparece, para no dejar el encabezado
+     diciendo "sin OT" cuando la tabla ya la muestra. */
+  document.getElementById("ot-titulo").textContent =
+    "FO-016 · " + a.numero_ot + " · " + progFmtFecha(otFecha);
+  toast("OT asignada a la actividad");
 }
 
 async function otGuardar(opciones) {
