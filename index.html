@@ -316,6 +316,20 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
   font-size:12px;color:var(--texto-2);white-space:nowrap}
 .lbl-na input{width:auto;margin:0}
 
+/* Fila de casillas cortas en operaciones y materiales. Se envuelve cuando no
+   caben, en vez de encogerlas hasta volverlas ilegibles. */
+.ot-fila-corta{display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap}
+.ot-fila-corta input{flex:1 1 110px;min-width:0}
+.ot-fila-corta input.ancho2{flex:2 1 220px}
+.ot-quitar{color:var(--danger);cursor:pointer;white-space:nowrap;font-size:13px;
+  padding:0 4px}
+
+/* Guardar e imprimir son dos acciones del mismo momento: separadas en dos
+   filas parecian pertenecer a secciones distintas. */
+.ot-acciones{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+.ot-acciones button{flex:1 1 200px}
+.btn-secondary.ancho-auto{width:auto;padding-left:18px;padding-right:18px}
+
 /* El color va en un filete lateral y no en el fondo de la fila: con quince
    equipos seguidos, quince fondos de color compiten entre si y se pierde la
    jerarquia del arbol. El filete se lee de un vistazo y no grita. */
@@ -3042,10 +3056,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="section-label" style="margin-top:18px">ANEXOS</div>
     <div class="hint-box">&#8505;&#65039; Los ensayos que adjuntes salen impresos detr&#225;s del formato, en el mismo PDF. Quedan guardados en esta jornada: al reimprimir sale el mismo documento.</div>
     <div id="ot-anexos-lista" style="margin-bottom:8px"></div>
-    <button type="button" class="btn-secondary" id="ot-btn-anexar" onclick="otAbrirSelectorEnsayo()">Adjuntar ensayo el&#233;ctrico</button>
+    <button type="button" class="btn-secondary ancho-auto" id="ot-btn-anexar" onclick="otAbrirSelectorEnsayo()">Adjuntar ensayo el&#233;ctrico</button>
 
-    <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()" style="margin-top:18px">Guardar</button>
-    <button class="btn-secondary" style="margin-top:8px" onclick="otImprimir()">Imprimir o guardar como PDF</button>
+    <div class="ot-acciones">
+      <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()">Guardar</button>
+      <button class="btn-secondary" onclick="otImprimir()">Imprimir o guardar como PDF</button>
+    </div>
 
     <!-- El logo viene por defecto en fo016-logo.js, asi que ya no se pide
          cargarlo. La nota sobre margenes del navegador se retiro: ocupaba
@@ -14374,16 +14390,17 @@ function otRenderOperaciones() {
   cont.innerHTML = otOperaciones.map((op, i) =>
     '<div class="field" style="border-left:3px solid var(--line);padding-left:10px">' +
     '<input value="' + otEsc(op.descripcion) + '" oninput="otOpCampo(' + i + ',\'descripcion\',this.value)" placeholder="Descripción de la operación"/>' +
-    '<div style="display:flex;gap:6px;margin-top:6px">' +
-      '<input class="hora24" inputmode="numeric" maxlength="5" placeholder="Inicio HH:MM" value="' + (op.hora_inicio || "") + '" oninput="otOpCampo(' + i + ',\'hora_inicio\',this.value)" style="flex:1"/>' +
-      '<input class="hora24" inputmode="numeric" maxlength="5" placeholder="Fin HH:MM" value="' + (op.hora_final || "") + '" oninput="otOpCampo(' + i + ',\'hora_final\',this.value)" style="flex:1"/>' +
-    "</div>" +
-    '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
+    /* Los cuatro datos numericos en una sola fila. Cada uno cabe en pocos
+       caracteres y ocupaban dos renglones completos; con cinco operaciones
+       eso son diez renglones para veinte digitos. */
+    '<div class="ot-fila-corta">' +
+      '<input class="hora24" inputmode="numeric" maxlength="5" placeholder="Inicio HH:MM" value="' + (op.hora_inicio || "") + '" oninput="otOpCampo(' + i + ',\'hora_inicio\',this.value)"/>' +
+      '<input class="hora24" inputmode="numeric" maxlength="5" placeholder="Fin HH:MM" value="' + (op.hora_final || "") + '" oninput="otOpCampo(' + i + ',\'hora_final\',this.value)"/>' +
       '<input type="number" min="1" step="1" id="ot-cant-' + i + '" value="' + (op.cantidad != null ? op.cantidad : "") + '" ' +
-        'oninput="otOpCampo(' + i + ',\'cantidad\',this.value)" placeholder="N° técnicos" style="flex:1"/>' +
+        'oninput="otOpCampo(' + i + ',\'cantidad\',this.value)" placeholder="N° técnicos"/>' +
       '<input type="number" min="0" step="5" id="ot-dur-' + i + '" value="' + (op.duracion_min != null ? op.duracion_min : "") + '" ' +
-        'oninput="otOpCampo(' + i + ',\'duracion_min\',this.value)" placeholder="Min." style="flex:1"/>' +
-      '<span style="color:var(--danger);cursor:pointer;white-space:nowrap" onclick="otQuitarOperacion(' + i + ')">Quitar</span>' +
+        'oninput="otOpCampo(' + i + ',\'duracion_min\',this.value)" placeholder="Min."/>' +
+      '<span class="ot-quitar" onclick="otQuitarOperacion(' + i + ')">Quitar</span>' +
     "</div>" +
     '<div class="mat-stock" id="ot-hh-' + i + '" style="margin-top:4px">' + otHHOperacion(op) + "</div>" +
     "</div>").join("") +
@@ -14406,18 +14423,18 @@ function otRenderMateriales() {
     '<div class="field" style="border-left:3px solid var(--line);padding-left:10px">' +
     '<div style="font-size:13px"><b>' + otEsc(m.codigo || "sin código") + "</b> · " +
       otEsc(m.descripcion || "") + (m.unidad ? " (" + otEsc(m.unidad) + ")" : "") + "</div>" +
-    '<div style="display:flex;gap:6px;margin-top:6px">' +
+    '<div class="ot-fila-corta">' +
       '<input type="number" step="any" value="' + (m.cant_reservada != null ? m.cant_reservada : "") + '" ' +
-        'oninput="otMatCampo(' + i + ',\'cant_reservada\',this.value)" placeholder="Reservada" style="flex:1"/>' +
+        'oninput="otMatCampo(' + i + ',\'cant_reservada\',this.value)" placeholder="Reservada"/>' +
       '<input type="number" step="any" value="' + (m.cant_tomada != null ? m.cant_tomada : "") + '" ' +
-        'oninput="otMatCampo(' + i + ',\'cant_tomada\',this.value)" placeholder="Tomada" style="flex:1"/>' +
+        'oninput="otMatCampo(' + i + ',\'cant_tomada\',this.value)" placeholder="Tomada"/>' +
       '<input type="number" step="any" value="' + (m.cant_disponer != null ? m.cant_disponer : "") + '" ' +
-        'oninput="otMatCampo(' + i + ',\'cant_disponer\',this.value)" placeholder="A disponer" style="flex:1"/>' +
-    "</div>" +
-    '<div style="display:flex;gap:6px;margin-top:6px;align-items:center">' +
-      '<input value="' + otEsc(m.almacen || "") + '" oninput="otMatCampo(' + i + ',\'almacen\',this.value)" ' +
-        'placeholder="Almacén o procedencia: C072, TALLER CYC..." style="flex:1"/>' +
-      '<span style="color:var(--danger);cursor:pointer;white-space:nowrap" onclick="otQuitarMaterial(' + i + ')">Quitar</span>' +
+        'oninput="otMatCampo(' + i + ',\'cant_disponer\',this.value)" placeholder="A disponer"/>' +
+      /* El almacen es texto y crece: se le deja el doble de espacio que a las
+         cantidades para que "TALLER CYC" no salga cortado. */
+      '<input class="ancho2" value="' + otEsc(m.almacen || "") + '" oninput="otMatCampo(' + i + ',\'almacen\',this.value)" ' +
+        'placeholder="Almacén: C072, TALLER CYC..."/>' +
+      '<span class="ot-quitar" onclick="otQuitarMaterial(' + i + ')">Quitar</span>' +
     "</div></div>").join("");
 }
 
