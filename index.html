@@ -287,6 +287,31 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .est-eq-item:hover{background:var(--hover)}
 .est-eq-item:last-child{border-bottom:0}
 .est-aviso{font-size:12.5px;color:var(--texto-2);padding:6px 2px 10px}
+
+/* El color va en un filete lateral y no en el fondo de la fila: con quince
+   equipos seguidos, quince fondos de color compiten entre si y se pierde la
+   jerarquia del arbol. El filete se lee de un vistazo y no grita. */
+.est-eq-item{border-left:3px solid transparent;padding:8px 8px 8px 10px}
+.est-eq-item.est-op{border-left-color:#1C7C54}
+.est-eq-item.est-dis{border-left-color:#0C5292}
+.est-eq-item.est-no{border-left-color:#B3261E}
+.est-eq-item.est-rep{border-left-color:#B26A00}
+.est-eq-item.est-nd{border-left-color:var(--linea)}
+.est-eq-l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.est-eq-desc{flex:1;min-width:0;font-size:13.5px}
+.est-eq-l2{font-size:12px;color:var(--texto-2);margin-top:3px;
+  font-family:var(--mono,monospace)}
+.est-eq-l2 b{color:var(--texto);font-weight:600}
+.est-sap{font-family:var(--mono,monospace);font-size:12px;font-weight:600;
+  background:var(--hover);border:1px solid var(--linea);border-radius:5px;
+  padding:1px 6px;white-space:nowrap}
+.est-pill{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;
+  border:1px solid currentColor}
+.est-op .est-pill{color:#1C7C54}
+.est-dis .est-pill{color:#0C5292}
+.est-no .est-pill{color:#B3261E}
+.est-rep .est-pill{color:#B26A00}
+.est-nd .est-pill{color:var(--texto-2)}
 </style>
 
 <style id="kx-fondo-hub">
@@ -5119,17 +5144,52 @@ async function estCargarEquipos(codigo) {
   estPintar();
 }
 
+/* El estado se lee por palabra clave y no por lista cerrada: los valores del
+   maestro vienen de SAP y pueden traer variantes de redaccion. Lo que importa
+   es la familia —operando, disponible, fuera de servicio— y una etiqueta que
+   no reconozca queda en gris, visible pero sin afirmar un color que no le
+   corresponde. */
+function estClaseEstado(estado) {
+  const s = String(estado || "").toLowerCase();
+  if (!s) return "nd";
+  if (s.indexOf("operando") >= 0 || s.indexOf("servicio") >= 0
+      || s.indexOf("activo") >= 0) return "op";
+  if (s.indexOf("no disponible") >= 0 || s.indexOf("baja") >= 0
+      || s.indexOf("desmantel") >= 0 || s.indexOf("chatarr") >= 0) return "no";
+  if (s.indexOf("disponible") >= 0 || s.indexOf("stock") >= 0
+      || s.indexOf("bodega") >= 0) return "dis";
+  if (s.indexOf("repar") >= 0 || s.indexOf("manten") >= 0
+      || s.indexOf("taller") >= 0) return "rep";
+  return "nd";
+}
+
 function estEquiposHtml(codigo, listaDada) {
   const lista = listaDada || EST_EQUIPOS.get(codigo);
   if (!lista) return '<div class="est-eq"><div class="loading">Cargando equipos...</div></div>';
   if (!lista.length) return "";
-  return '<div class="est-eq">' + lista.map(e =>
-    '<div class="est-eq-item" onclick="event.stopPropagation();estAbrirEquipo(\'' + e.id + '\')">'
-    + '<div>' + escaparHtml(e.descripcion || e.id_interno || "(sin descripci&oacute;n)") + '</div>'
-    + '<div class="est-cod">' + escaparHtml(e.codigo_sap || e.id_interno || "")
-    + (e.numero_serie ? " &middot; serie " + escaparHtml(e.numero_serie) : "")
-    + (e.estado_operativo ? " &middot; " + escaparHtml(e.estado_operativo) : "")
-    + '</div></div>').join("") + '</div>';
+  return '<div class="est-eq">' + lista.map(e => {
+    const marcaModelo = [e.marca, e.modelo].filter(Boolean).join(" ");
+    return '<div class="est-eq-item est-' + estClaseEstado(e.estado_operativo) + '"'
+      + ' onclick="event.stopPropagation();estAbrirEquipo(\'' + e.id + '\')">'
+      + '<div class="est-eq-l1">'
+      +   '<span class="est-sap">' + escaparHtml(e.codigo_sap || e.id_interno || "&mdash;") + '</span>'
+      +   '<span class="est-eq-desc">'
+      +     escaparHtml(e.descripcion || "(sin descripci&oacute;n)") + '</span>'
+      +   (e.estado_operativo
+            ? '<span class="est-pill">' + escaparHtml(e.estado_operativo) + '</span>' : "")
+      + '</div>'
+      /* Marca y modelo en linea propia: son lo que uno compara contra la placa
+         cuando va a verificar en sitio si el equipo instalado es el que el
+         maestro dice. */
+      + (marcaModelo || e.numero_serie
+          ? '<div class="est-eq-l2">'
+            + (marcaModelo ? '<b>' + escaparHtml(marcaModelo) + '</b>' : "")
+            + (marcaModelo && e.numero_serie ? " &middot; " : "")
+            + (e.numero_serie ? "serie " + escaparHtml(e.numero_serie) : "")
+            + '</div>'
+          : "")
+      + '</div>';
+  }).join("") + '</div>';
 }
 
 /* Se reutiliza la ficha que ya existe. Si el equipo no esta en la lista en
