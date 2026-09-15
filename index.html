@@ -3780,8 +3780,10 @@ function hubPintar(c) {
                    clase: "urgente", ir: () => aplicarModulo("ensayos") });
   }
   if (esRevisor && c.usuariosPend) {
+    /* La gestión de usuarios vive en Perfil, no en el módulo de Activos.
+       El destino estaba mal y mandaba al maestro de equipos. */
     alertas.push({ n: c.usuariosPend, t: "usuarios por activar", clase: "urgente",
-                   ir: () => aplicarModulo("activos") });
+                   ir: () => { abrirPanel("panel-perfil"); cargarPanelPerfil(); } });
   }
   if (esRevisor && c.maquinasPend) {
     alertas.push({ n: c.maquinasPend, t: "m\u00e1quinas de campo por validar",
