@@ -870,27 +870,39 @@ ${tbN(W.total, W.rext)}
        corre el resto de la hoja. Por eso lo que ocupa el nombre del líder se
        descuenta del espacio que lo antecede, y lo que ocupan los nombres de
        apoyo, del espacio que sigue. Así la paginación no se mueve. */
-    /* La firma del ejecutor líder, si la hay, va sobre el nombre y ambos sobre
-       la raya: es el orden del papel firmado a mano. Se recorta contra un alto
-       fijo para que una imagen grande no corra la hoja, igual que la firma de
-       recepción. */
+    /* Cada columna del bloque puede llevar firma, nombre, los dos o nada. La
+       firma va arriba y el nombre debajo, ambos sobre la raya: es el orden del
+       papel firmado a mano. La imagen se recorta contra un alto fijo para que
+       una foto grande no corra la hoja, igual que en recepción. */
     const FIRMA_ALTO = 1.05;                       // cm
-    const celdaFirma = (ot && ot.firma_ejecutor)
+    const ALTO_LINEA = 0.42;                       // cm por renglón a 10pt
+
+    const imgFirma = (src, ancho) => src
       ? `<div style="height:${FIRMA_ALTO}cm;overflow:hidden;padding-left:6px">` +
-        `<img src="${esc(ot.firma_ejecutor)}" alt="" ` +
-        `style="max-height:${FIRMA_ALTO}cm;max-width:${F[1] - 0.2}cm;` +
+        `<img src="${esc(src)}" alt="" ` +
+        `style="max-height:${FIRMA_ALTO}cm;max-width:${ancho - 0.2}cm;` +
         `width:auto;height:auto;display:inline-block"></div>`
       : '';
-
-    const ALTO_LINEA = 0.42;                       // cm por renglón a 10pt
-    const arriba = Math.max(0, 2.40 - (lider ? ALTO_LINEA : 0)
-                               - (celdaFirma ? FIRMA_ALTO : 0));
-    const abajo  = Math.max(0.60, 2.35 - apoyo.length * ALTO_LINEA);
-
-    const celdaLider = lider
+    const txtNombre = v => v
       ? `<div style="${ARIAL};font-size:10pt;padding:0 0 1px 6px;` +
-        `white-space:nowrap;overflow:hidden">${esc(lider)}</div>`
+        `white-space:nowrap;overflow:hidden">${esc(v)}</div>`
       : '';
+
+    const supNombre = (ot && ot.supervisor_nombre) || '';
+    const supFirma  = (ot && ot.supervisor_firma)  || '';
+
+    const celdaFirma = imgFirma((ot && ot.firma_ejecutor) || '', F[1]);
+    const celdaLider = txtNombre(lider);
+    const celdaSupF  = imgFirma(supFirma, F[3]);
+    const celdaSupN  = txtNombre(supNombre);
+
+    /* El alto de la fila lo fija la columna más alta, así que el espaciador
+       que la antecede se descuenta de esa y no de la del ejecutor. Si no, con
+       el supervisor firmado y el ejecutor en blanco la retícula se corría. */
+    const altoCol = (f, n) => (f ? FIRMA_ALTO : 0) + (n ? ALTO_LINEA : 0);
+    const arriba = Math.max(0, 2.40 - Math.max(altoCol(celdaFirma, lider),
+                                               altoCol(celdaSupF, supNombre)));
+    const abajo  = Math.max(0.60, 2.35 - apoyo.length * ALTO_LINEA);
 
     const celdaApoyo = apoyo.length
       ? apoyo.map(x => `<div style="${ARIAL};font-size:10pt;font-weight:normal;` +
@@ -903,7 +915,8 @@ ${tbN(W.total, F)}
   <tr>
     <td style="${n}"></td>
     <td style="${p};vertical-align:bottom">${celdaFirma}${celdaLider}</td>
-    <td style="${n}"></td><td style="${p}"></td>
+    <td style="${n}"></td>
+    <td style="${p};vertical-align:bottom">${celdaSupF}${celdaSupN}</td>
     <td style="${n}"></td><td style="${p}"></td>
     <td style="${n}"></td><td style="${p}"></td>
     <td style="${n}"></td>

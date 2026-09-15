@@ -3030,26 +3030,60 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       </label>
     </div>
 
-    <!-- Firma del ejecutor lider. Va sobre la raya de EJECUTOR DE MTTO, en la
-         ultima hoja. La imagen se guarda en la jornada, no solo en el equipo:
-         al reimprimir un reporte viejo tiene que salir la firma con la que se
-         avalo, no la que este cargada hoy. -->
+    <!-- Firmas de la ultima hoja. La imagen se guarda en la jornada, no solo
+         en el equipo: al reimprimir un reporte viejo tiene que salir la firma
+         con la que se avalo, no la que este cargada hoy. -->
     <div class="field">
       <label>Firma del ejecutor l&#237;der</label>
       <div id="ot-firma-ej-vista"></div>
       <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
         <button type="button" class="btn-secondary" id="ot-firma-ej-usar"
-                style="flex:1 1 150px;display:none" onclick="otFirmaEjUsarGuardada()">Usar mi firma</button>
+                style="flex:1 1 150px;display:none"
+                onclick="otFirmaUsarGuardada('ejecutor')">Usar mi firma</button>
         <button type="button" class="btn-secondary" style="flex:1 1 150px"
-                onclick="otFirmaEjTrazar()">Firmar en pantalla</button>
+                onclick="otFirmaTrazar('ejecutor')">Firmar en pantalla</button>
         <button type="button" class="btn-secondary" style="flex:1 1 150px"
                 onclick="document.getElementById('ot-firma-ej-archivo').click()">Cargar imagen</button>
         <button type="button" class="btn-secondary" id="ot-firma-ej-quitar"
-                style="flex:0 0 auto;display:none" onclick="otFirmaEjQuitar()">Quitar</button>
+                style="flex:0 0 auto;display:none"
+                onclick="otFirmaQuitar('ejecutor')">Quitar</button>
       </div>
       <input type="file" id="ot-firma-ej-archivo" accept="image/*"
-             style="display:none" onchange="otFirmaEjArchivo(this)"/>
+             style="display:none" onchange="otFirmaArchivo('ejecutor', this)"/>
       <div class="mat-stock" style="margin-top:6px" id="ot-firma-ej-nota"></div>
+    </div>
+
+    <div class="field">
+      <label>Supervisor O&amp;M</label>
+      <select id="ot-sup-modo" onchange="otSupRefrescar()">
+        <option value="blanco">En blanco, firma sobre el papel</option>
+        <option value="nombre">Solo el nombre</option>
+        <option value="firma">Solo la firma</option>
+        <option value="ambos">Nombre y firma</option>
+      </select>
+
+      <div id="ot-sup-nombre-campo" style="margin-top:8px;display:none">
+        <input id="ot-sup-nombre" placeholder="Nombre del supervisor"/>
+      </div>
+
+      <div id="ot-sup-firma-bloque" style="margin-top:8px;display:none">
+        <div id="ot-firma-sup-vista"></div>
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+          <button type="button" class="btn-secondary" id="ot-firma-sup-usar"
+                  style="flex:1 1 150px;display:none"
+                  onclick="otFirmaUsarGuardada('supervisor')">Usar la recordada</button>
+          <button type="button" class="btn-secondary" style="flex:1 1 150px"
+                  onclick="otFirmaTrazar('supervisor')">Firmar en pantalla</button>
+          <button type="button" class="btn-secondary" style="flex:1 1 150px"
+                  onclick="document.getElementById('ot-firma-sup-archivo').click()">Cargar imagen</button>
+          <button type="button" class="btn-secondary" id="ot-firma-sup-quitar"
+                  style="flex:0 0 auto;display:none"
+                  onclick="otFirmaQuitar('supervisor')">Quitar</button>
+        </div>
+        <input type="file" id="ot-firma-sup-archivo" accept="image/*"
+               style="display:none" onchange="otFirmaArchivo('supervisor', this)"/>
+        <div class="mat-stock" style="margin-top:6px" id="ot-firma-sup-nota"></div>
+      </div>
     </div>
 
     <div class="section-label" style="margin-top:18px">RECEPCI&#211;N DE SERVICIO</div>
@@ -14290,8 +14324,12 @@ function otRender() {
   document.getElementById("ot-rec-obs").value = o.recepcion_observaciones || OT_ENTREGA;
   document.getElementById("ot-rec-nombre").value = o.recepcion_nombre || "";
   document.getElementById("ot-rec-area-txt").value = o.recepcion_area_texto || "";
-  otFirmaEjDato = o.firma_ejecutor || "";
-  otFirmaEjRefrescar();
+  OT_FIRMAS.ejecutor.dato   = o.firma_ejecutor   || "";
+  OT_FIRMAS.supervisor.dato = o.supervisor_firma  || "";
+  document.getElementById("ot-sup-nombre").value = o.supervisor_nombre || "";
+  document.getElementById("ot-sup-modo").value   = o.supervisor_modo   || "blanco";
+  otFirmaRefrescarBloque("ejecutor");
+  otSupRefrescar();
 
   otFirmaDato = o.recepcion_firma || "";
   /* Si no hay modo guardado se deduce del dato: los reportes anteriores solo
@@ -14823,24 +14861,38 @@ function otFirmaDeNombre(nombre) {
   return cv.toDataURL("image/png");
 }
 
-/* ---------- Firma del ejecutor lider ----------------------------------
+/* ---------- Firmas del bloque de firmas (ejecutor y supervisor) --------
    Dos piezas distintas que conviene no confundir:
 
-   otFirmaEjDato   la firma de ESTA jornada. Se guarda en la base y es la que
-                   sale impresa. Es una copia congelada: si manana cambio mi
-                   firma, los reportes viejos siguen saliendo con la que se
-                   avalo. Un documento controlado tiene que ser reproducible.
+   .dato   la firma de ESTA jornada. Se guarda en la base y es la que sale
+           impresa. Es una copia congelada: si manana se cambia la firma, los
+           reportes viejos siguen saliendo con la que se avalo. Un documento
+           controlado tiene que ser reproducible.
 
-   FIRMA_EJ_LS     mi firma personal, guardada en este dispositivo. No es el
-                   documento, es la comodidad de no volver a trazarla en cada
-                   orden. Vive en localStorage porque es del equipo y de la
-                   persona, no de la actividad.                              */
+   .ls     la firma recordada en ESTE dispositivo. No es el documento, es la
+           comodidad de no volver a trazarla en cada orden.
 
-const FIRMA_EJ_LS = "kronos.firma.ejecutor";
-let otFirmaEjDato = "";
+   El ejecutor recuerda la suya sola la primera vez: es la del dueno del
+   equipo. La del supervisor NO se recuerda sola, hay que pedirlo. Guardar la
+   firma de otra persona y aplicarla sin que este delante no es lo mismo que
+   guardar la propia, y el formato es un documento que se avala.            */
 
-function otFirmaEjGuardada() {
-  try { return localStorage.getItem(FIRMA_EJ_LS) || ""; } catch (e) { return ""; }
+const OT_FIRMAS = {
+  ejecutor: {
+    ls: "kronos.firma.ejecutor", pref: "ot-firma-ej", dato: "", auto: true,
+    titulo: "Firme como ejecutor l\u00edder", mio: true,
+  },
+  supervisor: {
+    ls: "kronos.firma.supervisor", pref: "ot-firma-sup", dato: "", auto: false,
+    titulo: "Firma del supervisor O&M", mio: false,
+  },
+};
+
+function otFirmaEl(k, sufijo) {
+  return document.getElementById(OT_FIRMAS[k].pref + sufijo);
+}
+function otFirmaGuardada(k) {
+  try { return localStorage.getItem(OT_FIRMAS[k].ls) || ""; } catch (e) { return ""; }
 }
 
 /* Normaliza cualquier imagen de firma: vuelve transparente el papel, recorta
@@ -14894,13 +14946,14 @@ function otFirmaNormalizar(src) {
   });
 }
 
-function otFirmaEjRefrescar() {
-  const vista = document.getElementById("ot-firma-ej-vista");
+function otFirmaRefrescarBloque(k) {
+  const f = OT_FIRMAS[k];
+  const vista = otFirmaEl(k, "-vista");
   if (!vista) return;
-  const guardada = otFirmaEjGuardada();
+  const guardada = otFirmaGuardada(k);
 
-  if (otFirmaEjDato) {
-    vista.innerHTML = '<img src="' + otFirmaEjDato + '" alt="Firma" ' +
+  if (f.dato) {
+    vista.innerHTML = '<img src="' + f.dato + '" alt="Firma" ' +
       'style="max-height:70px;max-width:100%;background:#fff;' +
       'border:1px solid var(--line);border-radius:6px;padding:4px">';
   } else {
@@ -14908,89 +14961,106 @@ function otFirmaEjRefrescar() {
       'blanco para firmar sobre el papel.</span>';
   }
 
-  const bQuitar = document.getElementById("ot-firma-ej-quitar");
-  if (bQuitar) bQuitar.style.display = otFirmaEjDato ? "" : "none";
+  const bQuitar = otFirmaEl(k, "-quitar");
+  if (bQuitar) bQuitar.style.display = f.dato ? "" : "none";
 
-  const bUsar = document.getElementById("ot-firma-ej-usar");
-  if (bUsar) {
-    bUsar.style.display = (guardada && guardada !== otFirmaEjDato) ? "" : "none";
-  }
+  const bUsar = otFirmaEl(k, "-usar");
+  if (bUsar) bUsar.style.display = (guardada && guardada !== f.dato) ? "" : "none";
 
-  const nota = document.getElementById("ot-firma-ej-nota");
+  const nota = otFirmaEl(k, "-nota");
   if (!nota) return;
+  const suya = f.mio ? "mi firma" : "la firma del supervisor";
   if (guardada) {
-    nota.innerHTML = "Tienes tu firma guardada en este dispositivo. " +
+    nota.innerHTML = "Hay " + suya + " recordada en este dispositivo. " +
       '<span style="color:var(--danger);cursor:pointer" ' +
-      'onclick="otFirmaEjBorrarGuardada()">Borrarla</span>';
-  } else if (otFirmaEjDato) {
+      "onclick=\"otFirmaBorrarGuardada('" + k + "')\">Borrarla</span>";
+  } else if (f.dato) {
     nota.innerHTML = "Esta firma solo est&aacute; en esta orden. " +
       '<span style="color:var(--acento);cursor:pointer" ' +
-      'onclick="otFirmaEjRecordar()">Guardarla como mi firma</span> ' +
-      "para no volver a trazarla en cada reporte.";
+      "onclick=\"otFirmaRecordar('" + k + "')\">Recordarla en este dispositivo</span>" +
+      " para no volver a trazarla.";
   } else {
-    nota.textContent = "Tr\u00e1zala una vez o carga la imagen que ya tienes " +
-      "guardada, y qu\u00e9date con ella para las pr\u00f3ximas \u00f3rdenes.";
+    nota.textContent = "Tr\u00e1zala una vez o carga la imagen que ya exista.";
   }
 }
 
-function otFirmaEjTrazar() {
+function otFirmaTrazar(k) {
+  const f = OT_FIRMAS[k];
   firmaAbrir(img => {
-    otFirmaEjDato = img;
-    if (!otFirmaEjGuardada()) otFirmaEjRecordar(true);
-    otFirmaEjRefrescar();
+    f.dato = img;
+    if (f.auto && !otFirmaGuardada(k)) otFirmaRecordar(k, true);
+    otFirmaRefrescarBloque(k);
     toast("Firma registrada. Recuerde guardar la orden.");
-  }, "Firme como ejecutor l\u00edder");
+  }, f.titulo);
 }
 
-function otFirmaEjArchivo(input) {
-  const f = input && input.files && input.files[0];
+function otFirmaArchivo(k, input) {
+  const f = OT_FIRMAS[k];
+  const arch = input && input.files && input.files[0];
   input.value = "";
-  if (!f) return;
+  if (!arch) return;
   const lector = new FileReader();
   lector.onload = () => {
     otFirmaNormalizar(lector.result).then(img => {
-      otFirmaEjDato = img;
-      if (!otFirmaEjGuardada()) otFirmaEjRecordar(true);
-      otFirmaEjRefrescar();
+      f.dato = img;
+      if (f.auto && !otFirmaGuardada(k)) otFirmaRecordar(k, true);
+      otFirmaRefrescarBloque(k);
       toast("Firma cargada. Recuerde guardar la orden.");
     }).catch(e => toast("No se pudo usar esa imagen: " + e.message));
   };
   lector.onerror = () => toast("No se pudo leer el archivo");
-  lector.readAsDataURL(f);
+  lector.readAsDataURL(arch);
 }
 
-function otFirmaEjUsarGuardada() {
-  const g = otFirmaEjGuardada();
-  if (!g) { toast("No hay firma guardada en este dispositivo"); return; }
-  otFirmaEjDato = g;
-  otFirmaEjRefrescar();
+function otFirmaUsarGuardada(k) {
+  const g = otFirmaGuardada(k);
+  if (!g) { toast("No hay firma recordada en este dispositivo"); return; }
+  OT_FIRMAS[k].dato = g;
+  otFirmaRefrescarBloque(k);
   toast("Firma aplicada. Recuerde guardar la orden.");
 }
 
 /* El cupo de localStorage es chico y una firma normalizada pesa unos 30 KB.
    Si no cabe se avisa en vez de dejar creer que quedo guardada. */
-function otFirmaEjRecordar(silencioso) {
-  if (!otFirmaEjDato) { toast("No hay firma que guardar"); return; }
+function otFirmaRecordar(k, silencioso) {
+  const f = OT_FIRMAS[k];
+  if (!f.dato) { toast("No hay firma que guardar"); return; }
   try {
-    localStorage.setItem(FIRMA_EJ_LS, otFirmaEjDato);
-    if (!silencioso) toast("Guardada como tu firma en este dispositivo");
+    localStorage.setItem(f.ls, f.dato);
+    if (!silencioso) toast("Recordada en este dispositivo");
   } catch (e) {
-    toast("No se pudo guardar la firma en el dispositivo (almacenamiento lleno)");
+    toast("No se pudo recordar la firma (almacenamiento lleno)");
   }
-  otFirmaEjRefrescar();
+  otFirmaRefrescarBloque(k);
 }
 
-function otFirmaEjBorrarGuardada() {
-  try { localStorage.removeItem(FIRMA_EJ_LS); } catch (e) { /* nada que hacer */ }
-  otFirmaEjRefrescar();
+function otFirmaBorrarGuardada(k) {
+  try { localStorage.removeItem(OT_FIRMAS[k].ls); } catch (e) { /* nada que hacer */ }
+  otFirmaRefrescarBloque(k);
   toast("Firma borrada de este dispositivo");
 }
 
-/* Quita la firma de ESTA orden. La guardada en el dispositivo no se toca:
-   son dos cosas distintas y borrar las dos de un botón sería una trampa. */
-function otFirmaEjQuitar() {
-  otFirmaEjDato = "";
-  otFirmaEjRefrescar();
+/* Quita la firma de ESTA orden. La recordada en el dispositivo no se toca:
+   son dos cosas distintas y borrar las dos de un boton seria una trampa. */
+function otFirmaQuitar(k) {
+  OT_FIRMAS[k].dato = "";
+  otFirmaRefrescarBloque(k);
+}
+
+/* El supervisor elige que sale sobre su raya: nada, el nombre, la firma o los
+   dos. Los controles que no aplican se ocultan para que la pantalla no pida
+   datos que no van a imprimirse. */
+function otSupRefrescar() {
+  const modo = (document.getElementById("ot-sup-modo") || {}).value || "blanco";
+  const campoNombre = document.getElementById("ot-sup-nombre-campo");
+  const bloqueFirma = document.getElementById("ot-sup-firma-bloque");
+  if (campoNombre) {
+    campoNombre.style.display = (modo === "nombre" || modo === "ambos") ? "" : "none";
+  }
+  if (bloqueFirma) {
+    bloqueFirma.style.display = (modo === "firma" || modo === "ambos") ? "" : "none";
+  }
+  otFirmaRefrescarBloque("supervisor");
 }
 
 function otFirmaRefrescar() {
@@ -15101,13 +15171,19 @@ async function otGuardar(opciones) {
      la crea programa_ot_guardar: si se mandara antes no habria nada que
      actualizar. Un fallo aqui no invalida lo demas, pero hay que decirlo: una
      firma que el usuario cree guardada y no lo este es peor que ninguna. */
-  const rf = await sb.rpc("programa_ot_firma_ejecutor", {
-    p_actividad_id: id, p_fecha: otFecha, p_firma: otFirmaEjDato || null,
+  const rf = await sb.rpc("programa_ot_firmas", {
+    p_actividad_id: id, p_fecha: otFecha,
+    p_datos: {
+      firma_ejecutor:    OT_FIRMAS.ejecutor.dato || null,
+      supervisor_nombre: otVal("ot-sup-nombre"),
+      supervisor_firma:  OT_FIRMAS.supervisor.dato || null,
+      supervisor_modo:   document.getElementById("ot-sup-modo").value,
+    },
   });
   if (rf.error) {
-    toast("La firma del ejecutor no se guard\u00f3: " + rf.error.message);
+    toast("Las firmas no se guardaron: " + rf.error.message);
   } else if (rf.data && rf.data.ok === false) {
-    toast("La firma del ejecutor no se guard\u00f3: " + rf.data.error);
+    toast("Las firmas no se guardaron: " + rf.data.error);
   }
 
   const filas = otOperaciones
@@ -15206,9 +15282,23 @@ function otMapear() {
     ejecutores_en_blanco: document.getElementById("ot-ejec-blanco")?.checked
                           ?? !!o.ejecutores_en_blanco,
 
-    /* Se lee del estado en memoria y no de otDatos: es lo que el ejecutor
-       acaba de trazar o cargar, aunque todavía no haya pulsado Guardar. */
-    firma_ejecutor: otFirmaEjDato || o.firma_ejecutor || "",
+    /* Se lee del estado en memoria y no de otDatos: es lo que se acaba de
+       trazar o cargar, aunque todavía no se haya pulsado Guardar. */
+    firma_ejecutor: OT_FIRMAS.ejecutor.dato || o.firma_ejecutor || "",
+
+    /* El modo del supervisor decide qué sale sobre su raya. Se resuelve aquí
+       y no en el generador: el formato imprime lo que recibe, sin reglas. */
+    ...(function () {
+      const modo = document.getElementById("ot-sup-modo")?.value
+                   || o.supervisor_modo || "blanco";
+      const nombre = (document.getElementById("ot-sup-nombre")?.value || "").trim()
+                     || o.supervisor_nombre || "";
+      const firma = OT_FIRMAS.supervisor.dato || o.supervisor_firma || "";
+      return {
+        supervisor_nombre: (modo === "nombre" || modo === "ambos") ? nombre : "",
+        supervisor_firma:  (modo === "firma"  || modo === "ambos") ? firma  : "",
+      };
+    })(),
 
     operaciones: (d.operaciones || []).map(x => ({
       oper:        x.oper || null,
