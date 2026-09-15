@@ -3737,6 +3737,7 @@ async function hubContar() {
 
     /* Aprobaciones del módulo de activos: son las mismas tres colas que
        muestra la pestaña Pendientes, para no tener que entrar a mirarlas. */
+    maquinasPend:   () => contar("maquinas_electricas", q => q.is("validada_en", null)),
     movsPend:       () => contar("movimientos", q => q.eq("estado_conciliacion", "pendiente")),
     altasPend:      () => contar("solicitudes_alta", q => q.eq("estado_solicitud", "pendiente")),
     compsPend:      () => contar("campos_pendientes", q => q.eq("estado", "pendiente")),
@@ -3781,6 +3782,10 @@ function hubPintar(c) {
   if (esRevisor && c.usuariosPend) {
     alertas.push({ n: c.usuariosPend, t: "usuarios por activar", clase: "urgente",
                    ir: () => aplicarModulo("activos") });
+  }
+  if (esRevisor && c.maquinasPend) {
+    alertas.push({ n: c.maquinasPend, t: "m\u00e1quinas de campo por validar",
+                   clase: "avisa", ir: () => aplicarModulo("ensayos") });
   }
   if (esRevisor && c.movsPend) {
     alertas.push({ n: c.movsPend, t: "movimientos por aprobar", clase: "avisa", ir: irAPendientes });
@@ -7883,6 +7888,7 @@ function renderMaquinas() {
               ? `<span class="badge badge-SIN">serial en conflicto</span>` : ""}
           <span class="badge ${m.tipo_maquina === "GENERADOR" ? "badge-SOBRESTOCK" : "badge-OK"}">${m.tipo_maquina}</span>
           ${m.vinculado_a_activos ? "" : '<span class="badge badge-SIN">sin vincular</span>'}
+          ${m.validada_en ? "" : '<span class="badge badge-CRITICO">por validar</span>'}
         </div>
         <div class="eq-desc">${m.nombre_efectivo || "(sin nombre)"}</div>
         <div class="eq-loc">${m.ubicacion_efectiva || "Ubicación no registrada"}</div>
@@ -7945,7 +7951,23 @@ async function abrirMaquina(id) {
     if (error) throw error;
     eeEnsayos = data || [];
 
-    cont.innerHTML = `
+    /* Alta de campo sin confirmar. El equipo se puede ensayar igual —el campo
+       no se detiene— pero mientras no la valide un supervisor puede ser un
+       duplicado de una maquina ya registrada, y entonces el historial de
+       aislamiento quedaria partido entre las dos. */
+    const avisoValidar = m.validada_en ? "" : `
+      <div class="ot-flujo devuelto" style="margin-bottom:12px">
+        <span class="ot-flujo-pastilla">ALTA DE CAMPO POR VALIDAR</span>
+        <div class="ot-flujo-rastro">Registrada en campo y todav&iacute;a sin confirmar.
+          Se le pueden hacer ensayos, pero un supervisor debe verificar que no
+          sea un duplicado de otra m&aacute;quina ya registrada.</div>
+        ${eeEsRevisor() ? `<div class="ot-flujo-acciones">
+          <button class="btn-primary" onclick="eeValidarMaquina('${m.id}', true)">Validar</button>
+          <button class="btn-secondary" onclick="eeValidarMaquina('${m.id}', false)">Rechazar</button>
+        </div>` : ""}
+      </div>`;
+
+    cont.innerHTML = avisoValidar + `
       <div style="display:flex;gap:8px;margin-bottom:12px">
         <button class="btn-primary" style="flex:1" id="ee-btn-nuevo-ensayo"
           onclick="nuevoEnsayo()">Nuevo ensayo</button>
@@ -8112,6 +8134,35 @@ async function eeEnviarFirma(id, imagen) {
    alguien en una revision que no hizo—: devuelve el ensayo a pendiente y quien
    corresponda vuelve a firmar de verdad, con su firma y su fecha. Solo admin,
    con motivo, y el rastro de la reapertura queda guardado. */
+/* Validar o rechazar un alta de campo. Rechazar no borra: retira la maquina,
+   porque si ya tiene ensayos colgando borrarla los dejaria huerfanos. La
+   funcion de la base se niega en ese caso y lo dice. */
+async function eeValidarMaquina(id, validar) {
+  let motivo = null;
+  if (!validar) {
+    motivo = prompt("Motivo del rechazo (por ejemplo: duplicada de otra m\u00e1quina):", "");
+    if (motivo === null) return;
+    if (!motivo.trim()) { toast("Debes indicar el motivo"); return; }
+  } else if (!confirm("Validar esta m\u00e1quina. Confirma que no es duplicado de " +
+                      "otra ya registrada. \u00bfContinuar?")) {
+    return;
+  }
+  try {
+    const { data, error } = await sb.rpc("maquina_validar", {
+      p_id: id, p_validar: !!validar, p_motivo: motivo,
+    });
+    if (error) throw error;
+    if (!data || !data.ok) { toast(data?.error || "No se pudo"); return; }
+    toast(validar ? "M\u00e1quina validada" : "M\u00e1quina rechazada y retirada");
+    await cargarMaquinas();
+    eeMaquinaActual = eeMaquinas.find(x => x.id === id) || eeMaquinaActual;
+    abrirMaquina(id);
+  } catch (err) {
+    console.error(err);
+    toast("No se pudo: " + err.message);
+  }
+}
+
 async function eeReabrir(id) {
   const nota = prompt("Motivo para deshacer la firma (queda registrado):", "");
   if (nota === null) return;
