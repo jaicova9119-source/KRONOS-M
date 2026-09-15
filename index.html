@@ -325,6 +325,39 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
    sistema y no una lista que hay que perseguir con el dedo. No se estira:
    "GAL" no necesita el mismo ancho que una cantidad. */
 .ot-fila-corta select{flex:0 1 128px;min-width:104px}
+
+/* Estado del reporte en el circuito. El color va en un filete lateral y en la
+   pastilla, no en el fondo del bloque: un fondo de color a ancho completo
+   compite con el formulario que tiene debajo. */
+.ot-flujo{border-left:3px solid var(--line);background:var(--bg-2);
+  border-radius:8px;padding:10px 12px;margin-bottom:14px}
+.ot-flujo.borrador{border-left-color:var(--t3)}
+.ot-flujo.enviado {border-left-color:var(--acento)}
+.ot-flujo.devuelto{border-left-color:var(--danger)}
+.ot-flujo.firmado {border-left-color:var(--ok,#2e7d5b)}
+.ot-flujo-pastilla{display:inline-block;font-size:11px;font-weight:700;
+  letter-spacing:.04em;padding:2px 8px;border-radius:999px;
+  background:var(--line);color:var(--texto-2)}
+.ot-flujo-rastro{font-size:12px;color:var(--texto-2);margin-top:6px;line-height:1.5}
+.ot-flujo-motivo{margin-top:8px;padding:8px 10px;border-radius:6px;
+  background:var(--bg);border:1px solid var(--danger);font-size:13px}
+.ot-flujo-acciones{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.ot-flujo-acciones button{flex:1 1 150px}
+
+/* Bandeja de pendientes */
+.pend-item{border-left:3px solid var(--acento);background:var(--bg-2);
+  border-radius:8px;padding:10px 12px;margin-bottom:10px;cursor:pointer}
+.pend-item.devuelto{border-left-color:var(--danger)}
+.pend-tit{font-size:14px;font-weight:600}
+.pend-sub{font-size:12px;color:var(--texto-2);margin-top:3px;line-height:1.5}
+
+/* Vista del documento antes de firmar. El iframe se deja a proporcion A4 para
+   que el supervisor lea las hojas tal como van a salir impresas. */
+.doc-modal{position:fixed;inset:0;z-index:9998;background:rgba(10,25,35,.92);
+  display:none;flex-direction:column;padding:10px;gap:8px}
+.doc-modal iframe{flex:1;width:100%;background:#fff;border:0;border-radius:8px}
+.doc-modal-barra{display:flex;gap:8px;flex-wrap:wrap}
+.doc-modal-barra button{flex:1 1 140px}
 .ot-quitar{color:var(--danger);cursor:pointer;white-space:nowrap;font-size:13px;
   padding:0 4px}
 /* Campo calculado: se ve, no se edita. El borde punteado y el fondo tenue lo
@@ -1825,6 +1858,14 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/></svg>
     No prog.
   </button>
+  <button class="nav-item" data-tab="prog-pendientes" data-modulo="programacion" style="position:relative">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H8l-4 4z"/><path d="M9 9h6M9 12h4"/></svg>
+    Pendientes
+    <span id="pend-badge" style="display:none;position:absolute;top:2px;right:8px;
+      min-width:16px;height:16px;line-height:16px;border-radius:999px;
+      background:var(--danger);color:#fff;font-size:10px;font-weight:700;
+      text-align:center;padding:0 4px"></span>
+  </button>
   <button class="nav-item" data-tab="prog-carga" data-modulo="programacion">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></svg>
     Cargar
@@ -2895,13 +2936,34 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 </div>
 
 <!-- ===== Programación: reporte FO-016 ===== -->
+<div class="panel" id="panel-prog-pendientes">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="volverAlModulo()">&#8592;</button>
+    <h2>Pendientes</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box" id="pend-encabezado">Reportes que esperan acci&#243;n tuya.</div>
+    <label id="pend-todas-caja" style="display:none;align-items:center;gap:8px;margin-bottom:10px;font-weight:normal">
+      <input type="checkbox" style="width:auto"
+             onchange="otPendVerTodas=this.checked;otPendientesCargar()"/>
+      <span id="pend-todas-texto"></span>
+    </label>
+    <div id="pend-lista"><div class="loading">Cargando pendientes...</div></div>
+  </div>
+</div>
+
 <div class="panel" id="panel-prog-ot">
   <div class="panel-header">
     <button class="icon-btn" onclick="volverAlModulo()">&#8592;</button>
     <h2 id="ot-titulo">Reporte FO-016</h2>
   </div>
   <div class="panel-body">
-    <div class="hint-box">&#8505;&#65039; Un formato por jornada. Cada d&#237;a lleva sus actividades, sus recomendaciones y sus tiempos. Las firmas van siempre en blanco.</div>
+    <div class="hint-box">&#8505;&#65039; Un formato por jornada. Cada d&#237;a lleva sus actividades, sus recomendaciones y sus tiempos.</div>
+
+    <!-- Estado del reporte en el circuito de aprobacion. Se pinta desde
+         otFlujoRender(): rotulo, rastro de quien movio que y cuando, motivo de
+         devolucion si lo hay, y los botones que correspondan al rol. -->
+    <div id="ot-flujo"></div>
 
     <div class="field"><label>Jornada que documenta este formato</label>
       <select id="ot-jornada" onchange="otCambiarJornada(this.value)"></select>
@@ -3884,6 +3946,9 @@ function aplicarModulo(modulo, irVistaDefault = true) {
     document.querySelector('[data-tab="prog-dia"]').classList.add("active");
     abrirPanel("panel-prog-dia");
     abrirProgramacion();
+    /* El contador de la pestaña Pendientes es toda la notificación que hay hoy.
+       Se refresca al entrar al módulo y después de cada movimiento del flujo. */
+    if (window.otPendientesContar) otPendientesContar();
   } else if (modulo === "predictivo") {
     app.classList.add("modulo-completo");
     app.classList.add("modulo-predictivo");
@@ -5819,6 +5884,9 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     } else if (btn.dataset.tab === "prog-np") {
       abrirPanel("panel-prog-np");
       progNuevaNoProgramada();
+    } else if (btn.dataset.tab === "prog-pendientes") {
+      abrirPanel("panel-prog-pendientes");
+      otPendientesCargar();
     } else if (btn.dataset.tab === "prog-carga") {
       abrirPanel("panel-prog-carga");
       document.getElementById("prog-carga-resumen").innerHTML = "";
@@ -14238,6 +14306,9 @@ async function otAbrir(fecha) {
 
 function otRender() {
   const d = otDatos, a = d.actividad, o = d.ot || {}, c = d.clase || {};
+  /* La barra de flujo se pinta al final de otRender (ver otFlujoRender al
+     cierre): tiene que correr DESPUES de que el resto del panel exista, porque
+     el candado recorre los campos ya renderizados. */
   document.getElementById("ot-titulo").textContent =
     "FO-016 · " + (a.numero_ot || "sin OT") + " · " + progFmtFecha(otFecha);
 
@@ -14368,6 +14439,9 @@ function otRender() {
     cantidad: x.cantidad, duracion_min: x.duracion_min, fecha: x.fecha,
   }));
   otRenderOperaciones();
+
+  /* Ultimo: el candado recorre los campos que acaban de dibujarse. */
+  otFlujoRender();
 }
 
 /* El puesto tiene llave foránea contra el catálogo: si se escribe algo
@@ -15227,6 +15301,274 @@ async function otGuardar(opciones) {
 /* Word reparte los anchos a su antojo si no se declaran columna por
    columna, y las tablas salen desbordadas. Con colgroup y table-layout
    fijo respeta exactamente lo que se le dice. */
+/* ============================================================
+   Circuito de aprobacion del FO-016
+
+   El estado vive en programa_ot.flujo y lo hacen cumplir triggers en la base.
+   Lo de aqui es la otra mitad: que la pantalla diga en que estado esta, quien
+   lo movio, y no ofrezca botones que la base va a rechazar. Deshabilitar los
+   campos NO es la seguridad —esa esta en los triggers—, es cortesia: evitar
+   que alguien escriba veinte minutos para que al guardar le digan que no.
+   ============================================================ */
+
+const OT_FLUJO_ROTULO = {
+  borrador: "BORRADOR",
+  enviado:  "EN REVISI\u00d3N DEL SUPERVISOR",
+  devuelto: "DEVUELTO PARA CORREGIR",
+  firmado:  "FIRMADO",
+};
+
+function otFlujoActual() {
+  return ((otDatos && otDatos.ot) || {}).flujo || "borrador";
+}
+function otRolActual() {
+  return (usuarioActual && usuarioActual.rol) || "";
+}
+function otEsRevisor() {
+  const r = otRolActual();
+  return r === "supervisor" || r === "admin";
+}
+
+/* Quien puede escribir ahora mismo. Replica la regla del trigger: en enviado
+   solo supervisor y admin, en firmado nadie. */
+function otPuedoEditar() {
+  const f = otFlujoActual();
+  if (f === "firmado") return false;
+  if (f === "enviado") return otEsRevisor();
+  return true;
+}
+
+function otFechaCorta(v) {
+  if (!v) return "";
+  const d = new Date(v);
+  if (isNaN(d)) return String(v);
+  const p = n => String(n).padStart(2, "0");
+  return p(d.getDate()) + "." + p(d.getMonth() + 1) + "." + d.getFullYear() +
+         " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+
+function otFlujoRender() {
+  const cont = document.getElementById("ot-flujo");
+  if (!cont) return;
+  const o = (otDatos && otDatos.ot) || {};
+  const f = otFlujoActual();
+
+  const rastro = [];
+  if (o.enviado_en)   rastro.push("Enviado por " + otEsc(o.enviado_nombre || "\u2014") + " el " + otFechaCorta(o.enviado_en));
+  if (o.devuelto_en)  rastro.push("Devuelto por " + otEsc(o.devuelto_nombre || "\u2014") + " el " + otFechaCorta(o.devuelto_en));
+  if (o.firmado_en)   rastro.push("Firmado por " + otEsc(o.firmado_nombre || "\u2014") + " el " + otFechaCorta(o.firmado_en));
+  if (o.reabierto_en) rastro.push("Reabierto por " + otEsc(o.reabierto_nombre || "\u2014") + " el " +
+                                  otFechaCorta(o.reabierto_en) + ": " + otEsc(o.reabierto_motivo || ""));
+
+  /* El motivo de devolucion es lo unico que el tecnico tiene que leer si o si,
+     asi que va destacado y no perdido entre el rastro. */
+  const motivo = (f === "devuelto" && o.devuelto_motivo)
+    ? '<div class="ot-flujo-motivo"><b>Motivo de la devoluci\u00f3n:</b> ' +
+      otEsc(o.devuelto_motivo) + "</div>"
+    : "";
+
+  const b = [];
+  if ((f === "borrador" || f === "devuelto") && otRolActual()) {
+    b.push('<button class="btn-primary" onclick="otFlujoAccion(\'enviar\')">Enviar al supervisor</button>');
+  }
+  if (f === "enviado" && otEsRevisor()) {
+    b.push('<button class="btn-primary" onclick="otFlujoAccion(\'firmar\')">Firmar y aprobar</button>');
+    b.push('<button class="btn-secondary" onclick="otFlujoAccion(\'devolver\')">Devolver al t\u00e9cnico</button>');
+  }
+  if (f === "firmado" && otRolActual() === "admin") {
+    b.push('<button class="btn-secondary" onclick="otFlujoAccion(\'reabrir\')">Reabrir</button>');
+  }
+  b.push('<button class="btn-secondary" onclick="otVerDocumento()">Ver documento</button>');
+
+  const aviso = (f === "enviado" && !otEsRevisor())
+    ? '<div class="ot-flujo-rastro">El reporte est\u00e1 con el supervisor y no se puede editar. ' +
+      "Si necesitas corregir algo, p\u00eddele que te lo devuelva.</div>"
+    : (f === "firmado"
+        ? '<div class="ot-flujo-rastro">Documento cerrado. Para corregirlo hay que reabrirlo, ' +
+          "y al reabrirlo se borra la firma del supervisor.</div>"
+        : "");
+
+  cont.innerHTML =
+    '<div class="ot-flujo ' + f + '">' +
+      '<span class="ot-flujo-pastilla">' + (OT_FLUJO_ROTULO[f] || f) + "</span>" +
+      (rastro.length ? '<div class="ot-flujo-rastro">' + rastro.join("<br>") + "</div>" : "") +
+      aviso + motivo +
+      '<div class="ot-flujo-acciones">' + b.join("") + "</div>" +
+    "</div>";
+
+  otAplicarCandado();
+}
+
+/* Recorre el panel y desactiva lo que se escribe. Se excluye el selector de
+   jornada —moverse entre dias tiene que seguir funcionando— y los botones del
+   propio bloque de flujo. */
+function otAplicarCandado() {
+  const panel = document.getElementById("panel-prog-ot");
+  if (!panel) return;
+  const abierto = otPuedoEditar();
+  const flujo = document.getElementById("ot-flujo");
+
+  panel.querySelectorAll("input, textarea, select, button").forEach(el => {
+    if (flujo && flujo.contains(el)) return;
+    if (el.id === "ot-jornada") return;
+    /* Imprimir y ver anexos no modifican nada: se dejan vivos. */
+    const txt = (el.textContent || "").toLowerCase();
+    if (el.tagName === "BUTTON" && (txt.indexOf("imprimir") >= 0)) return;
+    el.disabled = !abierto;
+  });
+
+  const guardar = document.getElementById("ot-btn-guardar");
+  if (guardar) guardar.style.display = abierto ? "" : "none";
+
+  /* Los enlaces de texto del bloque de firmas no son botones y hay que
+     apagarlos aparte, o quedan clicables sobre un documento cerrado. */
+  ["ot-firma-ej-nota", "ot-firma-sup-nota"].forEach(id => {
+    const n = document.getElementById(id);
+    if (n) n.style.pointerEvents = abierto ? "" : "none";
+  });
+}
+
+async function otFlujoAccion(accion) {
+  if (!otDatos) return;
+  const id = otDatos.actividad.id;
+
+  let motivo = null;
+  if (accion === "devolver") {
+    motivo = prompt("\u00bfQu\u00e9 hay que corregir? Esto es lo que va a leer el t\u00e9cnico:");
+    if (motivo === null) return;
+    if (!motivo.trim()) { toast("Sin motivo no se puede devolver"); return; }
+  }
+  if (accion === "reabrir") {
+    motivo = prompt("Motivo de la reapertura (queda registrado):");
+    if (motivo === null) return;
+    if (!motivo.trim()) { toast("Sin motivo no se puede reabrir"); return; }
+    if (!confirm("Al reabrir se borra la firma del supervisor y habr\u00e1 que firmar de nuevo. \u00bfContinuar?")) return;
+  }
+
+  /* Enviar guarda primero: lo que el supervisor va a leer tiene que ser lo que
+     esta en pantalla, no lo que se guardo hace media hora. */
+  if (accion === "enviar") {
+    const ok = await otGuardar({ silencioso: true });
+    if (!ok) { toast("Corrige lo que falta antes de enviar"); return; }
+  }
+
+  const r = await sb.rpc("programa_ot_flujo", {
+    p_actividad_id: id, p_fecha: otFecha, p_accion: accion, p_motivo: motivo,
+  });
+  if (r.error) { toast("No se pudo: " + r.error.message); return; }
+  if (r.data && r.data.ok === false) { toast(r.data.error); return; }
+
+  const rr = await sb.rpc("programa_ot_datos", { p_actividad_id: id, p_fecha: otFecha });
+  if (!rr.error && rr.data) { otDatos = rr.data; otRender(); }
+
+  toast({ enviar: "Enviado al supervisor", devolver: "Devuelto al t\u00e9cnico",
+          firmar: "Reporte firmado", reabierto: "", reabrir: "Reporte reabierto" }[accion] || "Listo");
+  otPendientesContar();
+}
+
+/* ---------- Ver el documento antes de firmar ----------
+   Se renderiza el FO-016 completo en un iframe visible. Leer el formulario no
+   es lo mismo que leer lo que se va a firmar: el orden, los cortes de hoja y
+   lo que queda en blanco solo se ven en el documento armado. */
+function otVerDocumento() {
+  const modal = document.getElementById("ot-doc-modal");
+  const marco = document.getElementById("ot-doc-marco");
+  if (!modal || !marco) return;
+  let html;
+  try {
+    html = "<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"utf-8\">" +
+      "<style>body{margin:0;padding:10px 0;background:#f2f2f2}" +
+      ".fo016-pag{background:#fff;margin:0 auto 12px;box-shadow:0 1px 4px rgba(0,0,0,.25)}" +
+      FO016.PAGE_CSS + "</style></head><body>" + FO016.render(otMapear()) + "</body></html>";
+  } catch (e) {
+    toast("No se pudo armar el documento: " + e.message);
+    return;
+  }
+  marco.srcdoc = html;
+  modal.style.display = "flex";
+}
+
+function otCerrarDocumento() {
+  const modal = document.getElementById("ot-doc-modal");
+  const marco = document.getElementById("ot-doc-marco");
+  if (marco) marco.srcdoc = "";
+  if (modal) modal.style.display = "none";
+}
+
+/* ---------- Bandeja de pendientes ---------- */
+let otPendVerTodas = false;
+
+async function otPendientesCargar() {
+  const cont = document.getElementById("pend-lista");
+  if (!cont) return;
+  cont.innerHTML = '<div class="loading">Cargando pendientes...</div>';
+  const r = await sb.rpc("programa_ot_pendientes", { p_todas: otPendVerTodas });
+  if (r.error) { cont.innerHTML = '<div class="empty">No se pudo cargar: ' + otEsc(r.error.message) + "</div>"; return; }
+  const d = r.data || {};
+  if (d.ok === false) { cont.innerHTML = '<div class="empty">' + otEsc(d.error) + "</div>"; return; }
+
+  const items = d.items || [];
+  const enc = document.getElementById("pend-encabezado");
+  if (enc) {
+    enc.textContent = d.estado === "enviado"
+      ? "Reportes enviados esperando tu revisi\u00f3n."
+      : "Reportes que el supervisor te devolvi\u00f3 para corregir.";
+  }
+  const sw = document.getElementById("pend-todas-caja");
+  if (sw) {
+    /* El interruptor solo tiene sentido si hay algo escondido detras. */
+    sw.style.display = (d.disciplina && (otPendVerTodas || d.otras_disciplinas > 0)) ? "" : "none";
+    const et = document.getElementById("pend-todas-texto");
+    if (et) {
+      et.textContent = otPendVerTodas
+        ? "Viendo todas las disciplinas"
+        : "Ver tambi\u00e9n otras disciplinas (" + d.otras_disciplinas + ")";
+    }
+  }
+
+  if (!items.length) {
+    cont.innerHTML = '<div class="empty">Nada pendiente.</div>';
+    return;
+  }
+
+  cont.innerHTML = items.map((x, i) =>
+    '<div class="pend-item ' + (x.flujo === "devuelto" ? "devuelto" : "") +
+      '" onclick="otPendAbrir(' + i + ')">' +
+      '<div class="pend-tit">' + otEsc(x.numero_ot || "sin OT") + " \u00b7 " +
+        otEsc(x.descripcion_trabajo || "") + "</div>" +
+      '<div class="pend-sub">' +
+        otEsc(progFmtFecha ? progFmtFecha(x.fecha) : x.fecha) +
+        " \u00b7 " + otEsc(x.codigo_equipo || "") + " " + otEsc(x.descripcion_equipo || "") +
+        "<br>" + otEsc(x.puesto_responsable || "") +
+        (x.disciplina ? " \u00b7 " + otEsc(x.disciplina) : "") +
+        (x.campo ? " \u00b7 " + otEsc(x.campo) : "") +
+        (x.enviado_nombre ? "<br>Enviado por " + otEsc(x.enviado_nombre) + " el " + otFechaCorta(x.enviado_en) : "") +
+        (x.devuelto_motivo ? "<br><b>Motivo:</b> " + otEsc(x.devuelto_motivo) : "") +
+      "</div></div>").join("");
+  otPendItems = items;
+}
+
+let otPendItems = [];
+
+/* Abrir desde la bandeja no pasa por el modulo de Programacion, asi que hay
+   que dejar progActual apuntando a la actividad: otAbrir() lo usa para pedir
+   los datos. El resto del panel trabaja contra otDatos. */
+function otPendAbrir(i) {
+  const x = otPendItems[i];
+  if (!x) return;
+  progActual = { id: x.actividad_id };
+  otAbrir(x.fecha);
+}
+
+async function otPendientesContar() {
+  const b = document.getElementById("pend-badge");
+  if (!b) return;
+  const r = await sb.rpc("programa_ot_pendientes", { p_todas: false });
+  const n = (!r.error && r.data && r.data.ok !== false) ? (r.data.items || []).length : 0;
+  b.textContent = n ? String(n) : "";
+  b.style.display = n ? "" : "none";
+}
+
 /* ============================================================
    Puente hacia el generador FO-016 versión 00 (fo016.js)
 
@@ -16749,6 +17091,16 @@ function firmaPintarVista() {
 }
 
 </script>
+
+<!-- Vista del documento armado. El supervisor lee las tres hojas tal como van
+     a salir antes de firmar: leer el formulario no es lo mismo. -->
+<div class="doc-modal" id="ot-doc-modal">
+  <div class="doc-modal-barra">
+    <button type="button" class="btn-secondary" onclick="otCerrarDocumento()">Cerrar</button>
+    <button type="button" class="btn-secondary" onclick="otImprimir()">Imprimir o guardar como PDF</button>
+  </div>
+  <iframe id="ot-doc-marco" title="Documento FO-016"></iframe>
+</div>
 
 <!-- Lienzo de firma. Fuera de los paneles para que cubra toda la pantalla. -->
 <div id="ot-firma-modal" style="display:none;position:fixed;inset:0;z-index:9999;
