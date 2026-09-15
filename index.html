@@ -8051,6 +8051,8 @@ function eeTarjetaEnsayo(e, m) {
           <button class="btn-secondary" onclick="eeFirmar('${e.id}')">Firmar</button>
           <button class="btn-secondary" onclick="eeDevolver('${e.id}')">Devolver</button>` : ""}
         ${e.estado !== "firmado" ? `<button class="btn-secondary" onclick="borrarEnsayo('${e.id}')">Eliminar</button>` : ""}
+        ${e.estado === "firmado" && usuarioActual && usuarioActual.rol === "admin" ? `
+          <button class="btn-secondary" onclick="eeReabrir('${e.id}')">Reabrir revisi&oacute;n</button>` : ""}
       </div>
     </div>`;
 }
@@ -8103,6 +8105,28 @@ async function eeEnviarFirma(id, imagen) {
   } catch (err) {
     console.error(err);
     toast("No se pudo firmar: " + err.message);
+  }
+}
+
+/* Deshace una firma. No cambia quien reviso —eso seria poner el nombre de
+   alguien en una revision que no hizo—: devuelve el ensayo a pendiente y quien
+   corresponda vuelve a firmar de verdad, con su firma y su fecha. Solo admin,
+   con motivo, y el rastro de la reapertura queda guardado. */
+async function eeReabrir(id) {
+  const nota = prompt("Motivo para deshacer la firma (queda registrado):", "");
+  if (nota === null) return;
+  if (!nota.trim()) { toast("Debes indicar el motivo"); return; }
+  if (!confirm("Se borra la firma del revisor y el ensayo vuelve a quedar " +
+               "pendiente de firma. Los datos del ensayo no se tocan. \u00bfContinuar?")) return;
+  try {
+    const { data, error } = await sb.rpc("ee_reabrir", { p_id: id, p_nota: nota.trim() });
+    if (error) throw error;
+    if (!data || !data.ok) { toast(data?.error || "No se pudo reabrir"); return; }
+    toast("Revisi\u00f3n reabierta. Ya puede firmarla quien corresponda.");
+    abrirMaquina(eeMaquinaActual.id);
+  } catch (err) {
+    console.error(err);
+    toast("No se pudo reabrir: " + err.message);
   }
 }
 
