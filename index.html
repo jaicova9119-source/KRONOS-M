@@ -321,6 +321,10 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .ot-fila-corta{display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap}
 .ot-fila-corta input{flex:1 1 110px;min-width:0}
 .ot-fila-corta input.ancho2{flex:2 1 220px}
+/* La unidad es un <select> nativo para que en Android abra el selector del
+   sistema y no una lista que hay que perseguir con el dedo. No se estira:
+   "GAL" no necesita el mismo ancho que una cantidad. */
+.ot-fila-corta select{flex:0 1 128px;min-width:104px}
 .ot-quitar{color:var(--danger);cursor:pointer;white-space:nowrap;font-size:13px;
   padding:0 4px}
 /* Campo calculado: se ve, no se edita. El borde punteado y el fondo tenue lo
@@ -14079,6 +14083,31 @@ let otPuestos = [];
 let otCatalogo = { SINTOMA: [], CAUSA: [], PARTE: [] };
 let otFecha = null;   // jornada que se está documentando
 let otMateriales = [];
+
+/* Unidades de medida del FO-016. La lista es cerrada a propósito: si cada
+   quien escribe la suya, "GL", "GAL" y "GALON" son tres unidades distintas
+   para la base y el consumo de un mismo material deja de poder sumarse.
+   El código corto es el que se imprime en la columna UND del formato. */
+const OT_UNIDADES = [
+  ["UND", "UND · unidad"],
+  ["JGO", "JGO · juego"],
+  ["PAR", "PAR · par"],
+  ["KIT", "KIT · kit"],
+  ["CJ",  "CJ · caja"],
+  ["RLL", "RLL · rollo"],
+  ["TBO", "TBO · tubo"],
+  ["KG",  "KG · kilogramo"],
+  ["G",   "G · gramo"],
+  ["LB",  "LB · libra"],
+  ["M",   "M · metro"],
+  ["CM",  "CM · centímetro"],
+  ["PLG", "PLG · pulgada"],
+  ["M2",  "M2 · metro cuadrado"],
+  ["L",   "L · litro"],
+  ["ML",  "ML · mililitro"],
+  ["GAL", "GAL · galón"],
+  ["GLB", "GLB · global"],
+];
 let otResMaterial = [];   // últimos resultados de búsqueda de material
 let otBuscarMatTimer = null;
 
@@ -14260,8 +14289,9 @@ function otRender() {
 
   otMateriales = (d.materiales || []).map(x => ({
     codigo: x.codigo, descripcion: x.descripcion, unidad: x.unidad,
-    cant_reservada: x.cant_reservada, cant_tomada: x.cant_tomada,
-    cant_disponer: x.cant_disponer, almacen: x.almacen,
+    n_reserva: x.n_reserva, cant_reservada: x.cant_reservada,
+    cant_tomada: x.cant_tomada, cant_disponer: x.cant_disponer,
+    almacen: x.almacen,
   }));
   otRenderMateriales();
   const bm = document.getElementById("ot-mat-buscar");
@@ -14437,10 +14467,15 @@ function otRenderMateriales() {
   cont.innerHTML = otMateriales.map((m, i) =>
     '<div class="field" style="border-left:3px solid var(--line);padding-left:10px">' +
     '<div style="font-size:13px"><b>' + otEsc(m.codigo || "sin código") + "</b> · " +
-      otEsc(m.descripcion || "") + (m.unidad ? " (" + otEsc(m.unidad) + ")" : "") + "</div>" +
+      otEsc(m.descripcion || "") + "</div>" +
     '<div class="ot-fila-corta">' +
+      /* El numero de reserva es texto: 0000155698 con un input numerico
+         pierde los ceros de la izquierda, que son parte del documento. */
+      '<input class="ancho2" inputmode="numeric" value="' + otEsc(m.n_reserva || "") + '" ' +
+        'oninput="otMatCampo(' + i + ',\'n_reserva\',this.value)" placeholder="N. reserva: 0000155698"/>' +
       '<input type="number" step="any" value="' + (m.cant_reservada != null ? m.cant_reservada : "") + '" ' +
         'oninput="otMatCampo(' + i + ',\'cant_reservada\',this.value)" placeholder="Reservada"/>' +
+      otUnidadSelect(i, m.unidad) +
       '<input type="number" step="any" value="' + (m.cant_tomada != null ? m.cant_tomada : "") + '" ' +
         'oninput="otMatCampo(' + i + ',\'cant_tomada\',this.value)" placeholder="Tomada"/>' +
       '<input type="number" step="any" value="' + (m.cant_disponer != null ? m.cant_disponer : "") + '" ' +
@@ -14451,6 +14486,23 @@ function otRenderMateriales() {
         'placeholder="Almacén: C072, TALLER CYC..."/>' +
       '<span class="ot-quitar" onclick="otQuitarMaterial(' + i + ')">Quitar</span>' +
     "</div></div>").join("");
+}
+
+/* La unidad se precarga del catalogo del material y se puede corregir, pero
+   solo dentro de la lista. Si lo que trae el catalogo no esta en la lista
+   —unidades viejas de SAP que nadie normalizo— se agrega como primera opcion
+   en vez de descartarla: cambiarle la unidad a un registro historico sin que
+   nadie lo pida seria peor que mostrar una unidad rara. */
+function otUnidadSelect(i, valor) {
+  const v = String(valor || "").toUpperCase().trim();
+  const lista = OT_UNIDADES.slice();
+  if (v && !lista.some(u => u[0] === v)) lista.unshift([v, v + " · del catálogo"]);
+  return '<select onchange="otMatCampo(' + i + ",'unidad',this.value)\" " +
+    'title="Unidad de medida">' +
+    '<option value=""' + (v ? "" : " selected") + ">— unidad —</option>" +
+    lista.map(u => '<option value="' + otEsc(u[0]) + '"' +
+      (u[0] === v ? " selected" : "") + ">" + otEsc(u[1]) + "</option>").join("") +
+    "</select>";
 }
 
 function otMatCampo(i, campo, valor) {
@@ -14510,7 +14562,8 @@ function otElegirMaterial(k) {
   }
   otMateriales.push({
     codigo: m.codigo_sap, descripcion: m.descripcion, unidad: m.unidad,
-    cant_reservada: null, cant_tomada: null, cant_disponer: null, almacen: "",
+    n_reserva: "", cant_reservada: null, cant_tomada: null,
+    cant_disponer: null, almacen: "",
   });
   document.getElementById("ot-mat-buscar").value = "";
   document.getElementById("ot-res-material").innerHTML = "";
@@ -14524,7 +14577,8 @@ function otAgregarMaterialLibre() {
   if (!desc || !desc.trim()) return;
   otMateriales.push({
     codigo: null, descripcion: desc.trim(), unidad: null,
-    cant_reservada: null, cant_tomada: null, cant_disponer: null, almacen: "",
+    n_reserva: "", cant_reservada: null, cant_tomada: null,
+    cant_disponer: null, almacen: "",
   });
   otRenderMateriales();
 }
@@ -14869,6 +14923,7 @@ async function otGuardar(opciones) {
     p_actividad_id: id, p_fecha: otFecha,
     p_filas: otMateriales.map(m => ({
       codigo: m.codigo, descripcion: m.descripcion, unidad: m.unidad,
+      n_reserva: m.n_reserva,
       cant_reservada: num(m.cant_reservada), cant_tomada: num(m.cant_tomada),
       cant_disponer: num(m.cant_disponer), almacen: m.almacen,
     })),
@@ -14958,6 +15013,7 @@ function otMapear() {
     materiales: (d.materiales || []).map(m => ({
       codigo:         m.codigo,
       descripcion:    m.descripcion,
+      n_reserva:      m.n_reserva,
       cant_reservada: m.cant_reservada,
       unidad:         m.unidad,
       cant_tomada:    m.cant_tomada,
