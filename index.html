@@ -3030,6 +3030,28 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       </label>
     </div>
 
+    <!-- Firma del ejecutor lider. Va sobre la raya de EJECUTOR DE MTTO, en la
+         ultima hoja. La imagen se guarda en la jornada, no solo en el equipo:
+         al reimprimir un reporte viejo tiene que salir la firma con la que se
+         avalo, no la que este cargada hoy. -->
+    <div class="field">
+      <label>Firma del ejecutor l&#237;der</label>
+      <div id="ot-firma-ej-vista"></div>
+      <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+        <button type="button" class="btn-secondary" id="ot-firma-ej-usar"
+                style="flex:1 1 150px;display:none" onclick="otFirmaEjUsarGuardada()">Usar mi firma</button>
+        <button type="button" class="btn-secondary" style="flex:1 1 150px"
+                onclick="otFirmaEjTrazar()">Firmar en pantalla</button>
+        <button type="button" class="btn-secondary" style="flex:1 1 150px"
+                onclick="document.getElementById('ot-firma-ej-archivo').click()">Cargar imagen</button>
+        <button type="button" class="btn-secondary" id="ot-firma-ej-quitar"
+                style="flex:0 0 auto;display:none" onclick="otFirmaEjQuitar()">Quitar</button>
+      </div>
+      <input type="file" id="ot-firma-ej-archivo" accept="image/*"
+             style="display:none" onchange="otFirmaEjArchivo(this)"/>
+      <div class="mat-stock" style="margin-top:6px" id="ot-firma-ej-nota"></div>
+    </div>
+
     <div class="section-label" style="margin-top:18px">RECEPCI&#211;N DE SERVICIO</div>
     <div class="hint-box">&#8505;&#65039; Las tres casillas van marcadas en SI, que es la entrega normal. Desmarca la que no aplique y expl&#237;calo en observaciones. Nombre, firma y &#225;rea salen en blanco para quien recibe.</div>
     <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
@@ -14268,6 +14290,9 @@ function otRender() {
   document.getElementById("ot-rec-obs").value = o.recepcion_observaciones || OT_ENTREGA;
   document.getElementById("ot-rec-nombre").value = o.recepcion_nombre || "";
   document.getElementById("ot-rec-area-txt").value = o.recepcion_area_texto || "";
+  otFirmaEjDato = o.firma_ejecutor || "";
+  otFirmaEjRefrescar();
+
   otFirmaDato = o.recepcion_firma || "";
   /* Si no hay modo guardado se deduce del dato: los reportes anteriores solo
      distinguian entre tener trazo o no tenerlo. */
@@ -14798,6 +14823,176 @@ function otFirmaDeNombre(nombre) {
   return cv.toDataURL("image/png");
 }
 
+/* ---------- Firma del ejecutor lider ----------------------------------
+   Dos piezas distintas que conviene no confundir:
+
+   otFirmaEjDato   la firma de ESTA jornada. Se guarda en la base y es la que
+                   sale impresa. Es una copia congelada: si manana cambio mi
+                   firma, los reportes viejos siguen saliendo con la que se
+                   avalo. Un documento controlado tiene que ser reproducible.
+
+   FIRMA_EJ_LS     mi firma personal, guardada en este dispositivo. No es el
+                   documento, es la comodidad de no volver a trazarla en cada
+                   orden. Vive en localStorage porque es del equipo y de la
+                   persona, no de la actividad.                              */
+
+const FIRMA_EJ_LS = "kronos.firma.ejecutor";
+let otFirmaEjDato = "";
+
+function otFirmaEjGuardada() {
+  try { return localStorage.getItem(FIRMA_EJ_LS) || ""; } catch (e) { return ""; }
+}
+
+/* Normaliza cualquier imagen de firma: vuelve transparente el papel, recorta
+   al trazo y la reduce. Lo del fondo no es estetica: una firma escaneada trae
+   un rectangulo blanco que, pegado sobre la raya del formato, la tapa y el
+   documento se ve mal armado. El umbral es alto (230) para no comerse el trazo
+   de un boligrafo claro. */
+function otFirmaNormalizar(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onerror = () => reject(new Error("No se pudo leer la imagen"));
+    img.onload = () => {
+      try {
+        const cv = document.createElement("canvas");
+        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+        const c = cv.getContext("2d");
+        c.drawImage(img, 0, 0);
+
+        const d = c.getImageData(0, 0, cv.width, cv.height);
+        const px = d.data;
+        let x1 = cv.width, y1 = cv.height, x2 = -1, y2 = -1;
+        for (let y = 0; y < cv.height; y++) {
+          for (let x = 0; x < cv.width; x++) {
+            const i = (y * cv.width + x) * 4;
+            const lum = (px[i] * 0.299 + px[i + 1] * 0.587 + px[i + 2] * 0.114);
+            if (px[i + 3] < 16 || lum > 230) { px[i + 3] = 0; continue; }
+            if (x < x1) x1 = x;
+            if (y < y1) y1 = y;
+            if (x > x2) x2 = x;
+            if (y > y2) y2 = y;
+          }
+        }
+        if (x2 < 0) { reject(new Error("La imagen no tiene trazo visible")); return; }
+        c.putImageData(d, 0, 0);
+
+        const m = Math.round(Math.max(cv.width, cv.height) * 0.01) + 2;
+        const rx = Math.max(0, x1 - m), ry = Math.max(0, y1 - m);
+        const rw = Math.min(cv.width - rx, x2 - x1 + m * 2);
+        const rh = Math.min(cv.height - ry, y2 - y1 + m * 2);
+
+        const MAX_ANCHO = 700;
+        const escala = Math.min(1, MAX_ANCHO / rw);
+        const out = document.createElement("canvas");
+        out.width = Math.max(1, Math.round(rw * escala));
+        out.height = Math.max(1, Math.round(rh * escala));
+        out.getContext("2d").drawImage(cv, rx, ry, rw, rh, 0, 0, out.width, out.height);
+        resolve(out.toDataURL("image/png"));
+      } catch (e) { reject(e); }
+    };
+    img.src = src;
+  });
+}
+
+function otFirmaEjRefrescar() {
+  const vista = document.getElementById("ot-firma-ej-vista");
+  if (!vista) return;
+  const guardada = otFirmaEjGuardada();
+
+  if (otFirmaEjDato) {
+    vista.innerHTML = '<img src="' + otFirmaEjDato + '" alt="Firma" ' +
+      'style="max-height:70px;max-width:100%;background:#fff;' +
+      'border:1px solid var(--line);border-radius:6px;padding:4px">';
+  } else {
+    vista.innerHTML = '<span class="mat-stock">Sin firma. La raya sale en ' +
+      'blanco para firmar sobre el papel.</span>';
+  }
+
+  const bQuitar = document.getElementById("ot-firma-ej-quitar");
+  if (bQuitar) bQuitar.style.display = otFirmaEjDato ? "" : "none";
+
+  const bUsar = document.getElementById("ot-firma-ej-usar");
+  if (bUsar) {
+    bUsar.style.display = (guardada && guardada !== otFirmaEjDato) ? "" : "none";
+  }
+
+  const nota = document.getElementById("ot-firma-ej-nota");
+  if (!nota) return;
+  if (guardada) {
+    nota.innerHTML = "Tienes tu firma guardada en este dispositivo. " +
+      '<span style="color:var(--danger);cursor:pointer" ' +
+      'onclick="otFirmaEjBorrarGuardada()">Borrarla</span>';
+  } else if (otFirmaEjDato) {
+    nota.innerHTML = "Esta firma solo est&aacute; en esta orden. " +
+      '<span style="color:var(--acento);cursor:pointer" ' +
+      'onclick="otFirmaEjRecordar()">Guardarla como mi firma</span> ' +
+      "para no volver a trazarla en cada reporte.";
+  } else {
+    nota.textContent = "Tr\u00e1zala una vez o carga la imagen que ya tienes " +
+      "guardada, y qu\u00e9date con ella para las pr\u00f3ximas \u00f3rdenes.";
+  }
+}
+
+function otFirmaEjTrazar() {
+  firmaAbrir(img => {
+    otFirmaEjDato = img;
+    if (!otFirmaEjGuardada()) otFirmaEjRecordar(true);
+    otFirmaEjRefrescar();
+    toast("Firma registrada. Recuerde guardar la orden.");
+  }, "Firme como ejecutor l\u00edder");
+}
+
+function otFirmaEjArchivo(input) {
+  const f = input && input.files && input.files[0];
+  input.value = "";
+  if (!f) return;
+  const lector = new FileReader();
+  lector.onload = () => {
+    otFirmaNormalizar(lector.result).then(img => {
+      otFirmaEjDato = img;
+      if (!otFirmaEjGuardada()) otFirmaEjRecordar(true);
+      otFirmaEjRefrescar();
+      toast("Firma cargada. Recuerde guardar la orden.");
+    }).catch(e => toast("No se pudo usar esa imagen: " + e.message));
+  };
+  lector.onerror = () => toast("No se pudo leer el archivo");
+  lector.readAsDataURL(f);
+}
+
+function otFirmaEjUsarGuardada() {
+  const g = otFirmaEjGuardada();
+  if (!g) { toast("No hay firma guardada en este dispositivo"); return; }
+  otFirmaEjDato = g;
+  otFirmaEjRefrescar();
+  toast("Firma aplicada. Recuerde guardar la orden.");
+}
+
+/* El cupo de localStorage es chico y una firma normalizada pesa unos 30 KB.
+   Si no cabe se avisa en vez de dejar creer que quedo guardada. */
+function otFirmaEjRecordar(silencioso) {
+  if (!otFirmaEjDato) { toast("No hay firma que guardar"); return; }
+  try {
+    localStorage.setItem(FIRMA_EJ_LS, otFirmaEjDato);
+    if (!silencioso) toast("Guardada como tu firma en este dispositivo");
+  } catch (e) {
+    toast("No se pudo guardar la firma en el dispositivo (almacenamiento lleno)");
+  }
+  otFirmaEjRefrescar();
+}
+
+function otFirmaEjBorrarGuardada() {
+  try { localStorage.removeItem(FIRMA_EJ_LS); } catch (e) { /* nada que hacer */ }
+  otFirmaEjRefrescar();
+  toast("Firma borrada de este dispositivo");
+}
+
+/* Quita la firma de ESTA orden. La guardada en el dispositivo no se toca:
+   son dos cosas distintas y borrar las dos de un botón sería una trampa. */
+function otFirmaEjQuitar() {
+  otFirmaEjDato = "";
+  otFirmaEjRefrescar();
+}
+
 function otFirmaRefrescar() {
   const modo = document.getElementById("ot-firma-modo");
   if (!modo) return;
@@ -14902,6 +15097,19 @@ async function otGuardar(opciones) {
   if (r1.error) { btn.disabled = false; btn.textContent = "Guardar"; toast("No se pudo guardar: " + r1.error.message); return false; }
   if (r1.data && r1.data.ok === false) { btn.disabled = false; btn.textContent = "Guardar"; toast(r1.data.error); return false; }
 
+  /* La firma va aparte y DESPUES del encabezado, porque la fila de la jornada
+     la crea programa_ot_guardar: si se mandara antes no habria nada que
+     actualizar. Un fallo aqui no invalida lo demas, pero hay que decirlo: una
+     firma que el usuario cree guardada y no lo este es peor que ninguna. */
+  const rf = await sb.rpc("programa_ot_firma_ejecutor", {
+    p_actividad_id: id, p_fecha: otFecha, p_firma: otFirmaEjDato || null,
+  });
+  if (rf.error) {
+    toast("La firma del ejecutor no se guard\u00f3: " + rf.error.message);
+  } else if (rf.data && rf.data.ok === false) {
+    toast("La firma del ejecutor no se guard\u00f3: " + rf.data.error);
+  }
+
   const filas = otOperaciones
     .filter(x => (x.descripcion || "").trim())
     .map((x, i) => ({
@@ -14997,6 +15205,10 @@ function otMapear() {
                 || o.ejecutores || a.personal || "",
     ejecutores_en_blanco: document.getElementById("ot-ejec-blanco")?.checked
                           ?? !!o.ejecutores_en_blanco,
+
+    /* Se lee del estado en memoria y no de otDatos: es lo que el ejecutor
+       acaba de trazar o cargar, aunque todavía no haya pulsado Guardar. */
+    firma_ejecutor: otFirmaEjDato || o.firma_ejecutor || "",
 
     operaciones: (d.operaciones || []).map(x => ({
       oper:        x.oper || null,

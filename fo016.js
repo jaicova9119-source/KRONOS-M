@@ -870,8 +870,21 @@ ${tbN(W.total, W.rext)}
        corre el resto de la hoja. Por eso lo que ocupa el nombre del líder se
        descuenta del espacio que lo antecede, y lo que ocupan los nombres de
        apoyo, del espacio que sigue. Así la paginación no se mueve. */
+    /* La firma del ejecutor líder, si la hay, va sobre el nombre y ambos sobre
+       la raya: es el orden del papel firmado a mano. Se recorta contra un alto
+       fijo para que una imagen grande no corra la hoja, igual que la firma de
+       recepción. */
+    const FIRMA_ALTO = 1.05;                       // cm
+    const celdaFirma = (ot && ot.firma_ejecutor)
+      ? `<div style="height:${FIRMA_ALTO}cm;overflow:hidden;padding-left:6px">` +
+        `<img src="${esc(ot.firma_ejecutor)}" alt="" ` +
+        `style="max-height:${FIRMA_ALTO}cm;max-width:${F[1] - 0.2}cm;` +
+        `width:auto;height:auto;display:inline-block"></div>`
+      : '';
+
     const ALTO_LINEA = 0.42;                       // cm por renglón a 10pt
-    const arriba = Math.max(0, 2.40 - (lider ? ALTO_LINEA : 0));
+    const arriba = Math.max(0, 2.40 - (lider ? ALTO_LINEA : 0)
+                               - (celdaFirma ? FIRMA_ALTO : 0));
     const abajo  = Math.max(0.60, 2.35 - apoyo.length * ALTO_LINEA);
 
     const celdaLider = lider
@@ -888,7 +901,8 @@ ${tbN(W.total, W.rext)}
 ${SPACER(arriba)}
 ${tbN(W.total, F)}
   <tr>
-    <td style="${n}"></td><td style="${p};vertical-align:bottom">${celdaLider}</td>
+    <td style="${n}"></td>
+    <td style="${p};vertical-align:bottom">${celdaFirma}${celdaLider}</td>
     <td style="${n}"></td><td style="${p}"></td>
     <td style="${n}"></td><td style="${p}"></td>
     <td style="${n}"></td><td style="${p}"></td>
