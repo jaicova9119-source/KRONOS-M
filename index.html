@@ -11542,8 +11542,13 @@ async function cargarPanelPerfil() {
     const { data, error } = await sb.from("usuarios").select("*").order("activo").order("nombre");
     if (error || !data) { cont.innerHTML = '<div class="empty">No se pudo cargar.</div>'; return; }
 
-    const pendientes = data.filter(u => !u.activo);
-    const activos = data.filter(u => u.activo);
+    /* Tres situaciones, no dos. Antes 'activo = false' mezclaba al que espera
+       aprobacion con el que ya salio del contrato, asi que quien se fue
+       reaparecia como pendiente cada vez que se abria la pantalla, y encima
+       con un boton que ofrecia aprobarlo. */
+    const activos    = data.filter(u => u.activo);
+    const pendientes = data.filter(u => !u.activo && !u.retirado_en);
+    const retirados  = data.filter(u => !u.activo && u.retirado_en);
 
     let html = "";
     if (pendientes.length) {
@@ -11585,7 +11590,7 @@ async function cargarPanelPerfil() {
             return (ed === MODULOS_CAT.length && !sinApp) ? "Todos"
                  : `${ed}✎ ${ve}👁${sinApp ? " ·apps" : ""}`;
           })()}</button>
-        ${u.auth_user_id !== usuarioActual.auth_user_id ? `<button data-desactivar-usuario="${u.id}" title="Quitar acceso" style="background:var(--danger-bg);border-color:var(--danger);color:var(--danger);font-size:12px;padding:6px 8px;flex-shrink:0">&#10005;</button>` : ""}
+        ${u.auth_user_id !== usuarioActual.auth_user_id ? `<button data-baja-usuario="${u.id}" data-baja-nombre="${u.nombre}" title="Dar de baja: sale del contrato y deja de aparecer" style="background:var(--danger-bg);border-color:var(--danger);color:var(--danger);font-size:12px;padding:6px 8px;flex-shrink:0">&#10005;</button>` : ""}
       </div>
       <div data-modulos-panel="${u.id}" style="display:none;padding:4px 0 14px 2px;border-bottom:1px solid var(--line-soft)">
         <div style="font-size:11.5px;color:var(--text-2);margin:0 0 8px">
@@ -11631,6 +11636,32 @@ async function cargarPanelPerfil() {
         </div>
       </div>`;
     });
+
+    /* Los retirados van al final y plegados. Tienen que poder consultarse
+       —el nombre sigue respondiendo por lo que firmo— pero no estorbar
+       la lista de todos los dias. */
+    if (retirados.length) {
+      html += `<div class="section-label" style="margin-top:22px">
+        <span style="cursor:pointer" onclick="
+          var d=document.getElementById('lista-retirados');
+          d.style.display = d.style.display==='none' ? 'block' : 'none';">
+          Retirados (${retirados.length}) &#9662;</span></div>
+        <div id="lista-retirados" style="display:none">`;
+      retirados.forEach(u => {
+        const f = u.retirado_en ? String(u.retirado_en).slice(0, 10) : "";
+        html += `
+        <div class="usuario-row" style="opacity:.62">
+          <div class="usuario-row-info">
+            <div class="usuario-row-nombre">${u.nombre}</div>
+            <div class="usuario-row-email">${u.email || ""}${f ? " &middot; baja " + f : ""}${
+              u.retirado_motivo ? " &middot; " + u.retirado_motivo : ""}</div>
+          </div>
+          <button data-reingreso-usuario="${u.id}" data-baja-nombre="${u.nombre}"
+            style="font-size:12px;padding:6px 10px;flex-shrink:0">Reingresar</button>
+        </div>`;
+      });
+      html += "</div>";
+    }
 
     cont.innerHTML = html;
 
@@ -11697,11 +11728,37 @@ async function cargarPanelPerfil() {
         cargarPanelPerfil();
       };
     });
-    cont.querySelectorAll("[data-desactivar-usuario]").forEach(btn => {
+    /* La baja va por RPC y no por update directo: registra quien la hizo y
+       cuando, y es lo que distingue al que salio del contrato del que espera
+       aprobacion. Un update suelto dejaria retirado_en en nulo y la persona
+       volveria a aparecer como pendiente. */
+    cont.querySelectorAll("[data-baja-usuario]").forEach(btn => {
       btn.onclick = async () => {
-        if (!confirm("¿Quitar el acceso a este usuario?")) return;
-        const { error } = await sb.from("usuarios").update({ activo: false }).eq("id", btn.dataset.desactivarUsuario);
-        toast(error ? "No se pudo actualizar" : "Acceso retirado");
+        const quien = btn.dataset.bajaNombre || "este usuario";
+        if (!confirm("Dar de baja a " + quien + ".\n\nPierde el acceso y deja de " +
+                     "aparecer en la lista, pero su nombre se conserva en los " +
+                     "reportes que firmó. ¿Continuar?")) return;
+        const motivo = prompt("Motivo de la baja (opcional): fin de contrato, traslado...") || null;
+        const r = await sb.rpc("usuarios_baja", {
+          p_usuario_id: btn.dataset.bajaUsuario, p_motivo: motivo, p_reingreso: false,
+        });
+        if (r.error) { toast("No se pudo: " + r.error.message); return; }
+        if (r.data && r.data.ok === false) { toast(r.data.error); return; }
+        toast("Usuario dado de baja");
+        cargarPanelPerfil();
+      };
+    });
+
+    cont.querySelectorAll("[data-reingreso-usuario]").forEach(btn => {
+      btn.onclick = async () => {
+        const quien = btn.dataset.bajaNombre || "este usuario";
+        if (!confirm("Reingresar a " + quien + " con acceso activo?")) return;
+        const r = await sb.rpc("usuarios_baja", {
+          p_usuario_id: btn.dataset.reingresoUsuario, p_motivo: null, p_reingreso: true,
+        });
+        if (r.error) { toast("No se pudo: " + r.error.message); return; }
+        if (r.data && r.data.ok === false) { toast(r.data.error); return; }
+        toast("Usuario reingresado");
         cargarPanelPerfil();
       };
     });
