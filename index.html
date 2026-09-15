@@ -3748,7 +3748,10 @@ async function hubContar() {
     sinSap:         () => contar("equipos", q => q.eq("estado_sincronizacion", "pendiente_actualizar_sap")),
 
     /* Usuarios registrados esperando que un administrador los active. */
-    usuariosPend:   () => contar("usuarios", q => q.eq("activo", false)),
+    /* Pendiente de aprobar es inactivo Y sin fecha de baja. Contando solo por
+       'activo' entraban también los retirados, que no esperan nada de nadie:
+       el aviso decía 2 y el panel mostraba 1. */
+    usuariosPend:   () => contar("usuarios", q => q.eq("activo", false).is("retirado_en", null)),
   };
 
   const claves = Object.keys(tareas);
