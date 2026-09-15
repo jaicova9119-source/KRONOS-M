@@ -3,6 +3,17 @@
    Clon estructural del formato GTEC-MT-FO-016 VERSIÓN 00 (FECHA 2018/05/16)
    tal como lo imprime SAP.
 
+   rev.8 — El presupuesto de página se mide, ya no se supone. Las filas de
+           operaciones y de materiales se contaban a una línea cada una; las
+           descripciones largas se parten en dos y la hoja se desbordaba. Ahora
+           cada fila se mide por el texto que lleva, el bloque de datos también,
+           y antes de imprimir se mide el documento ya maquetado: si alguna hoja
+           se pasó, se reparte otra vez con el sobrante real sumado al
+           presupuesto. La hoja queda además acotada a la altura del papel, de
+           modo que un error residual recorta medio renglón en vez de regalar
+           una hoja sin cabecera ni margen. Se agregó la columna N. RESERVA a
+           repuestos y materiales.
+
    rev.7 — Paginación por presupuesto. El documento dejó de ser tres hojas
            fijas: cuando el contenido no cabe se abren hojas de continuación
            con cabecera completa y "Página N de M" dinámico, en vez de dejar
@@ -52,7 +63,7 @@ const FO016 = (function () {
     cab:   [7.15, 6.94, 4.49],
     datos: [3.67, 7.60, 3.53, 3.78],
     oper:  [1.19, 1.75, 8.13, 1.72, 1.25, 0.96, 1.63, 1.95],
-    mat:   [2.60, 5.57, 2.42, 1.30, 2.23, 2.23, 2.23],
+    mat:   [1.95, 4.55, 2.05, 1.75, 1.00, 1.75, 1.85, 3.68],
     chk:   [1.99, 0.51, 3.00, 0.49, 3.00, 0.49, 3.00, 0.51, 5.59],
     tiemp: [4.06, 1.99, 0.22, 3.90, 2.11, 0.19, 3.93, 1.98],
     estad: [4.89, 4.20, 0.57, 4.20, 4.76],
@@ -108,9 +119,76 @@ const FO016 = (function () {
   const FILA_OP    = H.opFila  + 0.06;   // 0.50 cm
   const FILA_MAT   = H.matFila + 0.06;   // 0.52 cm
 
-  const SEGURIDAD  = 1.50;
-  const P1_FLUJO   = ALTO_UTIL - ALTO_CAB - ALTO_DATOS - SEGURIDAD;  // 17.85
-  const CONT_FLUJO = ALTO_UTIL - ALTO_CAB - SEGURIDAD;               // 23.01
+  /* SEGURIDAD ya no es la única defensa: imprimir() mide las hojas ya
+     maquetadas y, si alguna se pasa, vuelve a repartir con el sobrante real
+     sumado aquí. Por eso puede quedarse en un valor pequeño y no desperdiciar
+     papel en el caso normal. */
+  const SEGURIDAD  = 1.20;
+  const reserva    = extra => SEGURIDAD + Math.max(0, extra || 0);
+
+  /* --------- alto real de una fila cuando el texto se parte en líneas -----
+     El paginador contaba una línea por fila de operación y de material. No es
+     cierto: "Valvula,Bola,Jaula,Bomba,NATIONAL,OIL,WEL" no cabe en la columna
+     de descripción y el navegador la parte en dos, con lo que la fila mide el
+     doble. Con seis materiales y nueve operaciones el error acumulado se comió
+     los 1.50 cm de SEGURIDAD y la hoja se desbordó: el navegador partió la
+     caja "¿Cómo quedó el equipo?" contra el borde del papel y mandó el resto a
+     una hoja implícita, que nace sin cabecera y sin margen. Esa es la hoja
+     casi en blanco.
+
+     Arial 8.5 pt con el interlineado 1.1 del formato mide 0.330 cm por línea.
+     El ancho medio de carácter se toma en 0.55 em, deliberadamente ancho: es
+     preferible sobrestimar una fila y dejar un renglón de aire que quedarse
+     corto y perder una hoja entera.                                        */
+
+  const PT_CM    = 2.54 / 72;
+  const LINEA_8  = 8.5 * 1.1 * PT_CM;    // 0.330 cm — una línea de texto
+  const CHAR_8   = 8.5 * 0.55 * PT_CM;   // 0.165 cm — un carácter
+  const PAD_FILA = 0.10;                 // relleno vertical + grosor de borde
+
+  /** Cuántas líneas ocupa un texto en una celda de 'anchoCm'. */
+  function lineasEn(txt, anchoCm) {
+    const t = String(txt == null ? '' : txt).trim();
+    if (!t) return 1;
+    const n = Math.max(6, Math.floor((anchoCm - 0.18) / CHAR_8));
+    return Math.max(1, renglonear(t, n).length);
+  }
+
+  /** Alto de una fila de operación, contando el texto que se parte. */
+  function altoFilaOp(o) {
+    const l = lineasEn(o && o.descripcion, W.oper[2]);
+    return Math.max(H.opFila, l * LINEA_8 + PAD_FILA) + 0.06;
+  }
+
+  /** Alto de una fila de material. Manda la columna que más líneas gasta. */
+  function altoFilaMat(m) {
+    const l = Math.max(lineasEn(m && m.descripcion, W.mat[1]),
+                       lineasEn(m && m.codigo,      W.mat[0]),
+                       lineasEn(m && m.almacen,     W.mat[7]));
+    return Math.max(H.matFila, l * LINEA_8 + PAD_FILA) + 0.06;
+  }
+
+  /** Alto del bloque de datos. Un "Desc Equipo" largo también parte línea. */
+  function altoDatos(ot) {
+    const izq = W.datos[1], der = W.datos[3] - 0.06;
+    const par = (a, b) => Math.max(lineasEn(a, izq), lineasEn(b, der));
+    const filas = [
+      par(ot.descripcion,       ot.tag_equipo),
+      par(ot.clase_orden,       ot.grp_planificador),
+      par(ot.clase_actividad,   ot.puesto_responsable),
+      par(ot.cod_equipo,        ot.fecha_inicio),
+      par(ot.desc_equipo,       ot.autor_aviso),
+      par(ot.ubicacion_tecnica, ot.clase_aviso),
+      1,                                  /* Des.ubi.técnica va en nowrap */
+      par(ot.no_aviso,          ot.marca),
+      par(ot.sintoma_averia,    ot.modelo),
+      par(ot.causa,             ot.serie),
+      par(ot.componente_falla,  ot.no_inventario),
+    ];
+    const alto = filas.reduce(
+      (t, l) => t + Math.max(H.datos, l * LINEA_8 + PAD_FILA), 0);
+    return alto + 0.02 + 0.20;            // marco + espaciador
+  }
 
   const MIN_RENG   = 3;
   const MAX_RENG   = 16;
@@ -121,6 +199,7 @@ const FO016 = (function () {
      parada, estado de la orden y recepción de servicio—. El impreso de
      referencia deja 7 renglones encima de ella. */
   const P2_RENG_BASE  = 7;
+  const P2_RENG_MIN   = 3;
   const ESPACIADOR_P2 = 0.11;
   const ALTO_CIERRE   = 14.50;
 
@@ -157,6 +236,36 @@ const FO016 = (function () {
      un párrafo suelto y debajo un montón de rayas vacías. */
   const CHARS_RENGLON = 85;
 
+  /* Los emoji y los signos pictográficos no son monoespaciados: el navegador
+     los saca de una fuente de respaldo y ocupan cerca del doble que una letra
+     Courier. Contarlos como un carácter hacía que un renglón con tres visto
+     buenos se pasara del ancho de la caja y el navegador lo partiera en dos,
+     rompiendo la retícula. Se cuentan como dos. */
+  function anchoCar(ch) {
+    const c = ch.codePointAt(0);
+    return (c >= 0x2600 && c <= 0x27bf) || (c >= 0x1f300 && c <= 0x1faff) ||
+           (c >= 0x2b00 && c <= 0x2bff) || (c >= 0x1100 && c <= 0x115f) ||
+           (c >= 0x2e80 && c <= 0xa4cf) || (c >= 0xac00 && c <= 0xd7a3) ||
+           (c >= 0xff00 && c <= 0xff60) ? 2 : 1;
+  }
+  function anchoTxt(s) {
+    let w = 0;
+    for (const ch of String(s)) w += anchoCar(ch);
+    return w;
+  }
+  /** Corta una palabra más larga que la caja, midiendo por ancho, no por índice. */
+  function partir(palabra, n) {
+    const trozos = [];
+    let act = '', w = 0;
+    for (const ch of palabra) {
+      const a = anchoCar(ch);
+      if (w + a > n && act) { trozos.push(act); act = ''; w = 0; }
+      act += ch; w += a;
+    }
+    if (act) trozos.push(act);
+    return trozos;
+  }
+
   function renglonear(txt, n) {
     const out = [];
     String(txt == null ? '' : txt).split('\n').forEach(parrafo => {
@@ -165,9 +274,13 @@ const FO016 = (function () {
       let linea = '';
       p.split(/\s+/).forEach(palabra => {
         if (!linea) linea = palabra;
-        else if ((linea + ' ' + palabra).length <= n) linea += ' ' + palabra;
+        else if (anchoTxt(linea) + 1 + anchoTxt(palabra) <= n) linea += ' ' + palabra;
         else { out.push(linea); linea = palabra; }
-        while (linea.length > n) { out.push(linea.slice(0, n)); linea = linea.slice(n); }
+        if (anchoTxt(linea) > n) {
+          const trozos = partir(linea, n);
+          linea = trozos.pop();
+          trozos.forEach(t => out.push(t));
+        }
       });
       if (linea) out.push(linea);
     });
@@ -275,9 +388,16 @@ const FO016 = (function () {
      página) cuando el margen de @page es cero. Por eso el margen real del
      formato se aplica como relleno dentro de cada hoja. Es el único modo de
      suprimirlos sin tocar ajustes del navegador en cada equipo. */
+  /* La hoja se fija a la altura del papel y recorta lo que sobre. Es la red
+     de última instancia: si una estimación se quedara corta pese al reajuste
+     de imprimir(), el navegador ya no puede partir el div en dos y regalar
+     una hoja implícita sin cabecera ni margen. Se pierde medio renglón al pie
+     en vez de una hoja entera. No se aplica en la exportación a Word, donde el
+     margen es real y una altura fija correría el contenido a la hoja de atrás. */
   const PAGE_CSS =
     '@page{size:21.0cm 29.7cm;margin:0}' +
-    '.fo016-pag{padding:0.88cm 1.30cm 0.88cm 1.12cm;box-sizing:border-box}';
+    '.fo016-pag{padding:0.88cm 1.30cm 0.88cm 1.12cm;box-sizing:border-box;' +
+    'height:29.70cm;overflow:hidden}';
   const PRINT_CSS = '@media print{' + PAGE_CSS + '}';
 
   /* ------------------------------ cabecera -------------------------------- */
@@ -412,18 +532,23 @@ ${filas}
   /* Igual que las operaciones: recibe el trozo que cabe en la hoja. El relleno
      hasta H.matMin renglones en blanco solo se aplica en el último fragmento,
      porque es lo que se anota a mano cuando el material se toma en campo. */
-  function tablaMateriales(lista, base, rellenar) {
+  /* 'extras' son renglones en blanco que se agregan al final para anotar a
+     mano. Antes era un booleano y la tabla completaba hasta H.matMin contando
+     solo el trozo de la hoja, de modo que un reparto en dos hojas rellenaba
+     dos veces. Ahora el paginador decide cuántos caben y los pasa. */
+  function tablaMateriales(lista, base, extras) {
     const mats = lista || [];
     if (!mats.length) return '';
     const h = `height:${H.matFila}cm`;
     const c = `${TD};${BD};text-align:center;${h}`;
-    const n = rellenar ? Math.max(H.matMin, mats.length) : mats.length;
+    const n = mats.length + Math.max(0, extras || 0);
     let filas = '';
     for (let i = 0; i < n; i++) {
       const m = mats[i] || {};
       filas += `<tr>
   <td style="${TD};${BD};${h}">${escT(m.codigo)}</td>
   <td style="${TD};${BD};${h}">${escT(m.descripcion)}</td>
+  <td style="${c}">${escT(m.n_reserva)}</td>
   <td style="${c}">${escT(m.cant_reservada)}</td>
   <td style="${c}">${escT(m.unidad)}</td>
   <td style="${c}">${escT(m.cant_tomada)}</td>
@@ -436,9 +561,10 @@ ${filas}
     return `
 ${SPACER(0.20)}
 ${tabla(W.mat)}
-  <tr><td colspan="7" style="${BANDA};height:${H.opBanda}cm">REPUESTOS Y MATERIALES</td></tr>
+  <tr><td colspan="8" style="${BANDA};height:${H.opBanda}cm">REPUESTOS Y MATERIALES</td></tr>
   <tr>
     <td style="${nw}">CÓDIGO</td><td style="${nw}">DESCRIPCIÓN</td>
+    <td style="${t}">N.<br>RESERVA</td>
     <td style="${t}">CANT.<br>RESERVADA</td><td style="${nw}">UND</td>
     <td style="${t}">CANT.<br>TOMADA</td><td style="${t}">CANT.<br>DISPONER</td>
     <td style="${nw}">ALMACÉN</td>
@@ -447,11 +573,13 @@ ${filas}
 </table>`;
   }
 
-  /** Alto que ocupa el bloque de materiales, en cm. */
+  /** Alto que ocupa el bloque de materiales, en cm, fila por fila. */
   function altoMateriales(ot) {
-    const n = (ot.materiales || []).length;
-    if (!n) return 0;
-    return 0.20 + H.opBanda + H.opCab + Math.max(H.matMin, n) * (H.matFila + 0.06);
+    const mats = ot.materiales || [];
+    if (!mats.length) return 0;
+    const alto = mats.reduce((t, m) => t + altoFilaMat(m), 0);
+    const faltan = Math.max(0, H.matMin - mats.length);
+    return MAT_HEAD + alto + faltan * FILA_MAT;
   }
 
   /* ------------------------- casillas de estado --------------------------- */
@@ -805,7 +933,11 @@ ${tbN(W.total, W.clerk)}
      las armaban paginadores distintos y la segunda abría hoja nueva sí o sí:
      de ahí la hoja con tres líneas arriba y el resto en blanco.            */
 
-  function hojasDocumento(ot) {
+  function hojasDocumento(ot, extra) {
+    const R          = reserva(extra);
+    const P1_FLUJO   = ALTO_UTIL - ALTO_CAB - altoDatos(ot) - R;
+    const CONT_FLUJO = ALTO_UTIL - ALTO_CAB - R;
+
     const ops    = ot.operaciones || [];
     const mats   = ot.materiales  || [];
     const lineas = ot.actividad_realizada
@@ -837,14 +969,23 @@ ${tbN(W.total, W.clerk)}
       hoja1 = false;
     };
 
-    /* --- operaciones --- */
+    /* --- operaciones ---
+       Se miden una por una: una descripción que se parte en dos líneas ocupa
+       el doble y contarla como una sola fue lo que desbordó la hoja. */
     let i = 0;
     while (i < ops.length) {
-      let caben = Math.floor((libre - OPS_HEAD) / FILA_OP);
-      if (caben < 1) { if (!buf) { caben = 1; } else { cerrar(); continue; } }
-      if (caben > ops.length - i) caben = ops.length - i;
+      let usado = OPS_HEAD, caben = 0;
+      while (i + caben < ops.length &&
+             usado + altoFilaOp(ops[i + caben]) <= libre) {
+        usado += altoFilaOp(ops[i + caben]); caben++;
+      }
+      if (!caben) {
+        if (buf) { cerrar(); continue; }   // hoja llena: se abre otra
+        caben = 1;                         // hoja vacía: se fuerza para no ciclar
+        usado = OPS_HEAD + altoFilaOp(ops[i]);
+      }
       buf += tablaOperaciones(ops.slice(i, i + caben), i);
-      libre -= OPS_HEAD + caben * FILA_OP;
+      libre -= usado;
       i += caben;
       if (i < ops.length) cerrar();
     }
@@ -852,15 +993,23 @@ ${tbN(W.total, W.clerk)}
     /* --- materiales --- */
     let j = 0;
     while (j < mats.length) {
-      let caben = Math.floor((libre - MAT_HEAD) / FILA_MAT);
-      if (caben < 1) { if (!buf) { caben = 1; } else { cerrar(); continue; } }
-      const ultimo = caben >= mats.length - j;
-      if (ultimo) caben = mats.length - j;
-      /* El relleno en blanco solo tiene sentido si cabe entero. */
-      const rellena = ultimo &&
-        (libre - MAT_HEAD) / FILA_MAT >= Math.max(H.matMin, caben);
-      buf += tablaMateriales(mats.slice(j, j + caben), j, rellena);
-      libre -= MAT_HEAD + (rellena ? Math.max(H.matMin, caben) : caben) * FILA_MAT;
+      let usado = MAT_HEAD, caben = 0;
+      while (j + caben < mats.length &&
+             usado + altoFilaMat(mats[j + caben]) <= libre) {
+        usado += altoFilaMat(mats[j + caben]); caben++;
+      }
+      if (!caben) {
+        if (buf) { cerrar(); continue; }
+        caben = 1;
+        usado = MAT_HEAD + altoFilaMat(mats[j]);
+      }
+      /* Los renglones en blanco para anotar a mano se cuentan sobre el total
+         de la orden, no sobre el trozo de esta hoja, y solo si sobra sitio. */
+      const ultimo  = j + caben >= mats.length;
+      const faltan  = ultimo ? Math.max(0, H.matMin - mats.length) : 0;
+      const extras  = (faltan && usado + faltan * FILA_MAT <= libre) ? faltan : 0;
+      buf += tablaMateriales(mats.slice(j, j + caben), j, extras);
+      libre -= usado + extras * FILA_MAT;
       j += caben;
       if (j < mats.length) cerrar();
     }
@@ -908,8 +1057,17 @@ ${tbN(W.total, W.clerk)}
        se corta por diseño; si ya venimos en continuación, se sigue llenando. */
     if (hoja1) cerrar();
 
-    /* --- renglones de recomendaciones --- */
-    const nRec = Math.max(P2_RENG_BASE, recom.length);
+    /* --- renglones de recomendaciones ---
+       Los siete renglones del impreso de referencia son sitio para escribir a
+       mano, no contenido. Cuando la hoja viene ocupada y esos siete empujan la
+       retícula de cierre a una hoja nueva, se recortan hasta P2_RENG_MIN con
+       tal de que todo quepa: es preferible un renglón menos que una hoja de
+       más. Nunca se recorta texto escrito; el recorte solo toca el relleno. */
+    let nRec = Math.max(P2_RENG_BASE, recom.length);
+    if (recom.length <= P2_RENG_BASE) {
+      const capaz = Math.floor((libre - ESPACIADOR_P2 - altoCierre) / RENGLON2);
+      if (capaz < nRec && capaz >= Math.max(P2_RENG_MIN, recom.length)) nRec = capaz;
+    }
     let q = 0;
     let abierta2 = true;   // la caja arranca de cero: lleva borde superior
     while (q < nRec) {
@@ -920,8 +1078,13 @@ ${tbN(W.total, W.clerk)}
          solo tiene sentido reservarle sitio si en una hoja limpia sí caben
          juntos. Si no, se deja correr. */
       const juntos = ESPACIADOR_P2 + ultimos * RENGLON2 + altoCierre;
-      if (caben >= ultimos && juntos > libre && juntos <= CONT_FLUJO) {
-        caben = Math.floor((libre - ESPACIADOR_P2 - altoCierre) / RENGLON2);
+      if (caben >= ultimos && juntos > libre && juntos <= CONT_FLUJO && buf) {
+        /* Caben los renglones pero no la retícula detrás. Antes se recortaba
+           el grupo para hacerle sitio, y como el recorte dejaba renglones
+           sueltos la retícula se iba igual a la hoja siguiente: la hoja se
+           cerraba con quince centímetros en blanco y el sobrante era un solo
+           renglón. Bajan juntos. */
+        cerrar(); abierta2 = true; continue;
       }
       if (caben < 1) {
         if (buf) { cerrar(); abierta2 = true; continue; }
@@ -935,12 +1098,20 @@ ${tbN(W.total, W.clerk)}
       if (q < nRec) { cerrar(); abierta2 = true; }
     }
 
-    /* --- retícula de cierre --- */
-    if (libre < altoCierre && cabeSuelta) {
+    /* --- retícula de cierre ---
+       Si ni en una hoja limpia cabe (observaciones de recepción larguísimas),
+       igual se abre hoja nueva cuando la actual ya viene ocupada: el desborde
+       arranca desde arriba y se pierde lo menos posible. En una hoja limpia la
+       condición es falsa, así que no puede ciclar. Los renglones de relleno
+       solo se ponen cuando la retícula sí cabía: en el caso desbordado lo
+       único que harían es empeorarlo. */
+    if (libre < altoCierre && (cabeSuelta || libre < CONT_FLUJO - 0.01)) {
       cerrar();
-      /* Nunca queda sin renglones encima: es donde se sigue escribiendo. */
-      buf += p2Renglones([], 0, P2_RENG_BASE, true);
-      libre -= ESPACIADOR_P2 + P2_RENG_BASE * RENGLON2;
+      if (cabeSuelta) {
+        /* Nunca queda sin renglones encima: es donde se sigue escribiendo. */
+        buf += p2Renglones([], 0, P2_RENG_BASE, true);
+        libre -= ESPACIADOR_P2 + P2_RENG_BASE * RENGLON2;
+      }
     }
     buf += cajaTiempos(ot) + estadoOrden(ot) + recepcion(ot);
     libre -= altoCierre;
@@ -954,8 +1125,8 @@ ${tbN(W.total, W.clerk)}
 
   /* ------------------------------ render ---------------------------------- */
 
-  function render(ot) {
-    const cuerpos = hojasDocumento(ot);
+  function render(ot, extra) {
+    const cuerpos = hojasDocumento(ot, extra);
 
     const total = cuerpos.length;
     const hojas = cuerpos.map((cuerpo, k) => {
@@ -982,9 +1153,12 @@ ${cuerpo}
      El iframe queda de 1px y transparente en vez de display:none, porque
      varios navegadores se niegan a imprimir un marco oculto por completo. */
   function imprimir(ot) {
-    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
+    const documento = extra => `<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
 <title>&nbsp;</title><style>${PAGE_CSS} html,body{margin:0;padding:0}</style>
-</head><body>${render(ot)}</body></html>`;
+</head><body>${render(ot, extra)}</body></html>`;
+
+    let extra = 0;
+    let html  = documento(extra);
 
     const anterior = document.getElementById('fo016-marco-impresion');
     if (anterior) anterior.remove();
@@ -993,9 +1167,13 @@ ${cuerpo}
     marco.id = 'fo016-marco-impresion';
     marco.setAttribute('aria-hidden', 'true');
     marco.setAttribute('tabindex', '-1');
+    /* El marco mide una hoja entera, no 1px. Con un ancho de un píxel el
+       contenido se maqueta igual —las tablas llevan su ancho en centímetros—
+       pero cualquier medición que se le pida al navegador sale sin sentido, y
+       aquí se mide de verdad. Sigue invisible y fuera del flujo. */
     marco.style.cssText =
-      'position:fixed;right:0;bottom:0;width:1px;height:1px;' +
-      'opacity:0;border:0;pointer-events:none;z-index:-1';
+      'position:fixed;right:0;bottom:0;width:21cm;height:29.7cm;' +
+      'opacity:0;border:0;pointer-events:none;z-index:-1;overflow:hidden';
     document.body.appendChild(marco);
 
     let lanzado = false;
@@ -1023,32 +1201,70 @@ ${cuerpo}
       if (m) m.remove();
     }
 
-    /* El reparto de hojas se calcula con alturas estimadas en cm. Aquí, con el
-       documento ya maquetado, se mide de verdad: si alguna hoja se pasó del
-       papel es que una estimación quedó corta y hay que subir SEGURIDAD. Solo
-       avisa por consola; no altera la impresión. */
-    function verificarAlturas(doc) {
+    /* El reparto se calcula con alturas estimadas en centímetros: cuánto mide
+       una fila cuyo texto se parte, cuánto ocupa la retícula de cierre. Una
+       estimación corta antes significaba una hoja desbordada, y con ella la
+       hoja implícita que el navegador abre sin cabecera y sin margen.
+
+       Aquí el documento ya está maquetado y se puede medir de verdad. Devuelve
+       el desborde de la hoja peor, en centímetros. */
+    function desborde(doc) {
       try {
-        const limite = doc.body.clientWidth
-          ? doc.querySelectorAll('.fo016-pag')[0].clientWidth * (29.70 / 21.00)
-          : 0;
-        if (!limite) return;
-        doc.querySelectorAll('.fo016-pag').forEach((p, i) => {
-          if (p.scrollHeight > limite + 2) {
-            console.warn('[FO016] La hoja ' + (i + 1) + ' se desborda ' +
-              Math.round((p.scrollHeight - limite) / limite * 29.7 * 10) / 10 +
-              ' cm. Suba la constante SEGURIDAD.');
-          }
+        const hojas = doc.querySelectorAll('.fo016-pag');
+        if (!hojas.length) return 0;
+        const cm = hojas[0].getBoundingClientRect().width / 21.00;
+        if (!cm) return 0;
+        let peor = 0;
+        hojas.forEach(h => {
+          const sobra = (h.scrollHeight - h.clientHeight) / cm;
+          if (sobra > peor) peor = sobra;
         });
-      } catch (_) {}
+        return peor;
+      } catch (_) { return 0; }
+    }
+
+    function escribir(texto) {
+      const d = marco.contentWindow.document;
+      d.open(); d.write(texto); d.close();
+    }
+
+    /* Hasta cuatro reajustes. Cada uno le suma al presupuesto el sobrante que
+       se acaba de medir más dos milímetros, así que converge en uno o dos.
+       El tope evita que un contenido imposible de acomodar —unas observaciones
+       de recepción más largas que la hoja— deje el diálogo sin abrirse. */
+    function ajustar(intento) {
+      const v = marco.contentWindow;
+      return esperarImagenes(v.document).then(() => {
+        const sobra = desborde(v.document);
+        if (sobra <= 0.02 || intento >= 4 || extra > 6) {
+          if (sobra > 0.02) {
+            console.warn('[FO016] Queda una hoja desbordada ' +
+              Math.round(sobra * 10) / 10 + ' cm tras ' + intento + ' reajustes.');
+            /* El recorte de la hoja es una red contra la hoja fantasma, no una
+               licencia para perder texto. Si tras los reajustes sigue sobrando
+               —unas observaciones de recepción más largas que el papel—, se
+               levanta el recorte: sale una hoja fea antes que un documento
+               firmado al que le falta un renglón. */
+            if (sobra > 0.30) {
+              const e = v.document.createElement('style');
+              e.textContent = '.fo016-pag{height:auto;overflow:visible}';
+              v.document.head.appendChild(e);
+            }
+          }
+          return;
+        }
+        extra += sobra + 0.20;
+        html = documento(extra);
+        escribir(html);
+        return new Promise(ok => setTimeout(ok, 60)).then(() => ajustar(intento + 1));
+      });
     }
 
     function lanzar() {
       if (lanzado) return;
       lanzado = true;
       const v = marco.contentWindow;
-      esperarImagenes(v.document).then(() => {
-        verificarAlturas(v.document);
+      ajustar(0).then(() => {
         /* Retirar el iframe mientras el diálogo sigue abierto cancela la
            impresión en Android. Se espera al evento y, si el navegador no lo
            emite, a un tiempo largo. */
@@ -1078,10 +1294,7 @@ ${cuerpo}
 
     marco.addEventListener('load', lanzar, { once: true });
 
-    const doc = marco.contentWindow.document;
-    doc.open();
-    doc.write(html);
-    doc.close();
+    escribir(html);
 
     /* document.write no siempre dispara load en móviles: respaldo por tiempo. */
     setTimeout(lanzar, 600);
