@@ -16052,14 +16052,43 @@ async function otHtmlDeAnexos() {
 /* Toma del CSS de la aplicación solo las reglas del informe de ensayo y
    cambia el selector de id por clase. Dos motivos: en un PDF con varios
    anexos no puede repetirse el mismo id, y arrastrar la hoja de estilos
-   completa metería reglas de la interfaz en un documento impreso. */
+   completa metería reglas de la interfaz en un documento impreso.
+
+   Se lee por CSSOM y no partiendo el texto por líneas. El filtro por línea
+   se quedaba solo con el renglón que contenía "#ee-informe", y 32 de las 35
+   reglas del informe ocupan varias líneas: se copiaba el selector con la
+   llave de apertura y se perdían las declaraciones. Peor todavía, la llave
+   sin cerrar se tragaba las reglas siguientes. Entre lo perdido estaba el
+   bloque que define la paleta clara del informe —26 variables, incluida
+   --line—, y por eso los anexos salían sin bordes de tabla y sin colores:
+   las reglas que usan var(--line) se quedaban sin valor.
+
+   cssText devuelve la regla completa, con saltos de línea o sin ellos. */
 function otCssDelInforme() {
-  const todo = Array.from(document.querySelectorAll("style"))
-    .map(e => e.textContent).join("\n");
-  return todo.split("\n")
-    .filter(l => l.includes("#ee-informe"))
-    .join("\n")
-    .replace(/#ee-informe/g, ".ee-informe");
+  const salida = [];
+  const sirve = sel => !!sel && sel.indexOf("#ee-informe") >= 0;
+
+  const recoger = reglas => {
+    for (const r of Array.from(reglas || [])) {
+      /* Solo reglas de estilo de primer nivel y las de @media print. Las
+         demás consultas de medios llevan las variantes de tema, y copiarlas
+         traería el modo oscuro al papel. */
+      if (r.type === 1) {
+        if (sirve(r.selectorText)) {
+          salida.push(r.cssText.replace(/#ee-informe/g, ".ee-informe"));
+        }
+      } else if (r.type === 4 && /print/i.test(r.conditionText || r.media.mediaText || "")) {
+        recoger(r.cssRules);
+      }
+    }
+  };
+
+  for (const hoja of Array.from(document.styleSheets)) {
+    let reglas = null;
+    try { reglas = hoja.cssRules; } catch (e) { continue; }  // hoja de otro origen
+    recoger(reglas);
+  }
+  return salida.join("\n");
 }
 
 async function otImprimir() {
