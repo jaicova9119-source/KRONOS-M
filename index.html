@@ -11561,6 +11561,7 @@ async function cargarPanelPerfil() {
             <div class="usuario-row-email">${u.email || ""}</div>
           </div>
           <button data-aprobar-usuario="${u.id}" style="background:var(--ok-bg);border-color:var(--ok);color:var(--ok);font-size:12px;padding:6px 10px;flex-shrink:0">Aprobar</button>
+          <button data-baja-usuario="${u.id}" data-baja-nombre="${u.nombre}" title="Rechazar la solicitud" style="background:var(--danger-bg);border-color:var(--danger);color:var(--danger);font-size:12px;padding:6px 8px;flex-shrink:0">&#10005;</button>
         </div>`;
       });
     }
@@ -11735,10 +11736,21 @@ async function cargarPanelPerfil() {
     cont.querySelectorAll("[data-baja-usuario]").forEach(btn => {
       btn.onclick = async () => {
         const quien = btn.dataset.bajaNombre || "este usuario";
-        if (!confirm("Dar de baja a " + quien + ".\n\nPierde el acceso y deja de " +
-                     "aparecer en la lista, pero su nombre se conserva en los " +
-                     "reportes que firmó. ¿Continuar?")) return;
-        const motivo = prompt("Motivo de la baja (opcional): fin de contrato, traslado...") || null;
+        /* Rechazar una solicitud y dar de baja a alguien que trabajó años son
+           la misma operación para la base, pero no para quien la pulsa. El
+           texto tiene que decir lo que corresponde o el admin duda. */
+        const nuevo = btn.closest(".usuario-row") &&
+                      !btn.closest(".usuario-row").querySelector("[data-usuario-id]");
+        const aviso = nuevo
+          ? "Rechazar la solicitud de " + quien + ".\n\nNo podrá entrar y no " +
+            "volverá a aparecer aquí aunque intente registrarse de nuevo. ¿Continuar?"
+          : "Dar de baja a " + quien + ".\n\nPierde el acceso y deja de " +
+            "aparecer en la lista, pero su nombre se conserva en los " +
+            "reportes que firmó. ¿Continuar?";
+        if (!confirm(aviso)) return;
+        const motivo = prompt(nuevo
+          ? "Motivo del rechazo (opcional)"
+          : "Motivo de la baja (opcional): fin de contrato, traslado...") || null;
         const r = await sb.rpc("usuarios_baja", {
           p_usuario_id: btn.dataset.bajaUsuario, p_motivo: motivo, p_reingreso: false,
         });
