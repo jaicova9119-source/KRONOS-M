@@ -394,10 +394,22 @@ const FO016 = (function () {
      una hoja implícita sin cabecera ni margen. Se pierde medio renglón al pie
      en vez de una hoja entera. No se aplica en la exportación a Word, donde el
      margen es real y una altura fija correría el contenido a la hoja de atrás. */
+  /* El ancho tiene que declararse junto con el recorte. La hoja hereda su
+     ancho de .fo016, que mide 18.58 cm —el área útil, no el papel—, así que
+     con box-sizing:border-box y 2.42 cm de relleno lateral la caja de
+     contenido quedaba en 16.16 cm y las tablas, que miden 18.58, se salían.
+     Mientras el desbordamiento era visible no se notaba; al recortarlo, el
+     documento apareció cortado por la derecha. La hoja mide el papel entero:
+     21 cm menos el relleno dan exactamente los 18.58 de la retícula. */
   const PAGE_CSS =
     '@page{size:21.0cm 29.7cm;margin:0}' +
-    '.fo016-pag{padding:0.88cm 1.30cm 0.88cm 1.12cm;box-sizing:border-box;' +
-    'height:29.70cm;overflow:hidden}';
+    /* Lleva !important porque render() escribe su propio <style> con
+       .fo016{width:18.58cm} DESPUÉS de este, dentro del body, y a igual
+       especificidad gana la última regla. Es la única forma de ganarle sin
+       reordenar la construcción del documento, que vale para Word igual. */
+    '.fo016{width:21.0cm!important}' +
+    '.fo016-pag{width:21.0cm;padding:0.88cm 1.30cm 0.88cm 1.12cm;' +
+    'box-sizing:border-box;height:29.70cm;overflow:hidden}';
   const PRINT_CSS = '@media print{' + PAGE_CSS + '}';
 
   /* ------------------------------ cabecera -------------------------------- */
@@ -1216,7 +1228,18 @@ ${cuerpo}
         if (!cm) return 0;
         let peor = 0;
         hojas.forEach(h => {
-          const sobra = (h.scrollHeight - h.clientHeight) / cm;
+          /* Se mide hasta dónde llega el último hijo, no con scrollHeight:
+             unos navegadores cuentan el relleno inferior en scrollHeight y
+             otros no, y ahí se juegan los 0.88 cm del margen. El rectángulo
+             de los hijos es el mismo en todos, y con overflow:hidden sigue
+             siendo correcto aunque el dibujo esté recortado. */
+          const arriba = h.getBoundingClientRect().top;
+          let fondo = arriba;
+          for (const n of h.children) {
+            const b = n.getBoundingClientRect().bottom;
+            if (b > fondo) fondo = b;
+          }
+          const sobra = (fondo - arriba) / cm - (29.70 - 0.88);
           if (sobra > peor) peor = sobra;
         });
         return peor;
