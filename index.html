@@ -3134,7 +3134,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <div class="mat-stock" style="margin-top:6px" id="ot-firma-ej-nota"></div>
     </div>
 
-    <div class="field">
+    <!-- Solo lo ve el supervisor, y solo cuando el reporte ya le llego. El
+         tecnico no tiene por que poder cargar la firma de quien lo avala: para
+         eso existe el circuito. Se muestra desde otFlujoRender(). -->
+    <div class="field" id="ot-sup-bloque" style="display:none">
       <label>Supervisor O&amp;M</label>
       <select id="ot-sup-modo" onchange="otSupRefrescar()">
         <option value="blanco">En blanco, firma sobre el papel</option>
@@ -15599,6 +15602,16 @@ function otFlujoRender() {
     acc.innerHTML = '<div class="ot-flujo ' + f + '" style="margin-top:14px">' +
       '<div class="ot-flujo-acciones" style="margin-top:0">' + b.join("") + "</div>" +
       "</div>";
+  }
+
+  /* El bloque de firma del supervisor aparece unicamente en la sesion de quien
+     puede firmar, y solo desde que el reporte le llego. En borrador no sirve
+     de nada —la funcion de firma exige estado 'enviado'— y en la sesion del
+     tecnico seria ofrecerle cargar la firma de otro. */
+  const sup = document.getElementById("ot-sup-bloque");
+  if (sup) {
+    sup.style.display = (otEsRevisor() && (f === "enviado" || f === "firmado"))
+      ? "" : "none";
   }
 
   otAplicarCandado();
