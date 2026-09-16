@@ -13737,6 +13737,10 @@ async function progGuardarEjecucion() {
   if (personal) { const c = progCfg(); c.personal = personal; progGuardarCfg(c); }
 
   btn.disabled = true; btn.textContent = "Guardando...";
+  /* El diccionario aprende de lo que una persona dio por bueno al guardar, no
+     de lo que escupio el reconocedor. */
+  diccAprenderDeCampos(["prog-e-actividades", "prog-e-observaciones"]);
+
   const { data, error } = await sb.rpc("programa_registrar_ejecucion", {
     p_actividad_id: progActual.id,
     p_estado: estado,
@@ -13783,6 +13787,149 @@ function progRedactar() {
 }
 
 /* ============================================================
+   DICCIONARIO TECNICO DEL DICTADO
+   ============================================================
+   El reconocimiento del navegador NO acepta vocabulario propio: no hay forma
+   de enseñarle "megóhmetro" o "cappanel". Lo que sí se puede es corregir
+   despues, y para eso hace falta saber que palabras usa esta gente.
+
+   El diccionario tiene dos mitades. Una base fija con la jerga del oficio, y
+   lo que se aprende de los textos que se guardan: cada narrativa registrada
+   aporta sus terminos, asi que mientras mas se reporta, mejor corrige. Vive en
+   el dispositivo, como la memoria de campos.
+
+   La correccion es deliberadamente timida. Solo toca palabras que no conoce y
+   solo si hay un termino a una o dos letras de distancia. Prefiero que se le
+   escape un "capanel" a que convierta "revisión" en "reversión": lo primero se
+   nota al leer, lo segundo cambia lo que dice el reporte y nadie lo ve. */
+
+const DICC_LS = "kronos.dicc.tecnico";
+const DICC_TOPE = 400;
+
+/* Jerga del oficio, para que el diccionario sirva desde el primer dictado y no
+   solo despues de escribir veinte reportes. */
+const DICC_BASE = [
+  "variador","VFD","AFD","inversor","rectificador","cappanel","condensador",
+  "disipador","ventilador","manta","filtrante","gabinete","autoajuste",
+  "setpoint","parametros","respaldo","firmware","tarjeta","PCB",
+  "megóhmetro","megger","aislamiento","devanado","devanados","estator","rotor",
+  "excitatriz","diodos","bobina","bobinas","balance","desbalance","ohmios",
+  "megaohmios","polarización","absorción",
+  "motor","electrosumergible","bomba","booster","reciprocante","reductor",
+  "acople","rodamiento","rodamientos","lubricación","empuje",
+  "acometida","canalización","bornera","borneras","conexiones","apriete",
+  "torque","puesta","tierra","aterrizado","apantallamiento",
+  "sobrecorriente","subcarga","sobrecarga","shutdown","stall","arranque",
+  "frecuencia","tensión","corriente","potencia","armónicos","THD",
+  "transformador","celda","seccionador","interruptor","protecciones",
+  "termografía","reflectometría","telemetría","instrumentación",
+  "transmisor","manómetro","vibración","succión","descarga","caudal",
+  "Yaskawa","WEG","Emerson","Baker","Hughes","Electrospeed","Triol","Murphy",
+  "Fluke","Schneider","Siemens","ABB","Danfoss","Mitsubishi",
+  "COSTAYACO","COHEMBÍ","MOQUETA","PIÑUÑA","QUINDE","CHAZA",
+  "preventivo","correctivo","predictivo","programada","emergente",
+  "novedad","hallazgo","pendiente","recomendación","operativo",
+];
+
+function diccLeer() {
+  try {
+    const g = JSON.parse(localStorage.getItem(DICC_LS) || "[]");
+    return Array.isArray(g) ? g : [];
+  } catch (e) { return []; }
+}
+
+/* Sin tildes y en minusculas: quien dicta no pronuncia la tilde y el
+   reconocedor la pone o no la pone segun le parezca. */
+function diccNorm(t) {
+  return String(t || "").toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+/* Aprende de un texto ya escrito o corregido por una persona. Se queda con
+   palabras de cinco letras o mas y con las que llevan digitos o mayusculas
+   dentro —codigos como PT100 o RTD—, que son justo las que el reconocedor
+   destroza. */
+function diccAprender(texto) {
+  const t = String(texto || "");
+  if (t.length < 10) return;
+  const nuevas = (t.match(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9-]{4,}/g) || [])
+    .filter(w => w.length >= 5 || /[0-9]/.test(w) || /[A-Z].*[A-Z]/.test(w));
+  if (!nuevas.length) return;
+
+  const g = diccLeer();
+  const vistos = new Set(g.map(diccNorm));
+  nuevas.forEach(w => {
+    const n = diccNorm(w);
+    if (n.length < 4 || vistos.has(n)) return;
+    vistos.add(n);
+    g.push(w);
+  });
+  try { localStorage.setItem(DICC_LS, JSON.stringify(g.slice(-DICC_TOPE))); }
+  catch (e) { /* cupo lleno: se sigue con lo que haya */ }
+}
+
+/* Distancia de edicion con corte temprano: en cuanto se pasa del maximo
+   tolerado deja de calcular. Con cuatrocientos terminos y una frase larga, la
+   version completa se notaria en un telefono. */
+function diccDistancia(a, b, max) {
+  if (Math.abs(a.length - b.length) > max) return max + 1;
+  let prev = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const fila = [i];
+    let mejor = i;
+    for (let j = 1; j <= b.length; j++) {
+      const c = a[i - 1] === b[j - 1] ? 0 : 1;
+      fila[j] = Math.min(prev[j] + 1, fila[j - 1] + 1, prev[j - 1] + c);
+      if (fila[j] < mejor) mejor = fila[j];
+    }
+    if (mejor > max) return max + 1;
+    prev = fila;
+  }
+  return prev[b.length];
+}
+
+/* Se llama al guardar. Toma lo que quedo escrito —dictado y luego corregido a
+   mano, o tecleado— y se queda con los terminos nuevos. */
+function diccAprenderDeCampos(ids) {
+  (ids || []).forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.value) diccAprender(el.value);
+  });
+}
+
+function diccCorregir(texto) {
+  const terminos = DICC_BASE.concat(diccLeer());
+  if (!terminos.length) return texto;
+  const conocidos = new Set(terminos.map(diccNorm));
+
+  return String(texto).replace(/[A-Za-zÁÉÍÓÚÜÑáéíóúüñ0-9-]+/g, palabra => {
+    const n = diccNorm(palabra);
+    /* Palabras cortas no: "cable" y "cambie" estan a dos letras y las dos son
+       validas. Y si ya es un termino conocido, no se toca. */
+    if (n.length < 5 || conocidos.has(n)) return palabra;
+
+    const max = n.length <= 7 ? 1 : 2;
+    let mejor = null, mejorD = max + 1;
+    for (const t of terminos) {
+      const nt = diccNorm(t);
+      if (Math.abs(nt.length - n.length) > max) continue;
+      /* Misma letra inicial: sin esto, cualquier palabra rara acaba
+         convertida en el termino mas parecido del diccionario. */
+      if (nt[0] !== n[0]) continue;
+      const d = diccDistancia(n, nt, max);
+      if (d < mejorD) { mejorD = d; mejor = t; }
+      if (d === 0) break;
+    }
+    if (!mejor || mejorD > max) return palabra;
+
+    /* Se respeta la mayuscula inicial de lo dictado. */
+    return /^[A-ZÁÉÍÓÚÑ]/.test(palabra)
+      ? mejor.charAt(0).toUpperCase() + mejor.slice(1)
+      : mejor;
+  });
+}
+
+/* ============================================================
    DICTADO POR VOZ
    ============================================================
    Hay tecnicos que redactan mal y hablan bien, y el reporte pierde detalle por
@@ -13799,7 +13946,7 @@ function progRedactar() {
    No se escribe encima de lo que ya hay: se agrega al final. Perder un parrafo
    escrito a mano por darle al microfono seria peor que no tener dictado. */
 
-const DIC = { rec: null, campo: null, activo: false, texto: "" };
+const DIC = { rec: null, campo: null, activo: false, texto: "", consumidos: 0 };
 
 function dictarDisponible() {
   return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -13852,16 +13999,30 @@ function dictar(campoId) {
   DIC.texto = area.value;
   dictarPintar();
 
+  /* Se lleva la cuenta de cuantos resultados ya se consumieron en vez de
+     confiar en ev.resultIndex. En Chrome de Android ese indice llega en cero
+     casi siempre y ev.results trae TODO lo reconocido hasta ahora, asi que
+     recorrerlo desde resultIndex reescribia la frase entera en cada evento:
+     de ahi "se realiza mantenimiento preventivo" seis veces seguidas. */
+  DIC.consumidos = 0;
+
   rec.onresult = ev => {
-    let firme = "", parcial = "";
-    for (let i = ev.resultIndex; i < ev.results.length; i++) {
-      const t = ev.results[i][0].transcript;
-      if (ev.results[i].isFinal) firme += t; else parcial += t;
+    let firme = "";
+    let i = DIC.consumidos;
+    while (i < ev.results.length && ev.results[i].isFinal) {
+      firme += ev.results[i][0].transcript;
+      i++;
     }
-    if (firme) {
+    DIC.consumidos = i;
+
+    let parcial = "";
+    for (let j = i; j < ev.results.length; j++) parcial += ev.results[j][0].transcript;
+
+    if (firme.trim()) {
       const sep = DIC.texto && !/\s$/.test(DIC.texto) ? " " : "";
-      DIC.texto = DIC.texto + sep + firme.trim();
+      DIC.texto = DIC.texto + sep + diccCorregir(firme.trim());
       area.value = DIC.texto;
+      area.scrollTop = area.scrollHeight;
     }
     const p = document.getElementById("dicp-" + campoId);
     if (p) p.textContent = parcial ? "\u2026 " + parcial : "";
@@ -13887,6 +14048,9 @@ function dictar(campoId) {
      uno hace una pausa para mirar el equipo y espera seguir dictando. */
   rec.onend = () => {
     if (!DIC.activo || DIC.campo !== campoId) return;
+    /* Al reanudar, ev.results vuelve a empezar: la cuenta tiene que volver a
+       cero o se perderia todo lo que se diga despues de la pausa. */
+    DIC.consumidos = 0;
     try { rec.start(); } catch (e) { dictarParar(); }
   };
 
@@ -14414,6 +14578,7 @@ function progRedactarNP() {
 }
 
 async function progGuardarNoProgramada() {
+  diccAprenderDeCampos(["np-actividades", "np-observaciones"]);
   if (npEditando) return progGuardarEdicionNP();
   const fecha = document.getElementById("np-fecha").value;
   if (!fecha) { toast("Indica la fecha de ejecución"); return; }
@@ -14668,6 +14833,7 @@ async function progEditarNP() {
 }
 
 async function progGuardarEdicionNP() {
+  diccAprenderDeCampos(["np-actividades", "np-observaciones"]);
   const btn = document.getElementById("np-btn-guardar");
   btn.disabled = true; btn.textContent = "Guardando...";
 
