@@ -13817,7 +13817,7 @@ function progSelPintar() {
             <span class="pend-sub">${otEsc(x.estacion || "—")} ·
               ${otEsc((x.disciplinas || []).join(", ") || "sin disciplina")} ·
               ${x.hh || 0} HH · ${x.avance || 0}%
-              <br>Ejecut&oacute;: ${otEsc(x.lider)}${x.mio ? " (t&uacute; registraste)" : ""}
+              <br>Ejecut&oacute;: ${otEsc(x.personal || x.lider)}${x.mio ? " (t&uacute; registraste)" : ""}
               ${avisos.length ? "<br>" + avisos.join(" · ") : ""}</span>
           </span>
         </label>`;
