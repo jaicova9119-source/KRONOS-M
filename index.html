@@ -15683,16 +15683,65 @@ function otVerDocumento() {
   if (!modal || !marco) return;
   let html;
   try {
+    /* La hoja mide 21 cm fijos, que en un telefono no caben: sin ajustar, el
+       supervisor recibe un documento que hay que arrastrar de lado para leer
+       una linea. Se escala al ancho disponible con zoom —que si reduce el
+       espacio que ocupa, a diferencia de transform, y por eso no deja un hueco
+       blanco debajo— y se centra. Nunca se amplia por encima del 100%: una
+       hoja A4 estirada en un monitor grande se ve peor, no mejor. */
+    const estilo =
+      "html,body{margin:0;padding:0;background:#3a4750}" +
+      "body{padding:12px 0}" +
+      ".fo016{margin:0 auto!important}" +
+      ".fo016-pag{background:#fff;margin:0 auto 12px;" +
+      "box-shadow:0 2px 10px rgba(0,0,0,.45)}" +
+      FO016.PAGE_CSS;
+
+    const ajuste =
+      "<script>(function(){" +
+      "var ANCHO=21*37.7952756;" +
+      "function ajustar(){" +
+      "  var disp=document.documentElement.clientWidth-16;" +
+      "  var k=Math.min(1,disp/ANCHO);" +
+      /* Si el navegador no soporta zoom no pasa nada grave: se ve a tamano
+         real y con desplazamiento lateral, como estaba antes. */
+      "  document.body.style.zoom=k;" +
+      "}" +
+      "ajustar();" +
+      "window.addEventListener('resize',ajustar);" +
+      /* El padre necesita poder forzar tamano real y volver al ajuste. */
+      "window.hojaAjustar=ajustar;" +
+      "window.hojaReal=function(){document.body.style.zoom=1;};" +
+      "})();<\/script>";
+
     html = "<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"utf-8\">" +
-      "<style>body{margin:0;padding:10px 0;background:#f2f2f2}" +
-      ".fo016-pag{background:#fff;margin:0 auto 12px;box-shadow:0 1px 4px rgba(0,0,0,.25)}" +
-      FO016.PAGE_CSS + "</style></head><body>" + FO016.render(otMapear()) + "</body></html>";
+      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+      "<style>" + estilo + "</style></head><body>" +
+      FO016.render(otMapear()) + ajuste + "</body></html>";
   } catch (e) {
     toast("No se pudo armar el documento: " + e.message);
     return;
   }
   marco.srcdoc = html;
+  otDocReal = false;
+  const btnZoom = document.getElementById("ot-doc-zoom");
+  if (btnZoom) btnZoom.textContent = "Tama\u00f1o real";
   modal.style.display = "flex";
+}
+
+let otDocReal = false;
+
+function otDocAlternarZoom() {
+  const marco = document.getElementById("ot-doc-marco");
+  const btn = document.getElementById("ot-doc-zoom");
+  const v = marco && marco.contentWindow;
+  if (!v) return;
+  otDocReal = !otDocReal;
+  try {
+    if (otDocReal) { v.hojaReal && v.hojaReal(); }
+    else { v.hojaAjustar && v.hojaAjustar(); }
+  } catch (e) { return; }
+  if (btn) btn.textContent = otDocReal ? "Ajustar al ancho" : "Tama\u00f1o real";
 }
 
 function otCerrarDocumento() {
@@ -17333,6 +17382,11 @@ function firmaPintarVista() {
 <div class="doc-modal" id="ot-doc-modal">
   <div class="doc-modal-barra">
     <button type="button" class="btn-secondary" onclick="otCerrarDocumento()">Cerrar</button>
+    <!-- Ajustado al ancho, en un telefono la letra queda al 43% y no se lee.
+         Dentro de un iframe el gesto de pellizcar no llega al contenido, asi
+         que la unica salida es este interruptor. -->
+    <button type="button" class="btn-secondary" id="ot-doc-zoom"
+            onclick="otDocAlternarZoom()">Tama&ntilde;o real</button>
     <button type="button" class="btn-secondary" onclick="otImprimir()">Imprimir o guardar como PDF</button>
   </div>
   <iframe id="ot-doc-marco" title="Documento FO-016"></iframe>
