@@ -2854,7 +2854,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <button class="btn-secondary" style="margin-top:6px" onclick="progRedactar()">Redactar con el asistente</button>
       <div class="mat-stock">El asistente ordena y da forma técnica a tus notas. No agrega mediciones ni resultados que no hayas escrito.</div>
     </div>
-    <div class="field"><label>Observaciones</label><textarea id="prog-e-observaciones" rows="2" placeholder="Opcional. Aparece al final del reporte."></textarea></div>
+    <div class="field">
+      <label>Observaciones, recomendaciones o trabajos pendientes</label>
+      <textarea id="prog-e-observaciones" rows="3"
+        placeholder="Qu&eacute; queda pendiente, qu&eacute; recomiendas o qu&eacute; hay que informar de esta actividad."></textarea>
+      <div class="mat-stock">Sale en el reporte del d&iacute;a dentro del bloque de esta actividad.</div>
+    </div>
     <div class="field" id="prog-e-motivo-wrap" style="display:none">
       <label>Motivo de no ejecución</label>
       <textarea id="prog-e-motivo" rows="2" placeholder="Obligatorio si la actividad no se ejecutó"></textarea>
@@ -2965,7 +2970,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <textarea id="np-actividades" rows="6" placeholder="Escribe tus notas de campo. Después puedes pedirle al asistente que las redacte."></textarea>
       <button class="btn-secondary" style="margin-top:6px" onclick="progRedactarNP()">Redactar con el asistente</button>
     </div>
-    <div class="field"><label>Observaciones</label><textarea id="np-observaciones" rows="2"></textarea></div>
+    <div class="field">
+      <label>Observaciones, recomendaciones o trabajos pendientes</label>
+      <textarea id="np-observaciones" rows="3"
+        placeholder="Qu&eacute; queda pendiente, qu&eacute; recomiendas o qu&eacute; hay que informar de esta actividad."></textarea>
+    </div>
 
     <button class="btn-primary" id="np-btn-guardar" onclick="progGuardarNoProgramada()">Registrar actividad</button>
   </div>
