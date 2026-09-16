@@ -11764,6 +11764,7 @@ async function cargarPanelPerfil() {
         <select data-usuario-id="${u.id}">
           <option value="tecnico" ${u.rol === "tecnico" ? "selected" : ""}>Técnico</option>
           <option value="supervisor" ${u.rol === "supervisor" ? "selected" : ""}>Supervisor</option>
+          <option value="ingeniero" ${u.rol === "ingeniero" ? "selected" : ""}>Ingeniero</option>
           <option value="admin" ${u.rol === "admin" ? "selected" : ""}>Admin</option>
         </select>
         <button data-modulos-usuario="${u.id}" title="Módulos visibles para este usuario"
