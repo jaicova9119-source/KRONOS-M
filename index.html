@@ -3208,6 +3208,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <button class="btn-secondary" onclick="otImprimir()">Imprimir o guardar como PDF</button>
     </div>
 
+    <!-- Las acciones del circuito van al pie, no arriba: enviar al supervisor
+         es lo ultimo que se hace, despues de diligenciar. Arriba queda solo el
+         estado y, si lo devolvieron, el motivo, que hay que leer antes de
+         empezar a corregir. -->
+    <div id="ot-flujo-acciones"></div>
+
     <!-- El logo viene por defecto en fo016-logo.js, asi que ya no se pide
          cargarlo. La nota sobre margenes del navegador se retiro: ocupaba
          media pantalla en el movil para una indicacion que solo aplica la
@@ -15578,13 +15584,22 @@ function otFlujoRender() {
           "y al reabrirlo se borra la firma del supervisor.</div>"
         : "");
 
+  /* Arriba: en que estado esta, quien lo movio y —si lo devolvieron— por que.
+     Eso se lee antes de tocar el formulario. */
   cont.innerHTML =
     '<div class="ot-flujo ' + f + '">' +
       '<span class="ot-flujo-pastilla">' + (OT_FLUJO_ROTULO[f] || f) + "</span>" +
       (rastro.length ? '<div class="ot-flujo-rastro">' + rastro.join("<br>") + "</div>" : "") +
       aviso + motivo +
-      '<div class="ot-flujo-acciones">' + b.join("") + "</div>" +
     "</div>";
+
+  /* Abajo: lo que se hace cuando ya se termino de llenar. */
+  const acc = document.getElementById("ot-flujo-acciones");
+  if (acc) {
+    acc.innerHTML = '<div class="ot-flujo ' + f + '" style="margin-top:14px">' +
+      '<div class="ot-flujo-acciones" style="margin-top:0">' + b.join("") + "</div>" +
+      "</div>";
+  }
 
   otAplicarCandado();
 }
@@ -15598,8 +15613,10 @@ function otAplicarCandado() {
   const abierto = otPuedoEditar();
   const flujo = document.getElementById("ot-flujo");
 
+  const acciones = document.getElementById("ot-flujo-acciones");
   panel.querySelectorAll("input, textarea, select, button").forEach(el => {
     if (flujo && flujo.contains(el)) return;
+    if (acciones && acciones.contains(el)) return;
     if (el.id === "ot-jornada") return;
     /* Imprimir y ver anexos no modifican nada: se dejan vivos. */
     const txt = (el.textContent || "").toLowerCase();
