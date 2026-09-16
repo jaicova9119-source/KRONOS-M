@@ -13950,19 +13950,34 @@ function dicAnexar(nuevo) {
     for (let i = 0; i < k; i++) {
       if (cmp(acum[acum.length - k + i]) !== cmp(pal[i])) { igual = false; break; }
     }
-    if (!igual) continue;
-    /* Con una sola palabra de solape hay que ser cuidadoso: dos "de" seguidos
-       son normales y borrar el segundo cambiaria la frase. Se acepta solo si
-       lo nuevo es entero ese eco, o si la palabra es larga y por tanto poco
-       probable de repetirse por casualidad. */
-    if (k === 1 && pal.length > 1 && cmp(pal[0]).length < 5) continue;
-    break;
+    if (igual) break;
   }
 
-  const resto = pal.slice(k).join(" ");
-  if (!resto) return;
+  /* El solape de una sola palabra corta tambien cuenta. Antes lo descartaba por
+     miedo a borrar un "de" legitimo, y eso era lo que dejaba pasar "se se",
+     "de de", "y y", "lado lado". El miedo estaba mal dirigido: para que sea un
+     falso positivo, el trozo anterior tendria que haber terminado justo en esa
+     palabra suelta, y eso no es como habla nadie. Es la juntura, no la frase. */
+
+  let resto = pal.slice(k);
+  if (!resto.length) return;
+
+  /* Red de seguridad para lo que el reconocedor duplica dentro de un mismo
+     trozo, que el solape no ve: se colapsan palabras identicas seguidas. En
+     una narrativa tecnica en español eso no ocurre queriendo. Se mira tambien
+     contra la ultima palabra de lo acumulado, que es donde cae la juntura. */
+  const ultima = acum.length ? acum[acum.length - 1] : null;
+  const limpio = [];
+  let previa = ultima;
+  for (const w of resto) {
+    if (previa !== null && cmp(w) && cmp(w) === cmp(previa)) continue;
+    limpio.push(w);
+    previa = w;
+  }
+  if (!limpio.length) return;
+
   const sep = DIC.texto && !/\s$/.test(DIC.texto) ? " " : "";
-  DIC.texto = DIC.texto + sep + diccCorregir(resto);
+  DIC.texto = DIC.texto + sep + diccCorregir(limpio.join(" "));
 }
 
 /* ============================================================
