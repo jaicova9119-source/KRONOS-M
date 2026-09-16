@@ -15759,30 +15759,32 @@ async function otConfirmarFirma() {
    Se renderiza el FO-016 completo en un iframe visible. Leer el formulario no
    es lo mismo que leer lo que se va a firmar: el orden, los cortes de hoja y
    lo que queda en blanco solo se ven en el documento armado. */
-function otVerDocumento() {
+async function otVerDocumento() {
   const modal = document.getElementById("ot-doc-modal");
   const marco = document.getElementById("ot-doc-marco");
   if (!modal || !marco) return;
+
   let html;
   try {
-    /* La hoja mide 21 cm fijos, que en un telefono no caben: sin ajustar, el
+    /* El mismo documento que se imprime, anexos incluidos. Lo unico que cambia
+       es la presentacion: fondo oscuro, hojas con sombra y escala al ancho.
+       Todo eso va en @media screen para que al imprimir desde aqui salga
+       identico al de la impresion normal.
+
+       La hoja mide 21 cm fijos, que en un telefono no caben: sin ajustar, el
        supervisor recibe un documento que hay que arrastrar de lado para leer
-       una linea. Se escala al ancho disponible con zoom —que si reduce el
-       espacio que ocupa, a diferencia de transform, y por eso no deja un hueco
-       blanco debajo— y se centra. Nunca se amplia por encima del 100%: una
-       hoja A4 estirada en un monitor grande se ve peor, no mejor. */
-    const estilo =
-      "html,body{margin:0;padding:0;background:#3a4750}" +
+       una linea. Se escala con zoom —que si reduce el espacio que ocupa, a
+       diferencia de transform, y por eso no deja hueco blanco debajo— y se
+       centra. Nunca se amplia por encima del 100%. */
+    const vista =
+      "@media screen{" +
+      "html,body{background:#3a4750}" +
       "body{padding:12px 0}" +
       ".fo016{margin:0 auto!important}" +
-      ".fo016-pag{background:#fff;margin:0 auto 12px;" +
+      ".fo016-pag,.ee-anexo-pag{background:#fff;margin:0 auto 12px;" +
       "box-shadow:0 2px 10px rgba(0,0,0,.45)}" +
-      /* Al imprimir desde la vista: sin fondo gris, sin sombra y sin el
-         relleno del visor, que en el papel saldrian como una hoja dentro de
-         otra. El zoom lo devuelve a 1 el propio manejador de beforeprint. */
-      "@media print{html,body{background:#fff}body{padding:0}" +
-      ".fo016-pag{box-shadow:none;margin:0 auto}}" +
-      FO016.PAGE_CSS;
+      ".ee-anexo-pag{width:21cm;box-sizing:border-box;min-height:29.7cm}" +
+      "}";
 
     const ajuste =
       "<script>(function(){" +
@@ -15790,29 +15792,25 @@ function otVerDocumento() {
       "function ajustar(){" +
       "  var disp=document.documentElement.clientWidth-16;" +
       "  var k=Math.min(1,disp/ANCHO);" +
-      /* Si el navegador no soporta zoom no pasa nada grave: se ve a tamano
-         real y con desplazamiento lateral, como estaba antes. */
       "  document.body.style.zoom=k;" +
       "}" +
       "ajustar();" +
       "window.addEventListener('resize',ajustar);" +
-      /* El padre necesita poder forzar tamano real y volver al ajuste. */
       "window.hojaAjustar=ajustar;" +
       "window.hojaReal=function(){document.body.style.zoom=1;};" +
-      /* Imprimir tiene que salir a escala 1 aunque en pantalla este reducido,
-         o el papel saldria con la hoja encogida en una esquina. */
+      /* Imprimir sale a escala 1 aunque en pantalla este reducido, o el papel
+         saldria con la hoja encogida en una esquina. */
       "window.addEventListener('beforeprint',function(){document.body.style.zoom=1;});" +
       "window.addEventListener('afterprint',function(){if(!window.__real)ajustar();});" +
       "})();<\/script>";
 
-    html = "<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"utf-8\">" +
-      "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
-      "<style>" + estilo + "</style></head><body>" +
-      FO016.render(otMapear()) + ajuste + "</body></html>";
+    html = await otDocumentoHTML({ estiloExtra: vista, cuerpoExtra: ajuste });
   } catch (e) {
+    console.error(e);
     toast("No se pudo armar el documento: " + e.message);
     return;
   }
+
   marco.srcdoc = html;
   otDocReal = false;
   const btnZoom = document.getElementById("ot-doc-zoom");
@@ -16197,6 +16195,16 @@ async function otCargarAnexos() {
       .in("id", ids);
     if (r.error) throw r.error;
     const porId = new Map((r.data || []).map(x => [x.id, x]));
+
+    /* Las maquinas de esos ensayos, si no estan ya cargadas: el nombre sale
+       en la tarjeta y la arma otNombreMaquina() contra eeMaquinas. */
+    const faltan = [...new Set((r.data || []).map(x => x.maquina_id).filter(Boolean))]
+      .filter(id => !(eeMaquinas || []).some(m => m.id === id));
+    if (faltan.length) {
+      const rm = await sb.from("v_maquinas_electricas").select("*").in("id", faltan);
+      if (!rm.error && rm.data) eeMaquinas = (eeMaquinas || []).concat(rm.data);
+    }
+
     otPintarAnexos(otAnexos.map(a => ({ ...a, ensayo: porId.get(a.ensayo_id) })));
   } catch (e) {
     cont.innerHTML = '<div class="mat-stock">No se pudieron cargar los anexos: ' + e.message + '</div>';
@@ -16346,8 +16354,26 @@ async function otHtmlDeAnexos() {
       if (r.error || !r.data) continue;
       const e = r.data;
 
-      const m = (eeMaquinas || []).find(x => x.id === e.maquina_id);
-      if (!m) continue;
+      /* La maquina se buscaba solo en eeMaquinas, que se llena cuando se abre
+         el modulo de Ensayos. Desde Programacion esa lista esta vacia, asi que
+         el 'continue' descartaba TODOS los anexos sin decir nada: el formato
+         mostraba el ensayo adjunto y el PDF salia sin el. Si no esta en
+         memoria se pide a la base. */
+      let m = (eeMaquinas || []).find(x => x.id === e.maquina_id);
+      if (!m && e.maquina_id) {
+        const rm = await sb.from("v_maquinas_electricas")
+          .select("*").eq("id", e.maquina_id).single();
+        if (!rm.error && rm.data) {
+          m = rm.data;
+          /* Se deja en memoria: la tarjeta del anexo tambien la busca ahi y
+             sin esto mostraba "Maquina electrica" en vez del nombre real. */
+          eeMaquinas = (eeMaquinas || []).concat([m]);
+        }
+      }
+      if (!m) {
+        console.error("Anexo sin maquina, no incluido:", e.id, e.maquina_id);
+        continue;
+      }
 
       const h = await sb.from("ensayos_electricos")
         .select("*, ensayo_devanados(*), ensayo_bobinas(*)")
@@ -16404,34 +16430,19 @@ function otCssDelInforme() {
   return salida.join("\n");
 }
 
-async function otImprimir() {
-  if (!otDatos) return;
-  // Guardar primero: el documento se arma con lo que hay en la base, no
-  // con lo que está en pantalla. Sin esto, lo recién escrito no se imprime.
-  const ok = await otGuardar({ silencioso: true });
-  if (!ok) { toast("Corrige lo marcado antes de imprimir"); return; }
-
-  /* El documento se imprime desde un iframe propio y no desde esta página.
-     El enfoque anterior lo insertaba aquí y escondía la aplicación con
-     @media print; funciona en escritorio, pero en Chrome de Android la
-     interfaz salía impresa igual, en decenas de hojas.
-
-     Funciona porque el FO-016 lleva todos sus estilos en línea: se construyó
-     así para que Word lo respete, y de paso lo vuelve autónomo. No necesita
-     nada del CSS de la aplicación, así que impreso por separado sale idéntico
-     y no hay nada que ocultar. */
-  const nombre = otNombreArchivo();
-
-  /* Los anexos van detrás del formato, cada uno en página nueva. El FO-016
-     lleva sus estilos en línea y es autónomo; el informe de ensayo depende
-     del CSS de la aplicación, así que cuando hay anexos se copian también
-     las hojas de estilo de la página. El orden importa: PAGE_CSS al final
-     para que su @page mande sobre el tamaño de hoja. */
+/* Arma el documento completo: formato mas anexos, con sus estilos.
+   Lo usan la impresion y la vista previa. Estaba escrito solo dentro de
+   otImprimir(), asi que la vista mostraba el FO-016 sin los anexos: el
+   supervisor revisaba y aprobaba un documento distinto del que se imprime.
+   Con una sola fuente no pueden volver a separarse. */
+async function otDocumentoHTML(opciones) {
+  const o = opciones || {};
+  const nombre = o.titulo || otNombreArchivo();
   const anexos = await otHtmlDeAnexos();
   const estilosApp = anexos ? otCssDelInforme() : "";
 
-  const html = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
-    + '<title>' + otEsc(nombre) + '</title>'
+  return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
+    + '<title>' + otEsc(nombre || '') + '</title>'
     + (estilosApp ? '<style>' + estilosApp + '</style>' : "")
     + '<style>' + FO016.PAGE_CSS + ' html,body{margin:0;padding:0}'
     + '.ee-anexo-pag{break-before:page;page-break-before:always;'
@@ -16460,9 +16471,39 @@ async function otImprimir() {
     /* Solo las firmas y las filas de datos se protegen del corte. Proteger
        todo el cierre era lo que empujaba el bloque a una hoja nueva. */
     + '.ee-informe .inf-firmas,.ee-informe tr{break-inside:avoid;page-break-inside:avoid}'
+    + (o.estiloExtra || '')
     + '</style>'
     + '</head><body>'
-    + otConstruirDocumento() + anexos + '</body></html>';
+    + otConstruirDocumento() + anexos + (o.cuerpoExtra || '') + '</body></html>';
+}
+
+async function otImprimir() {
+  if (!otDatos) return;
+  // Guardar primero: el documento se arma con lo que hay en la base, no
+  // con lo que está en pantalla. Sin esto, lo recién escrito no se imprime.
+  const ok = await otGuardar({ silencioso: true });
+  if (!ok) { toast("Corrige lo marcado antes de imprimir"); return; }
+
+  /* El documento se imprime desde un iframe propio y no desde esta página.
+     El enfoque anterior lo insertaba aquí y escondía la aplicación con
+     @media print; funciona en escritorio, pero en Chrome de Android la
+     interfaz salía impresa igual, en decenas de hojas.
+
+     Funciona porque el FO-016 lleva todos sus estilos en línea: se construyó
+     así para que Word lo respete, y de paso lo vuelve autónomo. No necesita
+     nada del CSS de la aplicación, así que impreso por separado sale idéntico
+     y no hay nada que ocultar. */
+  const nombre = otNombreArchivo();
+
+  /* Los anexos van detrás del formato, cada uno en página nueva. El FO-016
+     lleva sus estilos en línea y es autónomo; el informe de ensayo depende
+     del CSS de la aplicación, así que cuando hay anexos se copian también
+     las hojas de estilo de la página. El orden importa: PAGE_CSS al final
+     para que su @page mande sobre el tamaño de hoja. */
+  const anexos = await otHtmlDeAnexos();
+  const estilosApp = anexos ? otCssDelInforme() : "";
+
+  const html = await otDocumentoHTML({ titulo: nombre });
 
   /* El título del iframe no basta. Al guardar como PDF, Chrome propone el
      título de la página contenedora —"Kronos-M"— aunque lo que se imprima sea
