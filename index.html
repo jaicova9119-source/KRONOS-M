@@ -3299,11 +3299,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <h2>Reporte del día</h2>
   </div>
   <div class="panel-body">
-    <div class="prog-grid">
-      <div class="field"><label>T&iacute;tulo</label>
-        <input id="prog-r-encabezado" placeholder="Se deduce de lo seleccionado"/></div>
-      <div class="field"><label>Firma</label>
-        <input id="prog-r-personal" placeholder="Tu nombre"/></div>
+    <!-- Sin campo de firma: quien hizo que ya sale en cada bloque, junto a su
+         actividad. Un nombre suelto bajo el titulo solo decia quien pulso el
+         boton. El titulo se deduce de la disciplina que concentra las horas. -->
+    <div class="field"><label>T&iacute;tulo</label>
+      <input id="prog-r-encabezado" placeholder="Se deduce de lo seleccionado"/>
+      <div class="mat-stock">Se calcula solo. Escr&iacute;belo solo si quieres otro.</div>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn-secondary" style="flex:1 1 140px" onclick="progGenerarReporte()">Regenerar</button>
@@ -13861,15 +13862,12 @@ function progSelMarcar(on) {
 async function progGenerarReporte() {
   const cfg = progCfg();
   const enc = document.getElementById("prog-r-encabezado");
-  const per = document.getElementById("prog-r-personal");
   if (enc && !enc.value) enc.value = cfg.encabezado || "";
-  if (per && !per.value) per.value = (usuarioActual && usuarioActual.nombre) || "";
 
   const encabezado = enc ? enc.value.trim() : "";
-  const personal = per ? per.value.trim() : "";
-  /* Solo se recuerda el titulo. El nombre NO: era lo que hacia que el reporte
-     saliera firmado por quien lo escribio la ultima vez en ese navegador.
-     Ahora lo pone la base con el usuario que genera. */
+  /* El nombre del remitente ya no existe aqui. Era un texto recordado en el
+     navegador y salia firmando reportes de otra persona; ahora quien ejecuto
+     cada actividad va dentro de su bloque, que es donde significa algo. */
   const c = progCfg();
   if (encabezado) c.encabezado = encabezado;
   delete c.personal;
@@ -13879,7 +13877,7 @@ async function progGenerarReporte() {
   const { data, error } = await sb.rpc("programa_reporte_dia", {
     p_fecha: progFecha,
     p_encabezado: encabezado || null,
-    p_personal: personal || null,
+    p_personal: null,
     /* Con seleccion la disciplina no filtra nada: manda la lista. */
     p_disciplina: sel.length ? null : progDisciplina,
     p_actividades: sel.length ? sel : null,
@@ -13890,7 +13888,6 @@ async function progGenerarReporte() {
 
   abrirPanel("panel-prog-reporte");
   document.getElementById("prog-r-encabezado").value = encabezado;
-  document.getElementById("prog-r-personal").value = personal;
   document.getElementById("prog-r-texto").value = data && data.reporte ? data.reporte : "";
   document.getElementById("prog-r-nota").textContent = (data && data.nota) || "";
   if (data && !data.reporte) toast(data.nota || "Sin actividades ejecutadas ese día");
