@@ -2814,7 +2814,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
         </select>
       </div>
       <div class="field corto"><label>Avance acumulado (%)</label><input id="prog-e-avance" type="number" min="0" max="100" step="5"/></div>
-      <div class="field corto"><label>HH eléctricas <b>de esta jornada</b></label><input id="prog-e-hh" type="number" step="0.5" placeholder="Solo del día"/></div>
+      <div class="field corto"><label>HH <b>de esta jornada</b></label><input id="prog-e-hh" type="number" step="0.5" placeholder="Solo del día"/></div>
     </div>
 
     <!-- El lider es quien firma arriba en el FO-016 y los demas figuran al
@@ -13385,7 +13385,7 @@ async function progAbrirActividad(id) {
     ["Estación", a.estacion],
     ["Tipo", a.tipo_mantenimiento || a.tipo_orden],
     ["Tipo tarea", a.tipo_tarea],
-    ["HH eléctrica", a.hh_ele],
+    ["HH ejecutadas", a.hh_ele],
     ["HH totales programadas", a.hh_prog],
     ["Disciplinas", (a.disciplinas || []).join(", ")],
     ["Trabajo programado", a.descripcion_trabajo],
@@ -13898,7 +13898,7 @@ async function progLeerArchivo(input) {
       "<tr><td>Semana</td><td>" + (semana != null ? semana : "no detectada") + " de " + anio + "</td></tr>" +
       "<tr><td>Periodo</td><td>" + progFmtFecha(ini) + " al " + progFmtFecha(fin) + "</td></tr>" +
       "<tr><td>Actividades totales</td><td>" + filas.length + "</td></tr>" +
-      "<tr><td><b>Con horas eléctricas</b></td><td><b>" + ele.length + " (" + hhEle + " HH)</b></td></tr>" +
+      "<tr><td><b>Con horas ejecutadas</b></td><td><b>" + ele.length + " (" + hhEle + " HH)</b></td></tr>" +
       "<tr><td>Estaciones</td><td>" + (estaciones.join(", ") || "—") + "</td></tr>" +
       "<tr><td>Tipos de orden</td><td>" + (tipos.join(", ") || "—") + "</td></tr>" +
       (sinOT ? "<tr><td>Sin número de OT</td><td>" + sinOT + "</td></tr>" : "") +
