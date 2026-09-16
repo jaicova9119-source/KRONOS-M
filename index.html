@@ -353,6 +353,19 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 
 /* Vista del documento antes de firmar. El iframe se deja a proporcion A4 para
    que el supervisor lea las hojas tal como van a salir impresas. */
+/* Dictado por voz. El punto late mientras el microfono esta abierto: en campo,
+   con guantes y ruido, hay que poder saber de un vistazo si esta escuchando. */
+.dic-fila{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+.dic-fila button{flex:1 1 170px;margin-top:0}
+.dic-btn.grabando{border-color:var(--danger);color:var(--danger);
+  background:var(--danger-bg)}
+.dic-punto{display:inline-block;width:9px;height:9px;border-radius:50%;
+  background:var(--danger);margin-right:7px;vertical-align:middle;
+  animation:dic-late 1.1s ease-in-out infinite}
+@keyframes dic-late{0%,100%{opacity:1}50%{opacity:.25}}
+.dic-parcial{font-size:13px;color:var(--texto-2);font-style:italic;
+  margin-top:6px;min-height:18px}
+
 /* Dialogo centrado. Se desplaza por dentro y no por la pagina de atras, que
    en el telefono es lo que hace que uno pierda el boton de confirmar. */
 .dlg-modal{position:fixed;inset:0;z-index:9998;background:rgba(10,25,35,.55);
@@ -2850,14 +2863,24 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     </div>
     <div class="field">
       <label>Actividades realizadas</label>
-      <textarea id="prog-e-actividades" rows="6" placeholder="Escribe tus notas de campo. Después puedes pedirle al asistente que las redacte."></textarea>
-      <button class="btn-secondary" style="margin-top:6px" onclick="progRedactar()">Redactar con el asistente</button>
-      <div class="mat-stock">El asistente ordena y da forma técnica a tus notas. No agrega mediciones ni resultados que no hayas escrito.</div>
+      <textarea id="prog-e-actividades" rows="6" placeholder="Escribe o dicta tus notas de campo. Después puedes pedirle al asistente que las redacte."></textarea>
+      <div class="dic-fila">
+        <button class="btn-secondary dic-btn" id="dic-prog-e-actividades"
+                onclick="dictar('prog-e-actividades')">&#127908; Dictar</button>
+        <button class="btn-secondary" onclick="progRedactar()">Redactar con el asistente</button>
+      </div>
+      <div class="dic-parcial" id="dicp-prog-e-actividades"></div>
+      <div class="mat-stock">Dicta como hablas y luego pide al asistente que lo redacte: &eacute;l ordena y da forma t&eacute;cnica, pero no agrega mediciones ni resultados que no hayas dicho.</div>
     </div>
     <div class="field">
       <label>Observaciones, recomendaciones o trabajos pendientes</label>
       <textarea id="prog-e-observaciones" rows="3"
         placeholder="Qu&eacute; queda pendiente, qu&eacute; recomiendas o qu&eacute; hay que informar de esta actividad."></textarea>
+      <div class="dic-fila">
+        <button class="btn-secondary dic-btn" id="dic-prog-e-observaciones"
+                onclick="dictar('prog-e-observaciones')">&#127908; Dictar</button>
+      </div>
+      <div class="dic-parcial" id="dicp-prog-e-observaciones"></div>
       <div class="mat-stock">Sale en el reporte del d&iacute;a dentro del bloque de esta actividad.</div>
     </div>
     <div class="field" id="prog-e-motivo-wrap" style="display:none">
@@ -2967,13 +2990,23 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     </div>
     <div class="field">
       <label>Actividades realizadas</label>
-      <textarea id="np-actividades" rows="6" placeholder="Escribe tus notas de campo. Después puedes pedirle al asistente que las redacte."></textarea>
-      <button class="btn-secondary" style="margin-top:6px" onclick="progRedactarNP()">Redactar con el asistente</button>
+      <textarea id="np-actividades" rows="6" placeholder="Escribe o dicta tus notas de campo. Después puedes pedirle al asistente que las redacte."></textarea>
+      <div class="dic-fila">
+        <button class="btn-secondary dic-btn" id="dic-np-actividades"
+                onclick="dictar('np-actividades')">&#127908; Dictar</button>
+        <button class="btn-secondary" onclick="progRedactarNP()">Redactar con el asistente</button>
+      </div>
+      <div class="dic-parcial" id="dicp-np-actividades"></div>
     </div>
     <div class="field">
       <label>Observaciones, recomendaciones o trabajos pendientes</label>
       <textarea id="np-observaciones" rows="3"
         placeholder="Qu&eacute; queda pendiente, qu&eacute; recomiendas o qu&eacute; hay que informar de esta actividad."></textarea>
+      <div class="dic-fila">
+        <button class="btn-secondary dic-btn" id="dic-np-observaciones"
+                onclick="dictar('np-observaciones')">&#127908; Dictar</button>
+      </div>
+      <div class="dic-parcial" id="dicp-np-observaciones"></div>
     </div>
 
     <button class="btn-primary" id="np-btn-guardar" onclick="progGuardarNoProgramada()">Registrar actividad</button>
@@ -13748,6 +13781,137 @@ function progRedactar() {
   asisDestino = "prog-e-actividades";
   asisEnviar();
 }
+
+/* ============================================================
+   DICTADO POR VOZ
+   ============================================================
+   Hay tecnicos que redactan mal y hablan bien, y el reporte pierde detalle por
+   eso, no por falta de trabajo. Esto usa el reconocimiento de voz del propio
+   navegador: no hay servicio que contratar, no cuesta nada por minuto y no
+   hay una clave que custodiar.
+
+   Lo que sí hay que saber: el audio viaja a los servidores del navegador para
+   convertirse en texto, y necesita conexion. En el pozo sin señal no funciona;
+   ahi toca escribir. Y no acierta con la jerga —"cappanel", "megger", los
+   codigos de equipo— asi que lo dictado es un borrador: se dicta como se
+   habla y despues el asistente lo redacta.
+
+   No se escribe encima de lo que ya hay: se agrega al final. Perder un parrafo
+   escrito a mano por darle al microfono seria peor que no tener dictado. */
+
+const DIC = { rec: null, campo: null, activo: false, texto: "" };
+
+function dictarDisponible() {
+  return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+
+function dictarPintar() {
+  document.querySelectorAll(".dic-btn").forEach(b => {
+    const suyo = DIC.activo && b.id === "dic-" + DIC.campo;
+    b.classList.toggle("grabando", suyo);
+    b.innerHTML = suyo
+      ? '<span class="dic-punto"></span>Detener'
+      : "\u{1F3A4} Dictar";
+  });
+  document.querySelectorAll(".dic-parcial").forEach(d => {
+    if (!DIC.activo || d.id !== "dicp-" + DIC.campo) d.textContent = "";
+  });
+}
+
+function dictarParar() {
+  DIC.activo = false;
+  if (DIC.rec) { try { DIC.rec.stop(); } catch (e) { /* ya estaba parado */ } }
+  DIC.rec = null;
+  DIC.campo = null;
+  dictarPintar();
+}
+
+function dictar(campoId) {
+  /* Segundo toque sobre el mismo boton: detiene. */
+  if (DIC.activo && DIC.campo === campoId) { dictarParar(); return; }
+  if (DIC.activo) dictarParar();
+
+  if (!dictarDisponible()) {
+    toast("Este navegador no reconoce voz. Prueba con Chrome.");
+    return;
+  }
+  const area = document.getElementById(campoId);
+  if (!area || area.disabled) { toast("Este campo no se puede editar ahora"); return; }
+
+  const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const rec = new Rec();
+  rec.lang = "es-CO";
+  rec.continuous = true;
+  rec.interimResults = true;
+
+  DIC.rec = rec;
+  DIC.campo = campoId;
+  DIC.activo = true;
+  /* Si el campo ya tiene texto, lo dictado se agrega detras separado por un
+     espacio. Nunca se reemplaza. */
+  DIC.texto = area.value;
+  dictarPintar();
+
+  rec.onresult = ev => {
+    let firme = "", parcial = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const t = ev.results[i][0].transcript;
+      if (ev.results[i].isFinal) firme += t; else parcial += t;
+    }
+    if (firme) {
+      const sep = DIC.texto && !/\s$/.test(DIC.texto) ? " " : "";
+      DIC.texto = DIC.texto + sep + firme.trim();
+      area.value = DIC.texto;
+    }
+    const p = document.getElementById("dicp-" + campoId);
+    if (p) p.textContent = parcial ? "\u2026 " + parcial : "";
+  };
+
+  rec.onerror = ev => {
+    /* 'no-speech' y 'aborted' son normales: el usuario callo o detuvo. Los
+       demas si hay que decirlos, o el boton parece averiado. */
+    if (ev.error === "not-allowed" || ev.error === "service-not-allowed") {
+      toast("Falta permiso del micr\u00f3fono. Habil\u00edtalo para este sitio.");
+      dictarParar();
+    } else if (ev.error === "network") {
+      toast("El dictado necesita conexi\u00f3n. Sin se\u00f1al hay que escribir.");
+      dictarParar();
+    } else if (ev.error !== "no-speech" && ev.error !== "aborted") {
+      toast("No se pudo dictar: " + ev.error);
+      dictarParar();
+    }
+  };
+
+  /* El reconocimiento se corta solo tras unos segundos de silencio aunque este
+     en modo continuo. Mientras el usuario no lo detenga, se reanuda: en campo
+     uno hace una pausa para mirar el equipo y espera seguir dictando. */
+  rec.onend = () => {
+    if (!DIC.activo || DIC.campo !== campoId) return;
+    try { rec.start(); } catch (e) { dictarParar(); }
+  };
+
+  try {
+    rec.start();
+    toast("Escuchando. Habla normal y vuelve a tocar para detener.");
+  } catch (e) {
+    dictarParar();
+    toast("No se pudo iniciar el dictado: " + e.message);
+  }
+}
+
+/* Cambiar de pantalla con el microfono abierto dejaria grabando en segundo
+   plano y gastando bateria. */
+window.addEventListener("pagehide", dictarParar);
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) dictarParar();
+});
+
+/* Donde no hay reconocimiento de voz el boton no se muestra: es preferible a
+   un boton que siempre responde que no se puede. */
+window.addEventListener("load", () => {
+  if (dictarDisponible()) return;
+  document.querySelectorAll(".dic-btn").forEach(b => { b.style.display = "none"; });
+});
 
 /* ---------- Seleccion de lo que se reporta ----------
    El tecnico reporta lo que registro; el supervisor, lo de su disciplina, con
