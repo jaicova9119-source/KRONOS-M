@@ -2932,7 +2932,17 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     </div>
 
     <div class="field"><label>Descripción del trabajo</label><input id="np-desc-trabajo" placeholder="Qué se solicitó o qué originó la intervención"/></div>
-    <div class="field"><label>Personal que ejecutó</label><input id="np-personal"/></div>
+    <div class="field">
+      <label>Ejecutor l&iacute;der</label>
+      <input id="np-lider" placeholder="Quien firma el reporte"/>
+    </div>
+    <div class="field">
+      <label>T&eacute;cnicos que acompa&ntilde;aron</label>
+      <div id="np-tecnicos"></div>
+      <button type="button" class="btn-secondary" style="margin-top:6px"
+              onclick="progAgregarTecnico('', 'np-tecnicos')">Agregar t&eacute;cnico</button>
+      <div class="mat-stock">Opcional. Escribe dos letras y la lista sugiere los nombres ya usados.</div>
+    </div>
     <div class="field">
       <label>Actividades realizadas</label>
       <textarea id="np-actividades" rows="6" placeholder="Escribe tus notas de campo. Después puedes pedirle al asistente que las redacte."></textarea>
@@ -13480,7 +13490,10 @@ function progPrecargarJornada() {
   document.getElementById("prog-e-avance").value =
     j && j.avance_pct != null ? j.avance_pct : (a.avance_pct != null ? a.avance_pct : "");
   document.getElementById("prog-e-hh").value = j && j.hh_ele != null ? j.hh_ele : "";
-  progCargarPersonal((j && j.personal) || a.personal || cfg.personal || "");
+  /* Sin cfg.personal: era el mismo problema, una cuadrilla de una disciplina
+     precargada en actividades de otra. Si la jornada o la actividad traen
+     personal registrado, ese sí se usa. */
+  progCargarPersonal((j && j.personal) || a.personal || "");
   fechaSoloCalendario(document.getElementById("prog-e-fecha"));
   fechaEnLetra("prog-e-fecha");
   document.getElementById("prog-e-actividades").value = (j && j.actividades) || "";
@@ -13504,8 +13517,15 @@ function progVolver() {
   abrirPanel(progPanelPrevio || "panel-prog-dia");
 }
 
-function progCargarPersonal(txt) {
-  const cont = document.getElementById("prog-tecnicos");
+/* Las tres funciones del bloque de personal trabajan sobre cualquier par de
+   contenedores: el registro de jornada y la actividad no programada usan la
+   misma estructura, y tenerla duplicada garantizaba que se separaran con el
+   tiempo. Sin argumentos siguen apuntando al formulario de jornada. */
+function progCargarPersonal(txt, liderId, contId) {
+  liderId = liderId || "prog-e-lider";
+  contId  = contId  || "prog-tecnicos";
+  const cont = document.getElementById(contId);
+  if (!cont) return;
   cont.innerHTML = "";
   const s = String(txt || "").trim();
   let lider = "", resto = [];
@@ -13520,12 +13540,13 @@ function progCargarPersonal(txt) {
     resto = p.slice(1);
   }
 
-  document.getElementById("prog-e-lider").value = lider;
-  resto.forEach(progAgregarTecnico);
+  document.getElementById(liderId).value = lider;
+  resto.forEach(n => progAgregarTecnico(n, contId));
 }
 
-function progAgregarTecnico(nombre) {
-  const cont = document.getElementById("prog-tecnicos");
+function progAgregarTecnico(nombre, contId) {
+  const cont = document.getElementById(contId || "prog-tecnicos");
+  if (!cont) return;
   const fila = document.createElement("div");
   fila.className = "prog-tec-fila";
   const inp = document.createElement("input");
@@ -13548,9 +13569,11 @@ function progAgregarTecnico(nombre) {
   if (!inp.value) inp.focus();
 }
 
-function progComponerPersonal() {
-  const lider = document.getElementById("prog-e-lider").value.trim();
-  const otros = Array.from(document.querySelectorAll("#prog-tecnicos input"))
+function progComponerPersonal(liderId, contId) {
+  const el = document.getElementById(liderId || "prog-e-lider");
+  const lider = el ? el.value.trim() : "";
+  const otros = Array.from(
+      document.querySelectorAll("#" + (contId || "prog-tecnicos") + " input"))
     .map(i => i.value.trim()).filter(Boolean);
   if (!lider && !otros.length) return "";
   if (!lider) return otros.join(PROG_SEP);
@@ -13977,7 +14000,11 @@ async function progNuevaNoProgramada() {
    "np-tarea","np-desc-trabajo","np-hh","np-actividades","np-observaciones"]
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   document.getElementById("np-avance").value = 100;
-  document.getElementById("np-personal").value = cfg.personal || "";
+  /* Sin nombre por defecto. Antes se precargaba el personal guardado del
+     reporte diario, que es de una disciplina concreta: una actividad de
+     instrumentacion arrancaba con los electricistas escritos. La memoria del
+     campo sugiere desde la primera letra y no impone a nadie. */
+  progCargarPersonal("", "np-lider", "np-tecnicos");
   document.getElementById("np-resultados").innerHTML = "";
   document.getElementById("np-equipo-elegido").style.display = "none";
   document.getElementById("np-especialidad").value = "ELE";
@@ -14063,8 +14090,11 @@ async function progGuardarNoProgramada() {
   const codigo = document.getElementById("np-codigo-equipo").value.trim();
   if (!desc && !codigo) { toast("Elige un equipo o escribe su descripción"); return; }
 
-  const personal = document.getElementById("np-personal").value.trim();
-  if (personal) { const c = progCfg(); c.personal = personal; progGuardarCfg(c); }
+  /* Ya no se guarda como personal por defecto de todo el modulo: eso era lo
+     que hacia aparecer una cuadrilla electrica en una actividad de otra
+     disciplina. Los nombres quedan en la memoria del campo, que sugiere sin
+     imponer. */
+  const personal = progComponerPersonal("np-lider", "np-tecnicos");
 
   const btn = document.getElementById("np-btn-guardar");
   btn.disabled = true; btn.textContent = "Registrando...";
@@ -14295,7 +14325,7 @@ async function progEditarNP() {
     document.getElementById("np-desc-trabajo").value = a.descripcion_trabajo || "";
     document.getElementById("np-hh").value = a.hh_ejec_ele != null ? a.hh_ejec_ele : "";
     document.getElementById("np-avance").value = a.avance_pct != null ? a.avance_pct : 100;
-    document.getElementById("np-personal").value = a.personal || "";
+    progCargarPersonal(a.personal || "", "np-lider", "np-tecnicos");
     document.getElementById("np-actividades").value = a.actividades_realizadas || "";
     document.getElementById("np-observaciones").value = a.observaciones || "";
     document.getElementById("np-btn-guardar").textContent = "Guardar cambios";
@@ -14337,7 +14367,7 @@ async function progGuardarEdicionNP() {
       ? parseInt(document.getElementById("np-avance").value, 10) : null,
     p_hh_ele: document.getElementById("np-hh").value !== ""
       ? parseFloat(document.getElementById("np-hh").value) : null,
-    p_personal: document.getElementById("np-personal").value.trim(),
+    p_personal: progComponerPersonal("np-lider", "np-tecnicos"),
     p_actividades: document.getElementById("np-actividades").value.trim(),
     p_observaciones: document.getElementById("np-observaciones").value.trim(),
     p_motivo: null,
@@ -17408,6 +17438,21 @@ const MEM_CAMPOS = [
   ["ot-rec-nombre",    "recibe_nombre"],
   ["ot-rec-area-txt",  "recibe_area"],
   ["prog-e-lider",     "personal"],
+
+  /* Actividad no programada. Comparte la clave 'personal' con el registro de
+     jornada y con los ejecutores del FO-016: es la misma cuadrilla, y tenerla
+     en tres listas obligaria a escribir cada nombre tres veces antes de que
+     apareciera sugerido en todas. */
+  ["np-lider",         "personal"],
+  ["np-estacion",      "estacion"],
+
+  /* Ensayos electricos. El tecnico y los instrumentos se repiten en cada
+     ensayo y hoy se vuelven a teclear enteros; la serie del megohmetro es
+     ademas donde mas se equivoca uno al copiarla de la etiqueta. */
+  ["ee-e-tecnico",     "personal"],
+  ["ee-e-megger",      "instrumento"],
+  ["ee-e-meggerserie", "instrumento_serie"],
+  ["ee-e-micro",       "instrumento"],
 ];
 
 function memEnlazarTodo() {
