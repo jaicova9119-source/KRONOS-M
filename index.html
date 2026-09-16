@@ -1444,7 +1444,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
 .toast{
   position:fixed;bottom:90px;left:50%;transform:translateX(-50%);background:var(--bg-3);
-  color:var(--text-0);padding:10px 18px;border-radius:20px;font-size:13px;z-index:50;
+  /* Por encima de los dialogos y del visor del documento. Con z-index 50
+     quedaba detras de ellos: la aplicacion respondia con un mensaje que nadie
+     podia ver, y desde fuera parecia que el boton no hacia nada. */
+  color:var(--text-0);padding:10px 18px;border-radius:20px;font-size:13px;z-index:10050;
   box-shadow:0 4px 14px rgba(0,0,0,.4);border:1px solid var(--line);opacity:0;transition:opacity .2s;
   pointer-events:none;max-width:80%;text-align:center;
 }
@@ -15767,6 +15770,11 @@ function otVerDocumento() {
       ".fo016{margin:0 auto!important}" +
       ".fo016-pag{background:#fff;margin:0 auto 12px;" +
       "box-shadow:0 2px 10px rgba(0,0,0,.45)}" +
+      /* Al imprimir desde la vista: sin fondo gris, sin sombra y sin el
+         relleno del visor, que en el papel saldrian como una hoja dentro de
+         otra. El zoom lo devuelve a 1 el propio manejador de beforeprint. */
+      "@media print{html,body{background:#fff}body{padding:0}" +
+      ".fo016-pag{box-shadow:none;margin:0 auto}}" +
       FO016.PAGE_CSS;
 
     const ajuste =
@@ -15784,6 +15792,10 @@ function otVerDocumento() {
       /* El padre necesita poder forzar tamano real y volver al ajuste. */
       "window.hojaAjustar=ajustar;" +
       "window.hojaReal=function(){document.body.style.zoom=1;};" +
+      /* Imprimir tiene que salir a escala 1 aunque en pantalla este reducido,
+         o el papel saldria con la hoja encogida en una esquina. */
+      "window.addEventListener('beforeprint',function(){document.body.style.zoom=1;});" +
+      "window.addEventListener('afterprint',function(){if(!window.__real)ajustar();});" +
       "})();<\/script>";
 
     html = "<!DOCTYPE html><html lang=\"es\"><head><meta charset=\"utf-8\">" +
@@ -15799,6 +15811,8 @@ function otVerDocumento() {
   const btnZoom = document.getElementById("ot-doc-zoom");
   if (btnZoom) btnZoom.textContent = "Tama\u00f1o real";
   modal.style.display = "flex";
+  /* Despues de mostrar el modal: antes el iframe mide cero de ancho. */
+  setTimeout(otDocRevisarZoom, 50);
 }
 
 let otDocReal = false;
@@ -15810,10 +15824,42 @@ function otDocAlternarZoom() {
   if (!v) return;
   otDocReal = !otDocReal;
   try {
+    v.__real = otDocReal;
     if (otDocReal) { v.hojaReal && v.hojaReal(); }
     else { v.hojaAjustar && v.hojaAjustar(); }
   } catch (e) { return; }
   if (btn) btn.textContent = otDocReal ? "Ajustar al ancho" : "Tama\u00f1o real";
+}
+
+/* El boton solo aparece cuando hay algo que ajustar. En un monitor la hoja ya
+   entra a tamano real, asi que pulsarlo no cambiaba nada y parecia averiado.
+   Se decide al abrir y en cada cambio de tamano de la ventana. */
+function otDocRevisarZoom() {
+  const btn = document.getElementById("ot-doc-zoom");
+  const marco = document.getElementById("ot-doc-marco");
+  if (!btn || !marco) return;
+  const ancho = 21 * 37.7952756;
+  const disp = marco.clientWidth - 16;
+  btn.style.display = (disp > 0 && disp < ancho) ? "" : "none";
+}
+window.addEventListener("resize", otDocRevisarZoom);
+
+/* Imprime EL DOCUMENTO QUE SE ESTA VIENDO, no uno nuevo.
+   Antes el boton llamaba a otImprimir(), que guarda primero y vuelve a armar
+   el formato. Sobre un reporte ya firmado el guardado lo rechaza el trigger,
+   asi que no se imprimia nada y el aviso del error quedaba debajo del visor:
+   desde fuera, un boton muerto. Aqui no hace falta guardar, porque lo que se
+   ve ya es el documento completo. */
+function otImprimirVista() {
+  const marco = document.getElementById("ot-doc-marco");
+  const v = marco && marco.contentWindow;
+  if (!v) { toast("Abre primero el documento"); return; }
+  try {
+    v.focus();
+    v.print();
+  } catch (e) {
+    toast("El navegador bloque\u00f3 la impresi\u00f3n: " + e.message);
+  }
 }
 
 function otCerrarDocumento() {
@@ -17518,7 +17564,7 @@ function firmaPintarVista() {
          que la unica salida es este interruptor. -->
     <button type="button" class="btn-secondary" id="ot-doc-zoom"
             onclick="otDocAlternarZoom()">Tama&ntilde;o real</button>
-    <button type="button" class="btn-secondary" onclick="otImprimir()">Imprimir o guardar como PDF</button>
+    <button type="button" class="btn-secondary" onclick="otImprimirVista()">Imprimir o guardar como PDF</button>
   </div>
   <iframe id="ot-doc-marco" title="Documento FO-016"></iframe>
 </div>
