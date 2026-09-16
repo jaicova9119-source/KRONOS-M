@@ -2892,7 +2892,27 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <div class="panel-body">
     <div class="hint-box">&#8505;&#65039; Trabajo que no venía en el programa de la semana. Queda en el reporte del día marcado como NO PROGRAMADA y suma a los indicadores de trabajo emergente.</div>
 
-    <div class="field"><label>Fecha de ejecución</label><input type="date" id="np-fecha"/></div>
+    <!-- Misma rejilla que el registro de jornada: los campos cortos se
+         reparten en el ancho disponible y en el telefono se apilan igual que
+         antes. El buscador de equipo y las descripciones largas se quedan a
+         ancho completo porque su contenido no cabe en una columna. -->
+    <div class="prog-grid">
+      <div class="field"><label>Fecha de ejecución</label>
+        <input type="date" id="np-fecha" class="solo-calendario"
+               onchange="fechaEnLetra('np-fecha')"/>
+        <div class="fecha-letra" id="np-fecha-letra"></div>
+      </div>
+      <div class="field"><label>Estación</label><input id="np-estacion" placeholder="Ej. PAD CHB-02"/></div>
+      <div class="field"><label>Tipo</label><select id="np-tipo"></select></div>
+      <div class="field"><label>Especialidad</label>
+        <select id="np-especialidad">
+          <option value="ELE">Eléctrica</option>
+          <option value="MEC">Mecánica</option>
+          <option value="INS">Instrumentación</option>
+          <option value="SOL">Soldadura</option>
+        </select>
+      </div>
+    </div>
 
     <div class="field">
       <label>Equipo</label>
@@ -2903,26 +2923,15 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     </div>
 
     <div class="field"><label>Descripción del equipo</label><input id="np-desc-equipo" placeholder="Se llena sola al elegir el equipo"/></div>
-    <div class="field"><label>Estación</label><input id="np-estacion" placeholder="Ej. PAD CHB-02"/></div>
 
-    <div class="field">
-      <label>Tipo</label>
-      <select id="np-tipo"></select>
+    <div class="prog-grid">
+      <div class="field corto"><label># OT</label><input id="np-ot" placeholder="Ej. 100032508"/></div>
+      <div class="field corto"><label># Tarea</label><input id="np-tarea" placeholder="Opcional"/></div>
+      <div class="field corto"><label>HH ejecutadas</label><input id="np-hh" type="number" step="0.5"/></div>
+      <div class="field corto"><label>Avance (%)</label><input id="np-avance" type="number" min="0" max="100" step="5" value="100"/></div>
     </div>
-    <div class="field"><label>Especialidad</label>
-      <select id="np-especialidad">
-        <option value="ELE">Eléctrica</option>
-        <option value="MEC">Mecánica</option>
-        <option value="INS">Instrumentación</option>
-        <option value="SOL">Soldadura</option>
-      </select>
-    </div>
-    <div class="field"><label># OT</label><input id="np-ot" placeholder="Ej. 100032508"/></div>
-    <div class="field"><label># Tarea</label><input id="np-tarea" placeholder="Opcional"/></div>
+
     <div class="field"><label>Descripción del trabajo</label><input id="np-desc-trabajo" placeholder="Qué se solicitó o qué originó la intervención"/></div>
-
-    <div class="field"><label>HH ejecutadas</label><input id="np-hh" type="number" step="0.5"/></div>
-    <div class="field"><label>Avance (%)</label><input id="np-avance" type="number" min="0" max="100" step="5" value="100"/></div>
     <div class="field"><label>Personal que ejecutó</label><input id="np-personal"/></div>
     <div class="field">
       <label>Actividades realizadas</label>
@@ -13963,6 +13972,7 @@ async function progNuevaNoProgramada() {
   document.getElementById("np-btn-guardar").textContent = "Registrar actividad";
   const cfg = progCfg();
   document.getElementById("np-fecha").value = progFecha || progISO(new Date());
+  fechaEnLetra("np-fecha");
   ["np-buscar-equipo","np-codigo-equipo","np-desc-equipo","np-estacion","np-ot",
    "np-tarea","np-desc-trabajo","np-hh","np-actividades","np-observaciones"]
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
@@ -14272,6 +14282,7 @@ async function progEditarNP() {
   setTimeout(() => {
     npEditando = a.id;
     document.getElementById("np-fecha").value = a.fecha_ejecucion || a.fecha_programada || "";
+    fechaEnLetra("np-fecha");
     document.getElementById("np-codigo-equipo").value = a.codigo_equipo || "";
     document.getElementById("np-desc-equipo").value = a.descripcion_equipo || "";
     document.getElementById("np-buscar-equipo").value =
