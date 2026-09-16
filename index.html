@@ -3187,9 +3187,13 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="ot-anexos-lista" style="margin-bottom:8px"></div>
     <button type="button" class="btn-secondary ancho-auto" id="ot-btn-anexar" onclick="otAbrirSelectorEnsayo()">Adjuntar ensayo el&#233;ctrico</button>
 
+    <!-- Imprimir se hace desde "Ver documento". Aqui habia un boton propio que
+         guardaba antes de armar el PDF: sobre un reporte firmado el trigger
+         rechaza el guardado, asi que no imprimia nada. Y tener dos caminos
+         para lo mismo, uno de los cuales falla justo cuando el documento ya
+         esta cerrado, es peor que tener uno. -->
     <div class="ot-acciones">
       <button class="btn-primary" id="ot-btn-guardar" onclick="otGuardar()">Guardar</button>
-      <button class="btn-secondary" onclick="otImprimir()">Imprimir o guardar como PDF</button>
     </div>
 
     <!-- Las acciones del circuito van al pie, no arriba: enviar al supervisor
@@ -15859,10 +15863,29 @@ function otImprimirVista() {
   const marco = document.getElementById("ot-doc-marco");
   const v = marco && marco.contentWindow;
   if (!v) { toast("Abre primero el documento"); return; }
+
+  /* El titulo del iframe no basta: al guardar como PDF, Chrome propone el de
+     la pagina contenedora —"Kronos-M"— aunque lo impreso sea el marco. Se
+     cambia mientras dura la impresion y se restaura despues, tambien si se
+     cancela el dialogo. */
+  const previo = document.title;
+  document.title = otNombreArchivo();
+  let restaurado = false;
+  const restaurar = () => {
+    if (restaurado) return;
+    restaurado = true;
+    document.title = previo;
+  };
+  try {
+    v.addEventListener("afterprint", () => setTimeout(restaurar, 300), { once: true });
+  } catch (e) { /* si no llega el evento queda el tiempo de abajo */ }
+  setTimeout(restaurar, 120000);
+
   try {
     v.focus();
     v.print();
   } catch (e) {
+    restaurar();
     toast("El navegador bloque\u00f3 la impresi\u00f3n: " + e.message);
   }
 }
@@ -16477,99 +16500,13 @@ async function otDocumentoHTML(opciones) {
     + otConstruirDocumento() + anexos + (o.cuerpoExtra || '') + '</body></html>';
 }
 
-async function otImprimir() {
-  if (!otDatos) return;
-  // Guardar primero: el documento se arma con lo que hay en la base, no
-  // con lo que está en pantalla. Sin esto, lo recién escrito no se imprime.
-  const ok = await otGuardar({ silencioso: true });
-  if (!ok) { toast("Corrige lo marcado antes de imprimir"); return; }
+/* otImprimir() vivia aqui: armaba el documento en un iframe oculto y lo
+   mandaba a la impresora. Se retiro con su boton. Lo unico que hacia de mas
+   —guardar primero para imprimir lo que hay en la base y no lo que esta en
+   pantalla— dejo de tener sentido cuando la impresion pasa por "Ver
+   documento", que muestra exactamente lo que se va a imprimir. El armado del
+   HTML, que era la parte que valia, esta en otDocumentoHTML(). */
 
-  /* El documento se imprime desde un iframe propio y no desde esta página.
-     El enfoque anterior lo insertaba aquí y escondía la aplicación con
-     @media print; funciona en escritorio, pero en Chrome de Android la
-     interfaz salía impresa igual, en decenas de hojas.
-
-     Funciona porque el FO-016 lleva todos sus estilos en línea: se construyó
-     así para que Word lo respete, y de paso lo vuelve autónomo. No necesita
-     nada del CSS de la aplicación, así que impreso por separado sale idéntico
-     y no hay nada que ocultar. */
-  const nombre = otNombreArchivo();
-
-  /* Los anexos van detrás del formato, cada uno en página nueva. El FO-016
-     lleva sus estilos en línea y es autónomo; el informe de ensayo depende
-     del CSS de la aplicación, así que cuando hay anexos se copian también
-     las hojas de estilo de la página. El orden importa: PAGE_CSS al final
-     para que su @page mande sobre el tamaño de hoja. */
-  const anexos = await otHtmlDeAnexos();
-  const estilosApp = anexos ? otCssDelInforme() : "";
-
-  const html = await otDocumentoHTML({ titulo: nombre });
-
-  /* El título del iframe no basta. Al guardar como PDF, Chrome propone el
-     título de la página contenedora —"Kronos-M"— aunque lo que se imprima sea
-     el marco. Se cambia mientras dura la impresión y se restaura después,
-     incluso si se cancela el diálogo. */
-  const tituloPrevio = document.title;
-  document.title = nombre;
-
-  const previo = document.getElementById("ot-marco-impresion");
-  if (previo) previo.remove();
-
-  /* 1px y transparente en vez de display:none: varios navegadores se niegan
-     a imprimir un marco oculto por completo. */
-  const marco = document.createElement("iframe");
-  marco.id = "ot-marco-impresion";
-  marco.setAttribute("aria-hidden", "true");
-  marco.style.cssText = "position:fixed;right:0;bottom:0;width:1px;height:1px;"
-                      + "opacity:0;border:0;pointer-events:none;z-index:-1";
-  document.body.appendChild(marco);
-
-  let lanzado = false;
-  const retirar = () => {
-    document.title = tituloPrevio;
-    const m = document.getElementById("ot-marco-impresion");
-    if (m) m.remove();
-  };
-
-  const lanzar = () => {
-    if (lanzado) return;
-    lanzado = true;
-    const v = marco.contentWindow;
-
-    /* El logo va como data-URL pero el navegador lo decodifica aparte.
-       Imprimir antes deja el encabezado en blanco. */
-    const imgs = Array.from(v.document.images || []).filter(i => !i.complete);
-    const listas = imgs.length
-      ? Promise.race([
-          Promise.all(imgs.map(i => new Promise(ok => {
-            i.addEventListener("load", ok, { once: true });
-            i.addEventListener("error", ok, { once: true });
-          }))),
-          new Promise(ok => setTimeout(ok, 3000)),
-        ])
-      : Promise.resolve();
-
-    listas.then(() => {
-      try {
-        /* Retirar el marco con el diálogo abierto cancela la impresión en
-           Android: se espera al evento y, si no llega, a un tiempo largo. */
-        v.addEventListener("afterprint", () => setTimeout(retirar, 500), { once: true });
-        setTimeout(retirar, 120000);
-        v.focus();
-        v.print();
-      } catch (e) {
-        retirar();
-        toast("El navegador no permitió imprimir. Revisa el bloqueo de ventanas emergentes.");
-      }
-    });
-  };
-
-  marco.addEventListener("load", lanzar, { once: true });
-  const d = marco.contentWindow.document;
-  d.open(); d.write(html); d.close();
-  /* document.write no siempre dispara load en móviles: respaldo por tiempo. */
-  setTimeout(lanzar, 600);
-}
 
 const ASIS_MODULOS = {
   activos: "Gestión de Activos",
