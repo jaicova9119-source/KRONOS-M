@@ -15598,13 +15598,20 @@ function otAplicarCandado() {
   const flujo = document.getElementById("ot-flujo");
 
   const acciones = document.getElementById("ot-flujo-acciones");
-  panel.querySelectorAll("input, textarea, select, button").forEach(el => {
+  /* Solo se apaga lo que escribe, y solo dentro del cuerpo del formulario. El
+     recorrido por la aplicacion nunca se bloquea: la flecha de volver es un
+     <button> del encabezado y quedaba deshabilitada, con lo que un reporte
+     firmado se convertia en una pantalla sin salida. */
+  const cuerpo = panel.querySelector(".panel-body") || panel;
+  cuerpo.querySelectorAll("input, textarea, select, button").forEach(el => {
     if (flujo && flujo.contains(el)) return;
     if (acciones && acciones.contains(el)) return;
+    if (el.closest(".panel-header")) return;
+    if (el.classList.contains("icon-btn")) return;
     if (el.id === "ot-jornada") return;
-    /* Imprimir y ver anexos no modifican nada: se dejan vivos. */
+    /* Imprimir no modifica nada: se deja vivo. */
     const txt = (el.textContent || "").toLowerCase();
-    if (el.tagName === "BUTTON" && (txt.indexOf("imprimir") >= 0)) return;
+    if (el.tagName === "BUTTON" && txt.indexOf("imprimir") >= 0) return;
     el.disabled = !abierto;
   });
 
