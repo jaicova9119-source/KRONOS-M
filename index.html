@@ -13929,6 +13929,42 @@ function diccCorregir(texto) {
   });
 }
 
+/* Pega un trozo reconocido al final de lo que ya hay, sin repetir.
+   Contar indices no basta: cada navegador entrega los resultados a su manera
+   —Android reenvia todo lo dicho en cada evento, y a veces vuelve a dar por
+   firme algo que ya lo era, mas largo— y cualquier regla basada en la posicion
+   falla con alguno. Comparar el contenido funciona con todos.
+
+   Se busca el mayor solape entre el final de lo acumulado y el principio de lo
+   nuevo, y solo se agrega lo que sobra. Si lo nuevo es entero un eco, no se
+   agrega nada. */
+function dicAnexar(nuevo) {
+  const pal = String(nuevo || "").trim().split(/\s+/).filter(Boolean);
+  if (!pal.length) return;
+  const acum = String(DIC.texto || "").trim().split(/\s+/).filter(Boolean);
+
+  const cmp = w => diccNorm(w).replace(/[^a-z0-9]/g, "");
+  let k = Math.min(pal.length, acum.length, 40);
+  for (; k > 0; k--) {
+    let igual = true;
+    for (let i = 0; i < k; i++) {
+      if (cmp(acum[acum.length - k + i]) !== cmp(pal[i])) { igual = false; break; }
+    }
+    if (!igual) continue;
+    /* Con una sola palabra de solape hay que ser cuidadoso: dos "de" seguidos
+       son normales y borrar el segundo cambiaria la frase. Se acepta solo si
+       lo nuevo es entero ese eco, o si la palabra es larga y por tanto poco
+       probable de repetirse por casualidad. */
+    if (k === 1 && pal.length > 1 && cmp(pal[0]).length < 5) continue;
+    break;
+  }
+
+  const resto = pal.slice(k).join(" ");
+  if (!resto) return;
+  const sep = DIC.texto && !/\s$/.test(DIC.texto) ? " " : "";
+  DIC.texto = DIC.texto + sep + diccCorregir(resto);
+}
+
 /* ============================================================
    DICTADO POR VOZ
    ============================================================
@@ -14007,6 +14043,10 @@ function dictar(campoId) {
   DIC.consumidos = 0;
 
   rec.onresult = ev => {
+    /* Una sesion anterior puede seguir entregando resultados un instante
+       despues de detenerla. Si no es la actual, se descarta: de lo contrario
+       escribe sobre el campo equivocado o duplica. */
+    if (DIC.rec !== rec || !DIC.activo) return;
     let firme = "";
     let i = DIC.consumidos;
     while (i < ev.results.length && ev.results[i].isFinal) {
@@ -14015,12 +14055,16 @@ function dictar(campoId) {
     }
     DIC.consumidos = i;
 
+    /* Si el usuario borro o corrigio a mano mientras dictaba, manda el campo:
+       seguir acumulando sobre una copia interna desactualizada haria reaparecer
+       lo que acaba de borrar. */
+    if (area.value !== DIC.texto) DIC.texto = area.value;
+
     let parcial = "";
     for (let j = i; j < ev.results.length; j++) parcial += ev.results[j][0].transcript;
 
     if (firme.trim()) {
-      const sep = DIC.texto && !/\s$/.test(DIC.texto) ? " " : "";
-      DIC.texto = DIC.texto + sep + diccCorregir(firme.trim());
+      dicAnexar(firme);
       area.value = DIC.texto;
       area.scrollTop = area.scrollHeight;
     }
