@@ -2791,7 +2791,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <div class="loading">Cargando programación...</div>
     </div>
     <div style="padding:12px 16px 16px">
-      <button class="btn-primary" onclick="progGenerarReporte()">Generar reporte del día</button>
+      <button class="btn-primary" onclick="progAbrirSeleccion()">Generar reporte del día</button>
     </div>
   </div>
 </div>
@@ -3240,15 +3240,66 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 </div>
 
 <!-- ===== Programación: reporte del día ===== -->
+<!-- Seleccion previa al reporte. Antes se generaba directo con todo lo de una
+     disciplina, plano y sin decir quien hizo que, asi que habia que
+     reorganizarlo a mano. Aqui se marca lo que va al mensaje. -->
+<div class="panel" id="panel-prog-seleccion">
+  <div class="panel-header">
+    <button class="icon-btn" onclick="volverAlModulo()">&#8592;</button>
+    <h2>Qu&eacute; reportar</h2>
+  </div>
+  <div class="panel-body">
+    <div class="hint-box" id="sel-ayuda"></div>
+
+    <div class="prog-grid">
+      <div class="field"><label>Disciplina</label>
+        <select id="sel-disciplina" onchange="progSelPintar()">
+          <option value="">Todas</option>
+          <option value="ELE">El&eacute;ctrica</option>
+          <option value="MEC">Mec&aacute;nica</option>
+          <option value="INS">Instrumentaci&oacute;n</option>
+          <option value="SOL">Soldadura</option>
+        </select>
+      </div>
+      <div class="field"><label>Ejecutor</label>
+        <select id="sel-lider" onchange="progSelPintar()"></select>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      <button type="button" class="btn-secondary" style="flex:1 1 130px;margin-top:0"
+              onclick="progSelMarcar(true)">Marcar lo visible</button>
+      <button type="button" class="btn-secondary" style="flex:1 1 130px;margin-top:0"
+              onclick="progSelMarcar(false)">Desmarcar todo</button>
+    </div>
+
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:12px;font-weight:normal">
+      <input type="checkbox" id="sel-agrupar" style="width:auto"/>
+      Agrupar por ejecutor l&iacute;der
+    </label>
+
+    <div id="sel-lista"></div>
+    <div class="mat-stock" id="sel-resumen" style="margin:10px 0"></div>
+    <button class="btn-primary" id="sel-btn-generar" onclick="progGenerarReporte()">Generar reporte</button>
+  </div>
+</div>
+
 <div class="panel" id="panel-prog-reporte">
   <div class="panel-header">
     <button class="icon-btn" onclick="volverAlModulo()">&#8592;</button>
     <h2>Reporte del día</h2>
   </div>
   <div class="panel-body">
-    <div class="field"><label>Encabezado</label><input id="prog-r-encabezado" placeholder="Ej. CHB-ESP EVFD"/></div>
-    <div class="field"><label>Personal</label><input id="prog-r-personal" placeholder="Ej. Yonatan Perea/Ferney Riascos"/></div>
-    <button class="btn-secondary" onclick="progGenerarReporte()">Regenerar</button>
+    <div class="prog-grid">
+      <div class="field"><label>T&iacute;tulo</label>
+        <input id="prog-r-encabezado" placeholder="Se deduce de lo seleccionado"/></div>
+      <div class="field"><label>Firma</label>
+        <input id="prog-r-personal" placeholder="Tu nombre"/></div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn-secondary" style="flex:1 1 140px" onclick="progGenerarReporte()">Regenerar</button>
+      <button class="btn-secondary" style="flex:1 1 140px" onclick="progAbrirSeleccion()">Cambiar selecci&oacute;n</button>
+    </div>
     <div class="field" style="margin-top:12px">
       <label>Mensaje</label>
       <textarea id="prog-r-texto" rows="18" style="font-family:inherit"></textarea>
@@ -13688,26 +13739,142 @@ function progRedactar() {
   asisEnviar();
 }
 
+/* ---------- Seleccion de lo que se reporta ----------
+   El tecnico reporta lo que registro; el supervisor, lo de su disciplina, con
+   la posibilidad de sumar lo de otras cuando cubre a un companero. Eso no se
+   puede deducir: se marca. */
+let progSelItems = [];
+let progSelMarcados = new Set();
+
+async function progAbrirSeleccion() {
+  if (!progFecha) { toast("Elige primero el día"); return; }
+  abrirPanel("panel-prog-seleccion");
+  const cont = document.getElementById("sel-lista");
+  cont.innerHTML = '<div class="loading">Cargando actividades...</div>';
+
+  const r = await sb.rpc("programa_reporte_candidatos", { p_fecha: progFecha });
+  if (r.error) { cont.innerHTML = '<div class="empty">No se pudo cargar: ' + otEsc(r.error.message) + "</div>"; return; }
+  if (r.data && r.data.ok === false) { cont.innerHTML = '<div class="empty">' + otEsc(r.data.error) + "</div>"; return; }
+
+  progSelItems = (r.data && r.data.items) || [];
+
+  const esRev = otEsRevisor();
+  const miDisc = (usuarioActual && usuarioActual.disciplina) || "";
+
+  /* Por defecto: al tecnico lo que el registro; al supervisor lo de su
+     disciplina, o todo si no tiene ninguna asignada. */
+  progSelMarcados = new Set(
+    progSelItems.filter(x => esRev
+      ? (!miDisc || (x.disciplinas || []).includes(miDisc))
+      : x.mio
+    ).map(x => x.actividad_id));
+
+  document.getElementById("sel-agrupar").checked = esRev;
+  document.getElementById("sel-disciplina").value = esRev && miDisc ? miDisc : "";
+
+  document.getElementById("sel-ayuda").innerHTML = esRev
+    ? "&#8505;&#65039; Vienen marcadas las de tu disciplina. Si cubres a otro supervisor, "
+      + "cambia el filtro y marca las suyas."
+    : "&#8505;&#65039; Vienen marcadas las jornadas que t&uacute; registraste.";
+
+  /* El selector de ejecutor se arma con los que aparecen ese dia: una lista
+     fija de nombres envejeceria mal. */
+  const lideres = [...new Set(progSelItems.map(x => x.lider).filter(Boolean))].sort();
+  document.getElementById("sel-lider").innerHTML =
+    '<option value="">Todos</option>' +
+    lideres.map(l => '<option value="' + otEsc(l) + '">' + otEsc(l) + "</option>").join("");
+
+  progSelPintar();
+}
+
+function progSelVisibles() {
+  const d = document.getElementById("sel-disciplina").value;
+  const l = document.getElementById("sel-lider").value;
+  return progSelItems.filter(x =>
+    (!d || (x.disciplinas || []).includes(d)) && (!l || x.lider === l));
+}
+
+function progSelPintar() {
+  const cont = document.getElementById("sel-lista");
+  const vis = progSelVisibles();
+  if (!vis.length) {
+    cont.innerHTML = '<div class="empty">Nada que reportar con ese filtro.</div>';
+  } else {
+    cont.innerHTML = vis.map(x => {
+      const marcado = progSelMarcados.has(x.actividad_id);
+      /* Se avisa de lo que va a salir mal en el mensaje antes de generarlo:
+         sin narrativa sale "[Pendiente de redactar]" y sin horas sale 0HH. */
+      const avisos = [];
+      if (!x.con_narrativa) avisos.push('<span style="color:var(--danger)">sin narrativa</span>');
+      if (!Number(x.hh)) avisos.push('<span style="color:var(--warn)">sin HH</span>');
+      if (!x.cierra) avisos.push("en curso");
+      return `<label class="pend-item" style="display:flex;gap:10px;align-items:flex-start;
+                     cursor:pointer;border-left-color:${marcado ? "var(--acento)" : "var(--line)"}">
+          <input type="checkbox" style="width:auto;margin-top:3px" ${marcado ? "checked" : ""}
+                 onchange="progSelAlternar('${x.actividad_id}', this.checked)"/>
+          <span style="min-width:0">
+            <span class="pend-tit">${otEsc(x.numero_ot || "sin OT")} · ${otEsc(x.descripcion_equipo || "")}</span>
+            <span class="pend-sub">${otEsc(x.estacion || "—")} ·
+              ${otEsc((x.disciplinas || []).join(", ") || "sin disciplina")} ·
+              ${x.hh || 0} HH · ${x.avance || 0}%
+              <br>Ejecut&oacute;: ${otEsc(x.lider)}${x.mio ? " (t&uacute; registraste)" : ""}
+              ${avisos.length ? "<br>" + avisos.join(" · ") : ""}</span>
+          </span>
+        </label>`;
+    }).join("");
+  }
+
+  const n = progSelMarcados.size;
+  const hh = progSelItems.filter(x => progSelMarcados.has(x.actividad_id))
+    .reduce((t, x) => t + Number(x.hh || 0), 0);
+  document.getElementById("sel-resumen").textContent =
+    n ? n + " actividad(es) seleccionadas · " + Math.round(hh * 100) / 100 + " HH"
+      : "Nada seleccionado.";
+  document.getElementById("sel-btn-generar").disabled = !n;
+}
+
+function progSelAlternar(id, on) {
+  if (on) progSelMarcados.add(id); else progSelMarcados.delete(id);
+  progSelPintar();
+}
+
+/* Marcar actúa sobre lo visible, no sobre todo: si el supervisor filtró por
+   una disciplina, marcar todo lo oculto sería justo lo contrario de lo que
+   pidió con el filtro. Desmarcar sí limpia entero, que es lo que se espera
+   de un botón que dice "todo". */
+function progSelMarcar(on) {
+  if (on) progSelVisibles().forEach(x => progSelMarcados.add(x.actividad_id));
+  else progSelMarcados.clear();
+  progSelPintar();
+}
+
 /* ---------- Reporte del día ---------- */
 async function progGenerarReporte() {
   const cfg = progCfg();
   const enc = document.getElementById("prog-r-encabezado");
   const per = document.getElementById("prog-r-personal");
   if (enc && !enc.value) enc.value = cfg.encabezado || "";
-  if (per && !per.value) per.value = cfg.personal || "";
+  if (per && !per.value) per.value = (usuarioActual && usuarioActual.nombre) || "";
 
   const encabezado = enc ? enc.value.trim() : "";
   const personal = per ? per.value.trim() : "";
+  /* Solo se recuerda el titulo. El nombre NO: era lo que hacia que el reporte
+     saliera firmado por quien lo escribio la ultima vez en ese navegador.
+     Ahora lo pone la base con el usuario que genera. */
   const c = progCfg();
   if (encabezado) c.encabezado = encabezado;
-  if (personal) c.personal = personal;
+  delete c.personal;
   progGuardarCfg(c);
 
+  const sel = [...progSelMarcados];
   const { data, error } = await sb.rpc("programa_reporte_dia", {
     p_fecha: progFecha,
     p_encabezado: encabezado || null,
     p_personal: personal || null,
-    p_disciplina: progDisciplina,
+    /* Con seleccion la disciplina no filtra nada: manda la lista. */
+    p_disciplina: sel.length ? null : progDisciplina,
+    p_actividades: sel.length ? sel : null,
+    p_agrupar: document.getElementById("sel-agrupar")?.checked ? "ejecutor" : "ninguno",
   });
 
   if (error) { toast("No se pudo generar: " + error.message); return; }
