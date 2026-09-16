@@ -16097,7 +16097,8 @@ function otPintarAnexos(filas) {
           <div class="mat-stock">Ensayo del ${e ? e.fecha : "?"}${e && e.motivo ? " · " + e.motivo : ""}
             ${sinFirma ? '<span style="color:var(--warn)"> · sin firmar</span>' : ""}</div>
         </div>
-        <button type="button" class="btn-secondary" style="flex:0 0 auto;padding:6px 10px"
+        <button type="button" class="btn-secondary ancho-auto"
+                style="flex:0 0 auto;padding:6px 12px;margin-top:0"
                 onclick="otQuitarAnexo('${f.id}')">Quitar</button>
       </div>`;
   }).join("");
