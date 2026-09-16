@@ -353,6 +353,20 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 
 /* Vista del documento antes de firmar. El iframe se deja a proporcion A4 para
    que el supervisor lea las hojas tal como van a salir impresas. */
+/* Dialogo centrado. Se desplaza por dentro y no por la pagina de atras, que
+   en el telefono es lo que hace que uno pierda el boton de confirmar. */
+.dlg-modal{position:fixed;inset:0;z-index:9998;background:rgba(10,25,35,.55);
+  display:none;align-items:center;justify-content:center;padding:14px}
+.dlg-caja{background:var(--bg-0);border-radius:14px;width:100%;max-width:440px;
+  max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.dlg-titulo{padding:14px 16px;font-size:16px;font-weight:600;
+  border-bottom:1px solid var(--line)}
+.dlg-cuerpo{padding:14px 16px;overflow:auto;flex:1}
+.dlg-pie{padding:12px 16px;border-top:1px solid var(--line);
+  display:flex;gap:8px;flex-wrap:wrap}
+.dlg-pie button{flex:1 1 140px;margin-top:0}
+
 .doc-modal{position:fixed;inset:0;z-index:9998;background:rgba(10,25,35,.92);
   display:none;flex-direction:column;padding:10px;gap:8px}
 .doc-modal iframe{flex:1;width:100%;background:#fff;border:0;border-radius:8px}
@@ -3132,42 +3146,6 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <input type="file" id="ot-firma-ej-archivo" accept="image/*"
              style="display:none" onchange="otFirmaArchivo('ejecutor', this)"/>
       <div class="mat-stock" style="margin-top:6px" id="ot-firma-ej-nota"></div>
-    </div>
-
-    <!-- Solo lo ve el supervisor, y solo cuando el reporte ya le llego. El
-         tecnico no tiene por que poder cargar la firma de quien lo avala: para
-         eso existe el circuito. Se muestra desde otFlujoRender(). -->
-    <div class="field" id="ot-sup-bloque" style="display:none">
-      <label>Supervisor O&amp;M</label>
-      <select id="ot-sup-modo" onchange="otSupRefrescar()">
-        <option value="blanco">En blanco, firma sobre el papel</option>
-        <option value="nombre">Solo el nombre</option>
-        <option value="firma">Solo la firma</option>
-        <option value="ambos">Nombre y firma</option>
-      </select>
-
-      <div id="ot-sup-nombre-campo" style="margin-top:8px;display:none">
-        <input id="ot-sup-nombre" placeholder="Nombre del supervisor"/>
-      </div>
-
-      <div id="ot-sup-firma-bloque" style="margin-top:8px;display:none">
-        <div id="ot-firma-sup-vista"></div>
-        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
-          <button type="button" class="btn-secondary" id="ot-firma-sup-usar"
-                  style="flex:1 1 150px;display:none"
-                  onclick="otFirmaUsarGuardada('supervisor')">Usar la recordada</button>
-          <button type="button" class="btn-secondary" style="flex:1 1 150px"
-                  onclick="otFirmaTrazar('supervisor')">Firmar en pantalla</button>
-          <button type="button" class="btn-secondary" style="flex:1 1 150px"
-                  onclick="document.getElementById('ot-firma-sup-archivo').click()">Cargar imagen</button>
-          <button type="button" class="btn-secondary" id="ot-firma-sup-quitar"
-                  style="flex:0 0 auto;display:none"
-                  onclick="otFirmaQuitar('supervisor')">Quitar</button>
-        </div>
-        <input type="file" id="ot-firma-sup-archivo" accept="image/*"
-               style="display:none" onchange="otFirmaArchivo('supervisor', this)"/>
-        <div class="mat-stock" style="margin-top:6px" id="ot-firma-sup-nota"></div>
-      </div>
     </div>
 
     <div class="section-label" style="margin-top:18px">RECEPCI&#211;N DE SERVICIO</div>
@@ -15571,7 +15549,7 @@ function otFlujoRender() {
     b.push('<button class="btn-primary" onclick="otFlujoAccion(\'enviar\')">Enviar al supervisor</button>');
   }
   if (f === "enviado" && otEsRevisor()) {
-    b.push('<button class="btn-primary" onclick="otFlujoAccion(\'firmar\')">Firmar y aprobar</button>');
+    b.push('<button class="btn-primary" onclick="otAbrirFirmar()">Firmar y aprobar</button>');
     b.push('<button class="btn-secondary" onclick="otFlujoAccion(\'devolver\')">Devolver al t\u00e9cnico</button>');
   }
   if (f === "firmado" && otRolActual() === "admin") {
@@ -15602,16 +15580,6 @@ function otFlujoRender() {
     acc.innerHTML = '<div class="ot-flujo ' + f + '" style="margin-top:14px">' +
       '<div class="ot-flujo-acciones" style="margin-top:0">' + b.join("") + "</div>" +
       "</div>";
-  }
-
-  /* El bloque de firma del supervisor aparece unicamente en la sesion de quien
-     puede firmar, y solo desde que el reporte le llego. En borrador no sirve
-     de nada —la funcion de firma exige estado 'enviado'— y en la sesion del
-     tecnico seria ofrecerle cargar la firma de otro. */
-  const sup = document.getElementById("ot-sup-bloque");
-  if (sup) {
-    sup.style.display = (otEsRevisor() && (f === "enviado" || f === "firmado"))
-      ? "" : "none";
   }
 
   otAplicarCandado();
@@ -15684,6 +15652,97 @@ async function otFlujoAccion(accion) {
   toast({ enviar: "Enviado al supervisor", devolver: "Devuelto al t\u00e9cnico",
           firmar: "Reporte firmado", reabierto: "", reabrir: "Reporte reabierto" }[accion] || "Listo");
   otPendientesContar();
+}
+
+/* ---------- Firmar y aprobar, en un solo gesto ----------
+   El supervisor abre, comprueba como va a quedar su raya y aprueba. Si tiene
+   firma recordada en el dispositivo se aplica sola al abrir: es la suya, en su
+   equipo, y de todos modos tiene que pulsar el boton. Eso convierte la firma
+   de cada reporte en dos toques. */
+function otAbrirFirmar() {
+  if (!otDatos) return;
+  const o = otDatos.ot || {};
+  const modo = document.getElementById("ot-sup-modo");
+  const nom  = document.getElementById("ot-sup-nombre");
+
+  if (nom && !nom.value.trim()) {
+    nom.value = o.supervisor_nombre || (usuarioActual && usuarioActual.nombre) || "";
+  }
+
+  const guardada = otFirmaGuardada("supervisor");
+  if (!OT_FIRMAS.supervisor.dato && guardada) OT_FIRMAS.supervisor.dato = guardada;
+
+  /* El modo se propone segun lo que hay: con firma disponible, ambos; sin
+     ella, solo el nombre. Lo ya elegido en este reporte manda sobre la
+     propuesta. */
+  if (modo) {
+    modo.value = (o.supervisor_modo && o.supervisor_modo !== "blanco")
+      ? o.supervisor_modo
+      : (OT_FIRMAS.supervisor.dato ? "ambos" : "nombre");
+  }
+  otSupRefrescar();
+  document.getElementById("ot-firmar-modal").style.display = "flex";
+}
+
+function otCerrarFirmar() {
+  const m = document.getElementById("ot-firmar-modal");
+  if (m) m.style.display = "none";
+}
+
+/* Guarda la firma y aprueba en la misma accion. En dos pasos porque son dos
+   cosas distintas en la base: lo que se estampa y el cambio de estado. Si lo
+   primero falla no se intenta lo segundo, para no cerrar un reporte con la
+   raya vacia. */
+async function otConfirmarFirma() {
+  if (!otDatos) return;
+  const id = otDatos.actividad.id;
+  const modo = document.getElementById("ot-sup-modo").value;
+  const nombre = (document.getElementById("ot-sup-nombre").value || "").trim();
+  const firma = OT_FIRMAS.supervisor.dato || "";
+
+  if (modo === "blanco") {
+    if (!confirm("Vas a aprobar sin estampar nada: la raya sale en blanco para " +
+                 "firmarla a mano sobre el papel. \u00bfContinuar?")) return;
+  }
+  if ((modo === "nombre" || modo === "ambos") && !nombre) {
+    toast("Escribe el nombre que va sobre la raya"); return;
+  }
+  if ((modo === "firma" || modo === "ambos") && !firma) {
+    toast("Carga o traza la firma, o cambia a solo el nombre"); return;
+  }
+
+  const btn = document.getElementById("ot-btn-firmar-ok");
+  btn.disabled = true; btn.textContent = "Firmando...";
+  try {
+    const rf = await sb.rpc("programa_ot_firmas", {
+      p_actividad_id: id, p_fecha: otFecha,
+      p_datos: {
+        firma_ejecutor:    OT_FIRMAS.ejecutor.dato || null,
+        supervisor_nombre: nombre,
+        supervisor_firma:  firma || null,
+        supervisor_modo:   modo,
+      },
+    });
+    if (rf.error) throw rf.error;
+    if (rf.data && rf.data.ok === false) { toast(rf.data.error); return; }
+
+    const r = await sb.rpc("programa_ot_flujo", {
+      p_actividad_id: id, p_fecha: otFecha, p_accion: "firmar", p_motivo: null,
+    });
+    if (r.error) throw r.error;
+    if (r.data && r.data.ok === false) { toast(r.data.error); return; }
+
+    otCerrarFirmar();
+    const rr = await sb.rpc("programa_ot_datos", { p_actividad_id: id, p_fecha: otFecha });
+    if (!rr.error && rr.data) { otDatos = rr.data; otRender(); }
+    toast("Reporte firmado");
+    otPendientesContar();
+  } catch (e) {
+    console.error(e);
+    toast("No se pudo firmar: " + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = "Firmar y aprobar";
+  }
 }
 
 /* ---------- Ver el documento antes de firmar ----------
@@ -17390,6 +17449,64 @@ function firmaPintarVista() {
 }
 
 </script>
+
+<!-- Firmar y aprobar. Antes el boton llamaba directo a la funcion, que
+     respondia "elija que sale sobre su raya" y obligaba al supervisor a subir
+     al formulario, configurar, guardar y volver a bajar. Aqui elige, firma y
+     aprueba en un solo gesto. -->
+<div class="dlg-modal" id="ot-firmar-modal">
+  <div class="dlg-caja">
+    <div class="dlg-titulo">Firmar y aprobar</div>
+    <div class="dlg-cuerpo">
+      <div class="field">
+        <label>Qu&eacute; sale sobre tu raya</label>
+        <select id="ot-sup-modo" onchange="otSupRefrescar()">
+          <option value="ambos">Nombre y firma</option>
+          <option value="firma">Solo la firma</option>
+          <option value="nombre">Solo el nombre</option>
+          <option value="blanco">En blanco, firmo sobre el papel</option>
+        </select>
+      </div>
+
+      <div id="ot-sup-nombre-campo" style="display:none">
+        <div class="field">
+          <label>Nombre</label>
+          <input id="ot-sup-nombre" placeholder="Nombre del supervisor"/>
+        </div>
+      </div>
+
+      <div id="ot-sup-firma-bloque" style="display:none">
+        <div class="field">
+          <label>Firma</label>
+          <div id="ot-firma-sup-vista"></div>
+          <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+            <button type="button" class="btn-secondary" id="ot-firma-sup-usar"
+                    style="flex:1 1 150px;display:none"
+                    onclick="otFirmaUsarGuardada('supervisor')">Usar la recordada</button>
+            <button type="button" class="btn-secondary" style="flex:1 1 150px"
+                    onclick="otFirmaTrazar('supervisor')">Firmar en pantalla</button>
+            <button type="button" class="btn-secondary" style="flex:1 1 150px"
+                    onclick="document.getElementById('ot-firma-sup-archivo').click()">Cargar imagen</button>
+            <button type="button" class="btn-secondary ancho-auto" id="ot-firma-sup-quitar"
+                    style="flex:0 0 auto;display:none;margin-top:8px"
+                    onclick="otFirmaQuitar('supervisor')">Quitar</button>
+          </div>
+          <input type="file" id="ot-firma-sup-archivo" accept="image/*"
+                 style="display:none" onchange="otFirmaArchivo('supervisor', this)"/>
+          <div class="mat-stock" style="margin-top:6px" id="ot-firma-sup-nota"></div>
+        </div>
+      </div>
+
+      <div class="mat-stock">Al aprobar, el reporte queda cerrado: nadie puede
+        modificarlo sin que un administrador lo reabra.</div>
+    </div>
+    <div class="dlg-pie">
+      <button type="button" class="btn-secondary" onclick="otCerrarFirmar()">Cancelar</button>
+      <button type="button" class="btn-primary" id="ot-btn-firmar-ok"
+              onclick="otConfirmarFirma()">Firmar y aprobar</button>
+    </div>
+  </div>
+</div>
 
 <!-- Vista del documento armado. El supervisor lee las tres hojas tal como van
      a salir antes de firmar: leer el formulario no es lo mismo. -->
