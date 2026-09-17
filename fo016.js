@@ -179,7 +179,8 @@ const FO016 = (function () {
       par(ot.cod_equipo,        ot.fecha_inicio),
       par(ot.desc_equipo,       ot.autor_aviso),
       par(ot.ubicacion_tecnica, ot.clase_aviso),
-      1,                                  /* Des.ubi.técnica va en nowrap */
+      lineasEn(ot.des_ubi_tecnica,        /* a tres columnas */
+               W.datos[1] + W.datos[2] + W.datos[3] - 0.2),
       par(ot.no_aviso,          ot.marca),
       par(ot.sintoma_averia,    ot.modelo),
       par(ot.causa,             ot.serie),
@@ -469,11 +470,17 @@ ${SPACER(0.20)}`;
   <td style="${LBL};${h};border:none">${l2}</td>
   <td style="${TD};${h};border:none">${escT(v2)}</td>
 </tr>`;
-    /* Des.ubi.técnica: negrita y a tres columnas — en el impreso SAP nunca se
-       parte en dos líneas aunque el texto sea largo. */
+    /* Des.ubi.técnica: negrita y a tres columnas, como en el impreso SAP.
+       Lleva nowrap porque allí nunca se parte, pero eso solo es inofensivo
+       mientras quepa: con el recorte de hoja que ahora acota el papel, un
+       texto más largo que las tres columnas se cortaría en seco contra el
+       borde. Si no cabe se deja partir, que es preferible a perderlo. */
+    const anchoDesUbi = W.datos[1] + W.datos[2] + W.datos[3] - 0.2;   // 14.71 cm
+    const cabeDesUbi = lineasEn(ot.des_ubi_tecnica, anchoDesUbi) <= 1;
     const desUbi = `<tr>
   <td style="${LBL};${h};border:none">Des.ubi.técnica</td>
-  <td colspan="3" style="${TD};${h};border:none;font-weight:bold;white-space:nowrap">${escT(ot.des_ubi_tecnica)}</td>
+  <td colspan="3" style="${TD};${h};border:none;font-weight:bold${
+    cabeDesUbi ? ';white-space:nowrap' : ''}">${escT(ot.des_ubi_tecnica)}</td>
 </tr>`;
 
     const interior = `${tbN(A, anchos)}
