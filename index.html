@@ -3859,6 +3859,16 @@ async function hubContar() {
        'activo' entraban también los retirados, que no esperan nada de nadie:
        el aviso decía 2 y el panel mostraba 1. */
     usuariosPend:   () => contar("usuarios", q => q.eq("activo", false).is("retirado_en", null)),
+
+    /* Circuito del FO-016. Va por RPC y no por conteo directo porque lo que
+       cuenta depende del rol: al supervisor los reportes enviados de su
+       disciplina, al tecnico los que le devolvieron. La misma funcion que
+       alimenta la bandeja, para que las dos cifras no puedan discrepar. */
+    reportesPend:   async () => {
+                      const r = await sb.rpc("programa_ot_pendientes", { p_todas: false });
+                      if (r.error || !r.data || r.data.ok === false) return null;
+                      return (r.data.items || []).length;
+                    },
   };
 
   const claves = Object.keys(tareas);
@@ -3872,9 +3882,12 @@ function hubPintar(c) {
   const n = v => (v == null ? "—" : Number(v).toLocaleString("es-CO"));
   const esRevisor = usuarioActual
     && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+  const esAdmin = usuarioActual && usuarioActual.rol === "admin";
 
   /* La franja de atencion solo muestra lo que de verdad requiere accion:
-     un cero no se pinta. Un tablero lleno de ceros deja de mirarse. */
+     un cero no se pinta. Un tablero lleno de ceros deja de mirarse. Y cada
+     aviso se muestra solo a quien PUEDE resolverlo: avisar de algo que uno no
+     puede hacer no es informar, es estorbar, y ensena a ignorar la franja. */
   const alertas = [];
   const irAPendientes = () => {
     aplicarModulo("activos");
@@ -3889,11 +3902,25 @@ function hubPintar(c) {
     alertas.push({ n: c.devueltos, t: esRevisor ? "ensayos devueltos" : "ensayos tuyos devueltos",
                    clase: "urgente", ir: () => aplicarModulo("ensayos") });
   }
-  if (esRevisor && c.usuariosPend) {
-    /* La gestión de usuarios vive en Perfil, no en el módulo de Activos.
-       El destino estaba mal y mandaba al maestro de equipos. */
+  if (esAdmin && c.usuariosPend) {
+    /* Solo admin: aprobar usuarios es suyo, la sección de Gestión de usuarios
+       ni siquiera se le pinta al supervisor. Le salía un aviso urgente que
+       no llevaba a ninguna parte.
+       La gestión vive en Perfil, no en el módulo de Activos. */
     alertas.push({ n: c.usuariosPend, t: "usuarios por activar", clase: "urgente",
                    ir: () => { abrirPanel("panel-perfil"); cargarPanelPerfil(); } });
+  }
+  /* Sin filtro de rol: la RPC ya devuelve lo que corresponde a cada uno, y el
+     rotulo cambia porque no es lo mismo tener trabajo por revisar que tener
+     trabajo devuelto. */
+  if (c.reportesPend) {
+    alertas.push({ n: c.reportesPend,
+                   t: esRevisor ? "reportes FO-016 por revisar" : "reportes tuyos devueltos",
+                   clase: esRevisor ? "avisa" : "urgente",
+                   ir: () => {
+                     aplicarModulo("programacion");
+                     setTimeout(() => document.querySelector('[data-tab="prog-pendientes"]').click(), 60);
+                   } });
   }
   if (esRevisor && c.maquinasPend) {
     alertas.push({ n: c.maquinasPend, t: "m\u00e1quinas de campo por validar",
