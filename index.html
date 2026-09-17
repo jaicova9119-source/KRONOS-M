@@ -49,6 +49,11 @@ html[data-tema="claro"]{
   --brand:#0F3F5E;       /* barra superior */
   --brand-t:#FFFFFF;
   --accent:#1F6399;      /* interaccion: enlace, foco, seleccion */
+  /* La marca como COLOR DE TEXTO. En claro coincide con --brand; en oscuro no
+     puede: alli --brand es casi negro porque es el fondo de la barra superior.
+     Usar --brand en primer plano hacia desaparecer las cifras de las tarjetas
+     sobre el fondo oscuro. */
+  --brand-fg:#134B70;
   --accent-soft:#E2EDF7;
   --accent-line:#B3CDE3;
   --on-accent:#FFFFFF;
@@ -91,6 +96,7 @@ html[data-tema="oscuro"]{
   --brand:#0B1A28;
   --brand-t:#EEF2F5;
   --accent:#7CB4E8;
+  --brand-fg:#7CB4E8;    /* ver la nota del tema claro */
   --accent-soft:#17293A;
   --accent-line:#2E4A63;
   --on-accent:#0B1015;
@@ -154,6 +160,7 @@ html[data-tema]{
   --accent-dim:var(--accent-line);
   --accent-bg:var(--accent-soft);
   --jac-blue:var(--brand);
+  --jac-blue-fg:var(--brand-fg);
   --danger:var(--crit);
   --danger-bg:var(--crit-bg);
 
@@ -1318,7 +1325,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
    (bottom:80px) para no chocar, en la misma posición en todos los módulos. */
 #btn-asistente{
   position:fixed;right:16px;bottom:142px;width:52px;height:52px;border-radius:50%;
-  background:var(--azul,#134B70);color:#fff;border:1px solid rgba(255,255,255,.18);
+  /* Antes usaba --azul, que apunta al azul de marca. En oscuro ese valor es
+     el fondo de la barra superior —casi negro— y el boton se perdia contra el
+     panel. El color de interaccion sí lo define cada tema para verse. */
+  background:var(--accent);color:var(--on-accent,#fff);
+  border:1px solid rgba(255,255,255,.18);
   display:flex;align-items:center;justify-content:center;
   box-shadow:0 4px 16px rgba(0,0,0,.28);z-index:40;cursor:pointer;
 }
@@ -1334,7 +1345,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 }
 #asis-encabezado{
   display:flex;align-items:center;gap:10px;padding:12px 14px;
-  background:var(--azul,#134B70);color:#fff;flex-shrink:0;
+  background:var(--accent);color:var(--on-accent,#fff);flex-shrink:0;
 }
 #asis-contexto{
   font-size:11px;opacity:.85;padding:6px 14px;background:var(--bg-2);
@@ -1351,7 +1362,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   font-size:11.5px;padding:5px 10px;border-radius:7px;cursor:pointer;
   border:1px solid var(--line);background:var(--bg-2);color:var(--text-1);
 }
-.asis-acciones button.principal{background:var(--azul,#134B70);color:#fff;border-color:transparent}
+.asis-acciones button.principal{background:var(--accent);color:var(--on-accent,#fff);border-color:transparent}
 #asis-entrada{display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--line);flex-shrink:0}
 #asis-texto{
   flex:1;resize:none;max-height:96px;font-family:inherit;font-size:14px;
@@ -1473,7 +1484,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   text-align:left;
 }
 .kpi-card:active{background:var(--bg-3);}
-.kpi-value{font-size:26px;font-weight:700;color:var(--jac-blue);line-height:1;}
+.kpi-value{font-size:26px;font-weight:700;color:var(--jac-blue-fg,var(--jac-blue));line-height:1;}
 .kpi-label{font-size:12px;color:var(--text-2);margin-top:6px;}
 .kpi-card.kpi-warn .kpi-value{color:var(--warn);}
 .kpi-card.kpi-danger .kpi-value{color:var(--danger);}
