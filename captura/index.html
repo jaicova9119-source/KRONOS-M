@@ -305,6 +305,18 @@
   .readonly-note{display:flex;align-items:flex-start;gap:8px;background:var(--surface-2);color:var(--titulo);
     font-size:12px;padding:10px 12px;border-radius:10px;margin:6px 0 16px;line-height:1.4;}
   .readonly-note svg{width:15px;height:15px;flex-shrink:0;margin-top:1px;}
+
+  /* Ayuda plegable. Un texto de cinco lineas que siempre esta ocupa media
+     pantalla de telefono y se deja de leer a los dos dias. Detras de un icono
+     sigue disponible el dia que alguien dude, que es cuando sirve. */
+  .ayuda-btn{display:inline-flex;align-items:center;justify-content:center;
+    width:17px;height:17px;border-radius:50%;border:1px solid var(--line);
+    background:transparent;color:var(--titulo);font-size:11px;font-weight:700;
+    line-height:1;cursor:pointer;padding:0;margin-left:6px;vertical-align:middle;
+    opacity:.6;}
+  .ayuda-btn:hover,.ayuda-btn[aria-expanded="true"]{opacity:1;border-color:var(--acento);
+    color:var(--acento);}
+  .readonly-note[hidden]{display:none;}
   .change-note-box{background:var(--warn-bg-2);border:1.5px dashed var(--warn-line-2);border-radius:14px;padding:14px;margin-top:4px;}
   .change-note-box .lbl{font-family:'Barlow Condensed';font-weight:700;font-size:14px;color:var(--ubh);margin-bottom:8px;}
   .nota-anterior-box{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:10px;}
@@ -749,9 +761,26 @@
         <div class="section-label"><span class="bar"></span>Condiciones de la prueba</div>
         <div class="group-card">
           <div class="grid-fields">
-            <div class="field"><label>Temperatura de devanado <span style="font-weight:normal;opacity:.65">&middot; referencia</span></label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-temp"
-                   oninput="aisNotaTemp()"><span class="unit">&deg;C</span></div>
+            <div class="field">
+              <label>Temperatura de devanado
+                <button type="button" class="ayuda-btn" aria-expanded="false"
+                        onclick="ayuda(this,'ais-nota-temp')" title="Para qu&eacute; sirve">i</button>
+              </label>
+              <!-- El panel Zenith reporta la temperatura de fondo en grados
+                   Fahrenheit. Sin poder elegir la unidad, un 176 tecleado tal
+                   cual se guardaria como 176 grados Celsius: el dato quedaria
+                   mal por 96 grados y nada lo delataria. -->
+              <div class="unit-input">
+                <input class="mono-input" type="number" step="any" id="ais-temp"
+                       oninput="aisTempConv()">
+                <select id="ais-temp-unidad" onchange="aisTempConv()"
+                        style="border:none;background:transparent;font-size:12px;
+                               padding:0 6px 0 0;width:auto">
+                  <option value="F" selected>&deg;F</option>
+                  <option value="C">&deg;C</option>
+                </select>
+              </div>
+              <div id="ais-temp-conv" class="hint" style="font-size:11.5px;opacity:.75;margin-top:4px"></div>
             </div>
             <!-- Escalones reales del instrumento. Tecleado a mano salian valores
                  que ningun megohmetro entrega, y el criterio de IEEE 43 depende
@@ -766,20 +795,43 @@
               </select>
             </div>
           </div>
-          <div class="readonly-note" id="ais-nota-temp">
+          <div class="readonly-note" id="ais-nota-temp" hidden>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
             La temperatura no corrige la lectura: en un BES el cable recorre cientos de metros con gradiente termico y un factor unico seria fisicamente invalido. Se registra porque el aislamiento cae cerca de la mitad por cada 10 &deg;C, y sin ella no se puede distinguir una degradacion real de un motor medido en caliente.
           </div>
           <div class="grid-fields">
-            <div class="field"><label>Temp. ambiente</label>
+            <div class="field">
+              <label>Temp. ambiente
+                <button type="button" class="ayuda-btn" aria-expanded="false"
+                        onclick="ayuda(this,'ais-nota-amb')" title="Para qu&eacute; sirve">i</button>
+              </label>
               <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-temp-amb"><span class="unit">&deg;C</span></div>
             </div>
             <div class="field"><label>Humedad</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-humedad"><span class="unit">%</span></div>
+              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-humedad"
+                   oninput="aisNotaHum()"><span class="unit">%</span></div>
+              <div id="ais-hum-aviso" class="hint" style="font-size:11.5px;margin-top:4px"></div>
             </div>
             <div class="field"><label>Horas de paro</label>
               <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-paro"><span class="unit">h</span></div>
             </div>
+          </div>
+          <!-- Ambiente y humedad no dicen nada del devanado de fondo, que esta a
+               cientos de metros. Sirven para otra cosa, y por eso se quedan: la
+               lectura se toma en superficie, sobre bornes y empalmes expuestos, y
+               con el aire cerca del punto de rocio se forma una pelicula de agua
+               que conduce por la superficie del aislante. Eso hunde la lectura sin
+               que el motor tenga nada. Es el mismo caso que el punto de medida:
+               explica por que un valor bajo desde el SUT puede no significar
+               deterioro. Las dos juntas dan el punto de rocio; por separado, no. -->
+          <div class="readonly-note" id="ais-nota-amb" hidden>
+            <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
+            No describen el motor, que esta en fondo. Describen el aire donde est&aacute;n
+            los bornes y empalmes que estas midiendo: con humedad alta y el metal
+            fr&iacute;o se condensa una pel&iacute;cula de agua que conduce por la superficie del
+            aislante y hunde la lectura sin que el motor tenga nada. Juntas dan el
+            punto de roc&iacute;o; por separado no sirven. Si la lectura sale baja en una
+            ma&ntilde;ana h&uacute;meda, esto es lo que permite sospecharlo antes de sacar el equipo.
           </div>
           <div class="grid-fields">
             <div class="field"><label>Megger</label><input id="ais-equipo" placeholder="Ej: Megger MIT525"></div>
@@ -787,7 +839,7 @@
           </div>
         </div>
 
-        <div class="section-label"><span class="bar"></span>Resistencia entre fases</div>
+        <div class="section-label"><span class="bar"></span>Resistencia entre fases<button type="button" class="ayuda-btn" aria-expanded="false" onclick="ayuda(this,'ais-nota-balance')" title="Para qu&eacute; sirve">i</button></div>
         <div class="group-card">
           <div class="grid-fields">
             <div class="field"><label>A-B</label>
@@ -800,7 +852,7 @@
               <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-balance-bc"><span class="unit">&Omega;</span></div>
             </div>
           </div>
-          <div class="readonly-note">
+          <div class="readonly-note" id="ais-nota-balance" hidden>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
             Se mide primero. Si las tres resistencias son parejas, la estrella esta
             integra y basta una lectura de aislamiento; si una se sale, hay que
@@ -808,7 +860,7 @@
           </div>
         </div>
 
-        <div class="section-label"><span class="bar"></span>Resistencia de aislamiento</div>
+        <div class="section-label"><span class="bar"></span>Resistencia de aislamiento<button type="button" class="ayuda-btn" aria-expanded="false" onclick="ayuda(this,'ais-nota-lecturas')" title="Para qu&eacute; sirve">i</button></div>
         <div class="group-card">
           <div class="field"><label>Unidad de lectura del megger</label>
             <select id="ais-unidad">
@@ -835,12 +887,12 @@
             <div class="grid-fields">
               <div class="field"><label>30 s</label>
                 <input class="mono-input" type="number" step="any" id="ais-u-30s"></div>
-              <div class="field"><label>1 min</label>
+              <div class="field"><label>1 min <button type="button" class="ayuda-btn" aria-expanded="false" onclick="ayuda(this,'ais-nota-estrella')" title="Para qu&eacute; sirve">i</button></label>
                 <input class="mono-input" type="number" step="any" id="ais-u-1min"></div>
               <div class="field"><label>10 min</label>
                 <input class="mono-input" type="number" step="any" id="ais-u-10min"></div>
             </div>
-            <div class="readonly-note">
+            <div class="readonly-note" id="ais-nota-estrella" hidden>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
               El motor BES es una estrella con el neutro en el fondo del pozo: las tres fases
               estan unidas ahi abajo, asi que una lectura a tierra mide el conjunto completo.
@@ -863,7 +915,7 @@
             <input class="mono-input" type="number" step="any" id="ais-c-1min">
             <input class="mono-input" type="number" step="any" id="ais-c-10min">
           </div>
-          <div class="readonly-note">
+          <div class="readonly-note" id="ais-nota-lecturas" hidden>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
             DAR e IP los calcula el sistema con estas lecturas. La de 1 minuto es la unica obligatoria.
           </div>
@@ -887,10 +939,10 @@
       <button class="back-btn" onclick="ir('home')"><svg viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>Inicio</button>
       <div class="sys-banner setup">
         <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/></svg></div>
-        <div><div class="t">Configuracion VFD</div><div class="s">Selecciona la unidad</div></div>
+        <div><div class="t">Configuracion VFD <button type="button" class="ayuda-btn" aria-expanded="false" onclick="ayuda(this,'ais-nota-cierre')" title="Para qu&eacute; sirve">i</button></div><div class="s">Selecciona la unidad</div></div>
       </div>
       <div class="field"><label>Unidad</label><select id="setup-pozo-select"></select></div>
-      <div class="readonly-note">
+      <div class="readonly-note" id="ais-nota-cierre" hidden>
         <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
         Se carga la configuracion actual de la unidad. Todos los campos son editables; cualquier cambio queda registrado como nota historica en la bitacora al guardar.
       </div>
@@ -3700,6 +3752,7 @@ function abrirAislamiento(){
   /* ais-vprueba ya no se vacia: es un desplegable y dejarlo en '' lo deja sin
      ningun escalon seleccionado. Vuelve a su valor de partida. */
   document.getElementById('ais-vprueba').value = '1000';
+  document.getElementById('ais-temp-unidad').value = 'F';
   ['ais-temp','ais-temp-amb','ais-humedad','ais-paro',
    'ais-equipo','ais-equipo-serie','ais-obs',
    'ais-balance-ab','ais-balance-ac','ais-balance-bc',
@@ -3722,16 +3775,60 @@ function abrirAislamiento(){
     ? 'Queda en la corrida de la unidad, sin firma'
     : 'Entra a Ensayos Electricos como pendiente de firma';
 
-  aisNotaTemp();
+  aisTempConv();
+  aisNotaHum();
   ir('aislamiento-form');
 }
 
-/* La nota explica por que se pide la temperatura, no reclama que falte. Antes
-   desaparecia al escribirla, que era correcto cuando avisaba de una carencia;
-   ahora dice para que sirve el dato y eso vale igual con el campo lleno. */
-function aisNotaTemp(){
-  var n = document.getElementById('ais-nota-temp');
-  if (n) n.style.display = '';
+/* Ayuda plegable, una sola funcion para todas. El estado vive en el boton
+   —aria-expanded— y no en una variable: asi el lector de pantalla dice lo
+   mismo que se ve, sin llevar la cuenta por separado. */
+function ayuda(btn, id){
+  var n = document.getElementById(id);
+  if (!n) return;
+  var abierto = n.hasAttribute('hidden');
+  if (abierto) n.removeAttribute('hidden'); else n.setAttribute('hidden','');
+  btn.setAttribute('aria-expanded', abierto ? 'true' : 'false');
+}
+
+/* El panel Zenith reporta la temperatura de fondo en Fahrenheit y la base la
+   guarda en Celsius. La conversion se muestra siempre bajo el campo: no basta
+   con hacerla por dentro, el tecnico tiene que poder comprobar que el numero
+   que va a quedar guardado es el que el esperaba. */
+function aisTempC(){
+  var el = document.getElementById('ais-temp');
+  if (!el || el.value === '') return null;
+  var v = parseFloat(el.value);
+  if (isNaN(v)) return null;
+  var u = document.getElementById('ais-temp-unidad');
+  return (u && u.value === 'F') ? (v - 32) * 5 / 9 : v;
+}
+
+function aisTempConv(){
+  var d = document.getElementById('ais-temp-conv');
+  if (!d) return;
+  var c = aisTempC();
+  var u = document.getElementById('ais-temp-unidad');
+  if (c == null){ d.textContent = ''; return; }
+  d.textContent = (u && u.value === 'F')
+    ? 'Se guarda como ' + (Math.round(c * 10) / 10) + ' \u00b0C'
+    : 'Se guarda como ' + (Math.round(c * 10) / 10) + ' \u00b0C (' +
+      (Math.round((c * 9 / 5 + 32) * 10) / 10) + ' \u00b0F)';
+}
+
+/* La humedad no tiene un umbral universal: en Putumayo una manana de 85 % es
+   lo normal y en otro campo seria excepcional. Lo que importa no es el numero
+   sino que quede anotado para poder explicar despues una lectura baja. El
+   aviso solo aparece cuando el valor es alto, y no prohibe nada. */
+function aisNotaHum(){
+  var d = document.getElementById('ais-hum-aviso');
+  if (!d) return;
+  var el = document.getElementById('ais-humedad');
+  var v = el && el.value !== '' ? parseFloat(el.value) : NaN;
+  if (isNaN(v) || v < 80){ d.textContent = ''; d.style.color = ''; return; }
+  d.style.color = 'var(--warn, #E65100)';
+  d.textContent = 'Humedad alta: si la lectura sale baja, an\u00f3talo en observaciones. '
+    + 'Puede ser condensaci\u00f3n en bornes, no el motor.';
 }
 
 function guardarBitacora(){
@@ -3804,7 +3901,7 @@ function guardarAislamiento(){
      de lo que de verdad se pierde: sin saber a que temperatura se midio, una
      caida entre dos ensayos puede ser degradacion o puede ser el motor
      caliente, y no hay forma de distinguirlas. */
-  if (valNum('ais-temp') == null){
+  if (aisTempC() == null){
     if(!confirm('Sin temperatura de devanado no se podra saber si una caida '
       + 'futura es degradacion real o el motor medido en caliente.\n\n'
       + 'Guardar de todos modos?')) return;
@@ -3821,7 +3918,7 @@ function guardarAislamiento(){
     alcance:        'RUTINA',
     motivo:         'Ronda de campo',
     unidad_ingreso: document.getElementById('ais-unidad').value,
-    temp_devanado:  valNum('ais-temp'),
+    temp_devanado:  aisTempC(),
     temp_ambiente:  valNum('ais-temp-amb'),
     humedad:        valNum('ais-humedad'),
     horas_paro:     valNum('ais-paro'),
@@ -3865,7 +3962,7 @@ function guardarAislamientoBES(boton){
      normalidad, y el aislamiento cae cerca de la mitad por cada 10 C. Dos
      ensayos del mismo motor a temperaturas distintas pueden diferir en un
      factor de seis sin que nada se haya degradado. */
-  if (valNum('ais-temp') == null){
+  if (aisTempC() == null){
     if(!confirm('Sin temperatura de devanado la lectura queda suelta.\n\n'
       + 'En BES el motor puede estar a 40 C o a 92 C, y el aislamiento cae '
       + 'cerca de la mitad por cada 10 C: la misma maquina puede leer seis '
@@ -3885,7 +3982,7 @@ function guardarAislamientoBES(boton){
     ir_30s_ing:      valNum('ais-u-30s'),
     ir_1min_ing:     ir1,
     ir_10min_ing:    valNum('ais-u-10min'),
-    temp_devanado:   valNum('ais-temp'),
+    temp_devanado:   aisTempC(),
     temp_ambiente:   valNum('ais-temp-amb'),
     humedad:         valNum('ais-humedad'),
     horas_paro:      valNum('ais-paro'),
