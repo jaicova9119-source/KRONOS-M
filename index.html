@@ -7950,6 +7950,17 @@ function EE_desbalance(vals) {
 /* El punto de medida no cambia qué se ensayó —siempre es cable más motor—
    sino cuánto cable entra en la lectura. La diferencia entre dos puntos es lo
    que localiza el tramo con problema. */
+/* Lo que se vio sobre los bornes al medir. Es observable sin instrumentos, a
+   diferencia de la humedad en por ciento que se pedia antes y que nadie podia
+   medir en campo. Explica una lectura baja que no es del motor. */
+const EE_CONDICION = {
+  SECO:         "Bornes secos y limpios",
+  HUMEDO:       "Ambiente húmedo, superficies frías",
+  CONDENSACION: "Gotas o película de agua visible",
+  LLUVIA:       "Lloviendo o recién llovido",
+  SUCIO:        "Bornes sucios o con grasa",
+};
+
 const EE_PUNTO = {
   SUT:    "Cable + motor, desde SUT",
   VENTEO: "Cable + motor, desde caja de venteo",
@@ -9325,8 +9336,10 @@ function eeInformeHTML(e, m, historia) {
     ["Punto de medida", EE_PUNTO[e.punto_medida] || ""],
     ["Temp. devanado", e.temp_devanado != null ? e.temp_devanado + " °C" : "no registrada"],
     ["Temp. ambiente", e.temp_ambiente != null ? e.temp_ambiente + " °C" : ""],
+    /* Solo en los ensayos anteriores al cambio: el formulario ya no la pide. */
     ["Humedad relativa", e.humedad != null ? e.humedad + " %" : ""],
-    ["Condición visual", e.condicion],
+    /* Se guarda en codigo para poder consultarlo; en el informe se lee. */
+    ["Condición de bornes", EE_CONDICION[e.condicion] || e.condicion || ""],
     ["Tensión de prueba", e.v_prueba ? e.v_prueba + " VDC" : ""],
     ["Instrumento", [e.megger, e.megger_serie && "S/N " + e.megger_serie].filter(Boolean).join(" · ")],
     ["Vence calibración", e.megger_calibracion],
