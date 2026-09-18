@@ -892,6 +892,22 @@
               <div class="field"><label>10 min</label>
                 <input class="mono-input" type="number" step="any" id="ais-u-10min"></div>
             </div>
+            <!-- Muchos megohmetros calculan DAR e IP y los muestran al terminar la
+                 prueba de 10 minutos. Si el tecnico solo anota eso, obligarlo a
+                 registrar los tres tiempos para que el sistema los recalcule es
+                 pedirle datos que no tomo. Si los escribe aqui se usan tal cual;
+                 si los deja vacios, se calculan con las lecturas. -->
+            <div class="grid-fields">
+              <div class="field"><label>DAR
+                <span style="font-weight:normal;opacity:.6">&middot; del instrumento</span></label>
+                <input class="mono-input" type="number" step="any" id="ais-u-dar"
+                       placeholder="se calcula" oninput="aisCalc('u')"></div>
+              <div class="field"><label>IP
+                <span style="font-weight:normal;opacity:.6">&middot; del instrumento</span></label>
+                <input class="mono-input" type="number" step="any" id="ais-u-ip"
+                       placeholder="se calcula" oninput="aisCalc('u')"></div>
+            </div>
+            <div id="ais-u-calc" class="hint" style="font-size:11.5px;opacity:.75;margin-bottom:10px"></div>
             <div class="readonly-note" id="ais-nota-estrella" hidden>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
               El motor BES es una estrella con el neutro en el fondo del pozo: las tres fases
@@ -915,9 +931,29 @@
             <input class="mono-input" type="number" step="any" id="ais-c-1min">
             <input class="mono-input" type="number" step="any" id="ais-c-10min">
           </div>
+          <!-- Mismo criterio que en BES: lo que da el instrumento manda sobre lo
+               que calcularia el sistema. -->
+          <div class="ais-fases" id="ais-dar-ip-fases" style="margin-top:10px">
+            <div class="hdr"></div><div class="hdr">DAR</div><div class="hdr">IP</div><div class="hdr"></div>
+            <div class="fase">A</div>
+            <input class="mono-input" type="number" step="any" id="ais-a-dar" placeholder="calc" oninput="aisCalc('a')">
+            <input class="mono-input" type="number" step="any" id="ais-a-ip"  placeholder="calc" oninput="aisCalc('a')">
+            <div class="hint" id="ais-a-calc" style="font-size:11px;opacity:.7;align-self:center"></div>
+            <div class="fase">B</div>
+            <input class="mono-input" type="number" step="any" id="ais-b-dar" placeholder="calc" oninput="aisCalc('b')">
+            <input class="mono-input" type="number" step="any" id="ais-b-ip"  placeholder="calc" oninput="aisCalc('b')">
+            <div class="hint" id="ais-b-calc" style="font-size:11px;opacity:.7;align-self:center"></div>
+            <div class="fase">C</div>
+            <input class="mono-input" type="number" step="any" id="ais-c-dar" placeholder="calc" oninput="aisCalc('c')">
+            <input class="mono-input" type="number" step="any" id="ais-c-ip"  placeholder="calc" oninput="aisCalc('c')">
+            <div class="hint" id="ais-c-calc" style="font-size:11px;opacity:.7;align-self:center"></div>
+          </div>
           <div class="readonly-note" id="ais-nota-lecturas" hidden>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
-            DAR e IP los calcula el sistema con estas lecturas. La de 1 minuto es la unica obligatoria.
+            La lectura de 1 minuto es la &uacute;nica obligatoria. Con 30 s y 10 min el sistema
+            calcula DAR e IP solo; si tu meg&oacute;hmetro ya te los da, escr&iacute;belos y se usan esos.
+            Lo escrito manda siempre sobre lo calculado, porque el instrumento midi&oacute; y el
+            sistema solo divide.
           </div>
         </div>
 
@@ -3757,10 +3793,10 @@ function abrirAislamiento(){
   ['ais-temp','ais-paro',
    'ais-equipo','ais-equipo-serie','ais-obs',
    'ais-balance-ab','ais-balance-ac','ais-balance-bc',
-   'ais-u-30s','ais-u-1min','ais-u-10min',
-   'ais-a-30s','ais-a-1min','ais-a-10min',
-   'ais-b-30s','ais-b-1min','ais-b-10min',
-   'ais-c-30s','ais-c-1min','ais-c-10min']
+   'ais-u-30s','ais-u-1min','ais-u-10min','ais-u-dar','ais-u-ip',
+   'ais-a-30s','ais-a-1min','ais-a-10min','ais-a-dar','ais-a-ip',
+   'ais-b-30s','ais-b-1min','ais-b-10min','ais-b-dar','ais-b-ip',
+   'ais-c-30s','ais-c-1min','ais-c-10min','ais-c-dar','ais-c-ip']
     .forEach(function(id){ var e = document.getElementById(id); if(e) e.value = ''; });
   /* BES registra una sola lectura a tierra; el resto de sistemas sigue con
      las tres fases. La eleccion no la hace el formulario sino el sistema ya
@@ -3769,6 +3805,15 @@ function abrirAislamiento(){
   var esBES = (sistemaActual === 'BES');
   document.getElementById('ais-bes-lectura').classList.toggle('hidden', !esBES);
   document.getElementById('ais-tres-fases').classList.toggle('hidden', esBES);
+  /* La rejilla de DAR e IP por fase acompaña a la de lecturas: en BES se mide
+     una sola fase y esos dos campos van en su propio bloque. */
+  var darIP = document.getElementById('ais-dar-ip-fases');
+  if (darIP) darIP.classList.toggle('hidden', esBES);
+
+  ['a','b','c','u'].forEach(function(l){
+    var d = document.getElementById('ais-' + l + '-calc');
+    if (d) { d.textContent = ''; d.style.color = ''; }
+  });
   document.getElementById('ais-fase-medida').value = 'A';
 
   var bsub = document.getElementById('ais-banner-sub');
@@ -3857,10 +3902,36 @@ function aisFase(letra){
     fase:     letra.toUpperCase(),
     ir_30s:   valNum('ais-' + letra + '-30s'),
     ir_1min:  valNum('ais-' + letra + '-1min'),
-    ir_10min: valNum('ais-' + letra + '-10min')
+    ir_10min: valNum('ais-' + letra + '-10min'),
+    /* Lo que dio el megohmetro. Vacio significa "calcúlalo tú". */
+    dar:      valNum('ais-' + letra + '-dar'),
+    pi:       valNum('ais-' + letra + '-ip')
   };
-  if (f.ir_30s == null && f.ir_1min == null && f.ir_10min == null) return null;
+  if (f.ir_30s == null && f.ir_1min == null && f.ir_10min == null
+      && f.dar == null && f.pi == null) return null;
   return f;
+}
+
+/* Muestra lo que saldria calculado, para que se vea cuando lo escrito difiere
+   de lo que dan las lecturas. No corrige ni bloquea: el instrumento midio y el
+   sistema solo divide, asi que manda el instrumento. Pero una diferencia
+   grande suele ser un tiempo mal anotado, y conviene que se note antes de
+   firmar. */
+function aisCalc(letra){
+  var d = document.getElementById('ais-' + letra + '-calc');
+  if (!d) return;
+  var g = function(suf){ return valNum('ais-' + letra + '-' + suf); };
+  var r30 = g('30s'), r1 = g('1min'), r10 = g('10min');
+  var partes = [];
+  if (r30 > 0 && r1 != null) partes.push('DAR ' + (Math.round(r1 / r30 * 100) / 100));
+  if (r1  > 0 && r10 != null) partes.push('IP ' + (Math.round(r10 / r1 * 100) / 100));
+  if (!partes.length){ d.textContent = ''; d.style.color = ''; return; }
+
+  var dar = g('dar'), ip = g('ip');
+  var lejos = (dar != null && r30 > 0 && r1 != null && Math.abs(dar - r1 / r30) > 0.15)
+           || (ip  != null && r1  > 0 && r10 != null && Math.abs(ip  - r10 / r1) > 0.15);
+  d.style.color = lejos ? 'var(--warn, #E65100)' : '';
+  d.textContent = (lejos ? 'Con tus lecturas daria ' : 'Calculado: ') + partes.join(' · ');
 }
 
 function guardarAislamiento(){
@@ -3968,6 +4039,9 @@ function guardarAislamientoBES(boton){
     ir_30s_ing:      valNum('ais-u-30s'),
     ir_1min_ing:     ir1,
     ir_10min_ing:    valNum('ais-u-10min'),
+    /* Si el instrumento los dio, mandan; si van vacios la base los calcula. */
+    dar:             valNum('ais-u-dar'),
+    pi:              valNum('ais-u-ip'),
     temp_devanado:   aisTempC(),
     condicion:       document.getElementById('ais-condicion').value,
     horas_paro:      valNum('ais-paro'),
