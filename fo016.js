@@ -3,6 +3,12 @@
    Clon estructural del formato GTEC-MT-FO-016 VERSIÓN 00 (FECHA 2018/05/16)
    tal como lo imprime SAP.
 
+   rev.9 — Se aprovecha la hoja. El bloque de firmas ya no exige hoja propia:
+           si cabe al pie de la que está abierta, ahí va. Y la caja de
+           recomendaciones se parte entre hojas cuando lleva texto —negarse a
+           partirla dejaba una hoja con un renglón y dieciocho centímetros en
+           blanco—, mientras que el relleno vacío sigue bajando entero.
+
    rev.8 — El presupuesto de página se mide, ya no se supone. Las filas de
            operaciones y de materiales se contaban a una línea cada una; las
            descripciones largas se parten en dos y la hoja se desbordaba. Ahora
@@ -852,6 +858,30 @@ ${tbN(W.total, W.rext)}
   /* ------------------------------- firmas ---------------------------------
      Los rótulos van alineados a la izquierda bajo cada raya, no centrados. */
 
+  /* Alto del bloque de firmas, para poder decidir si cabe al pie de la hoja en
+     curso. Se calcula con las mismas piezas que lo dibujan: el espaciador de
+     arriba, la fila de nombres, la raya, los rótulos con sus nombres de apoyo,
+     el espaciador de abajo y el bloque del clerk. */
+  function altoFirmas(ot) {
+    const nombres = (ot && ot.ejecutores_en_blanco)
+      ? []
+      : String((ot && ot.ejecutores) || '')
+          .split(/[\/,;]+/).map(x => x.trim()).filter(Boolean);
+    const lider = nombres[0] || '';
+    const apoyo = nombres.length ? nombres.length - 1 : 0;
+
+    const FIRMA_ALTO = 1.05, ALTO_LINEA = 0.42;
+    const altoCol = (f, n) => (f ? FIRMA_ALTO : 0) + (n ? ALTO_LINEA : 0);
+    const colEj  = altoCol((ot && ot.firma_ejecutor) || '', lider);
+    const colSup = altoCol((ot && ot.supervisor_firma) || '', (ot && ot.supervisor_nombre) || '');
+    const fila   = Math.max(colEj, colSup);
+
+    const arriba = Math.max(0, 2.40 - fila);
+    const abajo  = Math.max(0.60, 2.35 - apoyo * ALTO_LINEA);
+    const rotulos = 2 * 0.36 + apoyo * ALTO_LINEA;   // dos renglones de rótulo
+    return arriba + fila + 0.12 + rotulos + abajo + 0.36 + 0.36;
+  }
+
   function firmas(ot) {
     const lb = `border:none;font-weight:bold;padding:2px 0 0 6px;${ARIAL};font-size:8.5pt`;
     const n = 'border:none';
@@ -1124,12 +1154,13 @@ ${tbN(W.total, W.clerk)}
          solo tiene sentido reservarle sitio si en una hoja limpia sí caben
          juntos. Si no, se deja correr. */
       const juntos = ESPACIADOR_P2 + ultimos * RENGLON2 + altoCierre;
-      if (caben >= ultimos && juntos > libre && juntos <= CONT_FLUJO && buf) {
-        /* Caben los renglones pero no la retícula detrás. Antes se recortaba
-           el grupo para hacerle sitio, y como el recorte dejaba renglones
-           sueltos la retícula se iba igual a la hoja siguiente: la hoja se
-           cerraba con quince centímetros en blanco y el sobrante era un solo
-           renglón. Bajan juntos. */
+      /* Bajan juntos SOLO cuando lo que queda es relleno en blanco. Partir
+         renglones vacíos entre dos hojas no aporta nada y deja un huérfano;
+         partir texto escrito es lo normal en cualquier documento, y negarse a
+         hacerlo fue lo que dejó una hoja con un renglón y dieciocho
+         centímetros en blanco. Si hay texto, se escribe hasta donde llegue. */
+      if (!recom.length && caben >= ultimos && juntos > libre
+          && juntos <= CONT_FLUJO && buf) {
         cerrar(); abierta2 = true; continue;
       }
       if (caben < 1) {
@@ -1153,18 +1184,32 @@ ${tbN(W.total, W.clerk)}
        único que harían es empeorarlo. */
     if (libre < altoCierre && (cabeSuelta || libre < CONT_FLUJO - 0.01)) {
       cerrar();
-      if (cabeSuelta) {
-        /* Nunca queda sin renglones encima: es donde se sigue escribiendo. */
+      /* Los renglones en blanco encima de la retícula solo tienen sentido si
+         la caja de recomendaciones no se escribió ya en la hoja anterior.
+         Ponerlos igual repetía una caja vacía bajo otra con texto, y de paso
+         empujaba las firmas a una hoja más. */
+      if (cabeSuelta && !q) {
         buf += p2Renglones([], 0, P2_RENG_BASE, true);
         libre -= ESPACIADOR_P2 + P2_RENG_BASE * RENGLON2;
       }
     }
     buf += cajaTiempos(ot) + estadoOrden(ot) + recepcion(ot);
     libre -= altoCierre;
-    cerrar();
 
-    /* --- firmas: hoja propia, como en el original --- */
-    hojas.push(firmas(ot));
+    /* --- firmas ---
+       Antes iban siempre en hoja propia, como en el impreso de referencia. Pero
+       ese impreso es de una orden concreta; con un reporte corto la última hoja
+       salía con cuatro rayas y nada más, y con uno largo se desperdiciaba la
+       anterior. Si caben al pie de la que está abierta, ahí van. */
+    const hFirmas = altoFirmas(ot);
+    if (libre >= hFirmas) {
+      buf += firmas(ot);
+      libre -= hFirmas;
+      cerrar();
+    } else {
+      cerrar();
+      hojas.push(firmas(ot));
+    }
 
     return hojas;
   }
