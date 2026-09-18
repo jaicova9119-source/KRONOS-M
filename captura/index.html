@@ -799,39 +799,39 @@
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
             La temperatura no corrige la lectura: en un BES el cable recorre cientos de metros con gradiente termico y un factor unico seria fisicamente invalido. Se registra porque el aislamiento cae cerca de la mitad por cada 10 &deg;C, y sin ella no se puede distinguir una degradacion real de un motor medido en caliente.
           </div>
+          <!-- Antes habia temperatura ambiente en grados y humedad en por ciento.
+               El tecnico no lleva higrometro ni termometro de ambiente, asi que
+               solo podia rellenarlos a ojo, y un numero inventado es peor que un
+               campo vacio: parece informacion. Lo que de verdad importa —si hay
+               agua sobre los bornes que estas midiendo— se ve, no se mide. Va al
+               campo 'condicion', que ya existia en la base y el formulario de
+               aislamiento no usaba: salia vacio en todos los informes. -->
           <div class="grid-fields">
             <div class="field">
-              <label>Temp. ambiente
+              <label>Condici&oacute;n de bornes y empalmes
                 <button type="button" class="ayuda-btn" aria-expanded="false"
                         onclick="ayuda(this,'ais-nota-amb')" title="Para qu&eacute; sirve">i</button>
               </label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-temp-amb"><span class="unit">&deg;C</span></div>
-            </div>
-            <div class="field"><label>Humedad</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-humedad"
-                   oninput="aisNotaHum()"><span class="unit">%</span></div>
-              <div id="ais-hum-aviso" class="hint" style="font-size:11.5px;margin-top:4px"></div>
+              <select id="ais-condicion">
+                <option value="SECO">Secos y limpios</option>
+                <option value="HUMEDO">Ambiente h&uacute;medo, superficies fr&iacute;as</option>
+                <option value="CONDENSACION">Gotas o pel&iacute;cula de agua visible</option>
+                <option value="LLUVIA">Lloviendo o reci&eacute;n llovido</option>
+                <option value="SUCIO">Sucios o con grasa</option>
+              </select>
             </div>
             <div class="field"><label>Horas de paro</label>
               <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-paro"><span class="unit">h</span></div>
             </div>
           </div>
-          <!-- Ambiente y humedad no dicen nada del devanado de fondo, que esta a
-               cientos de metros. Sirven para otra cosa, y por eso se quedan: la
-               lectura se toma en superficie, sobre bornes y empalmes expuestos, y
-               con el aire cerca del punto de rocio se forma una pelicula de agua
-               que conduce por la superficie del aislante. Eso hunde la lectura sin
-               que el motor tenga nada. Es el mismo caso que el punto de medida:
-               explica por que un valor bajo desde el SUT puede no significar
-               deterioro. Las dos juntas dan el punto de rocio; por separado, no. -->
           <div class="readonly-note" id="ais-nota-amb" hidden>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
-            No describen el motor, que esta en fondo. Describen el aire donde est&aacute;n
-            los bornes y empalmes que estas midiendo: con humedad alta y el metal
-            fr&iacute;o se condensa una pel&iacute;cula de agua que conduce por la superficie del
-            aislante y hunde la lectura sin que el motor tenga nada. Juntas dan el
-            punto de roc&iacute;o; por separado no sirven. Si la lectura sale baja en una
-            ma&ntilde;ana h&uacute;meda, esto es lo que permite sospecharlo antes de sacar el equipo.
+            No describe el motor, que est&aacute; en fondo: describe las superficies que
+            est&aacute;s midiendo. El agua conduce por encima del aislante, as&iacute; que unos
+            bornes mojados hunden la lectura sin que el motor tenga nada. Si el
+            valor sale bajo y aqu&iacute; qued&oacute; anotado que hab&iacute;a condensaci&oacute;n, se puede
+            repetir en seco antes de sacar el equipo. M&iacute;ralo antes de conectar:
+            despu&eacute;s ya no se sabe.
           </div>
           <div class="grid-fields">
             <div class="field"><label>Megger</label><input id="ais-equipo" placeholder="Ej: Megger MIT525"></div>
@@ -3753,7 +3753,8 @@ function abrirAislamiento(){
      ningun escalon seleccionado. Vuelve a su valor de partida. */
   document.getElementById('ais-vprueba').value = '1000';
   document.getElementById('ais-temp-unidad').value = 'F';
-  ['ais-temp','ais-temp-amb','ais-humedad','ais-paro',
+  document.getElementById('ais-condicion').value = 'SECO';
+  ['ais-temp','ais-paro',
    'ais-equipo','ais-equipo-serie','ais-obs',
    'ais-balance-ab','ais-balance-ac','ais-balance-bc',
    'ais-u-30s','ais-u-1min','ais-u-10min',
@@ -3776,7 +3777,6 @@ function abrirAislamiento(){
     : 'Entra a Ensayos Electricos como pendiente de firma';
 
   aisTempConv();
-  aisNotaHum();
   ir('aislamiento-form');
 }
 
@@ -3816,20 +3816,7 @@ function aisTempConv(){
       (Math.round((c * 9 / 5 + 32) * 10) / 10) + ' \u00b0F)';
 }
 
-/* La humedad no tiene un umbral universal: en Putumayo una manana de 85 % es
-   lo normal y en otro campo seria excepcional. Lo que importa no es el numero
-   sino que quede anotado para poder explicar despues una lectura baja. El
-   aviso solo aparece cuando el valor es alto, y no prohibe nada. */
-function aisNotaHum(){
-  var d = document.getElementById('ais-hum-aviso');
-  if (!d) return;
-  var el = document.getElementById('ais-humedad');
-  var v = el && el.value !== '' ? parseFloat(el.value) : NaN;
-  if (isNaN(v) || v < 80){ d.textContent = ''; d.style.color = ''; return; }
-  d.style.color = 'var(--warn, #E65100)';
-  d.textContent = 'Humedad alta: si la lectura sale baja, an\u00f3talo en observaciones. '
-    + 'Puede ser condensaci\u00f3n en bornes, no el motor.';
-}
+
 
 function guardarBitacora(){
   var pozo = document.getElementById('evt-pozo').value;
@@ -3919,8 +3906,7 @@ function guardarAislamiento(){
     motivo:         'Ronda de campo',
     unidad_ingreso: document.getElementById('ais-unidad').value,
     temp_devanado:  aisTempC(),
-    temp_ambiente:  valNum('ais-temp-amb'),
-    humedad:        valNum('ais-humedad'),
+    condicion:      document.getElementById('ais-condicion').value,
     horas_paro:     valNum('ais-paro'),
     v_prueba:       valNum('ais-vprueba'),
     megger:         document.getElementById('ais-equipo').value,
@@ -3983,8 +3969,7 @@ function guardarAislamientoBES(boton){
     ir_1min_ing:     ir1,
     ir_10min_ing:    valNum('ais-u-10min'),
     temp_devanado:   aisTempC(),
-    temp_ambiente:   valNum('ais-temp-amb'),
-    humedad:         valNum('ais-humedad'),
+    condicion:       document.getElementById('ais-condicion').value,
     horas_paro:      valNum('ais-paro'),
     v_prueba:        valNum('ais-vprueba'),
     equipo_medicion: document.getElementById('ais-equipo').value,
