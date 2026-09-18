@@ -11387,6 +11387,10 @@ const APPS_CAT = [
 function puedoEditar(k) {
   if (!usuarioActual) return false;
   if (usuarioActual.rol === "admin") return true;
+  /* El rol de consulta no escribe en ninguna parte, y eso lo hace cumplir
+     Postgres. Aquí se repite para que la pantalla no ofrezca botones que la
+     base va a rechazar: un botón que siempre falla es peor que no tenerlo. */
+  if (usuarioActual.rol === "consulta") return false;
   if (!puedoModulo(k)) return false;
   const sl = usuarioActual.modulos_solo_lectura;
   return !(Array.isArray(sl) && sl.includes(k));
@@ -11394,6 +11398,9 @@ function puedoEditar(k) {
 
 function nivelModulo(u, k) {
   if (!(u.modulos == null || (Array.isArray(u.modulos) && u.modulos.includes(k)))) return "no";
+  /* Para un usuario de consulta, marcar "Edición" en un módulo no significa
+     nada: la base no se lo va a permitir. Se muestra lo que de verdad puede. */
+  if (u.rol === "consulta") return "ver";
   const sl = u.modulos_solo_lectura;
   return (Array.isArray(sl) && sl.includes(k)) ? "ver" : "edita";
 }
@@ -11798,11 +11805,17 @@ async function cargarPanelPerfil() {
         <div class="usuario-row-info">
           <div class="usuario-row-nombre">${u.nombre}</div>
           <div class="usuario-row-email">${u.email || ""}</div>
+          <!-- El cargo no da permisos: los da el rol. Sirve para saber quién
+               es quién al elegir a qué supervisor mandar un reporte. -->
+          <input data-cargo-usuario="${u.id}" value="${otEsc(u.cargo || "")}"
+                 placeholder="Cargo (ej. Supervisor O&amp;M Instrumentación)"
+                 style="margin-top:4px;font-size:12px;padding:5px 8px"/>
         </div>
         <select data-usuario-id="${u.id}">
           <option value="tecnico" ${u.rol === "tecnico" ? "selected" : ""}>Técnico</option>
           <option value="supervisor" ${u.rol === "supervisor" ? "selected" : ""}>Supervisor</option>
           <option value="ingeniero" ${u.rol === "ingeniero" ? "selected" : ""}>Ingeniero</option>
+          <option value="consulta" ${u.rol === "consulta" ? "selected" : ""}>Solo consulta</option>
           <option value="admin" ${u.rol === "admin" ? "selected" : ""}>Admin</option>
         </select>
         <button data-modulos-usuario="${u.id}" title="Módulos visibles para este usuario"
@@ -12000,6 +12013,21 @@ async function cargarPanelPerfil() {
         cargarPanelPerfil();
       };
     });
+    /* Se guarda al salir del campo, no en cada tecla: un update por letra
+       contra la base es ruido, y el cargo se escribe una vez al año. */
+    cont.querySelectorAll("[data-cargo-usuario]").forEach(inp => {
+      inp.dataset.previo = inp.value;
+      inp.onblur = async () => {
+        const v = inp.value.trim();
+        if (v === (inp.dataset.previo || "")) return;
+        const { error } = await sb.from("usuarios")
+          .update({ cargo: v || null }).eq("id", inp.dataset.cargoUsuario);
+        if (error) { toast("No se pudo guardar el cargo"); inp.value = inp.dataset.previo || ""; return; }
+        inp.dataset.previo = v;
+        toast("Cargo actualizado");
+      };
+    });
+
     cont.querySelectorAll("select[data-usuario-id]").forEach(sel => {
       sel.onchange = async () => {
         const { error } = await sb.from("usuarios").update({ rol: sel.value }).eq("id", sel.dataset.usuarioId);
@@ -16139,7 +16167,11 @@ function otFlujoRender() {
   const f = otFlujoActual();
 
   const rastro = [];
-  if (o.enviado_en)   rastro.push("Enviado por " + otEsc(o.enviado_nombre || "\u2014") + " el " + otFechaCorta(o.enviado_en));
+  if (o.enviado_en) {
+    rastro.push("Enviado por " + otEsc(o.enviado_nombre || "\u2014") +
+      " el " + otFechaCorta(o.enviado_en) +
+      (o.destinatario_nombre ? " a " + otEsc(o.destinatario_nombre) : ""));
+  }
   if (o.devuelto_en)  rastro.push("Devuelto por " + otEsc(o.devuelto_nombre || "\u2014") + " el " + otFechaCorta(o.devuelto_en));
   if (o.firmado_en)   rastro.push("Firmado por " + otEsc(o.firmado_nombre || "\u2014") + " el " + otFechaCorta(o.firmado_en));
   if (o.reabierto_en) rastro.push("Reabierto por " + otEsc(o.reabierto_nombre || "\u2014") + " el " +
@@ -16154,7 +16186,7 @@ function otFlujoRender() {
 
   const b = [];
   if ((f === "borrador" || f === "devuelto") && otRolActual()) {
-    b.push('<button class="btn-primary" onclick="otFlujoAccion(\'enviar\')">Enviar al supervisor</button>');
+    b.push('<button class="btn-primary" onclick="otAbrirEnviar()">Enviar a revisi\u00f3n</button>');
   }
   if (f === "enviado" && otEsRevisor()) {
     b.push('<button class="btn-primary" onclick="otAbrirFirmar()">Firmar y aprobar</button>');
@@ -16231,7 +16263,7 @@ function otAplicarCandado() {
   });
 }
 
-async function otFlujoAccion(accion) {
+async function otFlujoAccion(accion, destinatario) {
   if (!otDatos) return;
   const id = otDatos.actividad.id;
 
@@ -16257,6 +16289,7 @@ async function otFlujoAccion(accion) {
 
   const r = await sb.rpc("programa_ot_flujo", {
     p_actividad_id: id, p_fecha: otFecha, p_accion: accion, p_motivo: motivo,
+    p_destinatario: destinatario || null,
   });
   if (r.error) { toast("No se pudo: " + r.error.message); return; }
   if (r.data && r.data.ok === false) { toast(r.data.error); return; }
@@ -16267,6 +16300,71 @@ async function otFlujoAccion(accion) {
   toast({ enviar: "Enviado al supervisor", devolver: "Devuelto al t\u00e9cnico",
           firmar: "Reporte firmado", reabierto: "", reabrir: "Reporte reabierto" }[accion] || "Listo");
   otPendientesContar();
+}
+
+/* ---------- Enviar a revisión: a quién ----------
+   El destinatario ordena la bandeja, no restringe quién puede firmar. Un
+   supervisor que además ejecuta puede elegirse a sí mismo: diligencia, se lo
+   envía y lo firma. Queda registrado que enviado_por y firmado_por son la
+   misma persona, y eso es lo que hace aceptable la práctica. */
+let otSupervisores = [];
+
+async function otAbrirEnviar() {
+  if (!otDatos) return;
+  const sel = document.getElementById("ot-enviar-destino");
+  sel.innerHTML = '<option value="">Cargando...</option>';
+  document.getElementById("ot-enviar-modal").style.display = "flex";
+
+  const r = await sb.rpc("programa_ot_supervisores");
+  if (r.error) {
+    sel.innerHTML = '<option value="">No se pudo cargar la lista</option>';
+    toast("No se pudo cargar: " + r.error.message);
+    return;
+  }
+  otSupervisores = r.data || [];
+  if (!otSupervisores.length) {
+    sel.innerHTML = '<option value="">No hay supervisores registrados</option>';
+    return;
+  }
+
+  /* Se propone el de mi disciplina, si lo hay. Es lo más probable y ahorra un
+     toque, pero queda a la vista que se puede cambiar. */
+  const miDisc = (usuarioActual && usuarioActual.disciplina) || "";
+  const propuesto = otSupervisores.find(x => miDisc && x.disciplina === miDisc)
+                 || otSupervisores.find(x => x.soy_yo);
+
+  sel.innerHTML =
+    '<option value="">Cualquier supervisor</option>' +
+    otSupervisores.map(x => '<option value="' + x.id + '"' +
+      (propuesto && x.id === propuesto.id ? " selected" : "") + ">" +
+      otEsc(x.nombre) + (x.soy_yo ? " (t\u00fa)" : "") +
+      (x.cargo ? " \u00b7 " + otEsc(x.cargo)
+               : (x.disciplina ? " \u00b7 " + otEsc(x.disciplina) : "")) +
+      "</option>").join("");
+
+  const nota = document.getElementById("ot-enviar-nota");
+  if (nota) {
+    nota.textContent = otEsRevisor()
+      ? "Si lo ejecutaste tú y también lo firmas, eliges tu propio nombre: queda registrado que enviaste y firmaste."
+      : "";
+  }
+}
+
+function otCerrarEnviar() {
+  const m = document.getElementById("ot-enviar-modal");
+  if (m) m.style.display = "none";
+}
+
+async function otConfirmarEnvio() {
+  const destino = document.getElementById("ot-enviar-destino").value || null;
+  const btn = document.getElementById("ot-btn-enviar-ok");
+  btn.disabled = true; btn.textContent = "Enviando...";
+  try {
+    await otFlujoAccion("enviar", destino);
+    otCerrarEnviar();
+  } finally {
+    btn.disabled = false; btn.textContent = "Enviar";
+  }
 }
 
 /* ---------- Firmar y aprobar, en un solo gesto ----------
@@ -16342,7 +16440,8 @@ async function otConfirmarFirma() {
     if (rf.data && rf.data.ok === false) { toast(rf.data.error); return; }
 
     const r = await sb.rpc("programa_ot_flujo", {
-      p_actividad_id: id, p_fecha: otFecha, p_accion: "firmar", p_motivo: null,
+      p_actividad_id: id, p_fecha: otFecha, p_accion: "firmar",
+      p_motivo: null, p_destinatario: null,
     });
     if (r.error) throw r.error;
     if (r.data && r.data.ok === false) { toast(r.data.error); return; }
@@ -16538,7 +16637,9 @@ async function otPendientesCargar() {
     '<div class="pend-item ' + (x.flujo === "devuelto" ? "devuelto" : "") +
       '" onclick="otPendAbrir(' + i + ')">' +
       '<div class="pend-tit">' + otEsc(x.numero_ot || "sin OT") + " \u00b7 " +
-        otEsc(x.descripcion_trabajo || "") + "</div>" +
+        otEsc(x.descripcion_trabajo || "") +
+        (x.para_mi ? ' <span class="badge badge-CRITICO">para ti</span>' : "") +
+        "</div>" +
       '<div class="pend-sub">' +
         otEsc(progFmtFecha ? progFmtFecha(x.fecha) : x.fecha) +
         " \u00b7 " + otEsc(x.codigo_equipo || "") + " " + otEsc(x.descripcion_equipo || "") +
@@ -16546,6 +16647,7 @@ async function otPendientesCargar() {
         (x.disciplina ? " \u00b7 " + otEsc(x.disciplina) : "") +
         (x.campo ? " \u00b7 " + otEsc(x.campo) : "") +
         (x.enviado_nombre ? "<br>Enviado por " + otEsc(x.enviado_nombre) + " el " + otFechaCorta(x.enviado_en) : "") +
+        (x.destinatario_nombre && !x.para_mi ? " \u00b7 dirigido a " + otEsc(x.destinatario_nombre) : "") +
         (x.devuelto_motivo ? "<br><b>Motivo:</b> " + otEsc(x.devuelto_motivo) : "") +
       "</div></div>").join("");
   otPendItems = items;
@@ -18081,6 +18183,29 @@ function firmaPintarVista() {
 }
 
 </script>
+
+<!-- A quien se envia. La disciplina no basta para deducirlo: entre
+     supervisores se delegan areas y manana uno puede quedar encargado de
+     tres. Eso se elige, no se adivina. -->
+<div class="dlg-modal" id="ot-enviar-modal">
+  <div class="dlg-caja">
+    <div class="dlg-titulo">Enviar a revisi&oacute;n</div>
+    <div class="dlg-cuerpo">
+      <div class="field">
+        <label>&iquest;Qui&eacute;n lo revisa?</label>
+        <select id="ot-enviar-destino"></select>
+        <div class="mat-stock">Le aparecer&aacute; primero en sus pendientes. Cualquier
+          otro supervisor puede firmarlo igual si le toca cubrir.</div>
+      </div>
+      <div class="mat-stock" id="ot-enviar-nota"></div>
+    </div>
+    <div class="dlg-pie">
+      <button type="button" class="btn-secondary" onclick="otCerrarEnviar()">Cancelar</button>
+      <button type="button" class="btn-primary" id="ot-btn-enviar-ok"
+              onclick="otConfirmarEnvio()">Enviar</button>
+    </div>
+  </div>
+</div>
 
 <!-- Firmar y aprobar. Antes el boton llamaba directo a la funcion, que
      respondia "elija que sale sobre su raya" y obligaba al supervisor a subir
