@@ -950,10 +950,12 @@
           </div>
           <div class="readonly-note" id="ais-nota-lecturas" hidden>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
-            La lectura de 1 minuto es la &uacute;nica obligatoria. Con 30 s y 10 min el sistema
-            calcula DAR e IP solo; si tu meg&oacute;hmetro ya te los da, escr&iacute;belos y se usan esos.
-            Lo escrito manda siempre sobre lo calculado, porque el instrumento midi&oacute; y el
-            sistema solo divide.
+            Con 30 s, 1 min y 10 min el sistema calcula DAR e IP solo. Si tu meg&oacute;hmetro
+            ya te los da, escr&iacute;belos: lo del instrumento manda sobre lo calculado, porque
+            &eacute;l midi&oacute; y el sistema solo divide.<br>
+            Y si solo anotaste la de 10 minutos con el IP, la de 1 minuto se despeja de
+            ah&iacute; —R1 = R10 / IP— y se te ofrece al guardar. Queda anotada como derivada,
+            no como medida.
           </div>
         </div>
 
@@ -3912,6 +3914,45 @@ function aisFase(letra){
   return f;
 }
 
+/* La lectura de 1 minuto se puede despejar de lo que el instrumento ya dio:
+   IP = R10 / R1, luego R1 = R10 / IP. No es una estimacion, es la misma
+   division al reves, y el resultado es tan bueno como el IP que entrego el
+   megohmetro.
+
+   Aun asi no se rellena sola. El tecnico la confirma y queda anotada en
+   observaciones como derivada: un valor calculado que aparece en la casilla de
+   una medicion, sin que nadie lo sepa, se vuelve indistinguible de una lectura
+   real seis meses despues. */
+function aisDeriva1min(letra){
+  var suf = function(x){ return valNum('ais-' + letra + '-' + x); };
+  var r10 = suf('10min'), ip = suf('ip');
+  if (r10 == null || ip == null || ip <= 0) return null;
+  return Math.round(r10 / ip * 100) / 100;
+}
+
+/* Devuelve true si la fase quedo con lectura de 1 minuto, propia o derivada. */
+function aisAsegura1min(letra, etiqueta){
+  var el = document.getElementById('ais-' + letra + '-1min');
+  if (el && el.value !== '') return true;
+  var d = aisDeriva1min(letra);
+  if (d == null) return false;
+  var r10 = valNum('ais-' + letra + '-10min'), ip = valNum('ais-' + letra + '-ip');
+  if (!confirm('No registraste la lectura de 1 minuto' + (etiqueta ? ' en ' + etiqueta : '') + '.\n\n'
+      + 'Se puede despejar del IP del instrumento: ' + r10 + ' / ' + ip + ' = ' + d + '.\n\n'
+      + 'Se usara ese valor y quedara anotado en observaciones como derivado.\n\nContinuar?')) {
+    return false;
+  }
+  el.value = d;
+  var obs = document.getElementById('ais-obs');
+  var nota = 'Lectura de 1 min' + (etiqueta ? ' (' + etiqueta + ')' : '')
+           + ' derivada del IP del instrumento: ' + r10 + ' / ' + ip + ' = ' + d + '.';
+  if (obs && obs.value.indexOf(nota) < 0) {
+    obs.value = (obs.value ? obs.value.replace(/\s*$/, '') + '\n' : '') + nota;
+  }
+  if (typeof aisCalc === 'function') aisCalc(letra);
+  return true;
+}
+
 /* Muestra lo que saldria calculado, para que se vea cuando lo escrito difiere
    de lo que dan las lecturas. No corrige ni bloquea: el instrumento midio y el
    sistema solo divide, asi que manda el instrumento. Pero una diferencia
@@ -3941,15 +3982,24 @@ function guardarAislamiento(){
   var pozo = document.getElementById('ais-pozo').value;
   if(!pozo){ alert('Selecciona un pozo.'); return; }
 
-  var fases = ['a','b','c'].map(aisFase).filter(function(f){ return f; });
+  var fases = ['a','b','c'].map(aisFase).filter(function(f){ return f; });   // eslint-disable-line
   if(!fases.length){
     alert('Registra al menos una fase. La lectura de 1 minuto es la que sostiene el ensayo.');
     return;
   }
+  /* Se intenta despejar en cada fase que la tenga a mano antes de rechazar. */
+  ['a','b','c'].forEach(function(l){
+    var f = aisFase(l);
+    if (f && f.ir_1min == null) aisAsegura1min(l, 'fase ' + l.toUpperCase());
+  });
+  fases = ['a','b','c'].map(aisFase).filter(function(f){ return f; });
+
   var sinUnMinuto = fases.filter(function(f){ return f.ir_1min == null; });
   if(sinUnMinuto.length){
     alert('Falta la lectura de 1 minuto en la fase '
-      + sinUnMinuto.map(function(f){ return f.fase; }).join(', ') + '.');
+      + sinUnMinuto.map(function(f){ return f.fase; }).join(', ') + '.\n\n'
+      + 'Es contra ella que IEEE 43 fija el minimo admisible. Si tu megohmetro '
+      + 'te dio el IP, escribelo junto con la de 10 minutos y se despeja sola.');
     return;
   }
 
@@ -4010,10 +4060,14 @@ function guardarAislamientoBES(boton){
   if(!pozo){ alert('Selecciona un pozo.'); return; }
 
   var ir1 = valNum('ais-u-1min');
-  if(ir1 == null){
-    alert('Falta la lectura de 1 minuto. Es la que sostiene el ensayo.');
+  if (ir1 == null && !aisAsegura1min('u')) {
+    alert('Falta la lectura de 1 minuto. Es la que sostiene el ensayo: '
+      + 'es contra ella que IEEE 43 fija el minimo admisible.\n\n'
+      + 'Si tu megohmetro te dio el IP, escribelo junto con la de 10 minutos '
+      + 'y la de 1 minuto se despeja sola.');
     return;
   }
+  ir1 = valNum('ais-u-1min');
 
   /* En BES el aviso es mas duro: en fondo de pozo se pasa de 85 C con
      normalidad, y el aislamiento cae cerca de la mitad por cada 10 C. Dos
