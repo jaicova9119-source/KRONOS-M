@@ -7947,6 +7947,15 @@ function EE_desbalance(vals) {
   return prom > 0 ? Math.max(...v.map(x => Math.abs(x - prom))) / prom * 100 : null;
 }
 
+/* El punto de medida no cambia qué se ensayó —siempre es cable más motor—
+   sino cuánto cable entra en la lectura. La diferencia entre dos puntos es lo
+   que localiza el tramo con problema. */
+const EE_PUNTO = {
+  SUT:    "Cable + motor, desde SUT",
+  VENTEO: "Cable + motor, desde caja de venteo",
+  QCI:    "Cable + motor, desde QCI",
+};
+
 const EE_FASES = marc => marc === "IEC" ? ["U", "V", "W"] : ["A", "B", "C"];
 const EE_BORNES = marc => marc === "IEC" ? ["U1", "V1", "W1"] : ["T1", "T2", "T3"];
 
@@ -9309,6 +9318,11 @@ function eeInformeHTML(e, m, historia) {
 
   const cond = [
     ["Fecha", e.fecha], ["Técnico", e.tecnico], ["Motivo", e.motivo],
+    /* Desde dónde se conectó el megóhmetro. Va arriba, entre las condiciones,
+       porque cambia cómo se lee todo lo que viene abajo: la misma máquina da
+       distinto desde el SUT que desde el QCI, y sin este dato dos informes del
+       mismo equipo parecen contradecirse. */
+    ["Punto de medida", EE_PUNTO[e.punto_medida] || ""],
     ["Temp. devanado", e.temp_devanado != null ? e.temp_devanado + " °C" : "no registrada"],
     ["Temp. ambiente", e.temp_ambiente != null ? e.temp_ambiente + " °C" : ""],
     ["Humedad relativa", e.humedad != null ? e.humedad + " %" : ""],
