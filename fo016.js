@@ -208,7 +208,14 @@ const FO016 = (function () {
   const P2_RENG_BASE  = 7;
   const P2_RENG_MIN   = 3;
   const ESPACIADOR_P2 = 0.11;
-  const ALTO_CIERRE   = 14.50;
+  /* El cierre son tres piezas independientes, no un bloque. Tratarlas como uno
+     solo obligaba a bajarlas todas cuando faltaban dos centímetros, y eso deja
+     media hoja en blanco. Se reparten por separado y cada una busca sitio.
+     Suman los 14.50 de antes. */
+  const ALTO_TIEMPOS  = 3.35;
+  const ALTO_ESTADO   = 3.15;
+  const ALTO_RECEP    = 8.00;
+  const ALTO_CIERRE   = ALTO_TIEMPOS + ALTO_ESTADO + ALTO_RECEP;   // 14.50
 
   /* ----------------------------- utilidades ------------------------------- */
 
@@ -336,6 +343,7 @@ const FO016 = (function () {
   const BB    = bord(0, 0, 1, 0);
   const BT    = bord(1, 0, 0, 0);
   const LAT   = bord(0, 1, 0, 1);
+  const LAT_T = bord(1, 1, 0, 1);   // laterales + superior
   const LAT_B = bord(0, 1, 1, 1);   // laterales + inferior
   const LAT_TB= bord(1, 1, 1, 1);   // laterales + superior + inferior
   const BANDA = `${TD};background:#ABD4D4;${BD};font-weight:bold;text-align:center;` +
@@ -693,7 +701,10 @@ ${ren}
 </table>`;
   }
 
-  function cajaTiempos(ot) {
+  /* 'tapa' cierra el recuadro por arriba. En el impreso de referencia esta caja
+     continúa la de recomendaciones y por eso no lleva raya superior; cuando
+     abre hoja, sin ella el recuadro se ve roto por arriba. */
+  function cajaTiempos(ot, tapa) {
     const e = `${NB};white-space:nowrap`;
     const bc = 'border:none;padding:0 0 0 2px;vertical-align:bottom';
     const u = (v, w) => `<td style="${bc}">${campo(w, escT(v))}</td>`;
@@ -712,8 +723,9 @@ ${ren}
   </tr>
 </table>`;
 
+    const lat0 = tapa ? LAT_T : LAT;
     return `${tabla(W.total)}
-  <tr><td style="${LAT};padding:0.42cm 4px 0.08cm;${MONO}">Tiempos de Parada e Intervención</td></tr>
+  <tr><td style="${lat0};padding:0.42cm 4px 0.08cm;${MONO}">Tiempos de Parada e Intervención</td></tr>
   <tr><td style="${LAT};padding:0 3px">${interior}</td></tr>
   <tr><td style="${LAT_B};height:1.17cm">&nbsp;</td></tr>
 </table>`;
@@ -1182,7 +1194,7 @@ ${tbN(W.total, W.clerk)}
        condición es falsa, así que no puede ciclar. Los renglones de relleno
        solo se ponen cuando la retícula sí cabía: en el caso desbordado lo
        único que harían es empeorarlo. */
-    if (libre < altoCierre && (cabeSuelta || libre < CONT_FLUJO - 0.01)) {
+    if (libre < ALTO_TIEMPOS && (cabeSuelta || libre < CONT_FLUJO - 0.01)) {
       cerrar();
       /* Los renglones en blanco encima de la retícula solo tienen sentido si
          la caja de recomendaciones no se escribió ya en la hoja anterior.
@@ -1193,8 +1205,19 @@ ${tbN(W.total, W.clerk)}
         libre -= ESPACIADOR_P2 + P2_RENG_BASE * RENGLON2;
       }
     }
-    buf += cajaTiempos(ot) + estadoOrden(ot) + recepcion(ot);
-    libre -= altoCierre;
+
+    /* Cada pieza busca su sitio. La caja de tiempos se tapa por arriba cuando
+       abre hoja: sin raya superior el recuadro se ve roto. */
+    const piezas = [
+      [() => cajaTiempos(ot, !buf), ALTO_TIEMPOS],
+      [() => estadoOrden(ot),       ALTO_ESTADO],
+      [() => recepcion(ot),         altoCierre - ALTO_TIEMPOS - ALTO_ESTADO],
+    ];
+    for (const [dibuja, alto] of piezas) {
+      if (libre < alto && buf) cerrar();
+      buf += dibuja();
+      libre -= alto;
+    }
 
     /* --- firmas ---
        Antes iban siempre en hoja propia, como en el impreso de referencia. Pero
