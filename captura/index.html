@@ -907,7 +907,8 @@
                 <input class="mono-input" type="number" step="any" id="ais-u-ip"
                        placeholder="se calcula" oninput="aisCalc('u')"></div>
             </div>
-            <div id="ais-u-calc" class="hint" style="font-size:11.5px;opacity:.75;margin-bottom:10px"></div>
+            <div id="ais-u-calc" class="hint" style="font-size:11.5px;opacity:.75"></div>
+            <div id="ais-u-aviso" class="hint" style="font-size:11.5px;margin-bottom:10px"></div>
             <div class="readonly-note" id="ais-nota-estrella" hidden>
               <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
               El motor BES es una estrella con el neutro en el fondo del pozo: las tres fases
@@ -938,15 +939,15 @@
             <div class="fase">A</div>
             <input class="mono-input" type="number" step="any" id="ais-a-dar" placeholder="calc" oninput="aisCalc('a')">
             <input class="mono-input" type="number" step="any" id="ais-a-ip"  placeholder="calc" oninput="aisCalc('a')">
-            <div class="hint" id="ais-a-calc" style="font-size:11px;opacity:.7;align-self:center"></div>
+            <div style="align-self:center"><div class="hint" id="ais-a-calc" style="font-size:11px;opacity:.7"></div><div class="hint" id="ais-a-aviso" style="font-size:11px"></div></div>
             <div class="fase">B</div>
             <input class="mono-input" type="number" step="any" id="ais-b-dar" placeholder="calc" oninput="aisCalc('b')">
             <input class="mono-input" type="number" step="any" id="ais-b-ip"  placeholder="calc" oninput="aisCalc('b')">
-            <div class="hint" id="ais-b-calc" style="font-size:11px;opacity:.7;align-self:center"></div>
+            <div style="align-self:center"><div class="hint" id="ais-b-calc" style="font-size:11px;opacity:.7"></div><div class="hint" id="ais-b-aviso" style="font-size:11px"></div></div>
             <div class="fase">C</div>
             <input class="mono-input" type="number" step="any" id="ais-c-dar" placeholder="calc" oninput="aisCalc('c')">
             <input class="mono-input" type="number" step="any" id="ais-c-ip"  placeholder="calc" oninput="aisCalc('c')">
-            <div class="hint" id="ais-c-calc" style="font-size:11px;opacity:.7;align-self:center"></div>
+            <div style="align-self:center"><div class="hint" id="ais-c-calc" style="font-size:11px;opacity:.7"></div><div class="hint" id="ais-c-aviso" style="font-size:11px"></div></div>
           </div>
           <div class="readonly-note" id="ais-nota-lecturas" hidden>
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
@@ -3926,7 +3927,15 @@ function aisFase(letra){
 function aisDeriva1min(letra){
   var suf = function(x){ return valNum('ais-' + letra + '-' + x); };
   var r10 = suf('10min'), ip = suf('ip');
-  if (r10 == null || ip == null || ip <= 0) return null;
+  if (r10 == null || ip == null) return null;
+  /* Un IP menor que 1 significa que la lectura de 10 minutos es MENOR que la
+     de 1 minuto: el aislamiento no absorbe, se descarga. Ocurre en maquinas
+     muy contaminadas o humedas, pero entonces el instrumento tuvo que medir
+     los dos tiempos y el tecnico los tiene. Lo que no se puede es despejar
+     desde ahi: dividir por 0.22 multiplica por cinco y produce un valor de 1
+     minuto mayor que el de 10, que es justo lo contrario de lo que dice ese
+     IP. Casi siempre es un 2.22 tecleado como 0.22. */
+  if (ip < 1) return null;
   return Math.round(r10 / ip * 100) / 100;
 }
 
@@ -3936,6 +3945,11 @@ function aisAsegura1min(letra, etiqueta){
   if (el && el.value !== '') return true;
   var d = aisDeriva1min(letra);
   if (d == null) return false;
+  /* Cinturon y tirantes: el valor despejado no puede superar al de 10 minutos.
+     Con IP >= 1 no deberia pasar nunca, pero si pasa es que algo esta mal
+     tecleado y vale mas rechazar que guardar un imposible. */
+  var r10chk = valNum('ais-' + letra + '-10min');
+  if (r10chk != null && d > r10chk) return false;
   var r10 = valNum('ais-' + letra + '-10min'), ip = valNum('ais-' + letra + '-ip');
   if (!confirm('No registraste la lectura de 1 minuto' + (etiqueta ? ' en ' + etiqueta : '') + '.\n\n'
       + 'Se puede despejar del IP del instrumento: ' + r10 + ' / ' + ip + ' = ' + d + '.\n\n'
@@ -3959,6 +3973,7 @@ function aisAsegura1min(letra, etiqueta){
    grande suele ser un tiempo mal anotado, y conviene que se note antes de
    firmar. */
 function aisCalc(letra){
+  aisAvisoCociente(letra);
   var d = document.getElementById('ais-' + letra + '-calc');
   if (!d) return;
   var g = function(suf){ return valNum('ais-' + letra + '-' + suf); };
@@ -3973,6 +3988,23 @@ function aisCalc(letra){
            || (ip  != null && r1  > 0 && r10 != null && Math.abs(ip  - r10 / r1) > 0.15);
   d.style.color = lejos ? 'var(--warn, #E65100)' : '';
   d.textContent = (lejos ? 'Con tus lecturas daria ' : 'Calculado: ') + partes.join(' · ');
+}
+
+/* DAR e IP por debajo de 1 dicen que la resistencia BAJA con el tiempo. Existe
+   —aislamiento humedo o contaminado— pero es poco frecuente y se parece
+   demasiado a un punto decimal mal puesto. Se avisa sin bloquear: puede ser el
+   hallazgo del dia. */
+function aisAvisoCociente(letra){
+  var d = document.getElementById('ais-' + letra + '-aviso');
+  if (!d) return;
+  var dar = valNum('ais-' + letra + '-dar'), ip = valNum('ais-' + letra + '-ip');
+  var malos = [];
+  if (dar != null && dar < 1) malos.push('DAR ' + dar);
+  if (ip  != null && ip  < 1) malos.push('IP ' + ip);
+  if (!malos.length){ d.textContent = ''; return; }
+  d.style.color = 'var(--warn, #E65100)';
+  d.textContent = malos.join(' y ') + ': la resistencia bajaria con el tiempo. '
+    + 'Ocurre con aislamiento humedo o sucio, pero comprueba el punto decimal.';
 }
 
 function guardarAislamiento(){
