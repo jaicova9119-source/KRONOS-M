@@ -5642,6 +5642,9 @@ function kpRenderAislamiento(ais){
          las cuatro cosas que deciden si un aislamiento pasa. */
       const e = { cls: a.dictamen_cls || 'none',
                   txt: a.dictamen_txt || kpEstadoIP(a.ip).txt };
+      /* El dictamen de un ensayo sin firmar es provisional por definicion: se
+         calculo sobre datos que nadie ha verificado todavia. */
+      if (a.estado && a.estado !== 'firmado') e.txt = e.txt + ' (provisional)';
       const balv = [a.balance_ab, a.balance_ac, a.balance_bc]
         .filter(v => v != null).map(Number);
       const bal = balv.length;
@@ -5651,9 +5654,20 @@ function kpRenderAislamiento(ais){
         if (pr > 0) desb = (Math.max.apply(null, balv) - Math.min.apply(null, balv)) / pr * 100;
       }
 
-      h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"><div>'
+      /* Un ensayo sin firmar es una medicion, no un aval. Se muestra —el
+         tecnico tiene que ver lo que acaba de tomar sin esperar al
+         supervisor— pero dicho: lo que decide sobre una maquina es lo
+         revisado, y confundir las dos cosas fue lo que dejo pasar una lectura
+         de 1 minuto imposible durante un dia entero. */
+      const provisional = a.estado && a.estado !== 'firmado';
+
+      h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"'
+        +  (provisional ? ' style="opacity:.82"' : '') + '><div>'
         +  '<div><span class="nm">' + (a.fecha_prueba || '\u2014') + '</span>'
         +  (a.realizado_por ? ' <span class="id">' + a.realizado_por + '</span>' : '')
+        +  (provisional
+              ? ' <span class="src" style="color:var(--kp-warn);font-weight:600">'
+                + 'sin firmar</span>' : '')
         +  '</div>'
         /* La maquina va en cada fila, no en el encabezado. El historial de
            un pozo atraviesa mas de un motor, y sin decir de cual es cada
