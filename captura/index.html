@@ -731,11 +731,16 @@
           <div class="grid-fields">
             <div class="field"><label>Fecha de prueba</label><input type="date" id="ais-fecha"></div>
             <div class="field"><label>Que se ensayo</label>
-              <select id="ais-componente">
-                <option value="MOTOR_CABLE">Motor + cable, desde superficie</option>
-                <option value="MOTOR">Solo motor, en bornes</option>
-                <option value="CABLE">Solo cable</option>
-                <option value="SUT">SUT</option>
+              <!-- Lo ensayado es siempre lo mismo, cable + motor; lo que cambia
+                   es desde donde se conecto el megohmetro, y con ello cuanto
+                   cable entra en la medicion. Por eso el valor viaja en
+                   punto_medida y no en componente: si desde el SUT sale bajo y
+                   desde el QCI mejora, la comparacion localiza el tramo malo, y
+                   eso solo funciona si el sistema sabe que es el mismo conjunto. -->
+              <select id="ais-punto">
+                <option value="SUT">Cable + motor, desde SUT</option>
+                <option value="VENTEO">Cable + motor, desde caja de venteo</option>
+                <option value="QCI">Cable + motor, desde QCI</option>
               </select>
             </div>
           </div>
@@ -744,18 +749,26 @@
         <div class="section-label"><span class="bar"></span>Condiciones de la prueba</div>
         <div class="group-card">
           <div class="grid-fields">
-            <div class="field"><label>Temperatura de devanado</label>
+            <div class="field"><label>Temperatura de devanado <span style="font-weight:normal;opacity:.65">&middot; referencia</span></label>
               <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-temp"
                    oninput="aisNotaTemp()"><span class="unit">&deg;C</span></div>
             </div>
+            <!-- Escalones reales del instrumento. Tecleado a mano salian valores
+                 que ningun megohmetro entrega, y el criterio de IEEE 43 depende
+                 de la tension aplicada. -->
             <div class="field"><label>Tension de prueba</label>
-              <div class="unit-input"><input class="mono-input" type="number" step="any" id="ais-vprueba"
-                   placeholder="1000"><span class="unit">V</span></div>
+              <select id="ais-vprueba">
+                <option value="250">250 V</option>
+                <option value="500">500 V</option>
+                <option value="1000" selected>1000 V</option>
+                <option value="2500">2500 V</option>
+                <option value="5000">5000 V</option>
+              </select>
             </div>
           </div>
           <div class="readonly-note" id="ais-nota-temp">
             <svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>
-            Sin temperatura de devanado la lectura no se puede corregir a 40 &deg;C y no entra a la tendencia. Queda como referencia puntual.
+            La temperatura no corrige la lectura: en un BES el cable recorre cientos de metros con gradiente termico y un factor unico seria fisicamente invalido. Se registra porque el aislamiento cae cerca de la mitad por cada 10 &deg;C, y sin ella no se puede distinguir una degradacion real de un motor medido en caliente.
           </div>
           <div class="grid-fields">
             <div class="field"><label>Temp. ambiente</label>
@@ -3682,9 +3695,12 @@ function abrirAislamiento(){
   document.getElementById('ais-realizo').value = tecnicoActual;
   document.getElementById('ais-fecha').value   = dpFechaLocal();
   document.getElementById('ais-pozo').value    = '';
-  document.getElementById('ais-componente').value = 'MOTOR_CABLE';
+  document.getElementById('ais-punto').value = 'SUT';
   document.getElementById('ais-unidad').value     = 'Mohm';
-  ['ais-temp','ais-vprueba','ais-temp-amb','ais-humedad','ais-paro',
+  /* ais-vprueba ya no se vacia: es un desplegable y dejarlo en '' lo deja sin
+     ningun escalon seleccionado. Vuelve a su valor de partida. */
+  document.getElementById('ais-vprueba').value = '1000';
+  ['ais-temp','ais-temp-amb','ais-humedad','ais-paro',
    'ais-equipo','ais-equipo-serie','ais-obs',
    'ais-balance-ab','ais-balance-ac','ais-balance-bc',
    'ais-u-30s','ais-u-1min','ais-u-10min',
@@ -3710,13 +3726,12 @@ function abrirAislamiento(){
   ir('aislamiento-form');
 }
 
-/* El aviso solo aparece mientras falta la temperatura. Un aviso que
-   siempre esta deja de leerse. */
+/* La nota explica por que se pide la temperatura, no reclama que falte. Antes
+   desaparecia al escribirla, que era correcto cuando avisaba de una carencia;
+   ahora dice para que sirve el dato y eso vale igual con el campo lleno. */
 function aisNotaTemp(){
   var n = document.getElementById('ais-nota-temp');
-  if (!n) return;
-  var t = document.getElementById('ais-temp');
-  n.style.display = (t && t.value !== '') ? 'none' : '';
+  if (n) n.style.display = '';
 }
 
 function guardarBitacora(){
@@ -3783,12 +3798,16 @@ function guardarAislamiento(){
     return;
   }
 
-  /* La temperatura no se exige: en campo no siempre hay con que medirla, y
-     un ensayo sin temperatura vale mas que ningun ensayo. Pero se avisa,
-     porque sin ella el punto no entra a la tendencia. */
+  /* La temperatura no se exige: en campo no siempre hay con que medirla, y un
+     ensayo sin temperatura vale mas que ningun ensayo. El aviso ya no habla de
+     corregir a 40 grados —esa correccion se retiro por invalida en BES— sino
+     de lo que de verdad se pierde: sin saber a que temperatura se midio, una
+     caida entre dos ensayos puede ser degradacion o puede ser el motor
+     caliente, y no hay forma de distinguirlas. */
   if (valNum('ais-temp') == null){
-    if(!confirm('Sin temperatura de devanado la lectura no se corrige a 40 grados '
-      + 'y no entra a la grafica de tendencia.\n\nGuardar de todos modos?')) return;
+    if(!confirm('Sin temperatura de devanado no se podra saber si una caida '
+      + 'futura es degradacion real o el motor medido en caliente.\n\n'
+      + 'Guardar de todos modos?')) return;
   }
 
   if(!aisIdActual) aisIdActual = dpNuevoId();
@@ -3797,7 +3816,8 @@ function guardarAislamiento(){
     id:             aisIdActual,
     pozo:           pozo,
     fecha:          document.getElementById('ais-fecha').value,
-    componente:     document.getElementById('ais-componente').value,
+    componente:     'MOTOR_CABLE',
+    punto_medida:   document.getElementById('ais-punto').value,
     alcance:        'RUTINA',
     motivo:         'Ronda de campo',
     unidad_ingreso: document.getElementById('ais-unidad').value,
@@ -3841,13 +3861,15 @@ function guardarAislamientoBES(boton){
     return;
   }
 
-  /* La temperatura no se exige, pero aqui el aviso es mas duro que en el resto
-     de maquinas: en fondo de pozo se pasa de 85 C con normalidad y sin
-     corregir la lectura puede parecer excelente estando el motor mediocre. */
+  /* En BES el aviso es mas duro: en fondo de pozo se pasa de 85 C con
+     normalidad, y el aislamiento cae cerca de la mitad por cada 10 C. Dos
+     ensayos del mismo motor a temperaturas distintas pueden diferir en un
+     factor de seis sin que nada se haya degradado. */
   if (valNum('ais-temp') == null){
-    if(!confirm('Sin temperatura de devanado la lectura no se corrige a 40 grados.\n\n'
-      + 'En BES eso cambia el resultado por mucho: 560 Mohm medidos a 92 grados '
-      + 'son 82 Mohm corregidos.\n\nGuardar de todos modos?')) return;
+    if(!confirm('Sin temperatura de devanado la lectura queda suelta.\n\n'
+      + 'En BES el motor puede estar a 40 C o a 92 C, y el aislamiento cae '
+      + 'cerca de la mitad por cada 10 C: la misma maquina puede leer seis '
+      + 'veces distinto sin haberse degradado.\n\nGuardar de todos modos?')) return;
   }
 
   if(!aisIdActual) aisIdActual = dpNuevoId();
@@ -3856,7 +3878,8 @@ function guardarAislamientoBES(boton){
     id:              aisIdActual,
     pozo:            pozo,
     fecha_prueba:    document.getElementById('ais-fecha').value,
-    componente:      document.getElementById('ais-componente').value,
+    componente:      'MOTOR_CABLE',
+    punto_medida:    document.getElementById('ais-punto').value,
     fase_medida:     document.getElementById('ais-fase-medida').value,
     unidad_ingreso:  document.getElementById('ais-unidad').value,
     ir_30s_ing:      valNum('ais-u-30s'),
