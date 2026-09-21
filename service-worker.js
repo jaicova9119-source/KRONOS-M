@@ -12,7 +12,7 @@
  * cargue sin señal.
  */
 
-const CACHE_NAME = "kronos-m-v38";
+const CACHE_NAME = "kronos-m-v39";
 
 /* Archivos propios. Estos tienen que quedar guardados si o si: sin ellos
    la app no abre sin señal. */
@@ -171,5 +171,75 @@ self.addEventListener("fetch", (event) => {
         .catch(() => guardado);
       return guardado || buscarEnRed;
     })
+  );
+});
+
+/* ============================================================
+   AVISOS
+   ============================================================
+   El navegador entrega el aviso aqui aunque Kronos-M este cerrado. Este
+   archivo es lo unico que sigue vivo en ese momento, asi que la notificacion
+   se arma con lo que venga en el mensaje y nada mas: no hay sesion, no hay
+   acceso a la base, no se puede consultar nada.
+
+   Por eso el servidor manda el texto ya escrito. Si alguna vez llega un
+   mensaje sin cuerpo o con un cuerpo roto, se muestra un aviso generico en
+   lugar de no mostrar nada: una notificacion que el sistema promete y luego
+   no aparece deja al navegador quejandose, y en Android acaba revocando el
+   permiso. */
+self.addEventListener("push", (event) => {
+  let d = {};
+  try { d = event.data ? event.data.json() : {}; }
+  catch (e) { d = { cuerpo: event.data ? event.data.text() : "" }; }
+
+  const titulo = d.titulo || "Kronos-M";
+  const opciones = {
+    body: d.cuerpo || "Tienes un reporte esperando revision.",
+    icon: "./icons/icon-192.png",
+    badge: "./icons/favicon-32.png",
+    /* La etiqueta agrupa: tres reportes del mismo pozo no deben dejar tres
+       avisos apilados en la barra. El ultimo reemplaza al anterior. */
+    tag: d.tag || "kronos-pendientes",
+    renotify: true,
+    /* requireInteraction mantiene el aviso hasta que se toca. En campo el
+       telefono se mira cada tanto, y un aviso que se desvanece solo en
+       cinco segundos no sirve de nada. */
+    requireInteraction: true,
+    data: { url: d.url || "./?ir=pendientes" },
+  };
+
+  event.waitUntil(self.registration.showNotification(titulo, opciones));
+});
+
+/* Al tocar el aviso: si Kronos-M ya esta abierto en alguna pestana, se le
+   trae al frente y se le dice a donde ir. Abrir una ventana nueva teniendo
+   una abierta deja al usuario con dos sesiones y la que estaba trabajando
+   atras. */
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const destino = (event.notification.data && event.notification.data.url) || "./?ir=pendientes";
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true })
+      .then((ventanas) => {
+        for (const v of ventanas) {
+          if (v.url.indexOf(self.location.origin) === 0 && "focus" in v) {
+            v.postMessage({ tipo: "ir", destino: "pendientes" });
+            return v.focus();
+          }
+        }
+        return self.clients.openWindow(destino);
+      })
+  );
+});
+
+/* El navegador renueva la suscripcion por su cuenta de vez en cuando. Sin
+   esto, el endpoint viejo queda muerto en la base y el usuario deja de
+   recibir avisos sin enterarse. Se avisa a la app para que la vuelva a dar
+   de alta la proxima vez que se abra. */
+self.addEventListener("pushsubscriptionchange", (event) => {
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true })
+      .then((vs) => vs.forEach((v) => v.postMessage({ tipo: "resuscribir" })))
   );
 });

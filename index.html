@@ -16142,6 +16142,156 @@ async function otGuardar(opciones) {
    columna, y las tablas salen desbordadas. Con colgroup y table-layout
    fijo respeta exactamente lo que se le dice. */
 /* ============================================================
+   AVISOS AL SUPERVISOR
+   ============================================================
+   El reporte ya llega a la bandeja y suma al contador. Esto es lo otro: que
+   suene el telefono cuando la app esta cerrada.
+
+   La bandeja sigue siendo la red de seguridad y eso no es un detalle. El aviso
+   depende de que hubiera señal en el momento del envio, de que el permiso este
+   concedido y, en iPhone, de que Kronos-M este instalado en la pantalla de
+   inicio. Si algo de eso falla, el reporte igual esta esperando donde debe: lo
+   que se pierde es la inmediatez, no el trabajo. */
+
+/* Clave publica del par VAPID. Se genera una vez con
+   `npx web-push generate-vapid-keys` y se pega aqui; la privada va en los
+   secretos de la Edge Function y NO se pone en ningun sitio del navegador.
+   Mientras esto siga vacio, el boton de avisos no se muestra. */
+const PUSH_VAPID_PUBLIC = "BPYYVRKoyxVOdfhVercD3yfK87_WP6GfEQk8Nl50tE9ll5_xsXo3CyvLdRgjyzoUjchlbX2ViX70bgN7cg06xxo";
+
+function pushSoportado() {
+  return !!(PUSH_VAPID_PUBLIC && "serviceWorker" in navigator &&
+            "PushManager" in window && "Notification" in window);
+}
+
+/* En iPhone el push solo existe dentro de la app instalada. Detectarlo permite
+   decir por que no aparece, en vez de dejar un boton que nunca funciona. */
+function pushEnAppInstalada() {
+  return window.matchMedia("(display-mode: standalone)").matches ||
+         window.navigator.standalone === true;
+}
+function pushEsiOS() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+function pushB64aBytes(b64) {
+  const p = "=".repeat((4 - (b64.length % 4)) % 4);
+  const limpio = (b64 + p).replace(/-/g, "+").replace(/_/g, "/");
+  const bin = atob(limpio);
+  return Uint8Array.from(bin, c => c.charCodeAt(0));
+}
+
+async function pushSuscripcionActual() {
+  if (!pushSoportado()) return null;
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    return await reg.pushManager.getSubscription();
+  } catch (e) { return null; }
+}
+
+async function pushActivar() {
+  if (!pushSoportado()) { toast("Este navegador no admite avisos"); return; }
+  if (pushEsiOS() && !pushEnAppInstalada()) {
+    alert("En iPhone los avisos solo funcionan con Kronos-M instalado.\n\n"
+        + "Toca Compartir y luego \u00abA\u00f1adir a pantalla de inicio\u00bb, "
+        + "abre la app desde ah\u00ed y vuelve a intentarlo.");
+    return;
+  }
+  try {
+    const permiso = await Notification.requestPermission();
+    if (permiso !== "granted") {
+      /* Rechazado no se puede volver a preguntar: el navegador recuerda la
+         respuesta y hay que ir a los ajustes del sitio. Decirlo aqui evita
+         que alguien pulse el boton diez veces sin entender. */
+      toast(permiso === "denied"
+        ? "Los avisos est\u00e1n bloqueados. Habil\u00edtalos en los ajustes del navegador para este sitio."
+        : "No se concedi\u00f3 el permiso");
+      pushPintar();
+      return;
+    }
+
+    const reg = await navigator.serviceWorker.ready;
+    let sus = await reg.pushManager.getSubscription();
+    if (!sus) {
+      sus = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: pushB64aBytes(PUSH_VAPID_PUBLIC),
+      });
+    }
+    const j = sus.toJSON();
+    const r = await sb.rpc("push_alta", {
+      p_endpoint: sus.endpoint,
+      p_p256dh: j.keys.p256dh,
+      p_auth: j.keys.auth,
+      p_user_agent: navigator.userAgent.slice(0, 200),
+    });
+    if (r.error) throw r.error;
+    toast("Avisos activados en este dispositivo");
+  } catch (e) {
+    console.error(e);
+    toast("No se pudieron activar: " + e.message);
+  }
+  pushPintar();
+}
+
+async function pushDesactivar() {
+  try {
+    const sus = await pushSuscripcionActual();
+    if (sus) {
+      await sb.rpc("push_baja", { p_endpoint: sus.endpoint });
+      await sus.unsubscribe();
+    }
+    toast("Avisos desactivados en este dispositivo");
+  } catch (e) {
+    toast("No se pudieron desactivar: " + e.message);
+  }
+  pushPintar();
+}
+
+async function pushPintar() {
+  const caja = document.getElementById("push-caja");
+  if (!caja) return;
+  if (!pushSoportado()) { caja.style.display = "none"; return; }
+  caja.style.display = "";
+
+  const sus = await pushSuscripcionActual();
+  const activo = !!sus && Notification.permission === "granted";
+  const bloqueado = Notification.permission === "denied";
+  const faltaInstalar = pushEsiOS() && !pushEnAppInstalada();
+
+  document.getElementById("push-btn").textContent = activo ? "Desactivar" : "Activar";
+  document.getElementById("push-btn").onclick = activo ? pushDesactivar : pushActivar;
+  document.getElementById("push-btn").disabled = bloqueado || faltaInstalar;
+
+  document.getElementById("push-estado").textContent =
+    faltaInstalar ? "En iPhone hay que instalar Kronos-M en la pantalla de inicio."
+    : bloqueado   ? "Bloqueados en los ajustes del navegador para este sitio."
+    : activo      ? "Activos en este dispositivo."
+                  : "Desactivados en este dispositivo.";
+}
+
+/* El service worker avisa cuando el navegador renueva la suscripcion por su
+   cuenta, o cuando se toca una notificacion. */
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("message", (ev) => {
+    const m = ev.data || {};
+    if (m.tipo === "resuscribir") pushActivar();
+    if (m.tipo === "ir" && m.destino === "pendientes") pushIrAPendientes();
+  });
+}
+
+function pushIrAPendientes() {
+  try {
+    aplicarModulo("programacion");
+    setTimeout(() => {
+      const b = document.querySelector('[data-tab="prog-pendientes"]');
+      if (b) b.click();
+    }, 80);
+  } catch (e) { /* si aun no cargo el modulo, la bandeja sigue ahi */ }
+}
+
+/* ============================================================
    Circuito de aprobacion del FO-016
 
    El estado vive en programa_ot.flujo y lo hacen cumplir triggers en la base.
@@ -16324,9 +16474,26 @@ async function otFlujoAccion(accion, destinatario) {
   const rr = await sb.rpc("programa_ot_datos", { p_actividad_id: id, p_fecha: otFecha });
   if (!rr.error && rr.data) { otDatos = rr.data; otRender(); }
 
-  toast({ enviar: "Enviado al supervisor", devolver: "Devuelto al t\u00e9cnico",
+  toast({ enviar: "Enviado a revisi\u00f3n", devolver: "Devuelto al t\u00e9cnico",
           firmar: "Reporte firmado", reabierto: "", reabrir: "Reporte reabierto" }[accion] || "Listo");
   otPendientesContar();
+
+  /* El aviso se dispara despues de que el envio ya quedo guardado, y su fallo
+     no se le muestra al tecnico: el reporte esta donde tiene que estar y la
+     bandeja funciona. Confundir "no sono el telefono" con "no se envio" seria
+     peor que no avisar. */
+  /* Los dos sentidos del circuito avisan: al supervisor cuando le llega algo
+     que revisar, y al tecnico cuando le devuelven algo que corregir. Firmar no
+     avisa: el reporte queda cerrado y no hay nada que hacer con el. */
+  if (accion === "enviar" || accion === "devolver") {
+    try {
+      const av = await sb.functions.invoke("avisar-supervisor", {
+        body: { actividad_id: id, fecha: otFecha },
+      });
+      if (av.error) console.warn("No se pudo avisar:", av.error);
+      else console.info("Aviso:", av.data);
+    } catch (e) { console.warn("No se pudo avisar:", e); }
+  }
 }
 
 /* ---------- Enviar a revisión: a quién ----------
