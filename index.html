@@ -2102,6 +2102,18 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="prep-resumen" style="padding:12px 14px;background:var(--bg-2);border-radius:8px;margin-bottom:10px;font-size:13px;line-height:1.5"></div>
     <button class="btn-secondary" onclick="abrirPrepararCampo()">Preparar para campo</button>
 
+    <!-- Los avisos se activan por dispositivo, no por cuenta: la suscripcion la
+         emite el navegador de este telefono. Quien entre con la misma cuenta en
+         otro equipo tiene que activarlos alli tambien. -->
+    <div id="push-caja" style="margin-top:24px;display:none">
+      <div class="section-label">Avisos en este dispositivo</div>
+      <div style="padding:12px 14px;background:var(--bg-2);border-radius:8px;margin-bottom:10px;font-size:13px;line-height:1.5">
+        <div id="push-estado" style="font-weight:600"></div>
+        <div style="margin-top:6px;opacity:.75">Avisa cuando llega un reporte para revisar y cuando devuelven uno para corregir. La bandeja sigue funcionando igual sin esto.</div>
+      </div>
+      <button class="btn-secondary" id="push-btn">Activar</button>
+    </div>
+
     <div id="perfil-admin-seccion" style="display:none;margin-top:24px">
       <div class="section-label">Gestión de usuarios (solo admin)</div>
       <div id="perfil-lista-usuarios"></div>
@@ -11793,6 +11805,9 @@ async function ejecutarPrepararCampo() {
 async function cargarPanelPerfil() {
   actualizarBadgePerfil();
   pintarResumenPreparacion();
+  /* Sin esta llamada la caja de avisos queda muda: el estado no se escribe y el
+     boton no tiene onclick, porque los dos se asignan dentro de pushPintar. */
+  pushPintar();
   const seccionAdmin = document.getElementById("perfil-admin-seccion");
   if (usuarioActual && usuarioActual.rol === "admin") {
     seccionAdmin.style.display = "block";
