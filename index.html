@@ -2565,6 +2565,14 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <div class="panel-header"><h2>Máquinas eléctricas</h2></div>
   <div class="panel-body">
     <div class="field"><input id="ee-buscar" placeholder="Buscar por SAP, nombre, serial o ubicacion..."/></div>
+    <!-- Los motores de pozos BES no se ensayan aqui: lo que se mide desde
+         superficie es motor mas cable y va a Monitoreo de condicion. Se
+         esconden en vez de listarse inertes, pero se pueden ver para
+         consultar una placa. -->
+    <label id="ee-bes-caja" style="display:none;align-items:center;gap:8px;margin-bottom:12px;font-size:13px;cursor:pointer">
+      <input type="checkbox" id="ee-ver-bes" onchange="eeVerBES=this.checked;renderMaquinas()"/>
+      <span id="ee-bes-texto"></span>
+    </label>
     <button class="btn-primary" id="ee-btn-nueva" style="margin-bottom:12px">Nueva máquina</button>
     <div id="ee-lista"><div class="loading">Cargando...</div></div>
   </div>
@@ -8019,11 +8027,32 @@ function eeClave(t) {
     .replace(/\d+/g, d => String(parseInt(d, 10)));
 }
 
+/* Los motores de pozos BES se esconden por defecto. No es cosmetica: el
+   trigger de la base rechaza cualquier ensayo contra ellos, asi que
+   listarlos es ofrecer 53 fichas que no llevan a ninguna parte. La casilla
+   los devuelve a la vista para quien necesite consultar unos datos de placa. */
+let eeVerBES = false;
+
 function renderMaquinas() {
   const bruto = (document.getElementById("ee-buscar").value || "").trim();
   const q  = bruto.toLowerCase();
   const qc = eeClave(bruto);
+
+  const ocultas = eeMaquinas.filter(m => m.es_motor_bes).length;
+  const caja = document.getElementById("ee-bes-caja");
+  if (caja) {
+    /* El interruptor solo aparece si hay algo escondido detras. */
+    caja.style.display = ocultas ? "flex" : "none";
+    const t = document.getElementById("ee-bes-texto");
+    if (t) {
+      t.textContent = eeVerBES
+        ? "Viendo tambi\u00e9n los " + ocultas + " motores de pozos BES"
+        : "Ver tambi\u00e9n motores de pozos BES (" + ocultas + ")";
+    }
+  }
+
   const lista = eeMaquinas.filter(m => {
+    if (m.es_motor_bes && !eeVerBES) return false;
     if (!bruto) return true;
     const campos = [m.nombre_efectivo, m.sap_efectivo, m.serial_efectivo,
                     m.marca_efectiva, m.ubicacion_efectiva,
@@ -8069,6 +8098,7 @@ function renderMaquinas() {
               : m.estado_instalacion === "CONFLICTO"
               ? `<span class="badge badge-SIN">serial en conflicto</span>` : ""}
           <span class="badge ${m.tipo_maquina === "GENERADOR" ? "badge-SOBRESTOCK" : "badge-OK"}">${m.tipo_maquina}</span>
+          ${m.es_motor_bes ? '<span class="badge badge-SOBRESTOCK">BES · no se ensaya aquí</span>' : ""}
           ${m.vinculado_a_activos ? "" : '<span class="badge badge-SIN">sin vincular</span>'}
           ${m.validada_en ? "" : '<span class="badge badge-CRITICO">por validar</span>'}
         </div>
