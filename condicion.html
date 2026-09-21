@@ -3880,8 +3880,14 @@ function kpDiasDesde(iso){
 /* ============================================================
    VISTA: POZO
    ============================================================ */
+/* Guardan que unidad esta abierta y sus pruebas de aislamiento. Validar y
+   corregir necesitan las dos cosas: la fila sobre la que se actua y a donde
+   volver despues. */
+var KP_POZO_ACTUAL = null, KP_PRUEBAS = [];
+
 async function kpVerPozo(codigo){
   kpVistaActual = 'pozo';
+  KP_POZO_ACTUAL = codigo;
   document.body.classList.remove('kp-oscuro');
   document.getElementById("kpBack").style.display = "block";
   document.getElementById("kpBack").innerHTML = kpEnDemanda
@@ -3921,6 +3927,7 @@ async function kpVerPozo(codigo){
     kpCargarCorridas(pozoId).catch(() => [])
   ]);
   med = r[0]; ctx = r[1]; evs = r[2] || []; tend = r[3] || []; bal = r[4] || []; cor = r[5] || [];
+  KP_PRUEBAS = (ctx && ctx.aislamiento) || [];
 
   /* Se cambio el equipo de fondo y todavia no hay rondas del nuevo. No
      se muestran los numeros del anterior contra la placa nueva: serian
@@ -5642,9 +5649,12 @@ function kpRenderAislamiento(ais){
          las cuatro cosas que deciden si un aislamiento pasa. */
       const e = { cls: a.dictamen_cls || 'none',
                   txt: a.dictamen_txt || kpEstadoIP(a.ip).txt };
-      /* El dictamen de un ensayo sin firmar es provisional por definicion: se
-         calculo sobre datos que nadie ha verificado todavia. */
-      if (a.estado && a.estado !== 'firmado') e.txt = e.txt + ' (provisional)';
+      /* El dictamen de una prueba sin validar es provisional: se calculo sobre
+         un numero que nadie ha releido. No es sospechoso --recien capturado
+         esta sin validar por definicion-- pero tampoco es firme. */
+      if (a.prueba_id ? !a.validado_en : (a.estado && a.estado !== 'firmado')) {
+        e.txt = e.txt + ' (provisional)';
+      }
       const balv = [a.balance_ab, a.balance_ac, a.balance_bc]
         .filter(v => v != null).map(Number);
       const bal = balv.length;
@@ -5654,20 +5664,32 @@ function kpRenderAislamiento(ais){
         if (pr > 0) desb = (Math.max.apply(null, balv) - Math.min.apply(null, balv)) / pr * 100;
       }
 
-      /* Un ensayo sin firmar es una medicion, no un aval. Se muestra —el
-         tecnico tiene que ver lo que acaba de tomar sin esperar al
-         supervisor— pero dicho: lo que decide sobre una maquina es lo
-         revisado, y confundir las dos cosas fue lo que dejo pasar una lectura
-         de 1 minuto imposible durante un dia entero. */
-      const provisional = a.estado && a.estado !== 'firmado';
+      /* Una prueba sin validar es una medicion, no un aval. Se muestra —el
+         tecnico tiene que ver lo que acaba de tomar sin esperar a nadie— pero
+         dicho: lo que decide sobre una maquina es lo releido, y confundir las
+         dos cosas fue lo que dejo pasar una lectura de 1 minuto imposible
+         durante un dia entero.
+
+         Entre el megohmetro y esta pantalla hay un teclado: un 226 se escribe
+         2260 sin ningun esfuerzo, y la tendencia lo da por bueno. Para eso
+         esta la validacion. */
+      const validable  = !!a.prueba_id;
+      const validado   = validable && !!a.validado_en;
+      const provisional = validable ? !validado
+                                    : (a.estado && a.estado !== 'firmado');
 
       h += '<div class="kp-rule ' + (e.cls === 'none' ? '' : e.cls) + '"'
         +  (provisional ? ' style="opacity:.82"' : '') + '><div>'
         +  '<div><span class="nm">' + (a.fecha_prueba || '\u2014') + '</span>'
         +  (a.realizado_por ? ' <span class="id">' + a.realizado_por + '</span>' : '')
-        +  (provisional
-              ? ' <span class="src" style="color:var(--kp-warn);font-weight:600">'
-                + 'sin firmar</span>' : '')
+        /* Gris y no ambar: "sin validar" describe el momento del dato, no un
+           problema con el. Pintarlo de alerta ensena a ignorar las alertas. */
+        +  (validable && !validado
+              ? ' <span class="src" style="color:var(--kp-ink2)">sin validar</span>' : '')
+        +  (validado
+              ? ' <span class="src" style="color:var(--kp-ok,#1a7f4b)">validado'
+                + (a.validado_nombre ? ' por ' + kpEsc(a.validado_nombre) : '')
+                + (a.autovalidado ? ' (por quien midio)' : '') + '</span>' : '')
         +  '</div>'
         /* La maquina va en cada fila, no en el encabezado. El historial de
            un pozo atraviesa mas de un motor, y sin decir de cual es cada
@@ -5717,11 +5739,114 @@ function kpRenderAislamiento(ais){
            decirlas hacen comparar cosas que no son comparables. */
         +  (a.observaciones ? '<div class="src" style="margin-top:5px;color:var(--kp-ink2)">'
               + a.observaciones + '</div>' : '')
+        +  (a.nota_validacion
+              ? '<div class="src" style="margin-top:4px">Al validar: '
+                + kpEsc(a.nota_validacion) + '</div>' : '')
+        /* El boton solo se pinta para quien puede; la restriccion de verdad la
+           aplican dp_aislamiento_validar y dp_aislamiento_corregir con
+           mi_rol(). Dos capas, y las dos leen lo mismo. */
+        +  (validable && a.puede_validar
+              ? '<div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">'
+                + (validado ? ''
+                    : '<button class="kp-btn" onclick="kpValidarPrueba(\''
+                      + a.prueba_id + '\')">Validar</button>')
+                + '<button class="kp-btn" onclick="kpCorregirPrueba(\''
+                  + a.prueba_id + '\')">Corregir dato</button>'
+                + '</div>' : '')
         +  '</div><span class="kp-pill ' + e.cls + '">' + e.txt + '</span></div>';
       });
       h += '</div>';
     });
   return h;
+}
+
+/* ── Validar y corregir una prueba de aislamiento ───────────────────────
+   Validar no es firmar. Firmar dice "yo respondo por esto", y quien tomo
+   la medida ya respondia; pedirle que ademas se firme a si mismo produce
+   una constancia falsa de un control que no existio.
+
+   Lo que hace falta es que otro lea el numero antes de que la tendencia
+   lo de por bueno. Y por eso el validador puede corregir: un error de
+   digitacion no necesita que nadie vuelva al pozo.
+
+   Toda correccion queda registrada con su motivo, y deja la prueba otra
+   vez sin validar: lo que se habia releido ya no es lo que dice la fila. */
+
+const KP_CAMPOS_CORREGIBLES = [
+  ['ir_30s',         'IR 30 s (M\u03a9)'],
+  ['ir_1min',        'IR 1 min (M\u03a9)'],
+  ['ir_10min',       'IR 10 min (M\u03a9)'],
+  ['balance_ab_ohm', 'Balance A-B (\u03a9)'],
+  ['balance_ac_ohm', 'Balance A-C (\u03a9)'],
+  ['balance_bc_ohm', 'Balance B-C (\u03a9)'],
+  ['temp_devanado',  'Temp. devanado (\u00b0C)'],
+  ['v_prueba',       'Tensi\u00f3n de prueba (V)'],
+  ['realizado_por',  'Realizado por'],
+  ['observaciones',  'Observaciones'],
+];
+
+function kpPruebaDe(id){
+  return (KP_PRUEBAS || []).find(x => x.prueba_id === id) || null;
+}
+
+async function kpValidarPrueba(id){
+  const a = kpPruebaDe(id);
+  const nota = prompt(
+    'Validar la prueba' + (a && a.fecha_prueba ? ' del ' + a.fecha_prueba : '') + '.\n\n'
+    + 'Confirmas que el dato corresponde a lo que midi\u00f3 el instrumento.\n'
+    + 'Puedes dejar una nota (opcional):', '');
+  if (nota === null) return;
+  try {
+    const { data, error } = await kpCliente()
+      .rpc('dp_aislamiento_validar', { p_prueba_id: id, p_nota: nota || null });
+    if (error) throw error;
+    if (!data || data.ok === false) throw new Error((data && data.error) || 'no se valid\u00f3');
+    kpVerPozo(KP_POZO_ACTUAL);
+  } catch(e){
+    alert('No se pudo validar: ' + e.message);
+  }
+}
+
+async function kpCorregirPrueba(id){
+  const a = kpPruebaDe(id);
+  if (!a) return;
+
+  /* Se pide campo por campo en vez de un formulario completo a proposito:
+     corregir de a un dato obliga a mirar ese dato. Un formulario con diez
+     casillas rellenas invita a tocar lo que no hacia falta. */
+  const opciones = KP_CAMPOS_CORREGIBLES
+    .map((c, i) => (i + 1) + '. ' + c[1] + '  [' + (a[c[0]] != null ? a[c[0]] : '\u2014') + ']')
+    .join('\n');
+  const sel = prompt('\u00bfQu\u00e9 dato hay que corregir?\n\n' + opciones + '\n\nEscribe el n\u00famero:', '');
+  if (sel === null) return;
+  const idx = parseInt(sel, 10) - 1;
+  if (!(idx >= 0 && idx < KP_CAMPOS_CORREGIBLES.length)) { alert('Opci\u00f3n no v\u00e1lida'); return; }
+  const campo = KP_CAMPOS_CORREGIBLES[idx];
+
+  const actual = a[campo[0]] != null ? String(a[campo[0]]) : '';
+  const nuevo = prompt(campo[1] + '\n\nValor actual: ' + (actual || '\u2014')
+    + '\nValor corregido:', actual);
+  if (nuevo === null) return;
+  if (nuevo === actual) { alert('No cambi\u00f3 nada.'); return; }
+
+  const motivo = prompt(
+    '\u00bfPor qu\u00e9 se corrige?\n\n'
+    + 'Queda registrado con el valor anterior y el nuevo. Sin motivo, dentro de\n'
+    + 'seis meses una correcci\u00f3n y un error son indistinguibles.', '');
+  if (motivo === null) return;
+  if (!motivo || motivo.trim().length < 5) { alert('Hace falta un motivo de al menos 5 caracteres.'); return; }
+
+  const cambios = {}; cambios[campo[0]] = nuevo;
+  try {
+    const { data, error } = await kpCliente().rpc('dp_aislamiento_corregir', {
+      p_prueba_id: id, p_cambios: cambios, p_motivo: motivo.trim(),
+    });
+    if (error) throw error;
+    if (!data || data.ok === false) throw new Error((data && data.error) || 'no se corrigi\u00f3');
+    kpVerPozo(KP_POZO_ACTUAL);
+  } catch(e){
+    alert('No se pudo corregir: ' + e.message);
+  }
 }
 
 function kpRenderContexto(ctx){
