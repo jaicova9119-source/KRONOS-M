@@ -12,7 +12,7 @@
  * cargue sin señal.
  */
 
-const CACHE_NAME = "kronos-m-v40";
+const CACHE_NAME = "kronos-m-v41";
 
 /* Archivos propios. Estos tienen que quedar guardados si o si: sin ellos
    la app no abre sin señal. */
@@ -205,6 +205,15 @@ self.addEventListener("push", (event) => {
        telefono se mira cada tanto, y un aviso que se desvanece solo en
        cinco segundos no sirve de nada. */
     requireInteraction: true,
+    /* Vibracion: en campo el telefono va en el bolsillo del overol, debajo de
+       la chaqueta y con ruido de planta alrededor. El sonido solo no se oye.
+       Dos pulsos largos separados por una pausa corta se distinguen de la
+       vibracion de una llamada o de un mensaje, que es lo que se busca: que
+       se note sin tener que sacarlo para saber que era.
+       Android la ignora si el canal de notificaciones del sitio esta en
+       silencio, y iOS no la admite: no es un sustituto del permiso, es un
+       refuerzo cuando el permiso ya esta. */
+    vibrate: [300, 150, 300],
     data: { url: d.url || "./?ir=pendientes" },
   };
 
