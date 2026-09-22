@@ -3322,6 +3322,15 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   </div>
   <div class="panel-body">
     <div class="hint-box">&#8505;&#65039; Archivo de Planeación, formato GTEC-MT-FO-008. Se lee la hoja de la semana. Recargar una reprogramación actualiza lo programado y <b>no borra</b> lo que ya registraste como ejecutado.</div>
+    <!-- La cuenca se declara, no se deduce de los equipos del archivo. En los
+         programas ya cargados hay trabajo de taller sobre equipo de Sur hecho
+         en Norte; si la cuenca saliera de cada fila, esas actividades
+         desapareceria de la programacion de quien las ejecuta. -->
+    <div class="field">
+      <label>Cuenca</label>
+      <select id="prog-cuenca"></select>
+      <div class="hint" id="prog-cuenca-hint" style="font-size:11.5px;color:var(--text-2);margin-top:4px"></div>
+    </div>
     <div class="field">
       <label>Archivo (.xlsm o .xlsx)</label>
       <input type="file" id="prog-archivo" accept=".xlsm,.xlsx" onchange="progLeerArchivo(this)"/>
@@ -6083,6 +6092,7 @@ document.querySelectorAll(".nav-item").forEach(btn => {
     } else if (btn.dataset.tab === "prog-carga") {
       abrirPanel("panel-prog-carga");
       document.getElementById("prog-carga-resumen").innerHTML = "";
+      progCargarCuencas();
     } else if (btn.dataset.tab === "documentos") {
       abrirPanel("panel-documentos");
       cargarDocumentos();
@@ -14824,6 +14834,38 @@ async function progLeerArchivo(input) {
   }
 }
 
+/* Solo las cuencas donde esta persona puede cargar. Para el programador de
+   Sur, que solo tendra Sur, sale una y ni se lo plantea; con varias, tiene que
+   elegir a conciencia. */
+async function progCargarCuencas() {
+  const sel = document.getElementById("prog-cuenca");
+  if (!sel || sel.dataset.listo) return;
+  const rc = await sb.from("cuencas").select("id,codigo,nombre,orden")
+                     .eq("activa", true).order("orden");
+  const cuencas = rc.data || [];
+  const esAdmin = usuarioActual && usuarioActual.rol === "admin";
+  let mias = [];
+  if (!esAdmin) {
+    const ra = await sb.from("usuario_cuencas").select("cuenca_id")
+                       .eq("usuario_id", usuarioActual.id).is("retirado_en", null);
+    mias = (ra.data || []).map(r => r.cuenca_id);
+  }
+  const lista = esAdmin ? cuencas : cuencas.filter(c => mias.includes(c.id));
+  sel.innerHTML = lista.length
+    ? lista.map(c => `<option value="${c.id}">${c.nombre}</option>`).join("")
+    : '<option value="">Sin cuenca asignada</option>';
+  sel.disabled = lista.length < 2;
+  const hint = document.getElementById("prog-cuenca-hint");
+  if (hint) {
+    hint.textContent = !lista.length
+      ? "No tienes ninguna cuenca asignada: pide al administrador que te asigne una."
+      : lista.length === 1
+        ? "Se cargará en " + lista[0].nombre + "."
+        : "Cada cuenca lleva su propia semana: cargar en la equivocada no sobrescribe la otra, pero deja el archivo donde no es.";
+  }
+  sel.dataset.listo = "1";
+}
+
 async function progAplicarCarga() {
   if (!progFilasArchivo.length || !progMetaArchivo) return;
   let semana = progMetaArchivo.semana;
@@ -14836,12 +14878,16 @@ async function progAplicarCarga() {
   const btn = document.getElementById("prog-btn-aplicar");
   btn.disabled = true; btn.textContent = "Aplicando...";
 
+  const cuencaId = document.getElementById("prog-cuenca")?.value;
+  if (!cuencaId) { toast("Indica la cuenca de esta programación"); return; }
+
   const { data, error } = await sb.rpc("programa_importar", {
     p_anio: progMetaArchivo.anio,
     p_semana: semana,
     p_inicio: progMetaArchivo.inicio,
     p_fin: progMetaArchivo.fin,
     p_filas: progFilasArchivo,
+    p_cuenca_id: cuencaId,
     p_archivo: progMetaArchivo.archivo,
     p_planeador: null,
   });
@@ -14852,11 +14898,21 @@ async function progAplicarCarga() {
 
   toast("Programación cargada: " + data.nuevas + " nuevas, " + data.actualizadas + " actualizadas");
   document.getElementById("prog-carga-resumen").innerHTML =
-    '<div class="hint-box">&#9989; Semana ' + data.semana + " cargada. " +
-    data.nuevas + " actividades nuevas, " + data.actualizadas + " actualizadas." +
+    '<div class="hint-box">&#9989; Semana ' + data.semana + " de " + (data.cuenca || "") +
+    " cargada. " + data.nuevas + " actividades nuevas, " + data.actualizadas + " actualizadas." +
     (data.sin_equipo_registrado
       ? " " + data.sin_equipo_registrado + " quedaron sin enlazar a un equipo registrado."
-      : "") + "</div>";
+      : "") + "</div>" +
+    /* Segunda opinión, no bloqueo: hay trabajo de taller legítimo sobre equipo
+       de la otra cuenca. Si son muchas, el archivo probablemente no es el que
+       tocaba. */
+    (data.de_otra_cuenca
+      ? '<div class="hint-box" style="border-color:var(--warn);color:var(--warn)">&#9888;&#65039; ' +
+        data.de_otra_cuenca + ' actividad' + (data.de_otra_cuenca === 1 ? "" : "es") +
+        ' apunta' + (data.de_otra_cuenca === 1 ? "" : "n") + ' a equipo de otra cuenca. ' +
+        'Suele ser trabajo de taller y es normal; si son muchas, revisa que el archivo sea el de ' +
+        (data.cuenca || "esta cuenca") + '.</div>'
+      : "");
   progFilasArchivo = [];
   progMetaArchivo = null;
   document.getElementById("prog-archivo").value = "";
