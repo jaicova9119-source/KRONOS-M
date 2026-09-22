@@ -11835,6 +11835,10 @@ async function ejecutarPrepararCampo() {
     : '<span style="color:var(--ok)"><b>Listo.</b> ' + detalle + " guardados en este dispositivo.</span>";
 }
 
+/* Catalogo de cuencas, para pintar las casillas y los distintivos. Se carga
+   con la lista de usuarios y no al arrancar: solo el admin lo necesita. */
+var CUENCAS_CAT = [];
+
 async function cargarPanelPerfil() {
   actualizarBadgePerfil();
   pintarResumenPreparacion();
@@ -11848,6 +11852,20 @@ async function cargarPanelPerfil() {
     cont.innerHTML = '<div class="loading">Cargando...</div>';
     const { data, error } = await sb.from("usuarios").select("*").order("activo").order("nombre");
     if (error || !data) { cont.innerHTML = '<div class="empty">No se pudo cargar.</div>'; return; }
+
+    /* Cuencas y asignaciones vigentes. Van en dos consultas sueltas en vez de
+       un join anidado porque son tablas diminutas --tres cuencas, una fila por
+       persona y cuenca-- y asi el fallo de una no se lleva la lista entera. */
+    const rc = await sb.from("cuencas").select("id,codigo,nombre,orden")
+                       .eq("activa", true).order("orden");
+    CUENCAS_CAT = rc.data || [];
+    const ra = await sb.from("usuario_cuencas").select("usuario_id,cuenca_id")
+                       .is("retirado_en", null);
+    const porUsuario = {};
+    (ra.data || []).forEach(r => {
+      (porUsuario[r.usuario_id] = porUsuario[r.usuario_id] || []).push(r.cuenca_id);
+    });
+    data.forEach(u => { u._cuencas = porUsuario[u.id] || []; });
 
     /* Tres situaciones, no dos. Antes 'activo = false' mezclaba al que espera
        aprobacion con el que ya salio del contrato, asi que quien se fue
@@ -11915,6 +11933,11 @@ async function cargarPanelPerfil() {
             <div class="u-chips">
               <span class="u-chip rol">${ROL_TXT[u.rol] || u.rol}</span>
               ${u.es_validador ? '<span class="u-chip val">Validador</span>' : ""}
+              ${u.alcance_corporativo
+                  ? '<span class="u-chip">Corporativo</span>'
+                  : ((u._cuencas || []).length
+                      ? '<span class="u-chip">' + CUENCAS_CAT.filter(c => u._cuencas.includes(c.id)).map(c => c.codigo).join(" · ") + '</span>'
+                      : '<span class="u-chip warn">Sin cuenca</span>')}
               <span class="u-chip${sinNada ? " warn" : ""}">${sinNada ? "Sin módulos" : resumen}</span>
             </div>
           </div>
@@ -11953,6 +11976,36 @@ async function cargarPanelPerfil() {
                 <span style="display:block;font-size:11.5px;color:var(--text-2)">Relee ensayos y pruebas de aislamiento; toda corrección queda registrada con su motivo.</span>
               </span>
             </label>
+          </div>
+
+          <div class="u-campo">
+            <label>Cuencas</label>
+            <!-- Pertenecer a una cuenca da lectura Y ejecucion en ella. El
+                 alcance corporativo da solo lectura sobre todas: comparar el
+                 desempeno entre cuencas no exige poder firmar un reporte de un
+                 pozo que no se conoce.
+
+                 Sin ninguna marcada el usuario no ve nada. Es a proposito: si
+                 por defecto viera todo, el dia que alguien olvide asignar, un
+                 tecnico aparece ejecutando en otra cuenca y no se detecta
+                 hasta despues. -->
+            <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">
+              ${CUENCAS_CAT.map(c => `
+                <label style="display:flex;gap:7px;align-items:center;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-1)">
+                  <input type="checkbox" data-cuenca-chk="${u.id}" value="${c.id}"
+                    ${(u._cuencas || []).includes(c.id) ? "checked" : ""}>
+                  <span>${c.nombre}</span>
+                </label>`).join("")}
+            </div>
+            <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-1)">
+              <input type="checkbox" data-corp-usuario="${u.id}" ${u.alcance_corporativo ? "checked" : ""} style="margin-top:2px">
+              <span>Alcance corporativo
+                <span style="display:block;font-size:11.5px;color:var(--text-2)">Lee las tres cuencas. No permite ejecutar: para eso hace falta marcar la cuenca arriba.</span>
+              </span>
+            </label>
+            <div style="font-size:11.5px;color:var(--text-2);margin-top:7px">
+              Las cuencas se guardan al pulsar <b>Guardar permisos</b>.
+            </div>
           </div>
 
           <div class="u-campo">
@@ -12098,6 +12151,21 @@ async function cargarPanelPerfil() {
         /* Se guarda por RPC y no con update directo: la validacion de que
            quien asigna es admin, y la normalizacion de "todos" a null, viven
            en un solo sitio del lado del servidor. */
+        /* Las cuencas viajan aparte porque no son permisos de modulo: son
+           alcance sobre el dato, y las escribe otra funcion que ademas lleva
+           la historia de asignaciones. */
+        const cu = [...cont.querySelectorAll(`[data-cuenca-chk="${id}"]`)]
+                     .filter(c => c.checked).map(c => c.value);
+        const corp = !!cont.querySelector(`[data-corp-usuario="${id}"]`)?.checked;
+        const rc = await sb.rpc("usuario_set_cuencas", {
+          p_usuario_id: id, p_cuencas: cu, p_corporativo: corp,
+        });
+        if (rc.error || rc.data?.ok === false) {
+          btn.disabled = false; btn.textContent = "Guardar permisos";
+          toast("No se pudieron guardar las cuencas: " + (rc.error?.message || rc.data?.error || ""));
+          return;
+        }
+
         const { data, error } = await sb.rpc("usuarios_set_permisos", {
           p_usuario_id: id, p_modulos: ve,
           p_solo_lectura: solo, p_apps: ap,
