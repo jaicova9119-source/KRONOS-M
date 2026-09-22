@@ -14807,6 +14807,11 @@ async function progLeerArchivo(input) {
     progFilasArchivo = filas;
     progMetaArchivo = { anio: anio, semana: semana, inicio: ini, fin: fin, archivo: file.name, hoja: nombreHoja };
 
+    /* De que cuenca parece este archivo. La comprobacion ya existia en la
+       base, pero avisaba DESPUES de aplicar, cuando ya no evita nada. Aqui
+       sirve para lo que sirve: sugerir antes. */
+    progSugerirCuenca(filas);
+
     const ele = filas.filter(f => (f.hh_ele || 0) > 0);
     const estaciones = [...new Set(filas.map(f => f.estacion).filter(Boolean))];
     const tipos = [...new Set(filas.map(f => f.tipo_orden).filter(Boolean))];
@@ -14837,6 +14842,8 @@ async function progLeerArchivo(input) {
 /* Solo las cuencas donde esta persona puede cargar. Para el programador de
    Sur, que solo tendra Sur, sale una y ni se lo plantea; con varias, tiene que
    elegir a conciencia. */
+let PROG_CUENCAS = [];
+
 async function progCargarCuencas() {
   const sel = document.getElementById("prog-cuenca");
   if (!sel || sel.dataset.listo) return;
@@ -14851,10 +14858,17 @@ async function progCargarCuencas() {
     mias = (ra.data || []).map(r => r.cuenca_id);
   }
   const lista = esAdmin ? cuencas : cuencas.filter(c => mias.includes(c.id));
-  sel.innerHTML = lista.length
-    ? lista.map(c => `<option value="${c.id}">${c.nombre}</option>`).join("")
-    : '<option value="">Sin cuenca asignada</option>';
-  sel.disabled = lista.length < 2;
+  /* Sin valor por defecto, ni siquiera cuando hay una sola. Cargar la semana
+     de una cuenca en otra no da ningun error --son dos programas distintos,
+     asi que ni se sobrescriben-- y el archivo queda archivado donde no es,
+     sin que nada lo avise. Un desplegable que arranca en la primera opcion
+     invita a revisarlo; uno vacio obliga a elegir. */
+  sel.innerHTML = '<option value="">— Elige la cuenca —</option>' +
+    (lista.length
+      ? lista.map(c => `<option value="${c.id}">${c.nombre}</option>`).join("")
+      : '<option value="" disabled>Sin cuenca asignada</option>');
+  sel.disabled = false;
+  PROG_CUENCAS = lista;
   const hint = document.getElementById("prog-cuenca-hint");
   if (hint) {
     hint.textContent = !lista.length
@@ -14864,6 +14878,42 @@ async function progCargarCuencas() {
         : "Cada cuenca lleva su propia semana: cargar en la equivocada no sobrescribe la otra, pero deja el archivo donde no es.";
   }
   sel.dataset.listo = "1";
+}
+
+async function progSugerirCuenca(filas) {
+  const sel  = document.getElementById("prog-cuenca");
+  const hint = document.getElementById("prog-cuenca-hint");
+  if (!sel || !hint) return;
+
+  const codigos = [...new Set(filas.map(f => (f.codigo_equipo || "").trim()).filter(Boolean))];
+  if (!codigos.length) return;
+
+  /* Los codigos se consultan en un solo viaje y en lote acotado: un archivo
+     trae cientos de filas pero pocas decenas de equipos distintos, y de todos
+     modos basta una muestra para saber de que cuenca es. */
+  const r = await sb.from("equipos").select("codigo_sap,cuenca_id")
+                    .in("codigo_sap", codigos.slice(0, 400));
+  if (r.error || !r.data || !r.data.length) return;
+
+  const cuenta = {};
+  r.data.forEach(e => { if (e.cuenca_id) cuenta[e.cuenca_id] = (cuenta[e.cuenca_id] || 0) + 1; });
+  const total = Object.values(cuenta).reduce((a, b) => a + b, 0);
+  if (!total) return;
+
+  const [mejorId, n] = Object.entries(cuenta).sort((a, b) => b[1] - a[1])[0];
+  const cuenca = PROG_CUENCAS.find(c => c.id === mejorId);
+  const pct = Math.round((n / total) * 100);
+
+  if (!cuenca) {
+    /* El archivo apunta a una cuenca donde esta persona no puede cargar. Se
+       dice, en vez de dejar que elija otra y lo archive mal. */
+    hint.innerHTML = '<span style="color:var(--warn)">&#9888;&#65039; Los equipos de este archivo son de una cuenca a la que no tienes acceso para cargar.</span>';
+    return;
+  }
+
+  sel.value = cuenca.id;
+  hint.innerHTML = "Por los equipos del archivo, parece de <b>" + cuenca.nombre +
+    "</b> (" + pct + "% de " + total + " equipos reconocidos). Cámbialo si no es así.";
 }
 
 async function progAplicarCarga() {
