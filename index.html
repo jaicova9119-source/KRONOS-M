@@ -11859,6 +11859,14 @@ async function cargarPanelPerfil() {
           <input data-cargo-usuario="${u.id}" value="${otEsc(u.cargo || "")}"
                  placeholder="Cargo (ej. Supervisor O&amp;M Instrumentación)"
                  style="margin-top:4px;font-size:12px;padding:5px 8px"/>
+          <!-- Validador no es un rol. Que alguien sea supervisor no dice nada
+               sobre si sabe leer un megado, y quien tiene ese criterio es
+               quien administra, no el organigrama. Por eso se marca persona
+               a persona y no se deduce del cargo ni del rol. -->
+          <label style="display:flex;gap:7px;align-items:center;margin-top:6px;font-size:12px;cursor:pointer">
+            <input type="checkbox" data-validador-usuario="${u.id}" ${u.es_validador ? "checked" : ""}>
+            <span>Puede validar y corregir mediciones${u.es_validador ? "" : ""}</span>
+          </label>
         </div>
         <select data-usuario-id="${u.id}">
           <option value="tecnico" ${u.rol === "tecnico" ? "selected" : ""}>Técnico</option>
@@ -12074,6 +12082,26 @@ async function cargarPanelPerfil() {
         if (error) { toast("No se pudo guardar el cargo"); inp.value = inp.dataset.previo || ""; return; }
         inp.dataset.previo = v;
         toast("Cargo actualizado");
+      };
+    });
+
+    /* Va por RPC y no por update directo: una columna que concede permisos no
+       debe poderse tocar con un update suelto desde el navegador. La funcion
+       comprueba que quien la llama es admin. */
+    cont.querySelectorAll("[data-validador-usuario]").forEach(chk => {
+      chk.onchange = async () => {
+        const antes = !chk.checked;
+        const { data, error } = await sb.rpc("usuario_set_validador", {
+          p_usuario_id: chk.dataset.validadorUsuario, p_valor: chk.checked,
+        });
+        if (error || (data && data.ok === false)) {
+          chk.checked = antes;
+          toast((data && data.error) || "No se pudo cambiar el permiso");
+          return;
+        }
+        toast(chk.checked
+          ? (data.nombre || "El usuario") + " ya puede validar"
+          : (data.nombre || "El usuario") + " ya no valida");
       };
     });
 
