@@ -945,6 +945,32 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 .usuario-row-nombre{font-size:13.5px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .usuario-row-email{font-size:11.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .usuario-row select{font-size:12.5px;padding:5px 6px;flex-shrink:0;width:auto;}
+
+/* Lista de usuarios del admin. La fila solo informa y tiene un control: al
+   meter cada permiso nuevo como un control en linea, el ancho crecia y en
+   movil se partia. Lo editable vive en el panel que se despliega. */
+.u-card{border-bottom:1px solid var(--line-soft);}
+.u-head{display:flex;align-items:flex-start;gap:10px;padding:11px 2px;cursor:pointer;}
+.u-head:hover{background:var(--bg-2);}
+.u-main{flex:1;min-width:0;}
+.u-nom{font-size:13.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.u-sub{font-size:11.5px;color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;margin-top:1px;}
+.u-chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:5px;}
+.u-chip{font-size:10.5px;padding:2px 7px;border-radius:99px;border:1px solid var(--line);
+  color:var(--text-2);background:var(--bg-2);white-space:nowrap;}
+.u-chip.rol{font-weight:600;color:var(--text-1);}
+.u-chip.val{border-color:var(--ok);color:var(--ok);background:var(--ok-bg);font-weight:600;}
+.u-chip.warn{border-color:var(--warn);color:var(--warn);background:var(--warn-bg,transparent);}
+.u-flecha{flex-shrink:0;color:var(--text-2);font-size:12px;padding:3px 4px;transition:transform .15s;}
+.u-card.abierta .u-flecha{transform:rotate(90deg);}
+.u-panel{display:none;padding:2px 2px 16px;}
+.u-card.abierta .u-panel{display:block;}
+.u-campo{margin-bottom:12px;}
+.u-campo > label{display:block;font-size:11.5px;font-weight:600;color:var(--text-2);
+  margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;}
+.u-barra{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap;}
+.u-barra input[type=search]{flex:1;min-width:180px;}
+.u-vacio{padding:18px 2px;font-size:13px;color:var(--text-2);}
 #app{height:100%;position:relative;background:var(--bg-0);}
 #app.oculto{display:none !important;}
 .pane-list{height:100%;display:flex;flex-direction:column;max-width:520px;margin:0 auto;background:var(--bg-0);position:relative;}
@@ -11847,89 +11873,137 @@ async function cargarPanelPerfil() {
       });
     }
 
-    html += `<div class="section-label">Usuarios activos (${activos.length})</div>`;
-    activos.forEach(u => {
-      html += `
-      <div class="usuario-row">
-        <div class="usuario-row-info">
-          <div class="usuario-row-nombre">${u.nombre}</div>
-          <div class="usuario-row-email">${u.email || ""}</div>
-          <!-- El cargo no da permisos: los da el rol. Sirve para saber quién
-               es quién al elegir a qué supervisor mandar un reporte. -->
-          <input data-cargo-usuario="${u.id}" value="${otEsc(u.cargo || "")}"
-                 placeholder="Cargo (ej. Supervisor O&amp;M Instrumentación)"
-                 style="margin-top:4px;font-size:12px;padding:5px 8px"/>
-          <!-- Validador no es un rol. Que alguien sea supervisor no dice nada
-               sobre si sabe leer un megado, y quien tiene ese criterio es
-               quien administra, no el organigrama. Por eso se marca persona
-               a persona y no se deduce del cargo ni del rol. -->
-          <label style="display:flex;gap:7px;align-items:center;margin-top:6px;font-size:12px;cursor:pointer">
-            <input type="checkbox" data-validador-usuario="${u.id}" ${u.es_validador ? "checked" : ""}>
-            <span>Puede validar y corregir mediciones${u.es_validador ? "" : ""}</span>
-          </label>
-        </div>
-        <select data-usuario-id="${u.id}">
-          <option value="tecnico" ${u.rol === "tecnico" ? "selected" : ""}>Técnico</option>
-          <option value="supervisor" ${u.rol === "supervisor" ? "selected" : ""}>Supervisor</option>
-          <option value="ingeniero" ${u.rol === "ingeniero" ? "selected" : ""}>Ingeniero</option>
-          <option value="consulta" ${u.rol === "consulta" ? "selected" : ""}>Solo consulta</option>
-          <option value="admin" ${u.rol === "admin" ? "selected" : ""}>Admin</option>
-        </select>
-        <button data-modulos-usuario="${u.id}" title="Módulos visibles para este usuario"
-          style="font-size:12px;padding:6px 9px;flex-shrink:0">${(() => {
-            if (u.rol === "admin") return "Todos";
-            const n = MODULOS_CAT.map(([k]) => nivelModulo(u, k));
-            const ed = n.filter(x => x === "edita").length;
-            const ve = n.filter(x => x === "ver").length;
-            const sinApp = Array.isArray(u.apps) && u.apps.length < APPS_CAT.length;
-            // El resumen dice edicion/lectura y avisa si ademas tiene apps
-            // recortadas: sin eso, dos usuarios muy distintos se ven igual.
-            return (ed === MODULOS_CAT.length && !sinApp) ? "Todos"
-                 : `${ed}✎ ${ve}👁${sinApp ? " ·apps" : ""}`;
-          })()}</button>
-        ${u.auth_user_id !== usuarioActual.auth_user_id ? `<button data-baja-usuario="${u.id}" data-baja-nombre="${u.nombre}" title="Dar de baja: sale del contrato y deja de aparecer" style="background:var(--danger-bg);border-color:var(--danger);color:var(--danger);font-size:12px;padding:6px 8px;flex-shrink:0">&#10005;</button>` : ""}
+    /* La fila solo informa: nombre, quien es y que puede. Un unico control,
+       que despliega. Antes cada permiso nuevo entraba como un control en
+       linea --cargo, rol, modulos, baja, y ahora validador-- y la fila crecia
+       a lo ancho hasta partirse en movil. Con trece usuarios ya estorbaba;
+       con cincuenta seria inutilizable. */
+    html += `<div class="section-label">Usuarios activos (${activos.length})</div>
+      <div class="u-barra">
+        <input type="search" id="u-buscar" placeholder="Buscar por nombre, correo o cargo..."/>
+        <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;cursor:pointer;white-space:nowrap">
+          <input type="checkbox" id="u-solo-val"> Solo validadores
+        </label>
       </div>
-      <div data-modulos-panel="${u.id}" style="display:none;padding:4px 0 14px 2px;border-bottom:1px solid var(--line-soft)">
-        <div style="font-size:11.5px;color:var(--text-2);margin:0 0 8px">
-          ${u.rol === "admin"
-            ? "Este usuario es admin: ve todos los módulos sin importar lo que se marque aquí."
-            : "Sin nada marcado el usuario entra pero no ve módulos. Marcar todos equivale a no restringir."}
-        </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:7px 18px">
-          ${MODULOS_CAT.map(([k, t]) => {
-            const n = nivelModulo(u, k);
-            return `
-            <div style="display:flex;gap:9px;align-items:center;font-size:13px">
-              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span>
-              <select data-mod-niv="${u.id}" data-mod-k="${k}"
-                style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1);flex-shrink:0">
-                <option value="no"${n === "no" ? " selected" : ""}>Sin acceso</option>
-                <option value="ver"${n === "ver" ? " selected" : ""}>Solo lectura</option>
-                <option value="edita"${n === "edita" ? " selected" : ""}>Edición</option>
-              </select>
-            </div>`;
-          }).join("")}
+      <div id="u-sin-resultados" class="u-vacio" style="display:none">Ning&uacute;n usuario coincide.</div>`;
+
+    const ROL_TXT = { tecnico:"Técnico", supervisor:"Supervisor", ingeniero:"Ingeniero",
+                      consulta:"Solo consulta", admin:"Admin" };
+
+    activos.forEach(u => {
+      const esYo = u.auth_user_id === usuarioActual.auth_user_id;
+      const n  = MODULOS_CAT.map(([k]) => nivelModulo(u, k));
+      const ed = n.filter(x => x === "edita").length;
+      const ve = n.filter(x => x === "ver").length;
+      const sinApp = Array.isArray(u.apps) && u.apps.length < APPS_CAT.length;
+      const todo = (u.rol === "admin") || (ed === MODULOS_CAT.length && !sinApp);
+      /* El resumen dice edicion y lectura por separado, y avisa si ademas tiene
+         apps recortadas: sin eso, dos usuarios muy distintos se ven igual. */
+      const resumen = u.rol === "admin" ? "Todos los módulos"
+        : todo ? "Todos los módulos"
+        : `${ed} con edición · ${ve} solo lectura${sinApp ? " · apps limitadas" : ""}`;
+      const sinNada = u.rol !== "admin" && ed === 0 && ve === 0;
+
+      html += `
+      <div class="u-card" data-ucard="${u.id}"
+           data-busca="${otEsc(((u.nombre || "") + " " + (u.email || "") + " " + (u.cargo || "")).toLowerCase())}"
+           data-val="${u.es_validador ? "1" : "0"}">
+        <div class="u-head" data-modulos-usuario="${u.id}">
+          <div class="u-main">
+            <div class="u-nom">${u.nombre}${esYo ? ' <span style="font-weight:400;color:var(--text-2)">· tú</span>' : ""}</div>
+            <div class="u-sub">${u.email || ""}${u.cargo ? " &middot; " + otEsc(u.cargo) : ""}</div>
+            <div class="u-chips">
+              <span class="u-chip rol">${ROL_TXT[u.rol] || u.rol}</span>
+              ${u.es_validador ? '<span class="u-chip val">Validador</span>' : ""}
+              <span class="u-chip${sinNada ? " warn" : ""}">${sinNada ? "Sin módulos" : resumen}</span>
+            </div>
+          </div>
+          <span class="u-flecha">&#9656;</span>
         </div>
 
-        <div style="font-size:11.5px;font-weight:600;color:var(--text-2);margin:16px 0 7px;text-transform:uppercase;letter-spacing:.04em">Aplicaciones</div>
-        <div style="display:flex;gap:18px;flex-wrap:wrap">
-          ${APPS_CAT.map(([k, t]) => `
-            <label style="display:flex;gap:7px;align-items:center;font-size:13px">
-              <input type="checkbox" data-app-chk="${u.id}" value="${k}"
-                ${(u.apps == null || u.apps.includes(k)) ? "checked" : ""}>
-              <span>${t}</span>
-            </label>`).join("")}
-        </div>
-        <div style="font-size:11.5px;color:var(--text-2);margin:6px 0 0">
-          Quitar Kronos Captura impide registrar mediciones de campo desde
-          cualquier aplicación, no solo desde Captura: la base no distingue el origen.
-        </div>
+        <div class="u-panel" data-modulos-panel="${u.id}">
+          <div class="u-campo">
+            <label>Cargo</label>
+            <!-- El cargo no da permisos: los da el rol. Sirve para saber quién
+                 es quién al elegir a qué supervisor mandar un reporte. -->
+            <input data-cargo-usuario="${u.id}" value="${otEsc(u.cargo || "")}"
+                   placeholder="ej. Supervisor O&amp;M Instrumentación"
+                   style="font-size:13px;padding:7px 9px"/>
+          </div>
 
-        <div style="display:flex;gap:8px;margin-top:13px;flex-wrap:wrap">
-          <button data-mod-guardar="${u.id}" class="btn-primary" style="font-size:12.5px;padding:7px 14px">Guardar permisos</button>
-          <button data-mod-todos="${u.id}" style="font-size:12.5px;padding:7px 12px">Todo edición</button>
-          <button data-mod-ver="${u.id}" style="font-size:12.5px;padding:7px 12px">Todo solo lectura</button>
-          <button data-mod-ninguno="${u.id}" style="font-size:12.5px;padding:7px 12px">Sin acceso</button>
+          <div class="u-campo">
+            <label>Rol</label>
+            <select data-usuario-id="${u.id}" style="font-size:13px;padding:7px 9px;width:100%;max-width:280px">
+              <option value="tecnico" ${u.rol === "tecnico" ? "selected" : ""}>Técnico</option>
+              <option value="supervisor" ${u.rol === "supervisor" ? "selected" : ""}>Supervisor</option>
+              <option value="ingeniero" ${u.rol === "ingeniero" ? "selected" : ""}>Ingeniero</option>
+              <option value="consulta" ${u.rol === "consulta" ? "selected" : ""}>Solo consulta</option>
+              <option value="admin" ${u.rol === "admin" ? "selected" : ""}>Admin</option>
+            </select>
+          </div>
+
+          <div class="u-campo">
+            <label>Validación</label>
+            <!-- Validador no es un rol. Que alguien sea supervisor no dice nada
+                 sobre si sabe leer un megado, y quien tiene ese criterio es
+                 quien administra, no el organigrama. -->
+            <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-1)">
+              <input type="checkbox" data-validador-usuario="${u.id}" ${u.es_validador ? "checked" : ""} style="margin-top:2px">
+              <span>Puede validar y corregir mediciones de otros
+                <span style="display:block;font-size:11.5px;color:var(--text-2)">Relee ensayos y pruebas de aislamiento; toda corrección queda registrada con su motivo.</span>
+              </span>
+            </label>
+          </div>
+
+          <div class="u-campo">
+            <label>Módulos</label>
+            <div style="font-size:11.5px;color:var(--text-2);margin:0 0 8px">
+              ${u.rol === "admin"
+                ? "Este usuario es admin: ve todos los módulos sin importar lo que se marque aquí."
+                : "Sin nada marcado el usuario entra pero no ve módulos. Marcar todos equivale a no restringir."}
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:7px 18px">
+              ${MODULOS_CAT.map(([k, t]) => {
+                const nv = nivelModulo(u, k);
+                return `
+                <div style="display:flex;gap:9px;align-items:center;font-size:13px">
+                  <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t}</span>
+                  <select data-mod-niv="${u.id}" data-mod-k="${k}"
+                    style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--line);background:var(--bg-2);color:var(--text-1);flex-shrink:0">
+                    <option value="no"${nv === "no" ? " selected" : ""}>Sin acceso</option>
+                    <option value="ver"${nv === "ver" ? " selected" : ""}>Solo lectura</option>
+                    <option value="edita"${nv === "edita" ? " selected" : ""}>Edición</option>
+                  </select>
+                </div>`;
+              }).join("")}
+            </div>
+          </div>
+
+          <div class="u-campo">
+            <label>Aplicaciones</label>
+            <div style="display:flex;gap:18px;flex-wrap:wrap">
+              ${APPS_CAT.map(([k, t]) => `
+                <label style="display:flex;gap:7px;align-items:center;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-1)">
+                  <input type="checkbox" data-app-chk="${u.id}" value="${k}"
+                    ${(u.apps == null || u.apps.includes(k)) ? "checked" : ""}>
+                  <span>${t}</span>
+                </label>`).join("")}
+            </div>
+            <div style="font-size:11.5px;color:var(--text-2);margin:6px 0 0">
+              Quitar Kronos Captura impide registrar mediciones de campo desde
+              cualquier aplicación, no solo desde Captura: la base no distingue el origen.
+            </div>
+          </div>
+
+          <div style="display:flex;gap:8px;margin-top:4px;flex-wrap:wrap;align-items:center">
+            <button data-mod-guardar="${u.id}" class="btn-primary" style="font-size:12.5px;padding:7px 14px">Guardar permisos</button>
+            <button data-mod-todos="${u.id}" style="font-size:12.5px;padding:7px 12px">Todo edición</button>
+            <button data-mod-ver="${u.id}" style="font-size:12.5px;padding:7px 12px">Todo solo lectura</button>
+            <button data-mod-ninguno="${u.id}" style="font-size:12.5px;padding:7px 12px">Sin acceso</button>
+            ${esYo ? "" : `<button data-baja-usuario="${u.id}" data-baja-nombre="${u.nombre}"
+              title="Dar de baja: sale del contrato y deja de aparecer"
+              style="background:var(--danger-bg);border-color:var(--danger);color:var(--danger);font-size:12.5px;padding:7px 12px;margin-left:auto">Dar de baja</button>`}
+          </div>
         </div>
       </div>`;
     });
@@ -11962,12 +12036,35 @@ async function cargarPanelPerfil() {
 
     cont.innerHTML = html;
 
-    cont.querySelectorAll("[data-modulos-usuario]").forEach(btn => {
-      btn.onclick = () => {
-        const p = cont.querySelector(`[data-modulos-panel="${btn.dataset.modulosUsuario}"]`);
-        if (p) p.style.display = p.style.display === "none" ? "block" : "none";
+    /* Una sola tarjeta abierta a la vez. Con varias abiertas hay que
+       desplazarse mucho para comparar dos usuarios, que es justo lo que se
+       hace al repartir permisos. */
+    cont.querySelectorAll("[data-modulos-usuario]").forEach(cab => {
+      cab.onclick = () => {
+        const card = cab.closest(".u-card");
+        const abierta = card.classList.contains("abierta");
+        cont.querySelectorAll(".u-card.abierta").forEach(c => c.classList.remove("abierta"));
+        if (!abierta) card.classList.add("abierta");
       };
     });
+
+    /* Filtro en el navegador: trece usuarios, o cincuenta, caben de sobra en
+       memoria y una consulta por tecla contra la base seria ruido. */
+    const filtrarUsuarios = () => {
+      const q = (document.getElementById("u-buscar")?.value || "").trim().toLowerCase();
+      const soloVal = !!document.getElementById("u-solo-val")?.checked;
+      let vistos = 0;
+      cont.querySelectorAll("[data-ucard]").forEach(c => {
+        const ok = (!q || (c.dataset.busca || "").includes(q))
+                && (!soloVal || c.dataset.val === "1");
+        c.style.display = ok ? "" : "none";
+        if (ok) vistos++;
+      });
+      const vacio = document.getElementById("u-sin-resultados");
+      if (vacio) vacio.style.display = vistos ? "none" : "block";
+    };
+    document.getElementById("u-buscar")?.addEventListener("input", filtrarUsuarios);
+    document.getElementById("u-solo-val")?.addEventListener("change", filtrarUsuarios);
     const nivs = id => [...cont.querySelectorAll(`[data-mod-niv="${id}"]`)];
     const apps = id => [...cont.querySelectorAll(`[data-app-chk="${id}"]`)];
     const ponerTodo = (id, v) => nivs(id).forEach(s => { s.value = v; });
@@ -12035,8 +12132,10 @@ async function cargarPanelPerfil() {
         /* Rechazar una solicitud y dar de baja a alguien que trabajó años son
            la misma operación para la base, pero no para quien la pulsa. El
            texto tiene que decir lo que corresponde o el admin duda. */
-        const nuevo = btn.closest(".usuario-row") &&
-                      !btn.closest(".usuario-row").querySelector("[data-usuario-id]");
+        /* Se mira si el boton esta dentro de una tarjeta de usuario activo. Antes
+           se deducia de la estructura --una fila sin selector de rol era una
+           solicitud-- y eso se rompe en cuanto la maquetacion cambia. */
+        const nuevo = !btn.closest(".u-card");
         const aviso = nuevo
           ? "Rechazar la solicitud de " + quien + ".\n\nNo podrá entrar y no " +
             "volverá a aparecer aquí aunque intente registrarse de nuevo. ¿Continuar?"
@@ -12098,6 +12197,21 @@ async function cargarPanelPerfil() {
           chk.checked = antes;
           toast((data && data.error) || "No se pudo cambiar el permiso");
           return;
+        }
+        /* La tarjeta refleja el cambio sin recargar la lista entera: recargar
+           cerraria el panel y perderia el sitio donde estaba el admin. */
+        const card = chk.closest(".u-card");
+        if (card) {
+          card.dataset.val = chk.checked ? "1" : "0";
+          const chips = card.querySelector(".u-chips");
+          const previo = chips?.querySelector(".u-chip.val");
+          if (chk.checked && !previo && chips) {
+            const et = document.createElement("span");
+            et.className = "u-chip val"; et.textContent = "Validador";
+            chips.insertBefore(et, chips.children[1] || null);
+          } else if (!chk.checked && previo) {
+            previo.remove();
+          }
         }
         toast(chk.checked
           ? (data.nombre || "El usuario") + " ya puede validar"
