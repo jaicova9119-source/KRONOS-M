@@ -12645,8 +12645,13 @@ const IH08_CAMPOS = [
     excluye: [] },
   { key: "equipo_superior_sap", label: "Equipo superior", requerido: false,
     pistas: ["equipo superior", "superior", "padre", "superord"], excluye: [] },
-  { key: "estado_operativo", label: "Estado operativo", requerido: false,
-    pistas: ["status de usuario", "estado", "system status"], excluye: [] },
+  /* estado_operativo y ubicacion_actual NO se mapean desde el IH08: son campos
+     de Kronos, que se diligencian en la app para llevar el control de
+     movimientos. SAP tiene "System status" (INST, DLFL...), que es su status
+     tecnico y significa otra cosa; al ofrecerlo como candidato, la
+     autodeteccion lo emparejaba y cada equipo existente salia como
+     discrepancia: 10.111 sobre 10.151. Un contraste que marca todo no dice
+     nada, y aplicarlo habria reescrito el maestro entero. */
 ];
 
 /* Campos de ficha que se contrastan. Son exactamente los que el usuario puede
