@@ -11982,16 +11982,35 @@ async function cargarPanelPerfil() {
           </div>
 
           <div class="u-campo">
-            <label>Validación</label>
-            <!-- Validador no es un rol. Que alguien sea supervisor no dice nada
-                 sobre si sabe leer un megado, y quien tiene ese criterio es
-                 quien administra, no el organigrama. -->
-            <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-1)">
-              <input type="checkbox" data-validador-usuario="${u.id}" ${u.es_validador ? "checked" : ""} style="margin-top:2px">
-              <span>Puede validar y corregir mediciones de otros
-                <span style="display:block;font-size:11.5px;color:var(--text-2)">Relee ensayos y pruebas de aislamiento; toda corrección queda registrada con su motivo.</span>
-              </span>
-            </label>
+            <label>Delegaciones</label>
+            <!-- Ninguna de estas es un rol. Que alguien sea supervisor no dice
+                 nada sobre si sabe leer un megado ni sobre si debe decidir que
+                 un equipo entra al maestro: ese criterio lo tiene quien
+                 administra, no el organigrama.
+
+                 Y son cuatro marcas y no una porque son cuatro criterios
+                 distintos. Dárselas todas a la misma persona no cuesta nada;
+                 unirlas ahora y separarlas después obliga a revisar cada
+                 asignación una por una. -->
+            ${[
+              ["validador",   u.es_validador,        "Validar y corregir mediciones",
+               "Relee ensayos y pruebas de aislamiento; toda corrección queda registrada con su motivo."],
+              ["altas",       u.aprueba_altas,       "Aprobar altas de equipo",
+               "Decide que un equipo entra al maestro. Toca SAP y el catálogo."],
+              ["movimientos", u.aprueba_movimientos, "Aprobar movimientos",
+               "Confirma dónde está físicamente un equipo tras un traslado."],
+              ["datos",       u.aprueba_datos,       "Aprobar datos técnicos",
+               "Valida los campos propuestos frente a lo que dice SAP."],
+            ].map(([k, val, titulo, ayuda]) => `
+              <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-1);margin-bottom:9px">
+                <input type="checkbox" data-permiso-usuario="${u.id}" data-permiso="${k}" ${val ? "checked" : ""} style="margin-top:2px">
+                <span>${titulo}
+                  <span style="display:block;font-size:11.5px;color:var(--text-2)">${ayuda}</span>
+                </span>
+              </label>`).join("")}
+            <div style="font-size:11.5px;color:var(--text-2)">
+              El permiso dice <b>qué</b> puede aprobar; la cuenca dice <b>dónde</b>.
+            </div>
           </div>
 
           <div class="u-campo">
@@ -12271,11 +12290,13 @@ async function cargarPanelPerfil() {
     /* Va por RPC y no por update directo: una columna que concede permisos no
        debe poderse tocar con un update suelto desde el navegador. La funcion
        comprueba que quien la llama es admin. */
-    cont.querySelectorAll("[data-validador-usuario]").forEach(chk => {
+    cont.querySelectorAll("[data-permiso-usuario]").forEach(chk => {
       chk.onchange = async () => {
         const antes = !chk.checked;
-        const { data, error } = await sb.rpc("usuario_set_validador", {
-          p_usuario_id: chk.dataset.validadorUsuario, p_valor: chk.checked,
+        const { data, error } = await sb.rpc("usuario_set_permiso", {
+          p_usuario_id: chk.dataset.permisoUsuario,
+          p_permiso: chk.dataset.permiso,
+          p_valor: chk.checked,
         });
         if (error || (data && data.ok === false)) {
           chk.checked = antes;
@@ -12284,7 +12305,7 @@ async function cargarPanelPerfil() {
         }
         /* La tarjeta refleja el cambio sin recargar la lista entera: recargar
            cerraria el panel y perderia el sitio donde estaba el admin. */
-        const card = chk.closest(".u-card");
+        const card = chk.dataset.permiso === "validador" ? chk.closest(".u-card") : null;
         if (card) {
           card.dataset.val = chk.checked ? "1" : "0";
           const chips = card.querySelector(".u-chips");
@@ -12297,9 +12318,9 @@ async function cargarPanelPerfil() {
             previo.remove();
           }
         }
-        toast(chk.checked
-          ? (data.nombre || "El usuario") + " ya puede validar"
-          : (data.nombre || "El usuario") + " ya no valida");
+        const que = { validador: "validar mediciones", altas: "aprobar altas",
+                      movimientos: "aprobar movimientos", datos: "aprobar datos técnicos" }[chk.dataset.permiso];
+        toast((data.nombre || "El usuario") + (chk.checked ? " ya puede " : " ya no puede ") + que);
       };
     });
 
