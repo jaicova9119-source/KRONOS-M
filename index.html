@@ -293,6 +293,23 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .est-nodo.sel{background:var(--hover);box-shadow:inset 2px 0 0 var(--acento,#1f6feb)}
 .est-nodo.abierta .est-den{color:var(--texto)}
 
+/* Separacion horizontal entre filas. Con veinte mil equipos y cinco niveles,
+   las lineas verticales dicen de quien cuelga cada cosa pero no donde acaba
+   una fila y empieza la siguiente: el nombre, el codigo debajo y la pastilla
+   a la derecha se leen como un bloque continuo.
+
+   La raya va como pseudoelemento y no como border-bottom para que no se
+   recorte con el border-radius del fondo al pasar por encima. */
+.est-nodo::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:currentColor;opacity:.09}
+/* Los niveles altos separan MAS: entre dos cuencas hay mas distancia
+   conceptual que entre dos pozos del mismo pad, y la raya debe decirlo. */
+.est-nodo.p0::after,.est-nodo.p1::after{opacity:.2}
+.est-nodo.p0{margin-top:10px}
+.est-nodo.p1{margin-top:5px}
+/* La ultima fila de una rama no lleva raya: ahi ya separa el fin de la guia. */
+.est-hijos > .est-nodo:last-child::after{opacity:0}
+
 /* La flecha gira en vez de cambiar de caracter: el movimiento dice que el
    mismo nodo se abre, no que apareció otra cosa. */
 .est-flecha{width:14px;flex:0 0 14px;text-align:center;color:var(--texto-2);
