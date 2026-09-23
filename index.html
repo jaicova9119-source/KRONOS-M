@@ -2213,9 +2213,15 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="ih08-resultado" style="display:none;margin-top:20px">
       <div class="section-label">Resultado del contraste</div>
       <div id="ih08-resumen" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px"></div>
+      <!-- Las acciones van ARRIBA, junto al resumen. Abajo quedaban detrás de
+           diez mil tarjetas y habia que buscarlas desplazandose; el resumen ya
+           dice lo que hay, y quien quiera revisar el detalle baja despues. -->
+      <div id="ih08-acciones" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        <button class="btn-primary" id="ih08-btn-aplicar" style="display:none" onclick="aplicarSincronizacionesIH08()">Aplicar sincronizaciones automáticas</button>
+        <button class="btn-primary" id="ih08-btn-nuevos" style="display:none"></button>
+        <button class="btn-secondary" onclick="reiniciarIH08()">Cargar otro archivo</button>
+      </div>
       <div id="ih08-grupos"></div>
-      <button class="btn-primary" id="ih08-btn-aplicar" style="margin-top:16px;display:none" onclick="aplicarSincronizacionesIH08()">Aplicar sincronizaciones automáticas</button>
-      <button class="btn-secondary" style="margin-top:10px" onclick="reiniciarIH08()">Cargar otro archivo</button>
     </div>
   </div>
 </div>
@@ -13052,9 +13058,6 @@ function mostrarResultadoIH08(r) {
              Al incorporarlos se crean con los datos del IH08 y su cuenca se resuelve sola
              desde la ubicación técnica. Los campos propios de Kronos —estado operativo y
              ubicación actual— quedan vacíos hasta que alguien los diligencie.</div>
-           <button class="btn-primary" id="ih08-btn-nuevos" style="margin:10px 0">
-             Incorporar ${r.nuevosEnSap.length} equipos nuevos
-           </button>
            ${r.nuevosEnSap.slice(0, 200).map(f => `
              <div class="ih08-item">
                <div class="ih08-item-titulo">${f.descripcion || f.codigo_sap}</div>
@@ -13079,7 +13082,11 @@ function mostrarResultadoIH08(r) {
     (r.sincronizados.length || r.cumplidos.length) ? "" : "none";
 
   const btnNuevos = document.getElementById("ih08-btn-nuevos");
-  if (btnNuevos) btnNuevos.onclick = ih08IncorporarNuevos;
+  if (btnNuevos) {
+    btnNuevos.style.display = r.nuevosEnSap.length ? "" : "none";
+    btnNuevos.textContent = "Incorporar " + r.nuevosEnSap.length + " equipos nuevos";
+    btnNuevos.onclick = ih08IncorporarNuevos;
+  }
   document.getElementById("ih08-resultado").style.display = "";
 }
 
