@@ -278,17 +278,56 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .est-barra input[type=text],.est-barra input#est-buscar{flex:1;min-width:220px;padding:9px 11px;
   border:1px solid var(--linea);border-radius:8px;background:var(--fondo);color:var(--texto)}
 .est-check{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--texto-2)}
-.est-nodo{display:flex;align-items:center;gap:8px;padding:7px 6px;border-radius:7px;cursor:pointer}
+/* El arbol se leia como una lista con sangria: cinco niveles con el mismo
+   peso tipografico y nada que uniera un hijo con su padre. Con veinte mil
+   equipos repartidos en cinco niveles, eso obliga a contar sangrias con el
+   dedo.
+
+   Tres cosas lo arreglan: una linea guia que baja por cada rama abierta y
+   une visualmente a los hermanos, peso tipografico decreciente con la
+   profundidad --la cuenca pesa mas que el contrato, y el contrato mas que
+   la estacion-- y las cifras como pastilla en vez de texto suelto. */
+.est-nodo{display:flex;align-items:center;gap:9px;padding:8px 8px;border-radius:8px;
+  cursor:pointer;position:relative;transition:background .12s}
 .est-nodo:hover{background:var(--hover)}
-.est-nodo.sel{background:var(--hover)}
-.est-flecha{width:16px;text-align:center;color:var(--texto-2);font-size:11px;flex:0 0 16px}
-.est-flecha.hoja{opacity:.25}
-.est-txt{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.est-cod{font-family:var(--mono,monospace);font-size:12px;color:var(--texto-2)}
-.est-den{font-size:13.5px}
+.est-nodo.sel{background:var(--hover);box-shadow:inset 2px 0 0 var(--acento,#1f6feb)}
+.est-nodo.abierta .est-den{color:var(--texto)}
+
+/* La flecha gira en vez de cambiar de caracter: el movimiento dice que el
+   mismo nodo se abre, no que apareció otra cosa. */
+.est-flecha{width:14px;flex:0 0 14px;text-align:center;color:var(--texto-2);
+  font-size:10px;transition:transform .15s;transform-origin:50% 50%}
+.est-flecha.abierta{transform:rotate(90deg)}
+.est-flecha.hoja{opacity:.3;font-size:13px}
+
+.est-txt{flex:1;min-width:0;overflow:hidden}
+.est-den{font-size:13.5px;display:block;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;line-height:1.3}
 .est-den.sin{font-style:italic;color:var(--texto-2)}
-.est-n{font-size:11.5px;color:var(--texto-2);white-space:nowrap}
-.est-n b{color:var(--texto)}
+.est-cod{font-family:var(--mono,monospace);font-size:11px;color:var(--texto-2);
+  letter-spacing:.02em}
+
+/* Profundidad: la raiz pesa, la hoja no. Sin esto los cinco niveles compiten
+   por la misma atencion y el arbol se lee como una lista plana. */
+.est-nodo.p0 .est-den{font-size:14.5px;font-weight:650;letter-spacing:-.01em}
+.est-nodo.p1 .est-den{font-size:14px;font-weight:600}
+.est-nodo.p2 .est-den{font-size:13.5px;font-weight:550}
+.est-nodo.p3 .est-den{font-size:13px;font-weight:500}
+.est-nodo.p4 .est-den{font-size:12.5px;font-weight:450;color:var(--texto-2)}
+
+/* Las cifras, como pastilla. "4741 en rama" suelto a la derecha se confunde
+   con parte del nombre; encerrado se lee como lo que es, un contador. */
+.est-n{display:flex;gap:6px;align-items:center;white-space:nowrap;flex-shrink:0}
+.est-pill{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--linea);
+  color:var(--texto-2);line-height:1.5}
+.est-pill.aqui{color:var(--texto);border-color:var(--texto-2)}
+.est-pill.aqui b{font-weight:650}
+
+/* La linea guia. Une a los hermanos de una rama y hace visible de un vistazo
+   donde termina cada nivel, que es lo que la sangria sola no dice. */
+.est-hijos{margin-left:16px;padding-left:12px;border-left:1px solid var(--linea)}
+.est-hijos:hover{border-left-color:var(--texto-2)}
+
 .est-eq{margin:4px 0 10px 26px;border-left:2px solid var(--linea);padding-left:10px}
 .est-eq-item{padding:7px 4px;border-bottom:1px solid var(--linea);cursor:pointer}
 .est-eq-item:hover{background:var(--hover)}
@@ -5572,18 +5611,21 @@ function estRama(n, prof) {
     ? '<span class="est-den">' + escaparHtml(n.denominacion) + '</span>'
     : '<span class="est-den sin">sin denominaci&oacute;n</span>';
 
-  let h = '<div class="est-nodo' + (EST_SEL === n.codigo ? " sel" : "") + '"'
-        + ' style="padding-left:' + (prof * 16) + 'px"'
+  /* La sangria ya no va en el nodo: la ponen las lineas guia que envuelven a
+     los hijos. Asi la profundidad se ve, no solo se mide. */
+  let h = '<div class="est-nodo p' + Math.min(prof, 4)
+        + (EST_SEL === n.codigo ? " sel" : "")
+        + (abierto ? " abierta" : "") + '"'
         + ' onclick="estClic(\'' + n.codigo + '\')">'
-        + '<span class="est-flecha' + (hijos.length ? "" : " hoja") + '">'
-        + (hijos.length ? (abierto ? "&#9662;" : "&#9656;")
-                        : (n.n_directos ? "&#9673;" : "&#8226;")) + '</span>'
+        + '<span class="est-flecha' + (hijos.length ? (abierto ? " abierta" : "") : " hoja") + '">'
+        + (hijos.length ? "&#9656;" : (n.n_directos ? "&#9673;" : "&#8226;")) + '</span>'
         + '<span class="est-txt">' + den
-        + '<br><span class="est-cod">' + escaparHtml(n.codigo) + '</span></span>'
+        + '<span class="est-cod">' + escaparHtml(n.codigo) + '</span></span>'
         + '<span class="est-n">'
-        + (n.n_directos ? '<b>' + n.n_directos + '</b> aqu&iacute;' : "")
-        + (n.n_directos && n.n_rama > n.n_directos ? " &middot; " : "")
-        + (n.n_rama > n.n_directos ? n.n_rama + " en rama" : "")
+        + (n.n_directos
+            ? '<span class="est-pill aqui"><b>' + n.n_directos + '</b> aqu&iacute;</span>' : "")
+        + (n.n_rama > n.n_directos
+            ? '<span class="est-pill">' + n.n_rama + ' en rama</span>' : "")
         + '</span></div>';
 
   /* Con busqueda activa, los equipos encontrados se muestran bajo su
@@ -5596,7 +5638,14 @@ function estRama(n, prof) {
   } else if (EST_FILTRO && EST_EQ_HIT && EST_EQ_HIT.has(n.codigo)) {
     h += estEquiposHtml(n.codigo, EST_EQ_HIT.get(n.codigo));
   }
-  if (abierto) hijos.forEach(c => { h += estRama(c, prof + 1); });
+  /* Los hijos van envueltos, no sueltos: el contenedor es quien dibuja la
+     linea guia que los une. Antes se anexaban al mismo nivel del DOM y la
+     jerarquia solo existia en el padding. */
+  if (abierto && hijos.length) {
+    h += '<div class="est-hijos">'
+       + hijos.map(c => estRama(c, prof + 1)).join("")
+       + '</div>';
+  }
   return h;
 }
 
