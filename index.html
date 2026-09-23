@@ -12657,13 +12657,36 @@ function reiniciarIH08() {
   document.getElementById("ih08-resultado").style.display = "none";
 }
 
+/* Que hoja de un libro trae los datos.
+   Las exportaciones de SAP anteponen una hoja de portada con los parametros
+   del reporte --titulo, usuario, fecha, filtros-- y la tabla real va en la
+   siguiente. Tomando SheetNames[0] se lee la portada, y el mapeo de columnas
+   acaba ofreciendo "Screen Title" y "Leasing type" como si fueran datos.
+   Se elige por tamaño: columnas del encabezado por filas de datos. Una
+   portada tiene pocas columnas; una tabla de equipos tiene ciento y pico.
+   Asi tambien funciona si mañana alguien exporta con las hojas al reves. */
+function hojaConDatos(libro) {
+  let mejor = libro.SheetNames[0], puntos = -1;
+  for (const nombre of libro.SheetNames) {
+    const h = libro.Sheets[nombre];
+    if (!h || !h["!ref"]) continue;
+    const r = XLSX.utils.decode_range(h["!ref"]);
+    const cols = r.e.c - r.s.c + 1;
+    const filas = r.e.r - r.s.r;          // sin contar el encabezado
+    if (filas < 1) continue;
+    const p = cols * filas;
+    if (p > puntos) { puntos = p; mejor = nombre; }
+  }
+  return mejor;
+}
+
 document.getElementById("ih08-input-archivo").addEventListener("change", async (e) => {
   const archivo = e.target.files[0];
   if (!archivo) return;
   try {
     const buffer = await archivo.arrayBuffer();
     const libro = XLSX.read(buffer, { type: "array" });
-    const hoja = libro.Sheets[libro.SheetNames[0]];
+    const hoja = libro.Sheets[hojaConDatos(libro)];
     const filas = XLSX.utils.sheet_to_json(hoja, { defval: "" });
     if (!filas.length) {
       toast("El archivo no tiene filas de datos");
@@ -13233,7 +13256,7 @@ document.getElementById("csap-input-archivo").addEventListener("change", async (
     /* cellDates hace que SheetJS entregue objetos Date en vez del numero
        serial de Excel, que es lo que rompe las fechas al importar. */
     const libro = XLSX.read(buffer, { type: "array", cellDates: true });
-    const hoja = libro.Sheets[libro.SheetNames[0]];
+    const hoja = libro.Sheets[hojaConDatos(libro)];
     const filas = XLSX.utils.sheet_to_json(hoja, { defval: "" });
     if (!filas.length) { toast("El archivo no tiene filas de datos"); return; }
     csapFilasCrudas = filas;
@@ -13432,7 +13455,7 @@ document.getElementById("carga-mat-input-archivo").addEventListener("change", as
   try {
     const buffer = await archivo.arrayBuffer();
     const libro = XLSX.read(buffer, { type: "array" });
-    const hoja = libro.Sheets[libro.SheetNames[0]];
+    const hoja = libro.Sheets[hojaConDatos(libro)];
     const filas = XLSX.utils.sheet_to_json(hoja, { defval: "" });
     if (!filas.length) {
       toast("El archivo no tiene filas de datos");
