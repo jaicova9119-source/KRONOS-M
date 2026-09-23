@@ -14890,12 +14890,17 @@ function progMapearColumnas(fila) {
     if (t === "item" && idx.item === undefined) idx.item = i;
     else if (t.indexOf("fecha") >= 0 && idx.fecha === undefined) idx.fecha = i;
     else if (t.indexOf("descripcion equipo") >= 0 && idx.desc_equipo === undefined) idx.desc_equipo = i;
-    else if (t.indexOf("codigo equipo") >= 0 && idx.cod_equipo === undefined) idx.cod_equipo = i;
+    /* Putumayo titula "Código Equipo" y VMM solo "Equipo". */
+    else if ((t.indexOf("codigo equipo") >= 0 || t === "equipo") && idx.cod_equipo === undefined) idx.cod_equipo = i;
     else if (t.indexOf("hh prog") >= 0 && idx.hh_prog === undefined) idx.hh_prog = i;
     else if (t === "estacion" && idx.estacion === undefined) idx.estacion = i;
     else if (t.indexOf("tipo tarea") >= 0 && idx.tipo_tarea === undefined) idx.tipo_tarea = i;
     else if (t === "tipo" && idx.tipo === undefined) idx.tipo = i;
-    else if (t.indexOf("ot") >= 0 && t.length <= 6 && idx.ot === undefined) idx.ot = i;
+    /* "# OT" en Putumayo y "# OT / # RUTA" en VMM --con salto de línea dentro
+       de la celda, que al normalizar queda "ot ruta"--. El tope de seis
+       caracteres dejaba fuera el segundo y sin columna de OT no se reconocía
+       la fila de encabezados, así que el archivo entero se rechazaba. */
+    else if (/(^|[^a-z0-9])ot\b/.test(t) && idx.ot === undefined) idx.ot = i;
     else if (t.indexOf("descripcion de trabajo") >= 0 && idx.desc_trabajo === undefined) idx.desc_trabajo = i;
     // MEC/ELE/INS/SOL aparecen dos veces: programado y ejecutado.
     // Solo interesa la primera aparición, que es lo programado.
@@ -14903,7 +14908,27 @@ function progMapearColumnas(fila) {
     else if (t === "ele" && idx.ele === undefined) idx.ele = i;
     else if (t === "ins" && idx.ins === undefined) idx.ins = i;
     else if (t === "sol" && idx.sol === undefined) idx.sol = i;
+    /* Putumayo programa en MEC/ELE/INS/SOL; VMM en MEC/ELE/INS/CTRL/ELME y
+       sin SOL. Cada cuenca usa las suyas y las demas quedan nulas, que es
+       distinto de cero horas: nulo dice "aqui no se programa esa
+       especialidad". */
+    else if (t === "ctrl" && idx.ctrl === undefined) idx.ctrl = i;
+    else if (t === "elme" && idx.elme === undefined) idx.elme = i;
   });
+
+  /* "Primera aparición" solo distingue programado de ejecutado cuando las
+     cuatro especialidades están en el bloque programado. En VMM el bloque
+     programado es MEC/ELE/INS/CTRL/ELME --sin SOL-- así que la primera SOL
+     del archivo es la de NOTIFICACIÓN, que son horas EJECUTADAS. Importarla
+     como programada infla el plan con trabajo ya hecho.
+     El bloque programado termina donde empieza Estación, así que cualquier
+     especialidad que aparezca después no es del plan. */
+  const corte = idx.estacion !== undefined ? idx.estacion
+              : (idx.ot !== undefined ? idx.ot : Infinity);
+  ["mec", "ele", "ins", "sol", "ctrl", "elme"].forEach(k => {
+    if (idx[k] !== undefined && idx[k] > corte) delete idx[k];
+  });
+
   return idx;
 }
 
@@ -14924,17 +14949,39 @@ async function progLeerArchivo(input) {
   try {
     const buf = await file.arrayBuffer();
     const wb = XLSX.read(new Uint8Array(buf), { type: "array", cellDates: true });
-    const nombreHoja = wb.SheetNames.find(n => /^\s*semana/i.test(n)) || wb.SheetNames[0];
-    const ws = wb.Sheets[nombreHoja];
-    const grid = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, blankrows: true });
+    /* La hoja se elige por CONTENIDO, no por nombre. En Putumayo se llama
+       "SEMANA 39" y en VMM "GTEC-MT-FO-008 SEM 39": buscar por el prefijo
+       "semana" acertaba en una y en la otra caia en la primera hoja del libro
+       --"DIFERIDAS SEM 39"--, que no tiene encabezados. Cada planeador nombra
+       sus hojas a su manera y eso no va a cambiar; lo que si es constante es
+       que la hoja buena tiene una fila con Item, Fecha y # OT.
 
-    // Fila de encabezados: la que contiene "Ítem"
-    let iHead = -1, cols = null;
-    for (let i = 0; i < Math.min(grid.length, 30); i++) {
-      const c = progMapearColumnas(grid[i]);
-      if (c.item !== undefined && c.fecha !== undefined && c.ot !== undefined) { iHead = i; cols = c; break; }
+       Se prueban primero las que parecen la semana, para no gastar tiempo
+       recorriendo libros de cuarenta hojas como el de Sur. */
+    const buscarCabecera = (hoja) => {
+      const g = XLSX.utils.sheet_to_json(hoja, { header: 1, defval: null, blankrows: true });
+      for (let i = 0; i < Math.min(g.length, 30); i++) {
+        const c = progMapearColumnas(g[i]);
+        if (c.item !== undefined && c.fecha !== undefined && c.ot !== undefined) {
+          return { grid: g, iHead: i, cols: c };
+        }
+      }
+      return null;
+    };
+
+    const orden = wb.SheetNames.slice().sort((a, b) => {
+      const pa = /sem/i.test(a) ? 0 : 1, pb = /sem/i.test(b) ? 0 : 1;
+      return pa - pb;
+    });
+
+    let nombreHoja = null, hallazgo = null;
+    for (const n of orden) {
+      hallazgo = buscarCabecera(wb.Sheets[n]);
+      if (hallazgo) { nombreHoja = n; break; }
     }
-    if (iHead < 0) throw new Error("No se encontró la fila de encabezados (Ítem, Fecha, # OT). ¿Cambió el formato?");
+    if (!hallazgo) throw new Error("No se encontró la fila de encabezados (Ítem, Fecha, # OT) en ninguna hoja. ¿Cambió el formato?");
+
+    const grid = hallazgo.grid, iHead = hallazgo.iHead, cols = hallazgo.cols;
 
     // Periodo: se busca en las filas de arriba el par de fechas
     let ini = null, fin = null;
@@ -14964,6 +15011,8 @@ async function progLeerArchivo(input) {
         hh_ele: cols.ele !== undefined ? progNum(r[cols.ele]) : null,
         hh_ins: cols.ins !== undefined ? progNum(r[cols.ins]) : null,
         hh_sol: cols.sol !== undefined ? progNum(r[cols.sol]) : null,
+        hh_ctrl: cols.ctrl !== undefined ? progNum(r[cols.ctrl]) : null,
+        hh_elme: cols.elme !== undefined ? progNum(r[cols.elme]) : null,
       });
     }
     if (!filas.length) throw new Error("No se encontraron filas de actividades");
@@ -15000,6 +15049,10 @@ async function progLeerArchivo(input) {
       "<tr><td><b>Con horas ejecutadas</b></td><td><b>" + ele.length + " (" + hhEle + " HH)</b></td></tr>" +
       "<tr><td>Estaciones</td><td>" + (estaciones.join(", ") || "—") + "</td></tr>" +
       "<tr><td>Tipos de orden</td><td>" + (tipos.join(", ") || "—") + "</td></tr>" +
+      "<tr><td>Especialidades</td><td>"
+        + (["mec", "ele", "ins", "sol", "ctrl", "elme"]
+            .filter(k => cols[k] !== undefined).join(", ").toUpperCase() || "—")
+        + "</td></tr>" +
       (sinOT ? "<tr><td>Sin número de OT</td><td>" + sinOT + "</td></tr>" : "") +
       "</table>" +
       (semana == null
