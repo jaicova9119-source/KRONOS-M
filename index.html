@@ -13041,11 +13041,30 @@ function mostrarResultadoIH08(r) {
         <div class="ih08-item-titulo">${s.eq.descripcion || s.eq.id_interno}</div>
         <div class="ih08-item-detalle">${s.diffs.map(x => `${x.label} → ${x.sap}`).join(" · ")}</div>
       </div>`) +
-    seccion("🆕 Aparecen en SAP pero no están en la app", r.nuevosEnSap, f => `
-      <div class="ih08-item">
-        <div class="ih08-item-titulo">${f.descripcion || f.codigo_sap}</div>
-        <div class="ih08-item-detalle">Código SAP: ${f.codigo_sap}</div>
-      </div>`) +
+    /* Los nuevos llevan su propio boton y no van con "Aplicar
+       sincronizaciones": incorporar equipos que no existen es otra cosa que
+       corregir la ficha de los que si, y meterlas en el mismo boton hace que
+       quien solo queria lo segundo acabe haciendo lo primero sin enterarse. */
+    (r.nuevosEnSap.length
+      ? `<div class="ih08-grupo">
+           <div class="ih08-grupo-titulo">🆕 Aparecen en SAP pero no están en la app</div>
+           <div class="hint-box">Son ${r.nuevosEnSap.length} equipos del archivo que Kronos no tiene.
+             Al incorporarlos se crean con los datos del IH08 y su cuenca se resuelve sola
+             desde la ubicación técnica. Los campos propios de Kronos —estado operativo y
+             ubicación actual— quedan vacíos hasta que alguien los diligencie.</div>
+           <button class="btn-primary" id="ih08-btn-nuevos" style="margin:10px 0">
+             Incorporar ${r.nuevosEnSap.length} equipos nuevos
+           </button>
+           ${r.nuevosEnSap.slice(0, 200).map(f => `
+             <div class="ih08-item">
+               <div class="ih08-item-titulo">${f.descripcion || f.codigo_sap}</div>
+               <div class="ih08-item-detalle">Código SAP: ${f.codigo_sap}</div>
+             </div>`).join("")}
+           ${r.nuevosEnSap.length > 200
+             ? `<div class="ih08-item-detalle" style="padding:8px 2px">y ${r.nuevosEnSap.length - 200} más…</div>`
+             : ""}
+         </div>`
+      : "") +
     seccion("❓ Están en la app pero no aparecieron en este IH08", r.noEnSap, e => `
       <div class="ih08-item">
         <div class="ih08-item-titulo">${e.descripcion || e.id_interno}</div>
@@ -13058,6 +13077,9 @@ function mostrarResultadoIH08(r) {
 
   document.getElementById("ih08-btn-aplicar").style.display =
     (r.sincronizados.length || r.cumplidos.length) ? "" : "none";
+
+  const btnNuevos = document.getElementById("ih08-btn-nuevos");
+  if (btnNuevos) btnNuevos.onclick = ih08IncorporarNuevos;
   document.getElementById("ih08-resultado").style.display = "";
 }
 
@@ -13117,6 +13139,74 @@ async function aplicarSincronizacionesIH08() {
   btn.textContent = "Aplicar sincronizaciones automáticas";
   btn.style.display = "none";
   btn.disabled = false;
+  await cargarEquipos();
+}
+
+/* Incorpora al maestro los equipos que estan en el IH08 y no en Kronos.
+   Va aparte de "Aplicar sincronizaciones" a proposito: corregir la ficha de
+   un equipo existente y dar de alta diez mil equipos nuevos son decisiones
+   de peso muy distinto.
+
+   Solo se escriben los campos que vienen de SAP. estado_operativo y
+   ubicacion_actual son de Kronos --se diligencian en la app para el control
+   de movimientos-- y nacen vacios: rellenarlos desde el IH08 seria inventar
+   un movimiento que nadie registro.
+
+   La cuenca no se pasa: la resuelve el trigger desde el tercer segmento de la
+   ubicacion tecnica. Una sola fuente, y funciona igual para los que entren
+   manana. */
+async function ih08IncorporarNuevos() {
+  const btn = document.getElementById("ih08-btn-nuevos");
+  const nuevos = (ih08Resultado && ih08Resultado.nuevosEnSap) || [];
+  if (!nuevos.length) return;
+
+  if (!confirm("Se van a crear " + nuevos.length + " equipos con los datos del IH08.\n\n"
+      + "Su cuenca se asigna sola desde la ubicación técnica. Esto no borra ni "
+      + "modifica ningún equipo existente.\n\n¿Continuar?")) return;
+
+  btn.disabled = true;
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  /* En lotes: un insert de diez mil filas en una sola llamada agota el limite
+     de la peticion y falla entero, sin dejar rastro de cuanto entro. Asi, si
+     algo falla, lo ya insertado se queda y el reintento no duplica porque el
+     codigo SAP es unico. */
+  const TAM = 500;
+  let entraron = 0, fallidos = 0, primerError = null;
+
+  for (let i = 0; i < nuevos.length; i += TAM) {
+    const lote = nuevos.slice(i, i + TAM).map(f => ({
+      codigo_sap:             String(f.codigo_sap).trim(),
+      descripcion:            f.descripcion || null,
+      marca:                  f.marca || null,
+      modelo:                 f.modelo || null,
+      numero_serie:           f.numero_serie || null,
+      campo_codigo:           f.campo_codigo || null,
+      ubicacion_tecnica_sap:  f.ubicacion_tecnica_sap || null,
+      equipo_superior_sap:    f.equipo_superior_sap || null,
+      origen:                 "IH08",
+      estado_sincronizacion:  "sincronizado",
+      fecha_ultimo_contraste_sap: hoy,
+    }));
+
+    const { error } = await sb.from("equipos")
+      .upsert(lote, { onConflict: "codigo_sap", ignoreDuplicates: true });
+
+    if (error) { fallidos += lote.length; if (!primerError) primerError = error.message; }
+    else entraron += lote.length;
+
+    btn.textContent = "Incorporando… " + Math.min(i + TAM, nuevos.length)
+                    + " de " + nuevos.length;
+  }
+
+  btn.disabled = false;
+  if (fallidos) {
+    btn.textContent = "Reintentar los que faltaron";
+    toast("Entraron " + entraron + ", fallaron " + fallidos + ". " + (primerError || ""));
+  } else {
+    btn.textContent = "Listo: " + entraron + " equipos incorporados";
+    toast(entraron + " equipos incorporados");
+  }
   await cargarEquipos();
 }
 
