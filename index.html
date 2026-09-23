@@ -323,12 +323,26 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
 .est-pill.aqui{color:var(--texto);border-color:var(--texto-2)}
 .est-pill.aqui b{font-weight:650}
 
-/* La linea guia. Une a los hermanos de una rama y hace visible de un vistazo
-   donde termina cada nivel, que es lo que la sangria sola no dice. */
-.est-hijos{margin-left:16px;padding-left:12px;border-left:1px solid var(--linea)}
-.est-hijos:hover{border-left-color:var(--texto-2)}
+/* Las lineas guia. Una vertical que recorre la rama y un codo horizontal que
+   sale de ella hasta cada nodo: sin el codo, la vertical pasa de largo y no
+   se ve a cual de los nodos pertenece.
 
-.est-eq{margin:4px 0 10px 26px;border-left:2px solid var(--linea);padding-left:10px}
+   Van como pseudoelementos con currentColor y opacidad, no con var(--linea):
+   ese token esta pensado para bordes de campos y es tan tenue que a esta
+   escala desaparece. Asi la linea se adapta sola al tema claro y al oscuro
+   sin definir un color por cada uno. */
+.est-hijos{position:relative;margin-left:17px;padding-left:15px}
+.est-hijos::before{content:"";position:absolute;left:0;top:-2px;bottom:10px;
+  width:1px;background:currentColor;opacity:.2}
+.est-hijos > .est-nodo::before{content:"";position:absolute;left:-15px;top:50%;
+  width:12px;height:1px;background:currentColor;opacity:.2}
+/* Al pasar por encima de una rama, su guia se marca: ayuda a seguir un nivel
+   concreto cuando hay cuatro abiertos a la vez. */
+.est-hijos:hover::before{opacity:.42}
+
+.est-eq{position:relative;margin:2px 0 10px 17px;padding-left:15px}
+.est-eq::before{content:"";position:absolute;left:0;top:0;bottom:8px;width:1px;
+  background:currentColor;opacity:.2}
 .est-eq-item{padding:7px 4px;border-bottom:1px solid var(--linea);cursor:pointer}
 .est-eq-item:hover{background:var(--hover)}
 .est-eq-item:last-child{border-bottom:0}
