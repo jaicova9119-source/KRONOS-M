@@ -3942,7 +3942,9 @@ async function hubContar() {
   return out;
 }
 
-function hubPintar(c) {
+/* async porque las alertas de aprobacion dependen de la delegacion, que se
+   consulta una vez por sesion y se guarda. */
+async function hubPintar(c) {
   const n = v => (v == null ? "—" : Number(v).toLocaleString("es-CO"));
   const esRevisor = usuarioActual
     && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
@@ -3990,13 +3992,18 @@ function hubPintar(c) {
     alertas.push({ n: c.maquinasPend, t: "m\u00e1quinas de campo por validar",
                    clase: "avisa", ir: () => aplicarModulo("ensayos") });
   }
-  if (esRevisor && c.movsPend) {
+  /* Estas tres cuelgan de la delegacion, no del rol: aprobar un alta o un
+     movimiento lo hace quien el administrador designe, no todo supervisor.
+     Anunciarle a alguien un pendiente que no puede resolver es pedirle que
+     ignore el aviso, y eso se contagia a los avisos que si son suyos. */
+  const del = await cargarDelegaciones();
+  if (del.aprueba_movimientos && c.movsPend) {
     alertas.push({ n: c.movsPend, t: "movimientos por aprobar", clase: "avisa", ir: irAPendientes });
   }
-  if (esRevisor && c.altasPend) {
+  if (del.aprueba_altas && c.altasPend) {
     alertas.push({ n: c.altasPend, t: "altas por aprobar", clase: "avisa", ir: irAPendientes });
   }
-  if (esRevisor && c.compsPend) {
+  if (del.aprueba_datos && c.compsPend) {
     alertas.push({ n: c.compsPend, t: "datos por completar", clase: "avisa", ir: irAPendientes });
   }
 
@@ -12370,9 +12377,27 @@ async function cargarPendientesTecnico() {
 }
 
 /* ---- Panel de aprobacion para supervisor/admin ---- */
+/* Que puede aprobar quien esta mirando. Se consulta una vez y se guarda:
+   son tres booleanos y no cambian a mitad de sesion. */
+let APRUEBA = null;
+async function cargarDelegaciones() {
+  if (APRUEBA) return APRUEBA;
+  const { data } = await sb.from("usuarios")
+    .select("aprueba_altas, aprueba_movimientos, aprueba_datos")
+    .eq("auth_user_id", usuarioActual.auth_user_id).maybeSingle();
+  APRUEBA = data || { aprueba_altas: false, aprueba_movimientos: false, aprueba_datos: false };
+  return APRUEBA;
+}
+
 async function cargarPanelAprobacion() {
   const cont = document.getElementById("pendientes-lista");
   cont.innerHTML = '<div class="loading">Cargando...</div>';
+
+  /* Una cola que no se puede atender no se muestra. Enseñarla y que el boton
+     falle --o peor, que finja que funciono-- convierte el tablero en ruido:
+     quien lo mira aprende que los numeros de ahi no son suyos y deja de
+     mirarlo tambien cuando si lo sean. */
+  const permisos = await cargarDelegaciones();
 
   const [movs, comps, altas] = await Promise.all([
     sb.from("movimientos").select("*, equipos(descripcion, codigo_sap, id_interno), usuarios(nombre)")
@@ -12383,19 +12408,31 @@ async function cargarPanelAprobacion() {
       .eq("estado_solicitud", "pendiente").order("fecha_solicitud", { ascending: false }),
   ]);
 
-  const totalPendientes = (movs.data?.length || 0) + (comps.data?.length || 0) + (altas.data?.length || 0);
+  const nMov   = permisos.aprueba_movimientos ? (movs.data?.length  || 0) : 0;
+  const nAltas = permisos.aprueba_altas       ? (altas.data?.length || 0) : 0;
+  const nComps = permisos.aprueba_datos       ? (comps.data?.length || 0) : 0;
+
+  if (!permisos.aprueba_movimientos && !permisos.aprueba_altas && !permisos.aprueba_datos) {
+    cont.innerHTML = '<div class="empty">No tienes delegada ninguna aprobación.'
+      + '<div style="font-size:12.5px;margin-top:6px;color:var(--text-2)">'
+      + 'Las altas de equipo, los movimientos y los datos técnicos los aprueba '
+      + 'quien el administrador designe.</div></div>';
+    return;
+  }
+
+  const totalPendientes = nMov + nAltas + nComps;
   if (!totalPendientes) {
     cont.innerHTML = '<div class="empty">No hay nada pendiente de aprobar. 🎉</div>';
     return;
   }
 
-  let html = `<div class="kpi-grid" style="margin-bottom:16px">
-    <div class="kpi-card"><div class="kpi-value">${movs.data?.length || 0}</div><div class="kpi-label">Movimientos</div></div>
-    <div class="kpi-card"><div class="kpi-value">${altas.data?.length || 0}</div><div class="kpi-label">Altas nuevas</div></div>
-    <div class="kpi-card" style="grid-column:span 2"><div class="kpi-value">${comps.data?.length || 0}</div><div class="kpi-label">Complementos de información</div></div>
-  </div>`;
+  let html = '<div class="kpi-grid" style="margin-bottom:16px">'
+    + (permisos.aprueba_movimientos ? `<div class="kpi-card"><div class="kpi-value">${nMov}</div><div class="kpi-label">Movimientos</div></div>` : "")
+    + (permisos.aprueba_altas       ? `<div class="kpi-card"><div class="kpi-value">${nAltas}</div><div class="kpi-label">Altas nuevas</div></div>` : "")
+    + (permisos.aprueba_datos       ? `<div class="kpi-card" style="grid-column:span 2"><div class="kpi-value">${nComps}</div><div class="kpi-label">Complementos de información</div></div>` : "")
+    + "</div>";
 
-  if (movs.data?.length) {
+  if (permisos.aprueba_movimientos && movs.data?.length) {
     html += '<div class="section-label">Movimientos</div>';
     movs.data.forEach(m => {
       const eq = m.equipos || {};
@@ -12410,7 +12447,7 @@ async function cargarPanelAprobacion() {
     });
   }
 
-  if (altas.data?.length) {
+  if (permisos.aprueba_altas && altas.data?.length) {
     html += '<div class="section-label">Solicitudes de alta</div>';
     altas.data.forEach(a => {
       const eq = a.equipos || {};
@@ -12422,7 +12459,7 @@ async function cargarPanelAprobacion() {
     });
   }
 
-  if (comps.data?.length) {
+  if (permisos.aprueba_datos && comps.data?.length) {
     html += '<div class="section-label">Complementos de información</div>';
     comps.data.forEach(c => {
       const eq = c.equipos || {};
@@ -12463,8 +12500,18 @@ function filaAprobacion({ idTabla, idCampo, id, codigo, desc, meta, valorAprobad
 
 async function resolverAprobacion(ds) {
   const { tabla, campo, id, valor } = ds;
-  const { error } = await sb.from(tabla).update({ [campo]: valor }).eq("id", id);
+  /* El .select() no es decorativo: cuando una politica RLS impide tocar una
+     fila, PostgreSQL NO da error --la fila simplemente es invisible para el
+     update y se actualizan cero registros--. Sin pedir de vuelta lo escrito,
+     la app recibia error nulo, decia "Aprobado" y recargaba con todo igual.
+     Una pantalla que miente sobre lo que guardo es peor que una que falla. */
+  const { data, error } = await sb.from(tabla).update({ [campo]: valor })
+    .eq("id", id).select("id");
   if (error) { toast("No se pudo actualizar"); console.error(error); return; }
+  if (!data || !data.length) {
+    toast("No tienes delegada esta aprobación. Pídesela al administrador.");
+    return;
+  }
   toast(valor.startsWith("aprob") ? "Aprobado" : "Rechazado");
   await cargarPanelAprobacion();
 }
