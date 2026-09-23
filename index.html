@@ -13191,7 +13191,11 @@ async function ih08IncorporarNuevos() {
       campo_codigo:           f.campo_codigo || null,
       ubicacion_tecnica_sap:  f.ubicacion_tecnica_sap || null,
       equipo_superior_sap:    f.equipo_superior_sap || null,
-      origen:                 "IH08",
+      /* Los dos unicos valores que admite la restriccion son 'existente_sap' y
+         'nuevo_sin_registrar', y aqui el correcto es el primero por
+         significado, no solo por pasar el check: son equipos que existen en
+         SAP, frente a los que alguien creo a mano en la app. */
+      origen:                 "existente_sap",
       estado_sincronizacion:  "sincronizado",
       fecha_ultimo_contraste_sap: hoy,
     }));
