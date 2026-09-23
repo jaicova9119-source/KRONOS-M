@@ -3988,15 +3988,20 @@ async function hubPintar(c) {
                      setTimeout(() => document.querySelector('[data-tab="prog-pendientes"]').click(), 60);
                    } });
   }
-  if (esRevisor && c.maquinasPend) {
+  /* Estas cuatro cuelgan de la delegacion, no del rol: aprobar un alta, un
+     movimiento o unos datos de placa lo hace quien el administrador designe,
+     no todo supervisor. Anunciarle a alguien un pendiente que no puede
+     resolver es pedirle que ignore el aviso, y eso se contagia a los avisos
+     que si son suyos. */
+  const del = await cargarDelegaciones();
+  /* Validar una maquina de campo es revisar datos de placa propuestos desde
+     Captura frente a lo que deberian ser: la misma competencia que aprobar
+     datos tecnicos, asi que el mismo permiso. Un quinto permiso para el mismo
+     criterio solo añade una casilla que olvidar. */
+  if (del.aprueba_datos && c.maquinasPend) {
     alertas.push({ n: c.maquinasPend, t: "m\u00e1quinas de campo por validar",
                    clase: "avisa", ir: () => aplicarModulo("ensayos") });
   }
-  /* Estas tres cuelgan de la delegacion, no del rol: aprobar un alta o un
-     movimiento lo hace quien el administrador designe, no todo supervisor.
-     Anunciarle a alguien un pendiente que no puede resolver es pedirle que
-     ignore el aviso, y eso se contagia a los avisos que si son suyos. */
-  const del = await cargarDelegaciones();
   if (del.aprueba_movimientos && c.movsPend) {
     alertas.push({ n: c.movsPend, t: "movimientos por aprobar", clase: "avisa", ir: irAPendientes });
   }
@@ -8193,13 +8198,14 @@ async function abrirMaquina(id) {
        no se detiene— pero mientras no la valide un supervisor puede ser un
        duplicado de una maquina ya registrada, y entonces el historial de
        aislamiento quedaria partido entre las dos. */
+    await cargarDelegaciones();
     const avisoValidar = m.validada_en ? "" : `
       <div class="ot-flujo devuelto" style="margin-bottom:12px">
         <span class="ot-flujo-pastilla">ALTA DE CAMPO POR VALIDAR</span>
         <div class="ot-flujo-rastro">Registrada en campo y todav&iacute;a sin confirmar.
           Se le pueden hacer ensayos, pero un supervisor debe verificar que no
           sea un duplicado de otra m&aacute;quina ya registrada.</div>
-        ${eeEsRevisor() ? `<div class="ot-flujo-acciones">
+        ${(APRUEBA && APRUEBA.aprueba_datos) ? `<div class="ot-flujo-acciones">
           <button class="btn-primary" onclick="eeValidarMaquina('${m.id}', true)">Validar</button>
           <button class="btn-secondary" onclick="eeValidarMaquina('${m.id}', false)">Rechazar</button>
         </div>` : ""}
