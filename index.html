@@ -12605,32 +12605,48 @@ const IH08_MAPEO_KEY = "equipos_gte_ih08_mapeo";
    equipo se llenaba con el texto de la ubicación -- 20.000 filas dañadas en
    silencio. Lo mismo pasaba entre "Fabricante del activo fijo" y "Número de
    serie de fabricante". */
+/* Las pistas van en español Y en inglés. SAP exporta el IH08 en el idioma de
+   la sesión de quien lo saca, y con pistas solo en español un archivo en
+   inglés llega con todo en blanco y hay que mapear diez columnas a mano.
+
+   Cuidado con "Description": en el IH08 en inglés esa columna es la
+   denominación de la UBICACIÓN TÉCNICA, no la del equipo. La del equipo es
+   "Description5". Confundirlas llena la ficha de cada equipo con el nombre
+   del sitio donde está, y como el texto se parece, no salta a la vista. Por
+   eso ambas van como coincidencia exacta: una coincidencia exacta puntúa 1000
+   y le gana a cualquier parecido parcial. */
 const IH08_CAMPOS = [
   { key: "codigo_sap", label: "Código de equipo SAP", requerido: true,
-    pistas: ["equipo"], excluye: ["superior", "tipo de equipo"] },
+    pistas: ["equipo", "equipment"],
+    excluye: ["superior", "tipo de equipo", "superord", "category"] },
   { key: "descripcion", label: "Descripción del equipo", requerido: false,
-    pistas: ["denominacion de objeto tecnico", "objeto tecnico", "descrip"],
+    pistas: ["denominacion de objeto tecnico", "objeto tecnico", "descrip",
+             "description5"],
     excluye: ["ubicacion", "de tipo"] },
   { key: "marca", label: "Marca / fabricante", requerido: false,
-    pistas: ["fabricante del activo fijo", "fabricante", "marca"],
-    excluye: ["serie"] },
+    pistas: ["fabricante del activo fijo", "fabricante", "marca",
+             "manufacturer"],
+    excluye: ["serie", "serialnr", "partno"] },
   { key: "modelo", label: "Modelo", requerido: false,
-    pistas: ["denominacion de tipo", "modelo"],
-    excluye: ["ubicacion", "objeto"] },
+    pistas: ["denominacion de tipo", "modelo", "model number"],
+    excluye: ["ubicacion", "objeto", "partno"] },
   { key: "numero_serie", label: "Número de serie", requerido: false,
-    pistas: ["numero de serie", "serie"], excluye: ["fabricante"] },
+    pistas: ["numero de serie", "serie", "serialnr"],
+    excluye: ["fabricante"] },
   { key: "campo_codigo", label: "Campo / centro", requerido: false,
     pistas: ["centro planificacion", "campo", "centro"],
     excluye: ["emplazamiento"] },
   { key: "ubicacion_tecnica_sap", label: "Ubicación técnica SAP", requerido: false,
-    pistas: ["ubicacion tecnica", "ubicac"], excluye: ["denominacion"] },
+    pistas: ["ubicacion tecnica", "ubicac", "functional loc"],
+    excluye: ["denominacion"] },
   { key: "ubicacion_tecnica_desc", label: "Denominación de la ubicación técnica", requerido: false,
-    pistas: ["denominacion de la ubicacion tecnica", "denominacion de la ubicacion"],
+    pistas: ["denominacion de la ubicacion tecnica", "denominacion de la ubicacion",
+             "description"],
     excluye: [] },
   { key: "equipo_superior_sap", label: "Equipo superior", requerido: false,
-    pistas: ["equipo superior", "superior", "padre"], excluye: [] },
+    pistas: ["equipo superior", "superior", "padre", "superord"], excluye: [] },
   { key: "estado_operativo", label: "Estado operativo", requerido: false,
-    pistas: ["status de usuario", "estado"], excluye: [] },
+    pistas: ["status de usuario", "estado", "system status"], excluye: [] },
 ];
 
 /* Campos de ficha que se contrastan. Son exactamente los que el usuario puede
