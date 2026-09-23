@@ -12919,11 +12919,21 @@ async function contrastarIH08(filasSap) {
   const equiposPorCodigo = new Map();
   equipos.forEach(e => { if (e.codigo_sap) equiposPorCodigo.set(String(e.codigo_sap).trim(), e); });
 
+  const nullSiVacio = v => {
+    const t = (v === null || v === undefined) ? "" : String(v).trim();
+    return t === "" ? null : t;
+  };
+
   const resultado = { ok: [], sincronizados: [], discrepancias: [], enEspera: [],
                       cumplidos: [], nuevosEnSap: [], noEnSap: [] };
   const codigosVistos = new Set();
 
+  let filasVacias = 0;
   for (const fila of filasSap) {
+    /* Excel arrastra filas en blanco al final de la hoja. Sin codigo de equipo
+       no hay equipo: se contaban como "nuevos en SAP" e inflaban el recuento
+       con fantasmas que despues rompian la incorporacion. */
+    if (!nullSiVacio(fila.codigo_sap)) { filasVacias++; continue; }
     codigosVistos.add(fila.codigo_sap);
     const eq = equiposPorCodigo.get(fila.codigo_sap);
     if (!eq) {
@@ -13184,7 +13194,13 @@ async function ih08IncorporarNuevos() {
   for (let i = 0; i < nuevos.length; i += TAM) {
     const lote = nuevos.slice(i, i + TAM).map(f => ({
       codigo_sap:             String(f.codigo_sap).trim(),
-      descripcion:            f.descripcion || null,
+      /* descripcion es obligatoria en la tabla. Un equipo sin denominacion en
+         SAP existe fisicamente: dejarlo fuera significa que nadie puede
+         programarle trabajo ni asociarle mediciones. Entra con un marcador
+         visible y buscable --no con un texto que parezca un dato bueno-- y
+         cae solo en el flujo de correccion SAP que el modulo ya tiene. */
+      descripcion:            (f.descripcion && String(f.descripcion).trim())
+                                || "Sin denominación en SAP",
       marca:                  f.marca || null,
       modelo:                 f.modelo || null,
       numero_serie:           f.numero_serie || null,
@@ -13203,8 +13219,19 @@ async function ih08IncorporarNuevos() {
     const { error } = await sb.from("equipos")
       .upsert(lote, { onConflict: "codigo_sap", ignoreDuplicates: true });
 
-    if (error) { fallidos += lote.length; if (!primerError) primerError = error.message; }
-    else entraron += lote.length;
+    if (error) {
+      /* Un insert en lote es todo o nada: una fila mala tumba las otras 499.
+         Cuando eso pasa se reintenta el lote fila a fila, para que el fallo
+         quede acotado a lo que de verdad falla y se vea cual es. */
+      for (const uno of lote) {
+        const r1 = await sb.from("equipos")
+          .upsert([uno], { onConflict: "codigo_sap", ignoreDuplicates: true });
+        if (r1.error) {
+          fallidos++;
+          if (!primerError) primerError = (uno.codigo_sap || "?") + ": " + r1.error.message;
+        } else entraron++;
+      }
+    } else entraron += lote.length;
 
     btn.textContent = "Incorporando… " + Math.min(i + TAM, nuevos.length)
                     + " de " + nuevos.length;
