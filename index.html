@@ -4516,11 +4516,58 @@ function actualizarEstadoConexion() {
 window.addEventListener("online", () => { actualizarEstadoConexion(); sincronizarColaOffline(); });
 window.addEventListener("offline", actualizarEstadoConexion);
 
+/* ── El boton atras del telefono ──────────────────────────────────────────
+   La app navegaba sin tocar el historial del navegador, asi que para Android
+   solo existia una pagina: el primer "atras" salia de Kronos-M. En una app
+   instalada eso se siente roto, porque atras es el gesto principal de
+   navegacion y la costumbre esta hecha.
+
+   Cada apertura de panel se registra como un paso. Al retroceder se reabre el
+   panel anterior en vez de abandonar la app; cuando ya no quedan pasos, el
+   telefono sale, que es lo correcto en la pantalla de inicio.
+
+   Volver con los botones de la propia app no apila historial nuevo: si el
+   panel ya estaba en la pila se retrocede hasta el, para que las dos formas
+   de navegar cuenten los mismos pasos. Sin eso, tras pulsar la flecha de la
+   app el boton del telefono volveria hacia adelante, que es justo lo que
+   desconcierta. */
+let NAV_PILA = [];
+let NAV_IGNORAR = 0;      // retrocesos que provoca la app y no debe reabrir
+let NAV_RESTAURANDO = false;
+
+function navRegistrar(id) {
+  if (NAV_RESTAURANDO) return;
+  if (NAV_PILA[NAV_PILA.length - 1] === id) return;
+
+  const i = NAV_PILA.indexOf(id);
+  if (i >= 0) {
+    const pasos = NAV_PILA.length - 1 - i;
+    NAV_PILA.length = i + 1;
+    NAV_IGNORAR += pasos;
+    history.go(-pasos);
+    return;
+  }
+  NAV_PILA.push(id);
+  history.pushState({ kronos: NAV_PILA.length }, "");
+}
+
+window.addEventListener("popstate", () => {
+  if (NAV_IGNORAR > 0) { NAV_IGNORAR--; return; }
+  if (NAV_PILA.length <= 1) { NAV_PILA = []; return; }  // ya en la raiz: se sale
+
+  NAV_PILA.pop();
+  const anterior = NAV_PILA[NAV_PILA.length - 1];
+  NAV_RESTAURANDO = true;
+  try { if (anterior) abrirPanel(anterior); }
+  finally { NAV_RESTAURANDO = false; }
+});
+
 function abrirPanel(id) {
   document.querySelectorAll(".panel.open").forEach(p => { if (p.id !== id) p.classList.remove("open"); });
   document.getElementById(id).classList.add("open");
   const pd = document.querySelector(".pane-detail");
   if (pd) pd.classList.add("has-open");
+  navRegistrar(id);
 }
 function cerrarPanel(id) {
   document.getElementById(id).classList.remove("open");
@@ -18629,6 +18676,11 @@ document.getElementById("asis-texto").addEventListener("keydown", (e) => {
   // Enter envia; Shift+Enter hace salto de linea.
   if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); asisEnviar(); }
 });
+
+/* Estado inicial del historial. Sin el, la primera entrada es la que creo el
+   navegador al cargar la pagina y el primer retroceso saldria de la app
+   aunque ya hubiera paneles abiertos. */
+history.replaceState({ kronos: 0 }, "");
 
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
   navigator.serviceWorker.register("./service-worker.js").catch(err => {
