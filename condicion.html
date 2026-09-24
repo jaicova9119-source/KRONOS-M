@@ -1359,7 +1359,43 @@ function keCambio(m, actual, previo){
 
 const KE_FLECHA = { sube:'▲', baja:'▼', igual:'=', sd:'' };
 
+/* Que se ensayo, dicho en palabras. Es el mismo texto que la pantalla:
+   si el libro dijera otra cosa, el lector compararia dos criterios. */
+const KE_COMP = {
+  MOTOR: 'Motor en bornes',
+  MOTOR_CABLE: 'Motor + cable, desde superficie',
+  CABLE: 'Cable solo',
+  SUT: 'Transformador elevador',
+  GENERADOR: 'Generador'
+};
+
+/* Corre fn sobre items con n llamadas a la vez. Una por una, 45 unidades
+   con dos consultas cada una tardan demasiado con la señal de campo;
+   todas a la vez saturan el navegador y la base. */
+async function keEnPool(items, n, fn, avance){
+  const out = new Array(items.length);
+  let i = 0, hechas = 0;
+  const trabajador = async () => {
+    while (i < items.length){
+      const k = i++;
+      try { out[k] = await fn(items[k]); } catch(e){ out[k] = null; }
+      hechas += 1;
+      if (avance) avance(hechas, items.length);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(n, items.length) }, trabajador));
+  return out;
+}
+
+function keAbierta(estado){
+  const e = String(estado || '').toLowerCase();
+  return e.indexOf('pendiente') >= 0 || e.indexOf('seguimiento') >= 0;
+}
+
 function keLibro(ExcelJS, d, meta){
+  d.aislamiento = d.aislamiento || [];
+  d.bitacora    = d.bitacora    || [];
+  d.fuera       = d.fuera       || [];
   /* Se agregan las columnas en °F sobre los mismos objetos. Convertir aquí
      y no en cada hoja evita que dos hojas muestren temperaturas distintas
      por haber redondeado en momentos diferentes. */
@@ -1669,6 +1705,21 @@ function keLibro(ExcelJS, d, meta){
         ? 'Ultimos 24 meses. Hojas Historico, Variacion y Consolidado.'
         : 'Sin historico disponible: el libro sale sin esas hojas.',
       !(d.historico || []).length);
+  {
+    const conAis = new Set(d.aislamiento.map(a => a.unidad)).size;
+    lin('Registros de aislamiento', d.aislamiento.length,
+        d.aislamiento.length
+          ? conAis + ' de ' + d.operacional.length + ' unidades con al menos un registro.'
+          : 'Ninguna unidad del ambito tiene ensayos de aislamiento registrados.',
+        conAis < d.operacional.length);
+    const abiertas = d.bitacora.filter(b => keAbierta(b.estado)).length;
+    lin('Registros de bitacora', d.bitacora.length,
+        abiertas ? abiertas + ' siguen abiertos (pendiente o en seguimiento).' : null,
+        abiertas > 0);
+    lin('Unidades fuera de monitoreo', d.fuera.length,
+        d.fuera.length ? 'Sin rondas ni condicion calculada. Motivo en la hoja Fuera de monitoreo.' : null,
+        d.fuera.length > 0);
+  }
 
   f += 1;
   f = tit(f, 'Que trae cada hoja');
@@ -1679,6 +1730,9 @@ function keLibro(ExcelJS, d, meta){
    ['Consolidado', 'Una fila por unidad con su deriva del periodo.'],
    ['Run life', 'Tiempo de corrida y clasificación de riesgo por unidad.'],
    ['Umbrales', 'Criterios de clasificación y de dónde sale cada uno.'],
+   ['Aislamiento', 'Todos los ensayos de aislamiento, IP y DAR, con su dictamen y validacion.'],
+   ['Bitacora', 'Eventos registrados por unidad, con su estado y cierre.'],
+   ['Fuera de monitoreo', 'Unidades sacadas del monitoreo, con motivo y desde cuando.'],
    ['Placas', 'Datos de placa del equipo instalado hoy.'],
    ['Propuestas', 'Cambios de TAP propuestos y su efecto sobre el consumo.'],
    ['Configuracion VFD', 'Parametros vigentes del variador.'],
@@ -2326,6 +2380,169 @@ function keLibro(ExcelJS, d, meta){
     }
   }
 
+  /* ── Fuera de monitoreo ──
+     Va antes que las hojas de datos: explica por que ciertas unidades
+     aparecen sin lectura reciente en todas las demas. */
+  if (d.fuera.length){
+    const ws = keHoja(wb, 'Fuera de monitoreo', [
+      { k:'unidad', t:'Unidad', w:11 }, { k:'campo', t:'Campo', w:13 },
+      { k:'pad', t:'PAD', w:13 }, { k:'sistema', t:'Sistema', w:9 },
+      { k:'motivo', t:'Motivo', w:34 },
+      { k:'nota', t:'Nota', w:44 },
+      { k:'fuera_desde', t:'Fuera desde', w:12 },
+      { k:'dias_fuera', t:'Dias fuera', w:10, f:V },
+      { k:'declarado_por', t:'Declarado por', w:26 },
+    ], d.fuera.map(x => ({
+        ...x,
+        motivo: x.motivo || x.motivo_cod || null,
+        fuera_desde: x.fuera_desde ? String(x.fuera_desde).slice(0, 10) : 'sin registro'
+      })), {
+      titulo: 'Unidades fuera de monitoreo \u00b7 ' + meta.ambito,
+      sub: 'No se descargan datos ni se calcula su condicion hasta que se reactiven. '
+         + '"Sin registro" es una unidad que salio antes de que existiera la bitacora de estados.'
+    });
+    ws.getColumn('nota').alignment = { wrapText:true, vertical:'top' };
+  }
+
+  /* ── Aislamiento ──
+     Todos los ensayos, no solo el ultimo: la hoja Run life ya trae el
+     ultimo valor, y lo que un solo valor no dice es la tendencia. */
+  if (d.aislamiento.length){
+    const ais = d.aislamiento.map(a => {
+      const validable = !!a.prueba_id;
+      const validado  = validable && !!a.validado_en;
+      const provisional = validable ? !validado : (a.estado && a.estado !== 'firmado');
+      return {
+        unidad: a.unidad, campo: a.campo, pad: a.pad,
+        fecha: a.fecha_prueba || null,
+        corrida: a.corrida != null
+          ? (a.corrida_actual ? 'Actual \u00b7 ' + a.corrida : String(a.corrida))
+          : (a.corrida_prev_de != null ? 'Anterior a la ' + a.corrida_prev_de : null),
+        maquina: a.maquina || a.equipo || null,
+        serial: a.serial || null,
+        retirada: a.maquina_estado === 'RETIRADA' ? 'Si' : null,
+        componente: a.componente ? (KE_COMP[a.componente] || a.componente) : null,
+        fase: (a.fases === 1 && a.fase_medida && a.fase_medida !== 'CONJUNTO') ? a.fase_medida : null,
+        ir_1min: a.ir_1min, ir_10min: a.ir_10min,
+        ip: a.ip, dar: a.dar,
+        temp: a.temp_devanado,
+        bal_ab: a.balance_ab, bal_ac: a.balance_ac, bal_bc: a.balance_bc,
+        umbral: a.umbral,
+        dictamen: (a.dictamen_txt || '') + (provisional ? ' (provisional)' : ''),
+        _cls: a.dictamen_cls || null,
+        validacion: validable
+          ? (validado ? 'Validado' + (a.validado_nombre ? ' por ' + a.validado_nombre : '')
+                        + (a.autovalidado ? ' (por quien midio)' : '')
+                      : 'Sin validar')
+          : (a.estado || null),
+        realizado_por: a.realizado_por || null,
+        observaciones: a.observaciones || null,
+      };
+    });
+    /* Por unidad y de la mas reciente hacia atras, que es como se lee
+       una tendencia de degradacion. */
+    ais.sort((x, y) => String(x.unidad).localeCompare(String(y.unidad))
+                    || String(y.fecha || '').localeCompare(String(x.fecha || '')));
+
+    /* Las resistencias van en MOhm como numero, con formato General: van
+       de ohmios en un devanado aterrizado a miles de megaohmios en uno
+       sano, y cualquier formato fijo muestra uno de los dos extremos como
+       cero. */
+    const RG = 'General';
+    const ws = keHoja(wb, 'Aislamiento', [
+      { k:'unidad', t:'Unidad', w:11 }, { k:'campo', t:'Campo', w:13 },
+      { k:'pad', t:'PAD', w:12 },
+      { k:'fecha', t:'Fecha', w:11 },
+      { k:'corrida', t:'Corrida', w:12 },
+      { k:'maquina', t:'Equipo', w:24 }, { k:'serial', t:'Serie', w:14 },
+      { k:'retirada', t:'Equipo retirado', w:9 },
+      { k:'componente', t:'Que se ensayo', w:22 },
+      { k:'fase', t:'Fase', w:7 },
+      { k:'ir_1min', t:'IR 1 min MΩ', w:11, f:RG },
+      { k:'ir_10min', t:'IR 10 min MΩ', w:11, f:RG },
+      { k:'ip', t:'IP', w:7, f:FP },
+      { k:'dar', t:'DAR', w:7, f:FP },
+      { k:'temp', t:'T devanado °C', w:10, f:V1 },
+      { k:'bal_ab', t:'Balance AB Ω', w:10, f:FP },
+      { k:'bal_ac', t:'Balance AC Ω', w:10, f:FP },
+      { k:'bal_bc', t:'Balance BC Ω', w:10, f:FP },
+      { k:'umbral', t:'Minimo IEEE 43 MΩ', w:11, f:RG },
+      { k:'dictamen', t:'Dictamen', w:26 },
+      { k:'validacion', t:'Validacion', w:24 },
+      { k:'realizado_por', t:'Realizado por', w:20 },
+      { k:'observaciones', t:'Observaciones', w:44 },
+    ], ais, {
+      titulo: 'Ensayos de aislamiento \u00b7 ' + meta.ambito,
+      sub: 'Lectura del instrumento, sin correccion por temperatura: desde superficie la medicion '
+         + 'abarca motor y cientos de metros de cable con gradiente termico. El minimo IEEE 43 '
+         + '(kV nominal + 1) se compara contra la lectura de 1 minuto. Un motor + cable no es '
+         + 'comparable contra un motor en bornes. "Provisional" es un valor que nadie ha releido.'
+    });
+    const fEnc = 3;
+    ais.forEach((a, i) => {
+      const c = ws.getCell(fEnc + 1 + i, 20);
+      const col = a._cls === 'crit' ? KE_C.rojo
+                : a._cls === 'warn' ? KE_C.naranja
+                : a._cls === 'ok'   ? KE_C.verde : null;
+      if (col) c.font = { size:9.5, bold:true, color:{ argb:col } };
+      if (a._cls === 'crit'){
+        for (let k = 1; k <= 23; k++)
+          ws.getCell(fEnc + 1 + i, k).fill =
+            { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.fRojo } };
+      }
+      ws.getCell(fEnc + 1 + i, 23).alignment = { wrapText:true, vertical:'top' };
+    });
+  }
+
+  /* ── Bitacora ──
+     Las abiertas en ambar: son las que todavia piden algo de alguien. */
+  if (d.bitacora.length){
+    const bit = d.bitacora.map(b => ({
+      unidad: b.unidad, campo: b.campo, pad: b.pad,
+      fecha: b.ocurrido_en ? String(b.ocurrido_en).slice(0, 16).replace('T', ' ') : 'sin fecha',
+      categoria: b.categoria || null,
+      severidad: b.severidad || null,
+      estado: b.estado || null,
+      observaciones: b.observaciones || null,
+      recomendaciones: b.recomendaciones || null,
+      realizado_por: b.realizado_por || null,
+      cerrado_en: b.cerrado_en ? String(b.cerrado_en).slice(0, 10) : null,
+      cerrado_por: b.cerrado_por || null,
+      nota_cierre: b.nota_cierre || null,
+      _abierta: keAbierta(b.estado),
+    }));
+    bit.sort((x, y) => String(x.unidad).localeCompare(String(y.unidad))
+                    || String(y.fecha).localeCompare(String(x.fecha)));
+    const ws = keHoja(wb, 'Bitacora', [
+      { k:'unidad', t:'Unidad', w:11 }, { k:'campo', t:'Campo', w:13 },
+      { k:'pad', t:'PAD', w:12 },
+      { k:'fecha', t:'Fecha', w:15 },
+      { k:'categoria', t:'Categoria', w:16 },
+      { k:'severidad', t:'Severidad', w:11 },
+      { k:'estado', t:'Estado', w:14 },
+      { k:'observaciones', t:'Observaciones', w:50 },
+      { k:'recomendaciones', t:'Recomendaciones', w:40 },
+      { k:'realizado_por', t:'Realizado por', w:20 },
+      { k:'cerrado_en', t:'Cerrado el', w:11 },
+      { k:'cerrado_por', t:'Cerrado por', w:20 },
+      { k:'nota_cierre', t:'Nota de cierre', w:40 },
+    ], bit, {
+      titulo: 'Bitacora de eventos \u00b7 ' + meta.ambito,
+      sub: 'Un cierre sin nota no existe en la plataforma: cada registro cerrado dice que se hizo, '
+         + 'quien y cuando. Filtrar por Estado para ver solo lo abierto.'
+    });
+    const fEnc = 3;
+    bit.forEach((b, i) => {
+      const r = fEnc + 1 + i;
+      [8, 9, 13].forEach(k => { ws.getCell(r, k).alignment = { wrapText:true, vertical:'top' }; });
+      if (b._abierta){
+        for (let k = 1; k <= 13; k++)
+          ws.getCell(r, k).fill = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.fNaranja } };
+        ws.getCell(r, 7).font = { size:9.5, bold:true, color:{ argb:KE_C.naranja } };
+      }
+    });
+  }
+
   /* ── Placas ── */
   keHoja(wb, 'Placas', [
     { k:'unidad', t:'Unidad', w:11 }, { k:'campo', t:'Campo', w:13 },
@@ -2503,6 +2720,63 @@ async function kpExportarEntrega(){
     if (!operacional.length)
       throw new Error('No hay unidades en ese ambito. Revise el nombre del campo.');
 
+    /* Campo, PAD y sistema de cada unidad. La flota BES completa se suma
+       porque una unidad fuera de monitoreo puede no tener fila en
+       Operacional y aun asi hay que ubicarla. */
+    const ubic = new Map();
+    try {
+      (await kpCargarFlota()).forEach(x => ubic.set(x.pozo,
+        { campo: x.campo === '\u2014' ? null : x.campo,
+          pad:   x.pad   === '\u2014' ? null : x.pad, sistema: 'BES' }));
+    } catch(e){}
+    operacional.forEach(x => ubic.set(x.unidad,
+      { campo: x.campo || null, pad: x.pad || null, sistema: x.sistema || null }));
+    const enAmbito = u => {
+      const l = ubic.get(u);
+      if (!l) return false;
+      if (c && l.campo !== c) return false;
+      if (s && l.sistema && l.sistema !== s) return false;
+      return true;
+    };
+
+    let fuera = [];
+    try {
+      const { data, error } = await sb.rpc('dp_entrega_fuera_monitoreo');
+      if (error) throw new Error(error.message);
+      fuera = (data || []).filter(x => enAmbito(x.unidad))
+        .map(x => ({ ...x, ...ubic.get(x.unidad) }));
+    } catch(e){
+      console.warn('[Kronos-M] Fuera de monitoreo no disponible:', e.message);
+    }
+
+    /* Aislamiento y bitacora se piden por unidad con las mismas funciones
+       que usa la pantalla. Asi el libro muestra exactamente lo que se ve
+       al abrir cada unidad, con el mismo dictamen y la misma validacion. */
+    const unidades = Array.from(new Set(
+      operacional.map(x => x.unidad).concat(fuera.map(x => x.unidad))));
+    let aislamiento = [], bitacora = [];
+    try {
+      const res = await keEnPool(unidades, 5, async u => {
+        const id = await kpIdDe(u);
+        if (!id) return null;
+        const [ra, rc] = await Promise.all([
+          sb.rpc('dp_aislamiento_unidad', { p_pozo_id: id }),
+          sb.rpc('dp_contexto',           { p_pozo_id: id }),
+        ]);
+        return { u,
+                 ais: ra.error ? [] : (ra.data || []),
+                 bit: rc.error ? [] : ((rc.data && rc.data.bitacora) || []) };
+      }, (n, t) => { if (btn) btn.textContent = 'Ensayos y bitacora ' + n + '/' + t + '\u2026'; });
+      res.filter(Boolean).forEach(r => {
+        const l = ubic.get(r.u) || {};
+        r.ais.forEach(a => aislamiento.push({ ...a, unidad: r.u, campo: l.campo, pad: l.pad }));
+        r.bit.forEach(b => bitacora.push({ ...b, unidad: r.u, campo: l.campo, pad: l.pad }));
+      });
+    } catch(e){
+      console.warn('[Kronos-M] Aislamiento / bitacora no disponibles:', e.message);
+    }
+    if (btn) btn.textContent = 'Generando\u2026';
+
     /* Las propuestas no se filtran por campo en la base: opt_propuestas
        no lo conoce. Se cruzan aqui contra las unidades del ambito, que
        es lo mismo y evita tocar esa funcion. */
@@ -2540,7 +2814,7 @@ async function kpExportarEntrega(){
     const ambito = (c || 'Todos los campos') + (s ? ' · ' + s : '');
     const wb = keLibro(ExcelJS,
       { operacional, placas, setup, protecciones, propuestas, historico, detalle, puntos,
-        runlife, umbrales },
+        runlife, umbrales, aislamiento, bitacora, fuera },
       { ambito: ambito, fecha: hoy });
 
     const buf = await wb.xlsx.writeBuffer();
