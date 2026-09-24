@@ -302,6 +302,10 @@
   <h4 id="est-titulo">Estado de monitoreo</h4>
   <p class="sub" id="est-unidad"></p>
   <div class="aviso" id="est-aviso"></div>
+  <div id="est-fecha">
+    <label for="e-fecha">Fecha en que salio</label>
+    <input id="e-fecha" class="campo" type="date">
+  </div>
   <div id="est-sacar">
     <label for="e-motivo">Motivo</label>
     <select id="e-motivo" class="campo"><option value="">Seleccionar…</option></select>
@@ -1137,13 +1141,33 @@ $('pl-guardar').onclick = function(ev){
    RPC, aqui solo se decide si se dibuja el boton.
    ===================================================================== */
 var ESTADO = null;
+var FUERA_DESDE = null;   /* fecha del evento, no la del registro */
+
+/* Fecha local, no UTC: despues de las 7 p. m. en Colombia el UTC ya es
+   el dia siguiente y el selector propondria mañana. */
+function hoyLocal(){
+  var d = new Date();
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2)
+       + '-' + ('0' + d.getDate()).slice(-2);
+}
+function fechaCorta(iso){
+  var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[3] + '-' + m[2] + '-' + m[1] : '';
+}
 
 function cargarEstado(){
-  ESTADO = null;
+  ESTADO = null; FUERA_DESDE = null;
   if(!navigator.onLine || !sb) return Promise.resolve();
-  return sb.rpc('dp_estado_pozo', { p: { pozo_id: unidad.id } }).then(function(r){
-    if(!r.error && r.data && r.data.ok) ESTADO = r.data;
-  }).catch(function(){});
+  return Promise.all([
+    sb.rpc('dp_estado_pozo', { p: { pozo_id: unidad.id } }).then(function(r){
+      if(!r.error && r.data && r.data.ok) ESTADO = r.data;
+    }).catch(function(){}),
+    /* Aparte y sin tumbar lo anterior: si la funcion aun no esta
+       desplegada, el estado se sigue viendo, solo sin la fecha. */
+    sb.rpc('dp_fuera_desde', { p: { pozo_id: unidad.id } }).then(function(r){
+      if(!r.error && r.data && r.data.ok) FUERA_DESDE = r.data.fuera_desde || null;
+    }).catch(function(){})
+  ]);
 }
 
 function pintarEstado(){
@@ -1158,29 +1182,50 @@ function pintarEstado(){
   var txt = activo
     ? 'En monitoreo. Entra al batch nocturno.'
     : 'Fuera de monitoreo' + (motivo ? ' \u00b7 ' + motivo : '')
+      + (FUERA_DESDE ? ' desde el ' + fechaCorta(FUERA_DESDE) : '')
       + '. No se descargan datos ni se calculan indicadores.'
       + (nota ? '<br><span style="opacity:.8">' + esc(nota) + '</span>' : '');
 
   box.innerHTML = '<div class="aviso ' + (activo ? 'ok' : 'warn') + '">' + txt
     + (PUEDE_ESTADO
-        ? '<div style="margin-top:10px"><button class="b sec" id="btn-estado">'
-          + (activo ? 'Sacar del monitoreo' : 'Reactivar monitoreo') + '</button></div>'
+        ? '<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">'
+          + '<button class="b sec" id="btn-estado">'
+          + (activo ? 'Sacar del monitoreo' : 'Reactivar monitoreo') + '</button>'
+          + (activo ? '' : '<button class="b sec" id="btn-fecha">Corregir fecha de salida</button>')
+          + '</div>'
         : '')
     + '</div>';
 
   var b = $('btn-estado');
   if(b) b.onclick = function(){ abrirEstado(activo); };
+  var bf = $('btn-fecha');
+  if(bf) bf.onclick = function(){ abrirEstado(false, 'fecha'); };
 }
 
-function abrirEstado(activoAhora){
+function abrirEstado(activoAhora, modo){
+  var soloFecha = (modo === 'fecha');
   $('est-unidad').textContent = unidad.nombre;
-  $('est-titulo').textContent = activoAhora ? 'Sacar del monitoreo' : 'Reactivar monitoreo';
-  $('est-guardar').textContent = activoAhora ? 'Sacar del monitoreo' : 'Reactivar monitoreo';
+  $('est-titulo').textContent = soloFecha ? 'Fecha de salida'
+    : (activoAhora ? 'Sacar del monitoreo' : 'Reactivar monitoreo');
+  $('est-guardar').textContent = soloFecha ? 'Guardar fecha'
+    : (activoAhora ? 'Sacar del monitoreo' : 'Reactivar monitoreo');
   $('hoja-estado').setAttribute('data-activo', activoAhora ? '1' : '');
-  $('est-sacar').classList.toggle('oculto', !activoAhora);
+  $('hoja-estado').setAttribute('data-modo', soloFecha ? 'fecha' : '');
+  $('est-sacar').classList.toggle('oculto', !activoAhora || soloFecha);
+  $('est-fecha').classList.toggle('oculto', !activoAhora && !soloFecha);
   aviso($('est-msg'), '');
 
-  if(activoAhora){
+  /* La fecha es la del evento, no la de hoy: con la señal de campo es
+     normal registrar la salida dias despues. Se propone hoy o la que ya
+     tenga, y no se deja elegir una futura. */
+  var f = $('e-fecha');
+  f.max = hoyLocal();
+  f.value = (soloFecha && FUERA_DESDE) ? String(FUERA_DESDE).slice(0, 10) : hoyLocal();
+
+  if(soloFecha){
+    aviso($('est-aviso'), 'Corrige el dia en que la unidad salio de operacion. '
+      + 'La fecha en que se registro el cambio no se modifica: queda en la bitacora.');
+  } else if(activoAhora){
     aviso($('est-aviso'), 'Deja de descargarse data y de calcularse condicion para esta '
       + 'unidad hasta que se reactive. Queda registrado quien lo hizo y cuando.');
     var sel = $('e-motivo');
@@ -1205,9 +1250,28 @@ function abrirEstado(activoAhora){
 
 $('est-guardar').onclick = function(ev){
   var activoAhora = !!$('hoja-estado').getAttribute('data-activo');
+  var soloFecha = $('hoja-estado').getAttribute('data-modo') === 'fecha';
   var nuevo = !activoAhora;
   var motivo = activoAhora ? $('e-motivo').value : null;
   var nota   = activoAhora ? $('e-nota').value.trim() : '';
+  var fecha  = $('e-fecha').value;
+
+  if((activoAhora || soloFecha) && !fecha){
+    aviso($('est-msg'), 'Indica la fecha en que salio.', 'err'); return;
+  }
+  if((activoAhora || soloFecha) && fecha > hoyLocal()){
+    aviso($('est-msg'), 'La fecha no puede ser futura.', 'err'); return;
+  }
+
+  if(soloFecha){
+    enviarOEncolar(
+      'dp_set_fuera_desde',
+      { pozo_id: unidad.id, fuera_desde: fecha },
+      'Fecha de salida ' + unidad.nombre,
+      function(){ FUERA_DESDE = fecha; },
+      $('hoja-estado'), $('est-msg'), ev.currentTarget, 'Guardar fecha');
+    return;
+  }
 
   if(activoAhora && !motivo){
     aviso($('est-msg'), 'Selecciona el motivo.', 'err'); return;
@@ -1225,6 +1289,24 @@ $('est-guardar').onclick = function(ev){
         motivo_desc: nuevo ? null : (resp && resp.motivo_desc) || nombreMotivo(motivo),
         nota:        nuevo ? null : (nota || null)
       };
+      FUERA_DESDE = nuevo ? null : fecha;
+      /* Al sacar, la base pone la fecha de hoy. Si el evento fue otro dia
+         se envia la correccion justo despues. Si el cambio de estado quedo
+         en cola, la fecha va detras en la misma cola: se envian en orden,
+         asi que nunca llega la fecha a una unidad que aun esta activa. */
+      if(!nuevo && fecha && fecha !== hoyLocal()){
+        var pl = { pozo_id: unidad.id, fuera_desde: fecha };
+        var et = 'Fecha de salida ' + unidad.nombre;
+        if(pendiente || !navigator.onLine || !sb){ encolar('dp_set_fuera_desde', pl, et); }
+        else {
+          sb.rpc('dp_set_fuera_desde', { p: pl }).then(function(r){
+            if(r.error) encolar('dp_set_fuera_desde', pl, et);
+            else if(r.data && !r.data.ok) aviso($('msg'), 'La unidad salio del monitoreo, pero la fecha no se guardo: '
+              + (r.data.error || '') + ' Corrigela con "Corregir fecha de salida".', 'warn');
+          }).catch(function(){ encolar('dp_set_fuera_desde', pl, et); });
+        }
+        pintarPendientes();
+      }
     },
     $('hoja-estado'), $('est-msg'), ev.currentTarget,
     activoAhora ? 'Sacar del monitoreo' : 'Reactivar monitoreo');
