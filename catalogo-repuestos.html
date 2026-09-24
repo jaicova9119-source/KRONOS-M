@@ -776,6 +776,16 @@ button{cursor:pointer}
   display:block;margin-top:1px;
 }
 
+.rep-banner{
+  padding:10px 13px;border-radius:9px;font-size:12.5px;line-height:1.45;
+  background:var(--crit-bg);color:var(--crit);
+  display:flex;gap:10px;align-items:flex-start;
+}
+.rep-banner button{
+  background:none;border:0;color:inherit;font-size:16px;line-height:1;
+  padding:0;flex-shrink:0;opacity:.7;
+}
+
 /* ---------- recorte ---------- */
 .rep-recorte{
   position:absolute;inset:0;z-index:70;background:var(--bg);
@@ -994,6 +1004,10 @@ let repGaleria = [];
 let repLectura = null;
 let repLecturaFicha = null;
 let repImagenFicha = null;   /* recorte vigente del modal de imagen */
+/* Un aviso dentro del modal muere cuando el modal se cierra. Lo que falla
+   despues de crear la pieza --los codigos, la foto-- tiene que verse en la
+   ficha, que es donde el usuario queda parado. */
+let repPendientes = [];
 
 /* ---------- URLs firmadas, con cache en memoria ---------- */
 const repUrls = new Map();
@@ -1228,7 +1242,13 @@ function repPintarFicha() {
     : '<div class="rep-fila"><span class="et">—</span>' +
       '<span class="vl pend">Sin aplicaciones registradas</span></div>';
 
-  repEl("rep-ficha-cuerpo").innerHTML = galeria +
+  const banner = repPendientes.length
+    ? '<div class="rep-banner"><span>' +
+      repPendientes.map(repEsc).join("<br>") +
+      '</span><button type="button" id="rep-banner-x" aria-label="Cerrar">&times;</button></div>'
+    : "";
+
+  repEl("rep-ficha-cuerpo").innerHTML = banner + galeria +
     '<div class="rep-bloque"><h3>Identificación</h3>' + filasIdent + "</div>" +
     '<div class="rep-bloque"><h3>Aplica a</h3>' + filasApl + "</div>" +
     '<div class="rep-bloque"><h3>Ficha</h3><dl class="rep-kv">' +
@@ -1777,11 +1797,20 @@ function repModalNuevo() {
                  fuente: "ocr_imagen", verificado: false });
     });
 
+    repPendientes = [];
     if (ids.length) {
+      /* `.select("id")` no es decorativo: sin el, un INSERT bloqueado por
+         RLS vuelve sin error y sin filas, y se reporta como exito. */
       const res = await sb.from("rep_identificador").insert(ids).select("id");
       if (res.error) {
-        repAviso("El repuesto quedó guardado, pero los códigos no: " + res.error.message);
+        repPendientes.push("Los códigos no se guardaron: " + res.error.message);
+      } else if (!res.data || res.data.length !== ids.length) {
+        repPendientes.push("Se esperaban " + ids.length + " código(s) y se guardaron " +
+          ((res.data && res.data.length) || 0) + ". Revisa los permisos de escritura.");
       }
+    } else {
+      repPendientes.push("La pieza quedó sin ningún código. Agrégale al menos el " +
+        "parte número o la marcación impresa desde el botón \u0022Agregar código\u0022.");
     }
 
     /* La foto se sube ahora porque la ruta en Storage lleva el id, que
@@ -1797,7 +1826,7 @@ function repModalNuevo() {
           campo: true
         });
       } catch (e) {
-        repAviso("El repuesto quedó guardado, pero la foto no: " + (e.message || ""), "err");
+        repPendientes.push("La foto no se subió: " + (e.message || ""));
       }
       await repCerrarBitacora(repLectura.lecturaId, data.id,
                               repCamposEditados(REP_MAPA_ALTA, prop));
@@ -2086,6 +2115,12 @@ repEl("rep-ficha").addEventListener("click", e => {
   if (e.target.id === "rep-gal-main" && e.target.dataset.full) {
     repEl("rep-visor-img").src = e.target.dataset.full;
     repEl("rep-visor").classList.add("abierta");
+    return;
+  }
+  if (e.target.id === "rep-banner-x") {
+    repPendientes = [];
+    const b = e.target.closest(".rep-banner");
+    if (b) b.remove();
     return;
   }
   if (e.target.id === "rep-b-foto") repModalImagen();
