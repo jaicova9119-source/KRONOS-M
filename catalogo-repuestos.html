@@ -740,6 +740,42 @@ button{cursor:pointer}
   border:none;background:rgba(255,255,255,.15);color:#fff;font-size:18px;
 }
 
+/* ---------- lectura asistida ---------- */
+.rep-lectura{
+  border:1px dashed var(--line);border-radius:11px;
+  padding:12px;margin-bottom:13px;background:var(--surface-2);
+}
+.rep-lectura-btn{
+  display:block;text-align:center;padding:11px;border-radius:8px;
+  background:var(--brand);color:var(--brand-t);font-size:13.5px;font-weight:500;cursor:pointer;
+}
+.rep-lectura-btn.ocupado{opacity:.6;pointer-events:none}
+.rep-lectura-pie{font-size:11.5px;color:var(--t3);margin-top:8px;line-height:1.45}
+.rep-previa{
+  display:block;width:100%;max-height:190px;object-fit:contain;margin-top:10px;
+  border-radius:8px;background:var(--surface-3);border:1px solid var(--line);
+}
+.rep-conf{
+  display:inline-block;font-family:var(--mono);font-size:10.5px;
+  padding:1px 7px;border-radius:999px;margin-left:6px;
+}
+.rep-conf.alta{background:var(--ok-bg);color:var(--ok)}
+.rep-conf.media{background:var(--warn-bg);color:var(--warn)}
+.rep-conf.baja{background:var(--crit-bg);color:var(--crit)}
+.rep-campo.leido input{border-color:var(--accent);background:var(--accent-soft)}
+.rep-extras{display:grid;gap:6px;margin:-3px 0 11px}
+.rep-extra{
+  display:flex;align-items:center;gap:9px;font-size:12.5px;
+  padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface-2);
+}
+.rep-extra input{width:16px;height:16px;accent-color:var(--accent);flex-shrink:0}
+.rep-extra .et{color:var(--t3);flex-shrink:0}
+.rep-extra .vl{font-family:var(--mono);word-break:break-all}
+.rep-sinver{
+  font-family:var(--sans);font-size:10.5px;color:var(--warn);
+  display:block;margin-top:1px;
+}
+
 @media (min-width:760px){
   .rep-lista{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
   .rep-ficha-cuerpo{max-width:780px;margin:0 auto;width:100%}
@@ -865,7 +901,8 @@ const REP_FUENTES = [
   ["manual", "Manual del fabricante"],
   ["cotizacion", "Cotización"],
   ["sap", "SAP"],
-  ["foto_campo", "Foto de campo"]
+  ["foto_campo", "Foto de campo"],
+  ["ocr_imagen", "Lectura de imagen"]
 ];
 
 const repEtiq = (lista, v) => (lista.find(x => x[0] === v) || [null, v || "—"])[1];
@@ -882,6 +919,10 @@ let repFacetas = [];
 let repFilas = [];
 let repActual = null;
 let repGaleria = [];
+/* Lectura en curso del alta: la foto elegida, lo que el modelo propuso y
+   el id de la bitácora, para poder cerrarla cuando el usuario guarde. */
+let repLectura = null;
+let repLecturaFicha = null;
 
 /* ---------- URLs firmadas, con cache en memoria ---------- */
 const repUrls = new Map();
@@ -1007,6 +1048,9 @@ function repPintarLista() {
     if (r.estado !== "activo") chips.push('<span class="rep-chip obs">' + repEsc(r.estado) + "</span>");
     chips.push('<span class="rep-chip">' + repEsc(repEtiq(REP_TIPOS, r.tipo)) + "</span>");
     if (!r.imagen_thumb) chips.push('<span class="rep-chip">sin imagen</span>');
+    if (r.n_sin_verificar) {
+      chips.push('<span class="rep-chip obs">' + r.n_sin_verificar + " sin verificar</span>");
+    }
     const img = r.imagen_thumb
       ? '<img class="rep-thumb" data-path="' + repEsc(r.imagen_thumb) + '" alt="">'
       : '<div class="rep-thumb rep-thumb-vacio">sin<br>imagen</div>';
@@ -1080,7 +1124,9 @@ function repPintarFicha() {
     ? ident.map(i =>
         '<div class="rep-fila"><span class="et">' + repEsc(repEtiq(REP_CLASES, i.clase)) +
         (i.fuente ? " · " + repEsc(repEtiq(REP_FUENTES, i.fuente)) : "") +
-        '</span><span class="vl">' + repEsc(i.valor) + "</span></div>").join("")
+        '</span><span class="vl">' + repEsc(i.valor) +
+        (i.verificado ? "" : '<span class="rep-sinver">sin verificar</span>') +
+        "</span></div>").join("")
     : '<div class="rep-fila"><span class="et">—</span>' +
       '<span class="vl pend">Sin códigos registrados</span></div>';
 
@@ -1210,6 +1256,101 @@ async function repSubirImagen(file, meta) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   Lectura asistida de la marcación
+   ───────────────────────────────────────────────────────────────────────
+   Se manda a la Edge Function el mismo derivado de 1600 px que despues
+   sube a Storage: no se transmite el original de 4 MB. Lo que vuelve son
+   PROPUESTAS. Se pintan en los campos, resaltadas, y el usuario corrige
+   antes de guardar. Ningun codigo leido asi entra como verificado.
+   ═══════════════════════════════════════════════════════════════════════ */
+function repBlobBase64(blob) {
+  return new Promise((res, rej) => {
+    const fr = new FileReader();
+    fr.onload = () => res(String(fr.result).split(",")[1]);
+    fr.onerror = () => rej(new Error("No se pudo leer el archivo"));
+    fr.readAsDataURL(blob);
+  });
+}
+
+async function repLeerMarcacion(file, repuestoId) {
+  const img = await repLeerImagen(file);
+  const red = await repRedimensionar(img, 1600, 0.82);
+  if (!red.blob) throw new Error("El navegador no pudo preparar la imagen");
+  const b64 = await repBlobBase64(red.blob);
+
+  const { data, error } = await sb.functions.invoke("repuestos-vision", {
+    body: { imagen_base64: b64, mime: "image/webp", repuesto_id: repuestoId || null }
+  });
+
+  if (error) {
+    /* La funcion devuelve el motivo en el cuerpo; sin esto el usuario solo
+       veria "Edge Function returned a non-2xx status code". */
+    let msg = "No se pudo leer la imagen";
+    try {
+      if (error.context && typeof error.context.json === "function") {
+        const c = await error.context.json();
+        if (c && c.error) msg = c.error;
+      }
+    } catch (e) { /* cuerpo no legible */ }
+    throw new Error(msg);
+  }
+  if (!data || data.error) throw new Error((data && data.error) || "Lectura vacía");
+  return data;
+}
+
+/* Marca en azul los campos que trae el modelo, para que se distingan de
+   lo que escribio la persona. Devuelve los campos que se llenaron. */
+function repPintarPropuesta(mapa, propuesto) {
+  const tocados = [];
+  Object.keys(mapa).forEach(clave => {
+    const el = repEl(mapa[clave]);
+    const v = propuesto[clave];
+    if (!el || !v) return;
+    if (el.tagName === "SELECT") {
+      if ([].slice.call(el.options).some(o => o.value === v)) { el.value = v; tocados.push(clave); }
+      return;
+    }
+    el.value = v;
+    if (el.parentElement) el.parentElement.classList.add("leido");
+    tocados.push(clave);
+  });
+  return tocados;
+}
+
+/* Compara lo que el usuario dejó contra lo que el modelo propuso. La
+   lista resultante va a la bitácora: si crece, el modelo no está
+   ayudando y toca revisarlo. */
+function repCamposEditados(mapa, propuesto) {
+  const dif = [];
+  Object.keys(mapa).forEach(clave => {
+    const el = repEl(mapa[clave]);
+    if (!el) return;
+    const antes = propuesto[clave] || "";
+    const ahora = (el.value || "").trim();
+    if (antes && antes !== ahora) dif.push(clave);
+  });
+  return dif;
+}
+
+async function repCerrarBitacora(lecturaId, repuestoId, editados) {
+  if (!lecturaId) return;
+  try {
+    await sb.from("rep_lectura_imagen")
+      .update({ repuesto_id: repuestoId || null, aceptada: true, campos_editados: editados })
+      .eq("id", lecturaId).select("id");
+  } catch (e) { /* la traza no debe bloquear el guardado */ }
+}
+
+const REP_MAPA_ALTA = {
+  marca: "rep-n-marca",
+  serie: "rep-n-serie",
+  denominacion: "rep-n-den",
+  tipo: "rep-n-tipo",
+  parte_numero: "rep-n-pn",
+  marcacion_impresa: "rep-n-marc"
+};
+
+/* ═══════════════════════════════════════════════════════════════════════
    Modales
    ═══════════════════════════════════════════════════════════════════════ */
 function repAbrirModal(html) {
@@ -1244,6 +1385,16 @@ async function repRefrescarActual() {
 function repModalNuevo() {
   repAbrirModal(
     "<h3>Repuesto nuevo</h3>" +
+    '<div class="rep-lectura">' +
+      '<label class="rep-lectura-btn" id="rep-n-foto-btn" for="rep-n-foto">' +
+        "Tomar foto de la pieza o su etiqueta</label>" +
+      '<input id="rep-n-foto" type="file" accept="image/*" capture="environment" hidden>' +
+      '<div class="rep-lectura-pie" id="rep-n-foto-pie">' +
+        "Opcional. Si tomas la foto, se lee la marcación y se proponen los campos. " +
+        "También puedes escribirlos a mano y agregar la foto después.</div>" +
+      '<img class="rep-previa" id="rep-n-previa" hidden alt="">' +
+    "</div>" +
+    '<div id="rep-n-extras"></div>' +
     '<div class="rep-duo">' +
       '<div class="rep-campo"><label for="rep-n-marca">Marca</label>' +
         '<input id="rep-n-marca" placeholder="Yaskawa" autocomplete="off"></div>' +
@@ -1269,6 +1420,46 @@ function repModalNuevo() {
     "</div>"
   );
 
+  repLectura = null;
+
+  repEl("rep-n-foto").addEventListener("change", async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const btn = repEl("rep-n-foto-btn");
+    const pie = repEl("rep-n-foto-pie");
+    const previa = repEl("rep-n-previa");
+
+    previa.src = URL.createObjectURL(f);
+    previa.hidden = false;
+    btn.classList.add("ocupado");
+    btn.textContent = "Leyendo la marcación…";
+    pie.textContent = "Esto tarda unos segundos con señal de campo.";
+
+    try {
+      const r = await repLeerMarcacion(f, null);
+      repLectura = { archivo: f, lecturaId: r.lectura_id, propuesto: r.campos };
+      const tocados = repPintarPropuesta(REP_MAPA_ALTA, r.campos);
+
+      const conf = r.campos.confianza || "baja";
+      pie.innerHTML = "Campos propuestos por lectura de la imagen" +
+        '<span class="rep-conf ' + conf + '">confianza ' + conf + "</span><br>" +
+        "Revísalos antes de guardar: ninguno queda como verificado." +
+        (r.campos.observacion ? "<br>" + repEsc(r.campos.observacion) : "");
+
+      if (!tocados.length) {
+        pie.innerHTML = "No se distinguió ningún dato en la imagen. " +
+          "Escríbelos a mano; la foto igual se guarda con la pieza.";
+      }
+      repPintarExtras(r.campos.otros_codigos || []);
+    } catch (err) {
+      repLectura = { archivo: f, lecturaId: null, propuesto: {} };
+      pie.textContent = (err.message || "No se pudo leer la imagen") +
+        ". Escribe los datos a mano; la foto igual se guarda.";
+    }
+    btn.classList.remove("ocupado");
+    btn.textContent = "Cambiar la foto";
+  });
+
   repEl("rep-n-guardar").addEventListener("click", async () => {
     const marca = repEl("rep-n-marca").value.trim();
     const den = repEl("rep-n-den").value.trim();
@@ -1286,15 +1477,39 @@ function repModalNuevo() {
     }).select("id").single();
     if (error) { repAviso(error.message); btn.disabled = false; return; }
 
+    /* Un codigo escrito a mano se da por leido del manual y verificado.
+       Uno que salio de la imagen y no se toco, no: entra sin verificar y
+       la ficha lo advierte hasta que alguien lo contraste. */
+    const prop = (repLectura && repLectura.propuesto) || {};
+    const origen = (campo, valor) => {
+      const vino = prop[campo] && prop[campo] === valor;
+      return vino
+        ? { fuente: "ocr_imagen", verificado: false }
+        : { fuente: "manual", verificado: true };
+    };
+
     const ids = [];
-    if (repEl("rep-n-pn").value.trim()) {
-      ids.push({ repuesto_id: data.id, clase: "parte_numero",
-                 valor: repEl("rep-n-pn").value.trim(), principal: true, fuente: "manual" });
+    const pn = repEl("rep-n-pn").value.trim();
+    const mc = repEl("rep-n-marc").value.trim();
+    if (pn) {
+      ids.push(Object.assign({ repuesto_id: data.id, clase: "parte_numero",
+                               valor: pn, principal: true }, origen("parte_numero", pn)));
     }
-    if (repEl("rep-n-marc").value.trim()) {
-      ids.push({ repuesto_id: data.id, clase: "marcacion_impresa",
-                 valor: repEl("rep-n-marc").value.trim(), fuente: "etiqueta" });
+    if (mc) {
+      ids.push(Object.assign({ repuesto_id: data.id, clase: "marcacion_impresa",
+                               valor: mc }, origen("marcacion_impresa", mc)));
     }
+    if (prop.revision) {
+      ids.push({ repuesto_id: data.id, clase: "revision", valor: prop.revision,
+                 fuente: "ocr_imagen", verificado: false });
+    }
+    repEl("rep-n-extras").querySelectorAll("input[type=checkbox]:checked").forEach(c => {
+      ids.push({ repuesto_id: data.id, clase: "codigo_alterno",
+                 valor: c.dataset.valor,
+                 notas: c.dataset.etiqueta || null,
+                 fuente: "ocr_imagen", verificado: false });
+    });
+
     if (ids.length) {
       const res = await sb.from("rep_identificador").insert(ids).select("id");
       if (res.error) {
@@ -1302,11 +1517,46 @@ function repModalNuevo() {
       }
     }
 
+    /* La foto se sube ahora porque la ruta en Storage lleva el id, que
+       hasta este momento no existia. */
+    if (repLectura && repLectura.archivo) {
+      btn.textContent = "Subiendo la foto…";
+      repActual = data;
+      try {
+        await repSubirImagen(repLectura.archivo, {
+          tipo: "marcacion",
+          descripcion: "Foto del alta",
+          principal: true,
+          campo: true
+        });
+      } catch (e) {
+        repAviso("El repuesto quedó guardado, pero la foto no: " + (e.message || ""), "err");
+      }
+      await repCerrarBitacora(repLectura.lecturaId, data.id,
+                              repCamposEditados(REP_MAPA_ALTA, prop));
+    }
+
+    repLectura = null;
     repCerrarModal();
     await repCargarFacetas();
     await repBuscar();
     await repAbrirFicha(data.id);
   });
+}
+
+/* Los codigos sueltos que el modelo encontro (lote, conjunto, proveedor)
+   se ofrecen apagados: se agregan solo los que el usuario marque. */
+function repPintarExtras(lista) {
+  const cont = repEl("rep-n-extras");
+  if (!cont) return;
+  if (!lista.length) { cont.innerHTML = ""; return; }
+  cont.innerHTML = '<p class="rep-ayuda" style="margin-bottom:6px">' +
+    "Otros códigos vistos en la imagen. Marca los que pertenezcan a esta pieza:</p>" +
+    '<div class="rep-extras">' + lista.map(c =>
+      '<label class="rep-extra"><input type="checkbox" data-valor="' + repEsc(c.valor) +
+      '" data-etiqueta="' + repEsc(c.etiqueta || "") + '">' +
+      '<span class="et">' + repEsc(c.etiqueta || "código") + "</span>" +
+      '<span class="vl">' + repEsc(c.valor) + "</span></label>").join("") + "</div>";
 }
 
 function repModalImagen() {
@@ -1319,6 +1569,13 @@ function repModalImagen() {
     '<div class="rep-campo"><label for="rep-i-desc">Descripción</label>' +
       '<input id="rep-i-desc" placeholder="Etiqueta lateral, esquina inferior derecha"></div>' +
     (repPuedeEditar
+      ? '<div class="rep-lectura" style="margin-bottom:11px">' +
+          '<label class="rep-lectura-btn" id="rep-i-leer">Leer la marcación de esta foto</label>' +
+          '<div class="rep-lectura-pie" id="rep-i-leer-pie">' +
+            "Compara lo que se lee con los códigos ya registrados y te ofrece los nuevos." +
+          '</div><div id="rep-i-extras"></div></div>'
+      : "") +
+    (repPuedeEditar
       ? '<label class="rep-check"><input type="checkbox" id="rep-i-ppal">Usar como imagen principal</label>'
       : "") +
     '<label class="rep-check"><input type="checkbox" id="rep-i-campo" checked>Tomada en campo</label>' +
@@ -1329,6 +1586,56 @@ function repModalImagen() {
       '<button type="button" class="primario" id="rep-i-guardar">Subir imagen</button>' +
     "</div>"
   );
+
+  const btnLeer = repEl("rep-i-leer");
+  if (btnLeer) {
+    btnLeer.addEventListener("click", async () => {
+      const f = repEl("rep-i-file").files[0];
+      const pie = repEl("rep-i-leer-pie");
+      if (!f) { pie.textContent = "Primero elige la fotografía."; return; }
+      btnLeer.classList.add("ocupado");
+      btnLeer.textContent = "Leyendo…";
+      try {
+        const r = await repLeerMarcacion(f, repActual.id);
+        repLecturaFicha = r;
+        /* Solo se ofrecen los codigos que no estan ya en la pieza. */
+        const ya = (repActual.rep_identificador || [])
+          .map(i => i.valor.toUpperCase().replace(/[^A-Z0-9]/g, ""));
+        const nuevos = [];
+        const meter = (clase, valor, etiqueta) => {
+          if (!valor) return;
+          const k = valor.toUpperCase().replace(/[^A-Z0-9]/g, "");
+          if (ya.indexOf(k) >= 0) return;
+          nuevos.push({ clase: clase, valor: valor, etiqueta: etiqueta });
+        };
+        meter("parte_numero", r.campos.parte_numero, "Parte número");
+        meter("marcacion_impresa", r.campos.marcacion_impresa, "Marcación impresa");
+        meter("revision", r.campos.revision, "Revisión");
+        (r.campos.otros_codigos || []).forEach(c =>
+          meter("codigo_alterno", c.valor, c.etiqueta || "Código"));
+
+        const conf = r.campos.confianza || "baja";
+        pie.innerHTML = nuevos.length
+          ? "Códigos nuevos en esta imagen" +
+            '<span class="rep-conf ' + conf + '">confianza ' + conf + "</span><br>" +
+            "Marca los que quieras agregar; entran como no verificados."
+          : "No hay códigos nuevos: lo que se lee ya está registrado." +
+            '<span class="rep-conf ' + conf + '">confianza ' + conf + "</span>";
+
+        repEl("rep-i-extras").innerHTML = nuevos.length
+          ? '<div class="rep-extras" style="margin-top:9px">' + nuevos.map((c, i) =>
+              '<label class="rep-extra"><input type="checkbox" checked data-i="' + i + '">' +
+              '<span class="et">' + repEsc(c.etiqueta) + "</span>" +
+              '<span class="vl">' + repEsc(c.valor) + "</span></label>").join("") + "</div>"
+          : "";
+        repLecturaFicha.nuevos = nuevos;
+      } catch (err) {
+        pie.textContent = err.message || "No se pudo leer la imagen.";
+      }
+      btnLeer.classList.remove("ocupado");
+      btnLeer.textContent = "Leer la marcación de esta foto";
+    });
+  }
 
   repEl("rep-i-guardar").addEventListener("click", async () => {
     const f = repEl("rep-i-file").files[0];
@@ -1349,6 +1656,23 @@ function repModalImagen() {
         principal: ppal,
         campo: repEl("rep-i-campo").checked
       });
+
+      const cajaExtras = repEl("rep-i-extras");
+      if (repLecturaFicha && cajaExtras) {
+        const marcados = [].slice.call(cajaExtras.querySelectorAll("input:checked"))
+          .map(c => repLecturaFicha.nuevos[Number(c.dataset.i)])
+          .filter(Boolean)
+          .map(c => ({ repuesto_id: repActual.id, clase: c.clase, valor: c.valor,
+                       notas: c.clase === "codigo_alterno" ? c.etiqueta : null,
+                       fuente: "ocr_imagen", verificado: false }));
+        if (marcados.length) {
+          const res = await sb.from("rep_identificador").insert(marcados).select("id");
+          if (res.error) repAviso("La foto entró, pero los códigos no: " + res.error.message);
+        }
+        await repCerrarBitacora(repLecturaFicha.lectura_id, repActual.id, []);
+      }
+      repLecturaFicha = null;
+
       repCerrarModal();
       await repRefrescarActual();
     } catch (e) {
@@ -1369,6 +1693,8 @@ function repModalCodigo() {
       '<select id="rep-c-fuente">' + repOpc(REP_FUENTES) + "</select></div>" +
     '<label class="rep-check"><input type="checkbox" id="rep-c-ppal">' +
       "Código principal de la pieza</label>" +
+    '<label class="rep-check"><input type="checkbox" id="rep-c-ver" checked>' +
+      "Contrastado contra el manual o contra la pieza</label>" +
     '<div class="rep-modal-pie">' +
       '<button type="button" data-cerrar>Cancelar</button>' +
       '<button type="button" class="primario" id="rep-c-guardar">Guardar código</button>' +
@@ -1390,7 +1716,8 @@ function repModalCodigo() {
       clase: repEl("rep-c-clase").value,
       valor: v,
       fuente: repEl("rep-c-fuente").value,
-      principal: ppal
+      principal: ppal,
+      verificado: repEl("rep-c-ver").checked
     }).select("id").single();
     if (error) { repAviso(error.message); btn.disabled = false; return; }
     repCerrarModal();
