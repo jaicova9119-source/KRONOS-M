@@ -967,9 +967,19 @@ async function repIniciar() {
     } catch (e) { /* otro origen */ }
   }
 
-  repPuedeEditar = ["admin", "supervisor"].indexOf(repRol) >= 0;
-  repPuedeFoto = repPuedeEditar || repRol === "tecnico";
-  repEl("rep-rol").textContent = repRol || "sin rol";
+  /* Escribir en el catalogo depende de un permiso delegado por persona,
+     no del rol: quien sabe identificar una tarjeta de potencia no siempre
+     es supervisor. La misma pregunta que hacen las politicas RLS se hace
+     aqui, para no ofrecer botones que la base va a rechazar. */
+  try {
+    const { data } = await sb.rpc("puedo_alimentar_repuestos");
+    repPuedeEditar = data === true;
+  } catch (e) {
+    repPuedeEditar = false;
+  }
+  repPuedeFoto = repPuedeEditar;
+  repEl("rep-rol").textContent = (repRol || "sin rol") +
+    (repPuedeEditar ? " · alimenta" : " · solo lectura");
   repEl("rep-fab").hidden = !repPuedeEditar;
 
   await repCargarFacetas();
@@ -1117,7 +1127,8 @@ function repPintarFicha() {
       "<b>Esta pieza aún no tiene fotografía</b>" +
       (repPuedeFoto
         ? "Agrégala desde el botón de abajo. La foto de la marcación es la más útil en campo."
-        : "Pídele a un supervisor que cargue una.") +
+        : "Para cargar fotos necesitas el permiso de alimentar el catálogo; " +
+          "lo asigna el administrador desde Perfil.") +
       "</div></div>";
 
   const filasIdent = ident.length

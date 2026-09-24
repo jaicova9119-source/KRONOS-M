@@ -12221,6 +12221,8 @@ async function cargarPanelPerfil() {
                "Valida los campos propuestos frente a lo que dice SAP."],
               ["monitoreo",   u.gestiona_monitoreo,  "Gestionar estado de monitoreo",
                "Saca o reactiva unidades del monitoreo desde Captura, con motivo. Fuera de monitoreo no se descarga data ni se calcula condición."],
+              ["repuestos",   u.alimenta_repuestos,  "Alimentar el catálogo de repuestos",
+               "Crea piezas, agrega códigos y aplicaciones, y sube fotografías. Identificar una parte es criterio técnico, no rango: se delega a quien lo tiene."],
             ].map(([k, val, titulo, ayuda]) => `
               <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-1);margin-bottom:9px">
                 <input type="checkbox" data-permiso-usuario="${u.id}" data-permiso="${k}" ${val ? "checked" : ""} style="margin-top:2px">
@@ -12540,7 +12542,8 @@ async function cargarPanelPerfil() {
         }
         const que = { validador: "validar mediciones", altas: "aprobar altas",
                       movimientos: "aprobar movimientos", datos: "aprobar datos técnicos",
-                      monitoreo: "cambiar el estado de monitoreo" }[chk.dataset.permiso];
+                      monitoreo: "cambiar el estado de monitoreo",
+                      repuestos: "alimentar el catálogo de repuestos" }[chk.dataset.permiso];
         toast((data.nombre || "El usuario") + (chk.checked ? " ya puede " : " ya no puede ") + que);
       };
     });
