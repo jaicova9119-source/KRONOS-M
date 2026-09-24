@@ -2970,12 +2970,24 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       </div>
       <div class="field">
         <label>Estado</label>
+        <!-- Tres opciones, no cinco. "Programada" no es un resultado: es el
+             estado de partida, lo que la actividad ya era antes de tocarla, y
+             elegirla deja una jornada con horas colgando de algo que dice no
+             haber empezado. "Reprogramada" no es una observacion de campo sino
+             una decision de planeacion, y llega por el archivo semanal.
+
+             Los datos lo respaldan: de 809 actividades, "reprogramada" y "no
+             ejecutada" no se habian usado nunca, y "programada" no tenia
+             ninguna jornada registrada. El desplegable ofrecia cinco y se
+             usaban dos.
+
+             Los dos valores siguen existiendo en la base y en los datos ya
+             cargados: lo que cambia es que dejan de ofrecerse como resultado
+             de una jornada. -->
         <select id="prog-e-estado" onchange="progToggleMotivo()">
-          <option value="programada">Programada</option>
           <option value="en_ejecucion">En ejecución</option>
           <option value="ejecutada">Ejecutada</option>
           <option value="no_ejecutada">No ejecutada</option>
-          <option value="reprogramada">Reprogramada</option>
         </select>
       </div>
       <div class="field corto"><label id="prog-e-avance-lbl">Avance acumulado (%)</label><input id="prog-e-avance" type="number" min="0" max="100" step="5"/></div>
@@ -14291,9 +14303,16 @@ function progPrecargarJornada() {
   const cfg = progCfg();
   const j = progJornadas.find(x => String(x.fecha) === String(progJornadaFecha)) || null;
 
-  document.getElementById("prog-e-estado").value = j
+  /* El estado de la actividad puede ser uno que el desplegable ya no ofrece
+     --"programada" o "reprogramada"--. Asignar un valor inexistente deja el
+     select en su primera opcion en silencio, asi que se traduce a proposito:
+     lo que no es un resultado de jornada arranca como "en ejecucion". */
+  const ESTADOS_JORNADA = ["en_ejecucion", "ejecutada", "no_ejecutada"];
+  const estadoPrevio = j
     ? (j.cierra ? "ejecutada" : "en_ejecucion")
-    : (a.estado === "programada" ? "en_ejecucion" : (a.estado || "en_ejecucion"));
+    : (a.estado || "");
+  document.getElementById("prog-e-estado").value =
+    ESTADOS_JORNADA.includes(estadoPrevio) ? estadoPrevio : "en_ejecucion";
   document.getElementById("prog-e-avance").value =
     j && j.avance_pct != null ? j.avance_pct : (a.avance_pct != null ? a.avance_pct : "");
   document.getElementById("prog-e-hh").value = j && j.hh_ele != null ? j.hh_ele : "";
