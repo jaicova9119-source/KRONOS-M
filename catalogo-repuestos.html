@@ -1,0 +1,854 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Catálogo de repuestos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0f1115; --bg-2:#161a21; --bg-3:#1d222b;
+  --line:#2a313d; --line-2:#3a434f;
+  --tx:#e6e9ee; --tx-2:#9aa4b2; --tx-3:#6b7480;
+  --ok:#3f9d6b; --warn:#c8912f; --alert:#c25a4a; --info:#4a7fb5;
+  --r:4px; --r-lg:8px;
+  --sp:8px;
+  --ff:"IBM Plex Sans",system-ui,sans-serif;
+  --fm:"IBM Plex Mono",ui-monospace,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:var(--bg);color:var(--tx);font-family:var(--ff);font-size:15px;line-height:1.45}
+body{padding-bottom:env(safe-area-inset-bottom)}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+
+/* ---------- barra superior ---------- */
+.top{position:sticky;top:0;z-index:20;background:var(--bg-2);border-bottom:1px solid var(--line)}
+.top-row{display:flex;align-items:center;gap:var(--sp);padding:10px 12px}
+.top h1{margin:0;font-size:16px;font-weight:600;letter-spacing:.01em;flex:1}
+.top .rol{font-family:var(--fm);font-size:11px;color:var(--tx-3);border:1px solid var(--line-2);border-radius:var(--r);padding:2px 6px}
+
+.search{display:flex;gap:6px;padding:0 12px 10px}
+.search input{flex:1;background:var(--bg-3);border:1px solid var(--line-2);border-radius:var(--r);padding:10px 12px;font-family:var(--fm);font-size:14px}
+.search input::placeholder{color:var(--tx-3);font-family:var(--ff)}
+.search button{background:var(--bg-3);border:1px solid var(--line-2);border-radius:var(--r);padding:0 14px;color:var(--tx-2)}
+
+.filtros{display:flex;gap:6px;overflow-x:auto;padding:0 12px 10px;scrollbar-width:none}
+.filtros::-webkit-scrollbar{display:none}
+.filtros select{background:var(--bg-3);border:1px solid var(--line-2);border-radius:var(--r);padding:7px 8px;font-size:13px;min-width:112px;flex:0 0 auto}
+
+/* ---------- resultados ---------- */
+.meta{padding:8px 12px;color:var(--tx-3);font-size:12px;font-family:var(--fm);border-bottom:1px solid var(--line)}
+.lista{padding:10px 12px 96px;display:grid;gap:8px}
+.card{display:grid;grid-template-columns:76px 1fr;gap:10px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-lg);padding:8px;text-align:left;width:100%}
+.card:active{border-color:var(--line-2)}
+.thumb{width:76px;height:76px;border-radius:var(--r);background:var(--bg-3);border:1px solid var(--line);object-fit:cover;display:block}
+.thumb-vacio{display:flex;align-items:center;justify-content:center;color:var(--tx-3);font-size:10px;text-align:center;padding:4px;line-height:1.2}
+.card-cuerpo{min-width:0;display:flex;flex-direction:column;gap:3px}
+.card-den{font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-pn{font-family:var(--fm);font-size:13px;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-sub{font-size:12px;color:var(--tx-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:2px}
+.chip{font-size:10.5px;font-family:var(--fm);padding:1px 5px;border-radius:3px;border:1px solid var(--line-2);color:var(--tx-2)}
+.chip.crit{border-color:var(--alert);color:var(--alert)}
+.chip.obs{border-color:var(--warn);color:var(--warn)}
+.chip.sinfoto{border-color:var(--line-2);color:var(--tx-3)}
+
+.vacio{padding:40px 24px;text-align:center;color:var(--tx-2);font-size:14px}
+.vacio b{display:block;color:var(--tx);font-weight:500;margin-bottom:6px}
+
+/* ---------- ficha ---------- */
+.ficha{position:fixed;inset:0;z-index:40;background:var(--bg);overflow-y:auto;display:none}
+.ficha.on{display:block}
+.ficha-top{position:sticky;top:0;background:var(--bg-2);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;align-items:center;gap:10px;z-index:2}
+.ficha-top h2{margin:0;font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.icon-btn{background:none;border:1px solid var(--line-2);border-radius:var(--r);width:34px;height:34px;color:var(--tx-2);flex:0 0 auto;font-size:16px;line-height:1}
+.ficha-cuerpo{padding:12px 12px 120px;display:grid;gap:14px}
+
+.galeria{display:grid;gap:6px}
+.galeria-main{width:100%;aspect-ratio:4/3;object-fit:contain;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-lg)}
+.galeria-tiras{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.galeria-tiras::-webkit-scrollbar{display:none}
+.tira{width:56px;height:56px;flex:0 0 auto;border-radius:var(--r);border:1px solid var(--line);object-fit:cover;opacity:.55}
+.tira.sel{opacity:1;border-color:var(--info)}
+.galeria-pie{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--tx-2);font-size:12px;min-height:18px}
+.galeria-pie .tipo{font-family:var(--fm);font-size:11px;color:var(--tx-3)}
+
+.bloque{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg-2);overflow:hidden}
+.bloque h3{margin:0;padding:9px 12px;font-size:12px;font-weight:600;color:var(--tx-2);border-bottom:1px solid var(--line);background:var(--bg-3)}
+.kv{display:grid;grid-template-columns:104px 1fr;gap:2px 10px;padding:10px 12px;font-size:13.5px}
+.kv dt{color:var(--tx-3);font-size:12px;padding-top:2px}
+.kv dd{margin:0;font-family:var(--fm);word-break:break-word}
+.fila{padding:9px 12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:baseline}
+.fila:first-of-type{border-top:none}
+.fila .et{font-size:11.5px;color:var(--tx-3)}
+.fila .vl{font-family:var(--fm);font-size:13.5px;text-align:right;word-break:break-word}
+.fila .vl.pend{color:var(--warn)}
+
+.acciones{position:fixed;left:0;right:0;bottom:0;z-index:45;background:var(--bg-2);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px}
+.acciones button{flex:1;padding:11px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--bg-3);color:var(--tx);font-size:14px}
+.acciones button.primario{background:var(--info);border-color:var(--info);color:#fff;font-weight:500}
+.acciones button:disabled{opacity:.45}
+
+.fab{position:fixed;right:14px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:30;width:52px;height:52px;border-radius:26px;background:var(--info);border:none;color:#fff;font-size:26px;line-height:1;box-shadow:0 3px 10px rgba(0,0,0,.4)}
+
+/* ---------- formularios ---------- */
+.modal{position:fixed;inset:0;z-index:60;background:rgba(6,8,11,.82);display:none;align-items:flex-end}
+.modal.on{display:flex}
+.modal-caja{background:var(--bg-2);border-top:1px solid var(--line-2);border-radius:var(--r-lg) var(--r-lg) 0 0;width:100%;max-height:92vh;overflow-y:auto;padding:14px 14px calc(14px + env(safe-area-inset-bottom))}
+.modal-caja h3{margin:0 0 12px;font-size:15px;font-weight:600}
+.campo{display:grid;gap:4px;margin-bottom:10px}
+.campo label{font-size:12px;color:var(--tx-2)}
+.campo input,.campo select,.campo textarea{background:var(--bg-3);border:1px solid var(--line-2);border-radius:var(--r);padding:9px 10px;font-size:14px;width:100%}
+.campo textarea{min-height:60px;resize:vertical}
+.campo.mono input{font-family:var(--fm)}
+.duo{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13.5px;color:var(--tx-2)}
+.check input{width:18px;height:18px;accent-color:var(--info)}
+.modal-pie{display:flex;gap:8px;margin-top:6px}
+.modal-pie button{flex:1;padding:11px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--bg-3);color:var(--tx)}
+.modal-pie button.primario{background:var(--info);border-color:var(--info);color:#fff;font-weight:500}
+.ayuda{font-size:12px;color:var(--tx-3);margin:-4px 0 10px;line-height:1.4}
+
+.aviso{padding:10px 12px;border-radius:var(--r);font-size:13px;margin-bottom:10px;border:1px solid}
+.aviso.err{border-color:var(--alert);color:var(--alert);background:rgba(194,90,74,.08)}
+.aviso.ok{border-color:var(--ok);color:var(--ok);background:rgba(63,157,107,.08)}
+
+.visor{position:fixed;inset:0;z-index:80;background:#000;display:none;align-items:center;justify-content:center}
+.visor.on{display:flex}
+.visor img{max-width:100%;max-height:100%;object-fit:contain}
+.visor button{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px;width:38px;height:38px;border-radius:19px;border:none;background:rgba(255,255,255,.14);color:#fff;font-size:18px}
+
+.cargando{padding:28px;text-align:center;color:var(--tx-3);font-size:13px}
+@media (prefers-reduced-motion:no-preference){.card,.acciones button{transition:border-color .12s ease}}
+@media(min-width:720px){
+  .lista{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
+  .ficha-cuerpo{max-width:760px;margin:0 auto}
+}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="top-row">
+    <h1>Catálogo de repuestos</h1>
+    <span class="rol" id="rolChip">—</span>
+  </div>
+  <div class="search">
+    <input id="q" type="search" inputmode="search" enterkeyhint="search"
+           placeholder="Número, marcación impresa o descripción" autocomplete="off">
+    <button id="btnBuscar" type="button">Buscar</button>
+  </div>
+  <div class="filtros">
+    <select id="fMarca"><option value="">Todas las marcas</option></select>
+    <select id="fSerie"><option value="">Todas las series</option></select>
+    <select id="fTipo"><option value="">Todos los tipos</option></select>
+    <select id="fEstado">
+      <option value="activos">Solo activos</option>
+      <option value="todos">Incluir obsoletos</option>
+    </select>
+  </div>
+</header>
+
+<div class="meta" id="meta">Cargando catálogo…</div>
+<div class="lista" id="lista"></div>
+<button class="fab" id="fabNuevo" type="button" title="Agregar repuesto" hidden>+</button>
+
+<!-- ficha -->
+<section class="ficha" id="ficha" aria-hidden="true">
+  <div class="ficha-top">
+    <button class="icon-btn" id="btnCerrarFicha" type="button" aria-label="Volver">←</button>
+    <h2 id="fichaTitulo">—</h2>
+  </div>
+  <div class="ficha-cuerpo" id="fichaCuerpo"></div>
+  <div class="acciones" id="fichaAcciones"></div>
+</section>
+
+<!-- modal genérico -->
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="modal-caja" id="modalCaja"></div>
+</div>
+
+<!-- visor de imagen -->
+<div class="visor" id="visor">
+  <img id="visorImg" alt="">
+  <button type="button" id="visorCerrar" aria-label="Cerrar">✕</button>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+"use strict";
+
+/* =====================================================================
+   Conexión
+   Si la app ya expone un cliente compartido (window.sb o window.supabaseClient)
+   se reutiliza. Si no, se crea con las constantes de abajo.
+   ===================================================================== */
+const SUPABASE_URL  = window.SUPABASE_URL  || "https://TU-PROYECTO.supabase.co";
+const SUPABASE_ANON  = window.SUPABASE_ANON_KEY || "TU_ANON_KEY";
+
+const sb = window.sb || window.supabaseClient || window.supabase.createClient(
+  SUPABASE_URL, SUPABASE_ANON,
+  { auth: { persistSession: true, autoRefreshToken: true, lock: async (n, t, fn) => fn() } }
+);
+
+const BUCKET = "repuestos";
+const TIPOS = [
+  ["tarjeta_control","Tarjeta de control"],
+  ["tarjeta_potencia","Tarjeta de potencia"],
+  ["tarjeta_gate_driver","Tarjeta gate driver"],
+  ["tarjeta_interfaz","Tarjeta de interfaz"],
+  ["fuente","Fuente de alimentación"],
+  ["modulo_igbt","Módulo IGBT"],
+  ["modulo_rectificador","Módulo rectificador"],
+  ["condensador_dc","Condensador de bus DC"],
+  ["ventilador","Ventilador"],
+  ["fusible","Fusible"],
+  ["contactor_precarga","Contactor de precarga"],
+  ["resistencia_precarga","Resistencia de precarga"],
+  ["reactor","Reactor"],
+  ["filtro","Filtro"],
+  ["hmi_teclado","HMI / teclado"],
+  ["sensor","Sensor"],
+  ["cable_comunicacion","Cable de comunicación"],
+  ["kit_repuestos","Kit de repuestos"],
+  ["otro","Otro"]
+];
+const CLASES = [
+  ["parte_numero","Parte número"],
+  ["marcacion_impresa","Marcación impresa"],
+  ["revision","Revisión / sufijo"],
+  ["codigo_sap","Código SAP"],
+  ["codigo_proveedor","Código de proveedor"],
+  ["codigo_alterno","Código alterno"],
+  ["numero_serie_formato","Formato de número de serie"]
+];
+const TIPOS_IMG = [
+  ["pieza","Pieza completa"],
+  ["marcacion","Marcación o etiqueta"],
+  ["ubicacion","Ubicación en el equipo"],
+  ["conexion","Conexionado"],
+  ["despiece","Despiece"]
+];
+
+const etiqueta = (lista, v) => (lista.find(x => x[0] === v) || [null, v || "—"])[1];
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
+  ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+
+let ROL = null;
+let puedeEditar = false, puedeSubirFoto = false;
+let FACETAS = [];
+let RESULTADOS = [];
+let ACTUAL = null;          // ficha abierta
+let GALERIA = [];           // imágenes de la ficha
+let GAL_IDX = 0;
+
+/* ---------- URLs firmadas con caché en memoria ---------- */
+const urlCache = new Map();
+async function urlFirmada(path, seg = 3600) {
+  if (!path) return null;
+  const hit = urlCache.get(path);
+  if (hit && hit.exp > Date.now()) return hit.url;
+  const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, seg);
+  if (error || !data) return null;
+  urlCache.set(path, { url: data.signedUrl, exp: Date.now() + (seg - 120) * 1000 });
+  return data.signedUrl;
+}
+
+/* =====================================================================
+   Arranque
+   ===================================================================== */
+async function iniciar() {
+  const { data: ses } = await sb.auth.getSession();
+  if (!ses || !ses.session) {
+    $("meta").textContent = "Sesión no iniciada. Ingresa desde el portal de Kronos-M.";
+    return;
+  }
+  try {
+    const { data } = await sb.rpc("mi_rol");
+    ROL = data || null;
+  } catch (e) { ROL = null; }
+
+  puedeEditar = ["admin", "supervisor"].includes(ROL);
+  puedeSubirFoto = puedeEditar || ROL === "tecnico";
+  $("rolChip").textContent = ROL || "sin rol";
+  $("fabNuevo").hidden = !puedeEditar;
+
+  await cargarFacetas();
+  await buscar();
+}
+
+async function cargarFacetas() {
+  const { data, error } = await sb.rpc("rep_facetas");
+  if (error) return;
+  FACETAS = data || [];
+  llenar($("fMarca"), "Todas las marcas", FACETAS.filter(f => f.faceta === "marca"));
+  llenar($("fTipo"), "Todos los tipos",
+    FACETAS.filter(f => f.faceta === "tipo")
+           .map(f => ({ valor: f.valor, etiqueta: etiqueta(TIPOS, f.valor), n: f.n })));
+  refrescarSeries();
+}
+
+function llenar(sel, primera, filas) {
+  const prev = sel.value;
+  sel.innerHTML = "<option value=\"\">" + esc(primera) + "</option>" +
+    filas.map(f => "<option value=\"" + esc(f.valor) + "\">" +
+      esc(f.etiqueta) + " (" + f.n + ")</option>").join("");
+  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+}
+
+function refrescarSeries() {
+  const marca = $("fMarca").value;
+  let series = FACETAS.filter(f => f.faceta === "serie");
+  if (marca) {
+    const pref = marca + " · ";
+    series = series.filter(f => f.etiqueta.toUpperCase().startsWith(pref));
+  }
+  llenar($("fSerie"), "Todas las series",
+    series.map(f => ({ valor: f.valor, etiqueta: f.etiqueta.split(" · ").pop(), n: f.n })));
+}
+
+/* =====================================================================
+   Búsqueda
+   ===================================================================== */
+async function buscar() {
+  $("meta").textContent = "Buscando…";
+  $("lista").innerHTML = "<div class=\"cargando\">…</div>";
+  const params = {
+    p_texto: $("q").value.trim() || null,
+    p_marca: $("fMarca").value || null,
+    p_serie: $("fSerie").value || null,
+    p_tipo: $("fTipo").value || null,
+    p_solo_activos: $("fEstado").value === "activos",
+    p_limit: 200
+  };
+  const { data, error } = await sb.rpc("rep_buscar", params);
+  if (error) {
+    $("meta").textContent = "No se pudo consultar el catálogo.";
+    $("lista").innerHTML = "<div class=\"vacio\"><b>Consulta fallida</b>" +
+      esc(error.message) + "</div>";
+    return;
+  }
+  RESULTADOS = data || [];
+  pintarLista();
+}
+
+function pintarLista() {
+  const cont = $("lista");
+  const sinFoto = RESULTADOS.filter(r => !r.imagen_thumb).length;
+  $("meta").textContent = RESULTADOS.length + " repuesto(s)" +
+    (sinFoto ? " · " + sinFoto + " sin imagen" : "");
+
+  if (!RESULTADOS.length) {
+    cont.innerHTML = "<div class=\"vacio\"><b>Nada coincide con esa búsqueda</b>" +
+      "Prueba con el número tal como está impreso en la pieza, o quita los filtros." +
+      "</div>";
+    return;
+  }
+
+  cont.innerHTML = RESULTADOS.map((r, i) => {
+    const sub = [r.marca, r.serie, r.aplicaciones].filter(Boolean).join(" · ");
+    const chips = [];
+    if (r.critico) chips.push("<span class=\"chip crit\">crítico</span>");
+    if (r.estado !== "activo") chips.push("<span class=\"chip obs\">" + esc(r.estado) + "</span>");
+    chips.push("<span class=\"chip\">" + esc(etiqueta(TIPOS, r.tipo)) + "</span>");
+    if (!r.imagen_thumb) chips.push("<span class=\"chip sinfoto\">sin imagen</span>");
+    const img = r.imagen_thumb
+      ? "<img class=\"thumb\" data-path=\"" + esc(r.imagen_thumb) + "\" alt=\"\">"
+      : "<div class=\"thumb thumb-vacio\">sin<br>imagen</div>";
+    return "<button class=\"card\" type=\"button\" data-i=\"" + i + "\">" + img +
+      "<div class=\"card-cuerpo\">" +
+        "<div class=\"card-den\">" + esc(r.denominacion) + "</div>" +
+        "<div class=\"card-pn\">" + esc(r.parte_numero || r.marcacion || "sin código") + "</div>" +
+        "<div class=\"card-sub\">" + esc(sub) + "</div>" +
+        "<div class=\"chips\">" + chips.join("") + "</div>" +
+      "</div></button>";
+  }).join("");
+
+  cont.querySelectorAll(".thumb[data-path]").forEach(async el => {
+    const u = await urlFirmada(el.dataset.path);
+    if (u) el.src = u;
+  });
+}
+
+/* =====================================================================
+   Ficha
+   ===================================================================== */
+async function abrirFicha(id) {
+  const { data, error } = await sb
+    .from("rep_repuesto")
+    .select("*, rep_identificador(*), rep_aplicacion(*), rep_imagen(*)")
+    .eq("id", id)
+    .single();
+  if (error) { alert("No se pudo abrir la ficha: " + error.message); return; }
+
+  ACTUAL = data;
+  GALERIA = (data.rep_imagen || []).sort((a, b) =>
+    (b.principal ? 1 : 0) - (a.principal ? 1 : 0) ||
+    a.tipo_imagen.localeCompare(b.tipo_imagen));
+  GAL_IDX = 0;
+
+  $("fichaTitulo").textContent = data.denominacion;
+  $("ficha").classList.add("on");
+  $("ficha").setAttribute("aria-hidden", "false");
+  document.body.style.overflow = "hidden";
+  pintarFicha();
+}
+
+function cerrarFicha() {
+  $("ficha").classList.remove("on");
+  $("ficha").setAttribute("aria-hidden", "true");
+  document.body.style.overflow = "";
+  ACTUAL = null;
+}
+
+function pintarFicha() {
+  const r = ACTUAL;
+  const ident = (r.rep_identificador || []).sort((a, b) =>
+    (b.principal ? 1 : 0) - (a.principal ? 1 : 0) || a.clase.localeCompare(b.clase));
+  const apl = r.rep_aplicacion || [];
+
+  const bloqueGaleria = GALERIA.length
+    ? "<div class=\"galeria\">" +
+        "<img class=\"galeria-main\" id=\"galMain\" alt=\"\">" +
+        "<div class=\"galeria-pie\">" +
+          "<span id=\"galDesc\"></span><span class=\"tipo\" id=\"galTipo\"></span>" +
+        "</div>" +
+        (GALERIA.length > 1
+          ? "<div class=\"galeria-tiras\" id=\"galTiras\">" + GALERIA.map((g, i) =>
+              "<img class=\"tira" + (i === 0 ? " sel" : "") + "\" data-i=\"" + i +
+              "\" data-path=\"" + esc(g.path_thumb) + "\" alt=\"\">").join("") + "</div>"
+          : "") +
+      "</div>"
+    : "<div class=\"bloque\"><h3>Imágenes</h3><div class=\"vacio\" style=\"padding:22px 16px\">" +
+      "<b>Esta pieza aún no tiene fotografía</b>" +
+      (puedeSubirFoto
+        ? "Agrega una desde el botón inferior. La foto de la marcación es la más útil en campo."
+        : "Pídele a un supervisor que cargue una.") +
+      "</div></div>";
+
+  const filasIdent = ident.length
+    ? ident.map(i =>
+        "<div class=\"fila\"><span class=\"et\">" + esc(etiqueta(CLASES, i.clase)) +
+        (i.fuente ? " · " + esc(i.fuente) : "") +
+        "</span><span class=\"vl\">" + esc(i.valor) + "</span></div>").join("")
+    : "<div class=\"fila\"><span class=\"et\">—</span>" +
+      "<span class=\"vl pend\">Sin códigos registrados</span></div>";
+
+  const filasApl = apl.length
+    ? apl.map(a => {
+        const modelo = [a.serie, a.modelo, a.frame].filter(Boolean).join(" · ") || a.marca;
+        const rango = (a.potencia_min_kw || a.potencia_max_kw)
+          ? (a.potencia_min_kw ?? "?") + "–" + (a.potencia_max_kw ?? "?") + " kW " : "";
+        const det = rango + (a.tension_v ? a.tension_v + " V" : "");
+        return "<div class=\"fila\"><span class=\"et\">" + esc(a.marca) +
+          (a.confirmado ? "" : " · sin confirmar") + "</span>" +
+          "<span class=\"vl" + (a.confirmado ? "" : " pend") + "\">" + esc(modelo) +
+          (det ? "<br><span class=\"et\">" + esc(det) + "</span>" : "") + "</span></div>";
+      }).join("")
+    : "<div class=\"fila\"><span class=\"et\">—</span>" +
+      "<span class=\"vl pend\">Sin aplicaciones registradas</span></div>";
+
+  $("fichaCuerpo").innerHTML =
+    bloqueGaleria +
+    "<div class=\"bloque\"><h3>Identificación</h3>" + filasIdent + "</div>" +
+    "<div class=\"bloque\"><h3>Aplica a</h3>" + filasApl + "</div>" +
+    "<div class=\"bloque\"><h3>Ficha</h3><dl class=\"kv\">" +
+      "<dt>Marca</dt><dd>" + esc(r.marca) + (r.serie ? " " + esc(r.serie) : "") + "</dd>" +
+      "<dt>Tipo</dt><dd>" + esc(etiqueta(TIPOS, r.tipo)) + "</dd>" +
+      "<dt>Estado</dt><dd>" + esc(r.estado) + (r.critico ? " · crítico" : "") + "</dd>" +
+      "<dt>Material</dt><dd>" + esc(r.codigo_material || "no enlazado") + "</dd>" +
+      (r.observaciones ? "<dt>Notas</dt><dd>" + esc(r.observaciones) + "</dd>" : "") +
+    "</dl></div>";
+
+  $("fichaAcciones").innerHTML =
+    (puedeSubirFoto ? "<button type=\"button\" class=\"primario\" id=\"btnFoto\">Agregar imagen</button>" : "") +
+    (puedeEditar ? "<button type=\"button\" id=\"btnCodigo\">Agregar código</button>" +
+                   "<button type=\"button\" id=\"btnAplic\">Agregar aplicación</button>" : "") ||
+    "<button type=\"button\" id=\"btnCerrar2\">Volver</button>";
+
+  if (GALERIA.length) mostrarImagen(0);
+}
+
+async function mostrarImagen(i) {
+  GAL_IDX = i;
+  const g = GALERIA[i];
+  if (!g) return;
+  const main = $("galMain");
+  if (main) {
+    const u = await urlFirmada(g.path_full);
+    if (u) { main.src = u; main.dataset.full = u; }
+  }
+  const d = $("galDesc"), t = $("galTipo");
+  if (d) d.textContent = g.descripcion || "";
+  if (t) t.textContent = etiqueta(TIPOS_IMG, g.tipo_imagen);
+  const tiras = $("galTiras");
+  if (tiras) {
+    tiras.querySelectorAll(".tira").forEach(async el => {
+      el.classList.toggle("sel", Number(el.dataset.i) === i);
+      if (!el.src) {
+        const u = await urlFirmada(el.dataset.path);
+        if (u) el.src = u;
+      }
+    });
+  }
+}
+
+/* =====================================================================
+   Imágenes: reducción en el navegador antes de subir
+   ===================================================================== */
+function leerImagen(file) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => { URL.revokeObjectURL(url); res(img); };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Archivo de imagen ilegible")); };
+    img.src = url;
+  });
+}
+
+function redimensionar(img, lado, calidad) {
+  const escala = Math.min(1, lado / Math.max(img.width, img.height));
+  const w = Math.round(img.width * escala);
+  const h = Math.round(img.height * escala);
+  const c = document.createElement("canvas");
+  c.width = w; c.height = h;
+  c.getContext("2d").drawImage(img, 0, 0, w, h);
+  return new Promise(res => c.toBlob(b => res({ blob: b, w: w, h: h }), "image/webp", calidad));
+}
+
+async function subirImagen(file, meta) {
+  const img = await leerImagen(file);
+  const full = await redimensionar(img, 1600, 0.82);
+  const thumb = await redimensionar(img, 320, 0.75);
+  if (!full.blob || !thumb.blob) throw new Error("El navegador no pudo generar el WebP");
+
+  const base = [
+    (ACTUAL.marca || "sin-marca").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    (ACTUAL.serie || "sin-serie").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+    ACTUAL.id
+  ].join("/");
+  const uid = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  const pFull = base + "/" + uid + "_full.webp";
+  const pThumb = base + "/" + uid + "_thumb.webp";
+
+  const opt = { contentType: "image/webp", upsert: false };
+  let r = await sb.storage.from(BUCKET).upload(pFull, full.blob, opt);
+  if (r.error) throw r.error;
+  r = await sb.storage.from(BUCKET).upload(pThumb, thumb.blob, opt);
+  if (r.error) {
+    await sb.storage.from(BUCKET).remove([pFull]);
+    throw r.error;
+  }
+
+  const { error } = await sb.from("rep_imagen").insert({
+    repuesto_id: ACTUAL.id,
+    tipo_imagen: meta.tipo,
+    path_full: pFull,
+    path_thumb: pThumb,
+    descripcion: meta.descripcion || null,
+    ancho_px: full.w,
+    alto_px: full.h,
+    bytes: full.blob.size,
+    principal: !!meta.principal,
+    tomada_en_campo: !!meta.campo
+  });
+  if (error) {
+    await sb.storage.from(BUCKET).remove([pFull, pThumb]);
+    throw error;
+  }
+}
+
+/* =====================================================================
+   Modales
+   ===================================================================== */
+function abrirModal(html) {
+  $("modalCaja").innerHTML = html;
+  $("modal").classList.add("on");
+}
+function cerrarModal() {
+  $("modal").classList.remove("on");
+  $("modalCaja").innerHTML = "";
+}
+function aviso(txt, clase) {
+  const c = $("modalCaja");
+  const prev = c.querySelector(".aviso");
+  if (prev) prev.remove();
+  const d = document.createElement("div");
+  d.className = "aviso " + (clase || "err");
+  d.textContent = txt;
+  c.prepend(d);
+  c.scrollTop = 0;
+}
+const opciones = lista => lista.map(x =>
+  "<option value=\"" + esc(x[0]) + "\">" + esc(x[1]) + "</option>").join("");
+
+function modalNuevoRepuesto() {
+  abrirModal(
+    "<h3>Nuevo repuesto</h3>" +
+    "<div class=\"duo\">" +
+      "<div class=\"campo\"><label for=\"nMarca\">Marca</label>" +
+        "<input id=\"nMarca\" placeholder=\"Yaskawa\" autocomplete=\"off\"></div>" +
+      "<div class=\"campo\"><label for=\"nSerie\">Serie</label>" +
+        "<input id=\"nSerie\" placeholder=\"iQpump / GA700\" autocomplete=\"off\"></div>" +
+    "</div>" +
+    "<div class=\"campo\"><label for=\"nDen\">Denominación</label>" +
+      "<input id=\"nDen\" placeholder=\"Tarjeta de control\" autocomplete=\"off\"></div>" +
+    "<div class=\"campo\"><label for=\"nTipo\">Tipo</label>" +
+      "<select id=\"nTipo\">" + opciones(TIPOS) + "</select></div>" +
+    "<div class=\"campo mono\"><label for=\"nPN\">Parte número</label>" +
+      "<input id=\"nPN\" placeholder=\"ETC740361\" autocomplete=\"off\"></div>" +
+    "<div class=\"campo mono\"><label for=\"nMarc\">Marcación impresa sobre la pieza</label>" +
+      "<input id=\"nMarc\" placeholder=\"ETC740361-S0515.M\" autocomplete=\"off\"></div>" +
+    "<p class=\"ayuda\">Copia la marcación tal como aparece serigrafiada, con guiones y puntos. " +
+      "Es lo que el técnico va a leer en el sitio.</p>" +
+    "<div class=\"campo mono\"><label for=\"nSap\">Código de material (SAP)</label>" +
+      "<input id=\"nSap\" autocomplete=\"off\"></div>" +
+    "<label class=\"check\"><input type=\"checkbox\" id=\"nCrit\">Repuesto crítico</label>" +
+    "<div class=\"modal-pie\">" +
+      "<button type=\"button\" data-cerrar>Cancelar</button>" +
+      "<button type=\"button\" class=\"primario\" id=\"nGuardar\">Guardar repuesto</button>" +
+    "</div>"
+  );
+
+  $("nGuardar").addEventListener("click", async () => {
+    const marca = $("nMarca").value.trim();
+    const den = $("nDen").value.trim();
+    if (!marca || !den) { aviso("Marca y denominación son obligatorias."); return; }
+    $("nGuardar").disabled = true;
+    const { data, error } = await sb.from("rep_repuesto").insert({
+      marca: marca,
+      serie: $("nSerie").value.trim() || null,
+      denominacion: den,
+      tipo: $("nTipo").value,
+      critico: $("nCrit").checked,
+      codigo_material: $("nSap").value.trim() || null
+    }).select("id").single();
+    if (error) { aviso(error.message); $("nGuardar").disabled = false; return; }
+
+    const ids = [];
+    if ($("nPN").value.trim())
+      ids.push({ repuesto_id: data.id, clase: "parte_numero",
+                 valor: $("nPN").value.trim(), principal: true });
+    if ($("nMarc").value.trim())
+      ids.push({ repuesto_id: data.id, clase: "marcacion_impresa",
+                 valor: $("nMarc").value.trim(), fuente: "etiqueta" });
+    if (ids.length) await sb.from("rep_identificador").insert(ids);
+
+    cerrarModal();
+    await cargarFacetas();
+    await buscar();
+    await abrirFicha(data.id);
+  });
+}
+
+function modalImagen() {
+  abrirModal(
+    "<h3>Agregar imagen</h3>" +
+    "<div class=\"campo\"><label for=\"iFile\">Fotografía</label>" +
+      "<input id=\"iFile\" type=\"file\" accept=\"image/*\" capture=\"environment\"></div>" +
+    "<div class=\"campo\"><label for=\"iTipo\">Qué muestra</label>" +
+      "<select id=\"iTipo\">" + opciones(TIPOS_IMG) + "</select></div>" +
+    "<div class=\"campo\"><label for=\"iDesc\">Descripción</label>" +
+      "<input id=\"iDesc\" placeholder=\"Etiqueta lateral, esquina inferior derecha\"></div>" +
+    (puedeEditar
+      ? "<label class=\"check\"><input type=\"checkbox\" id=\"iPpal\">Usar como imagen principal</label>"
+      : "") +
+    "<label class=\"check\"><input type=\"checkbox\" id=\"iCampo\" checked>Tomada en campo</label>" +
+    "<p class=\"ayuda\">La imagen se reduce en el teléfono antes de subir: 1600 px para consulta y " +
+      "320 px para el listado.</p>" +
+    "<div class=\"modal-pie\">" +
+      "<button type=\"button\" data-cerrar>Cancelar</button>" +
+      "<button type=\"button\" class=\"primario\" id=\"iGuardar\">Subir imagen</button>" +
+    "</div>"
+  );
+
+  $("iGuardar").addEventListener("click", async () => {
+    const f = $("iFile").files[0];
+    if (!f) { aviso("Selecciona o toma una fotografía."); return; }
+    const btn = $("iGuardar");
+    btn.disabled = true; btn.textContent = "Subiendo…";
+    try {
+      const ppal = puedeEditar && $("iPpal").checked;
+      if (ppal) {
+        await sb.from("rep_imagen").update({ principal: false })
+          .eq("repuesto_id", ACTUAL.id).eq("principal", true);
+      }
+      await subirImagen(f, {
+        tipo: $("iTipo").value,
+        descripcion: $("iDesc").value.trim(),
+        principal: ppal,
+        campo: $("iCampo").checked
+      });
+      cerrarModal();
+      const id = ACTUAL.id;
+      cerrarFicha();
+      await buscar();
+      await abrirFicha(id);
+    } catch (e) {
+      aviso(e.message || "No se pudo subir la imagen.");
+      btn.disabled = false; btn.textContent = "Subir imagen";
+    }
+  });
+}
+
+function modalCodigo() {
+  abrirModal(
+    "<h3>Agregar código</h3>" +
+    "<div class=\"campo\"><label for=\"cClase\">Clase</label>" +
+      "<select id=\"cClase\">" + opciones(CLASES) + "</select></div>" +
+    "<div class=\"campo mono\"><label for=\"cValor\">Valor</label>" +
+      "<input id=\"cValor\" autocomplete=\"off\"></div>" +
+    "<div class=\"campo\"><label for=\"cFuente\">Fuente</label>" +
+      "<select id=\"cFuente\">" +
+        "<option value=\"etiqueta\">Etiqueta de la pieza</option>" +
+        "<option value=\"manual\">Manual del fabricante</option>" +
+        "<option value=\"cotizacion\">Cotización</option>" +
+        "<option value=\"sap\">SAP</option>" +
+        "<option value=\"foto_campo\">Foto de campo</option>" +
+      "</select></div>" +
+    "<label class=\"check\"><input type=\"checkbox\" id=\"cPpal\">Código principal de la pieza</label>" +
+    "<div class=\"modal-pie\">" +
+      "<button type=\"button\" data-cerrar>Cancelar</button>" +
+      "<button type=\"button\" class=\"primario\" id=\"cGuardar\">Guardar código</button>" +
+    "</div>"
+  );
+
+  $("cGuardar").addEventListener("click", async () => {
+    const v = $("cValor").value.trim();
+    if (!v) { aviso("Escribe el valor del código."); return; }
+    $("cGuardar").disabled = true;
+    const ppal = $("cPpal").checked;
+    if (ppal) {
+      await sb.from("rep_identificador").update({ principal: false })
+        .eq("repuesto_id", ACTUAL.id).eq("principal", true);
+    }
+    const { error } = await sb.from("rep_identificador").insert({
+      repuesto_id: ACTUAL.id,
+      clase: $("cClase").value,
+      valor: v,
+      fuente: $("cFuente").value,
+      principal: ppal
+    });
+    if (error) { aviso(error.message); $("cGuardar").disabled = false; return; }
+    cerrarModal();
+    const id = ACTUAL.id;
+    cerrarFicha();
+    await buscar();
+    await abrirFicha(id);
+  });
+}
+
+function modalAplicacion() {
+  abrirModal(
+    "<h3>Agregar aplicación</h3>" +
+    "<div class=\"duo\">" +
+      "<div class=\"campo\"><label for=\"aMarca\">Marca</label>" +
+        "<input id=\"aMarca\" value=\"" + esc(ACTUAL.marca) + "\"></div>" +
+      "<div class=\"campo\"><label for=\"aSerie\">Serie</label>" +
+        "<input id=\"aSerie\" value=\"" + esc(ACTUAL.serie || "") + "\"></div>" +
+    "</div>" +
+    "<div class=\"duo\">" +
+      "<div class=\"campo mono\"><label for=\"aModelo\">Modelo</label>" +
+        "<input id=\"aModelo\" placeholder=\"CIMR-PW4A0414\"></div>" +
+      "<div class=\"campo\"><label for=\"aFrame\">Frame</label>" +
+        "<input id=\"aFrame\" placeholder=\"F\"></div>" +
+    "</div>" +
+    "<div class=\"duo\">" +
+      "<div class=\"campo\"><label for=\"aPmin\">Potencia mín. (kW)</label>" +
+        "<input id=\"aPmin\" type=\"number\" inputmode=\"decimal\" step=\"0.1\"></div>" +
+      "<div class=\"campo\"><label for=\"aPmax\">Potencia máx. (kW)</label>" +
+        "<input id=\"aPmax\" type=\"number\" inputmode=\"decimal\" step=\"0.1\"></div>" +
+    "</div>" +
+    "<div class=\"campo\"><label for=\"aTension\">Tensión (V)</label>" +
+      "<input id=\"aTension\" type=\"number\" inputmode=\"numeric\"></div>" +
+    "<label class=\"check\"><input type=\"checkbox\" id=\"aConf\">" +
+      "Verificada contra manual o contra la unidad</label>" +
+    "<p class=\"ayuda\">Sin verificar, la aplicación queda marcada y no debe usarse como base " +
+      "de un pedido.</p>" +
+    "<div class=\"modal-pie\">" +
+      "<button type=\"button\" data-cerrar>Cancelar</button>" +
+      "<button type=\"button\" class=\"primario\" id=\"aGuardar\">Guardar aplicación</button>" +
+    "</div>"
+  );
+
+  $("aGuardar").addEventListener("click", async () => {
+    const marca = $("aMarca").value.trim();
+    if (!marca) { aviso("La marca es obligatoria."); return; }
+    $("aGuardar").disabled = true;
+    const num = v => (v === "" || v === null ? null : Number(v));
+    const { error } = await sb.from("rep_aplicacion").insert({
+      repuesto_id: ACTUAL.id,
+      marca: marca,
+      serie: $("aSerie").value.trim() || null,
+      modelo: $("aModelo").value.trim() || null,
+      frame: $("aFrame").value.trim() || null,
+      potencia_min_kw: num($("aPmin").value),
+      potencia_max_kw: num($("aPmax").value),
+      tension_v: num($("aTension").value),
+      confirmado: $("aConf").checked
+    });
+    if (error) { aviso(error.message); $("aGuardar").disabled = false; return; }
+    cerrarModal();
+    const id = ACTUAL.id;
+    cerrarFicha();
+    await buscar();
+    await abrirFicha(id);
+  });
+}
+
+/* =====================================================================
+   Eventos
+   ===================================================================== */
+$("btnBuscar").addEventListener("click", buscar);
+$("q").addEventListener("keydown", e => { if (e.key === "Enter") buscar(); });
+$("fMarca").addEventListener("change", () => { refrescarSeries(); buscar(); });
+$("fSerie").addEventListener("change", buscar);
+$("fTipo").addEventListener("change", buscar);
+$("fEstado").addEventListener("change", buscar);
+
+$("lista").addEventListener("click", e => {
+  const card = e.target.closest(".card");
+  if (card) abrirFicha(RESULTADOS[Number(card.dataset.i)].id);
+});
+
+$("btnCerrarFicha").addEventListener("click", cerrarFicha);
+$("fabNuevo").addEventListener("click", modalNuevoRepuesto);
+
+$("ficha").addEventListener("click", e => {
+  const tira = e.target.closest(".tira");
+  if (tira) { mostrarImagen(Number(tira.dataset.i)); return; }
+  if (e.target.id === "galMain" && e.target.dataset.full) {
+    $("visorImg").src = e.target.dataset.full;
+    $("visor").classList.add("on");
+    return;
+  }
+  if (e.target.id === "btnFoto") modalImagen();
+  if (e.target.id === "btnCodigo") modalCodigo();
+  if (e.target.id === "btnAplic") modalAplicacion();
+  if (e.target.id === "btnCerrar2") cerrarFicha();
+});
+
+$("modal").addEventListener("click", e => {
+  if (e.target.id === "modal" || e.target.hasAttribute("data-cerrar")) cerrarModal();
+});
+$("visorCerrar").addEventListener("click", () => $("visor").classList.remove("on"));
+$("visor").addEventListener("click", e => {
+  if (e.target.id === "visor") $("visor").classList.remove("on");
+});
+
+document.addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  if ($("visor").classList.contains("on")) { $("visor").classList.remove("on"); return; }
+  if ($("modal").classList.contains("on")) { cerrarModal(); return; }
+  if ($("ficha").classList.contains("on")) cerrarFicha();
+});
+
+iniciar();
+</script>
+</body>
+</html>
