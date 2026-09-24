@@ -1,507 +1,1156 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Catálogo de repuestos</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no">
+<title>Catálogo de repuestos · KRONOS·M</title>
+
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
-<style>
-:root{
-  --bg:#0f1115; --bg-2:#161a21; --bg-3:#1d222b;
-  --line:#2a313d; --line-2:#3a434f;
-  --tx:#e6e9ee; --tx-2:#9aa4b2; --tx-3:#6b7480;
-  --ok:#3f9d6b; --warn:#c8912f; --alert:#c25a4a; --info:#4a7fb5;
-  --r:4px; --r-lg:8px;
-  --sp:8px;
-  --ff:"IBM Plex Sans",system-ui,sans-serif;
-  --fm:"IBM Plex Mono",ui-monospace,monospace;
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+
+<style id="kx-tokens">
+/* ═══════════════════════════════════════════════════════════════════════
+   KRONOS·M — SISTEMA DE TEMA  ·  paleta Termografia  ·  v3
+   ───────────────────────────────────────────────────────────────────────
+   Este bloque va INCRUSTADO en cada archivo, no en un CSS aparte.
+   Razon: el service worker sirve los archivos externos desde cache y
+   dejaba la hoja de tema sin cargar, con lo que el boton quedaba crudo
+   y la paleta no aplicaba. Incrustado no hay peticion que se pueda
+   perder, y el modulo abierto en pestana aparte tambien queda tematizado.
+
+   Si cambias un color, cambialo en los cuatro archivos: el bloque es
+   identico en todos y va delimitado por estos mismos comentarios.
+
+   Regla de la paleta: el azul de marca identifica, el gris grafito
+   sostiene, y la rampa calida (ambar - naranja - rojo) se reserva
+   para severidad. Ningun color se usa como adorno.
+   ═══════════════════════════════════════════════════════════════════════ */
+
+/* ---------- CLARO ---------- */
+html[data-tema="claro"]{
+  color-scheme:light;
+
+  --bg:#EDF0F2;          /* fondo de pagina */
+  --surface:#FFFFFF;     /* tarjeta, panel, fila */
+  --surface-2:#E7EBEE;   /* campo, cabecera de tabla, chip */
+  --surface-3:#D9DFE4;   /* realce, barra de progreso */
+  --line:#C3CAD0;
+  --line-soft:#E1E6EA;
+
+  --t1:#15191D;          /* texto principal y cifras */
+  --t2:#4C555C;          /* texto secundario */
+  --t3:#6E777F;          /* rotulo, unidad, apoyo */
+
+  --brand:#0F3F5E;       /* barra superior */
+  --brand-t:#FFFFFF;
+  --accent:#1F6399;      /* interaccion: enlace, foco, seleccion */
+  /* La marca como COLOR DE TEXTO. En claro coincide con --brand; en oscuro no
+     puede: alli --brand es casi negro porque es el fondo de la barra superior.
+     Usar --brand en primer plano hacia desaparecer las cifras de las tarjetas
+     sobre el fondo oscuro. */
+  --brand-fg:#134B70;
+  --accent-soft:#E2EDF7;
+  --accent-line:#B3CDE3;
+  --on-accent:#FFFFFF;
+
+  --ok:#25664A;    --ok-bg:#E0EDE6;
+  --warn:#8A5108;  --warn-bg:#F7EAD4;
+  --crit:#A32A20;  --crit-bg:#F8E1DE;
+  --alto:#7A5A05;  --alto-bg:#F6EFD5;   /* extremo de la rampa */
+  --null:#6E777F;  --null-bg:#EAEDEF;
+
+  --serie-1:#1E4E7A; --serie-2:#2F6EA8; --serie-3:#4C89BE; --serie-4:#6FA3CE;
+  --serie-5:#93BCDD; --serie-6:#B6D0E8; --serie-7:#8B9298;
+
+  /* Rampa categorica de las tendencias: doce canales que deben poder
+     distinguirse entre si, no una escala. Verificada sobre blanco. */
+  --ser-1:#0C5292;  --ser-2:#C62828;  --ser-3:#2E7D32;  --ser-4:#6A1B9A;
+  --ser-5:#B35A00;  --ser-6:#8A6A0B;  --ser-7:#00695C;  --ser-8:#0A7F94;
+  --ser-9:#AD1457;  --ser-10:#5D4037; --ser-11:#4527A0; --ser-12:#37474F;
+
+  --sombra:0 1px 2px rgba(20,26,32,.07), 0 6px 18px rgba(20,26,32,.06);
+  --sombra-alta:0 10px 32px rgba(20,26,32,.16);
+  --velo:rgba(20,26,32,.42);
 }
+
+/* ---------- OSCURO ---------- */
+html[data-tema="oscuro"]{
+  color-scheme:dark;
+
+  --bg:#10141A;
+  --surface:#1B2127;
+  --surface-2:#242C34;
+  --surface-3:#303A44;
+  --line:#3A444F;
+  --line-soft:#232B33;
+
+  --t1:#EEF2F5;
+  --t2:#B3BCC5;
+  --t3:#8A939D;
+
+  --brand:#0B1A28;
+  --brand-t:#EEF2F5;
+  --accent:#7CB4E8;
+  --brand-fg:#7CB4E8;    /* ver la nota del tema claro */
+  --accent-soft:#17293A;
+  --accent-line:#2E4A63;
+  --on-accent:#0B1015;
+
+  --ok:#63BE91;    --ok-bg:#13291F;
+  --warn:#EFA243;  --warn-bg:#33260F;
+  --crit:#F4776A;  --crit-bg:#331A17;
+  --alto:#F5CB55;  --alto-bg:#332A10;
+  --null:#8A939D;  --null-bg:#222930;
+
+  --serie-1:#A7C9E8; --serie-2:#7CB4E8; --serie-3:#5A87B4; --serie-4:#47708F;
+  --serie-5:#3A5B73; --serie-6:#2E4757; --serie-7:#8A939D;
+
+  /* Misma rampa categorica, recalculada sobre la tarjeta oscura. No es la
+     de claro aclarada: los tonos frios necesitan mas luminancia que los
+     calidos para leerse igual sobre grafito. */
+  --ser-1:#6FB1EA;  --ser-2:#F2796B;  --ser-3:#6BC28E;  --ser-4:#C08BE0;
+  --ser-5:#F5A65A;  --ser-6:#E8C557;  --ser-7:#4FBFAE;  --ser-8:#5CC9DA;
+  --ser-9:#E883AE;  --ser-10:#C3A493; --ser-11:#9D8CE8; --ser-12:#9FADB9;
+
+  --sombra:0 1px 2px rgba(0,0,0,.55), 0 6px 18px rgba(0,0,0,.38);
+  --sombra-alta:0 10px 32px rgba(0,0,0,.6);
+  --velo:rgba(0,0,0,.66);
+}
+/* ---------- Tipografia ----------
+   IBM Plex Sans para interfaz, IBM Plex Mono para toda cifra medida:
+   sus numeros son de ancho fijo, asi que las columnas de TAP, carga y
+   factor se alinean sin ayuda. Si la fuente no llega (PAD sin senal)
+   cae al stack del sistema y la interfaz sigue correcta. */
+html[data-tema]{
+  --sans:'IBM Plex Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;
+  --mono:'IBM Plex Mono','SF Mono',Consolas,'Roboto Mono',monospace;
+}
+
+/* ---------- Alias de los nombres antiguos ----------
+   Las reglas existentes de cada archivo no se tocaron: siguen pidiendo
+   --bg-0, --kp-card, --ki-t1, --ko-line. Aqui esos nombres se redefinen
+   apuntando a los tokens de arriba, y quedan tematizados solos.
+   html[data-tema] gana en especificidad sobre el :root de cada archivo. */
+html[data-tema]{
+  /* Se usaban con un respaldo fijo y nunca estuvieron definidos, asi que
+     el respaldo ganaba en los dos temas: --card y --fg dejaban una tarjeta
+     blanca con texto casi negro tambien en modo oscuro. */
+  --panel:var(--surface);
+  --panel2:var(--surface-2);
+  --acc:var(--accent);
+  --rule3:var(--line-soft);
+  --azul:var(--brand);
+  --card:var(--surface);
+  --fg:var(--t1);
+  --muted:var(--t3);
+
+  /* index.html */
+  --bg-0:var(--surface);
+  --bg-1:var(--bg);
+  --bg-2:var(--surface-2);
+  --bg-3:var(--surface-3);
+  --text-0:var(--t1);
+  --text-1:var(--t2);
+  --text-2:var(--t3);
+  --accent-dim:var(--accent-line);
+  --accent-bg:var(--accent-soft);
+  --jac-blue:var(--brand);
+  --jac-blue-fg:var(--brand-fg);
+  --danger:var(--crit);
+  --danger-bg:var(--crit-bg);
+
+  /* condicion.html */
+  --kp-teal:var(--accent);
+  --kp-green:var(--ok);
+  --kp-ink:var(--t1);
+  --kp-ink2:var(--t2);
+  --kp-ink3:var(--t3);
+  --kp-line:var(--line);
+  --kp-page:var(--bg);
+  --kp-card:var(--surface);
+  --kp-ok:var(--ok);      --kp-ok-bg:var(--ok-bg);
+  --kp-warn:var(--warn);  --kp-warn-bg:var(--warn-bg);
+  --kp-crit:var(--crit);  --kp-crit-bg:var(--crit-bg);
+  --kp-null:var(--null);  --kp-null-bg:var(--null-bg);
+
+  /* instalacion.html */
+  --ki-teal:var(--accent);
+  --ki-green:var(--ok);
+  --ki-bg:var(--bg);
+  --ki-card:var(--surface);
+  --ki-card2:var(--surface-2);
+  --ki-line:var(--line);
+  --ki-line2:var(--line-soft);
+  --ki-t1:var(--t1);
+  --ki-t2:var(--t2);
+  --ki-t3:var(--t3);
+  --ki-ok:var(--ok);
+  --ki-warn:var(--warn);
+  --ki-crit:var(--crit);
+  --ki-null:var(--null);
+
+  /* optimizacion.html */
+  --ko-teal:var(--accent);
+  --ko-green:var(--ok);
+  --ko-bg:var(--bg);
+  --ko-card:var(--surface);
+  --ko-card2:var(--surface-2);
+  --ko-line:var(--line);
+  --ko-line2:var(--line-soft);
+  --ko-t1:var(--t1);
+  --ko-t2:var(--t2);
+  --ko-t3:var(--t3);
+  --ko-ok:var(--ok);
+  --ko-warn:var(--warn);
+  --ko-crit:var(--crit);
+  --ko-null:var(--null);
+}
+
+html[data-tema]{background:var(--bg);}
+html[data-tema] body{background:var(--bg);color:var(--t1);font-family:var(--sans);}
+
+/* Los controles nativos (select, input, checkbox) siguen a color-scheme,
+   pero el borde y el fondo hay que decirselos. */
+html[data-tema] select,
+html[data-tema] input,
+html[data-tema] textarea{font-family:inherit;}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   DOCUMENTOS QUE SE IMPRIMEN Y SE FIRMAN
+   El informe de ensayos y el formato GTEC-MT-FO-016 no son interfaz:
+   son hojas. Se les fuerza papel blanco con tinta negra aunque la
+   aplicacion este en oscuro, para que la vista previa coincida con lo
+   que sale de la impresora.
+   ═══════════════════════════════════════════════════════════════════════ */
+#ee-informe, #ot-doc, #print-root{
+  --bg:#FFFFFF;       --bg-0:#FFFFFF;     --bg-1:#FFFFFF;
+  --surface:#FFFFFF;  --surface-2:#F2F2F2;
+  --bg-2:#F2F2F2;     --bg-3:#E8E8E8;     --surface-3:#E8E8E8;
+  --line:#999999;     --line-soft:#CCCCCC;
+  --t1:#000000;       --text-0:#000000;
+  --t2:#555555;       --text-1:#555555;
+  --t3:#666666;       --text-2:#666666;
+  --ok:#2E7D32;       --warn:#E08600;
+  --crit:#C62828;     --danger:#C62828;
+  --kp-ink:#000000;   --kp-card:#FFFFFF;  --kp-page:#FFFFFF;
+  background:#FFFFFF; color:#000000; color-scheme:light;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   INTERRUPTOR DE TEMA
+   El icono anuncia a donde vas, no donde estas: en claro se ve la luna
+   (tocar = oscuro), en oscuro se ve el sol (tocar = claro).
+   Estos estilos son propios y no dependen de ninguna hoja externa, para
+   que el boton no vuelva a quedar crudo si algo falla al cargar.
+   ═══════════════════════════════════════════════════════════════════════ */
+.tema-btn{
+  -webkit-appearance:none;appearance:none;
+  background:none;border:0;margin:0;padding:0;cursor:pointer;line-height:0;
+  width:32px;height:32px;border-radius:8px;flex:0 0 32px;
+  display:inline-flex;align-items:center;justify-content:center;
+  color:rgba(255,255,255,.82);
+  transition:background .15s,color .15s;
+}
+.tema-btn svg{width:18px;height:18px;display:block;}
+.tema-btn:hover{background:rgba(255,255,255,.14);color:#fff;}
+.tema-btn:active{background:rgba(255,255,255,.22);}
+.tema-btn:focus-visible{outline:2px solid rgba(255,255,255,.65);outline-offset:-2px;}
+
+/* Un solo icono visible. El estado por defecto (sin atributo aun) muestra
+   la luna, que es lo correcto porque el arranque sin preferencia es claro. */
+.tema-btn .ico-claro{display:none;}
+.tema-btn .ico-oscuro{display:block;}
+html[data-tema="oscuro"] .tema-btn .ico-claro{display:block;}
+html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
+
+/* El cambio de tema no deberia notarse como animacion. */
+@media (prefers-reduced-motion:reduce){
+  *{transition:none !important;animation:none !important;}
+}
+
+/* ---- Estructura de ubicaciones ---- */
+.est-barra{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px}
+.est-barra input[type=text],.est-barra input#est-buscar{flex:1;min-width:220px;padding:9px 11px;
+  border:1px solid var(--linea);border-radius:8px;background:var(--fondo);color:var(--texto)}
+.est-check{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--texto-2)}
+/* El arbol se leia como una lista con sangria: cinco niveles con el mismo
+   peso tipografico y nada que uniera un hijo con su padre. Con veinte mil
+   equipos repartidos en cinco niveles, eso obliga a contar sangrias con el
+   dedo.
+
+   Tres cosas lo arreglan: una linea guia que baja por cada rama abierta y
+   une visualmente a los hermanos, peso tipografico decreciente con la
+   profundidad --la cuenca pesa mas que el contrato, y el contrato mas que
+   la estacion-- y las cifras como pastilla en vez de texto suelto. */
+.est-nodo{display:flex;align-items:center;gap:9px;padding:8px 8px;border-radius:8px;
+  cursor:pointer;position:relative;transition:background .12s}
+.est-nodo:hover{background:var(--hover)}
+.est-nodo.sel{background:var(--hover);box-shadow:inset 2px 0 0 var(--acento,#1f6feb)}
+.est-nodo.abierta .est-den{color:var(--texto)}
+
+/* Separacion horizontal entre filas. Con veinte mil equipos y cinco niveles,
+   las lineas verticales dicen de quien cuelga cada cosa pero no donde acaba
+   una fila y empieza la siguiente: el nombre, el codigo debajo y la pastilla
+   a la derecha se leen como un bloque continuo.
+
+   La raya va como pseudoelemento y no como border-bottom para que no se
+   recorte con el border-radius del fondo al pasar por encima. */
+.est-nodo::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:currentColor;opacity:.09}
+/* Los niveles altos separan MAS: entre dos cuencas hay mas distancia
+   conceptual que entre dos pozos del mismo pad, y la raya debe decirlo. */
+.est-nodo.p0::after,.est-nodo.p1::after{opacity:.2}
+.est-nodo.p0{margin-top:10px}
+.est-nodo.p1{margin-top:5px}
+/* La ultima fila de una rama no lleva raya: ahi ya separa el fin de la guia. */
+.est-hijos > .est-nodo:last-child::after{opacity:0}
+
+/* La flecha gira en vez de cambiar de caracter: el movimiento dice que el
+   mismo nodo se abre, no que apareció otra cosa. */
+.est-flecha{width:14px;flex:0 0 14px;text-align:center;color:var(--texto-2);
+  font-size:10px;transition:transform .15s;transform-origin:50% 50%}
+.est-flecha.abierta{transform:rotate(90deg)}
+.est-flecha.hoja{opacity:.3;font-size:13px}
+
+.est-txt{flex:1;min-width:0;overflow:hidden}
+.est-den{font-size:13.5px;display:block;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;line-height:1.3}
+.est-den.sin{font-style:italic;color:var(--texto-2)}
+.est-cod{font-family:var(--mono,monospace);font-size:11px;color:var(--texto-2);
+  letter-spacing:.02em}
+
+/* Profundidad: la raiz pesa, la hoja no. Sin esto los cinco niveles compiten
+   por la misma atencion y el arbol se lee como una lista plana. */
+.est-nodo.p0 .est-den{font-size:14.5px;font-weight:650;letter-spacing:-.01em}
+.est-nodo.p1 .est-den{font-size:14px;font-weight:600}
+.est-nodo.p2 .est-den{font-size:13.5px;font-weight:550}
+.est-nodo.p3 .est-den{font-size:13px;font-weight:500}
+.est-nodo.p4 .est-den{font-size:12.5px;font-weight:450;color:var(--texto-2)}
+
+/* Las cifras, como pastilla. "4741 en rama" suelto a la derecha se confunde
+   con parte del nombre; encerrado se lee como lo que es, un contador. */
+.est-n{display:flex;gap:6px;align-items:center;white-space:nowrap;flex-shrink:0}
+.est-pill{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--linea);
+  color:var(--texto-2);line-height:1.5}
+.est-pill.aqui{color:var(--texto);border-color:var(--texto-2)}
+.est-pill.aqui b{font-weight:650}
+
+/* Las lineas guia. Una vertical que recorre la rama y un codo horizontal que
+   sale de ella hasta cada nodo: sin el codo, la vertical pasa de largo y no
+   se ve a cual de los nodos pertenece.
+
+   Van como pseudoelementos con currentColor y opacidad, no con var(--linea):
+   ese token esta pensado para bordes de campos y es tan tenue que a esta
+   escala desaparece. Asi la linea se adapta sola al tema claro y al oscuro
+   sin definir un color por cada uno. */
+.est-hijos{position:relative;margin-left:17px;padding-left:15px}
+.est-hijos::before{content:"";position:absolute;left:0;top:-2px;bottom:10px;
+  width:1px;background:currentColor;opacity:.2}
+.est-hijos > .est-nodo::before{content:"";position:absolute;left:-15px;top:50%;
+  width:12px;height:1px;background:currentColor;opacity:.2}
+/* Al pasar por encima de una rama, su guia se marca: ayuda a seguir un nivel
+   concreto cuando hay cuatro abiertos a la vez. */
+.est-hijos:hover::before{opacity:.42}
+
+.est-eq{position:relative;margin:2px 0 10px 17px;padding-left:15px}
+.est-eq::before{content:"";position:absolute;left:0;top:0;bottom:8px;width:1px;
+  background:currentColor;opacity:.2}
+/* Mismo lenguaje que las filas del arbol: raya de pseudoelemento con
+   currentColor, no el token de bordes de campo, que a esta escala no se ve. */
+.est-eq-item{position:relative;padding:7px 4px;cursor:pointer;border-radius:7px}
+.est-eq-item:hover{background:var(--hover)}
+.est-eq-item::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;
+  background:currentColor;opacity:.09}
+.est-eq-item:last-child::after{opacity:0}
+.est-aviso{font-size:12.5px;color:var(--texto-2);padding:6px 2px 10px}
+
+/* Rejilla del registro de jornada. El minimo de 220px es lo que decide cuando
+   pasa de una a varias columnas, sin consultas de medios: la caja se acomoda
+   al espacio que tenga, este en un monitor o en un telefono. */
+.prog-grid{display:grid;gap:0 14px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}
+.prog-grid .field.corto input{max-width:160px}
+.prog-tec-fila{display:flex;gap:8px;align-items:center;margin-bottom:6px}
+.prog-tec-fila input{flex:1}
+.prog-tec-quitar{background:none;border:1px solid var(--linea);border-radius:7px;
+  color:var(--texto-2);cursor:pointer;padding:6px 10px;line-height:1}
+.prog-tec-quitar:hover{color:#B3261E;border-color:#B3261E}
+/* La fecha escrita con todas las letras bajo el campo. El control nativo
+   muestra los segmentos en el orden del sistema operativo, que no siempre es
+   dia-mes-año, y ahi es donde se cuela el error de escribir 09/08 queriendo
+   decir 8 de septiembre. Leerla completa no deja lugar a duda. */
+.fecha-letra{font-size:12px;color:var(--texto-2);margin-top:4px}
+/* Fecha y hora de un mismo momento, en linea. La hora se queda en su ancho
+   natural porque HH:MM no crece. */
+.fh{display:flex;gap:8px}
+.fh input[type=date]{flex:1;min-width:0}
+.fh .hora24{width:92px;flex:0 0 92px}
+.prog-grid .field.corto select{max-width:220px}
+/* La casilla N/A va pegada a su etiqueta y no bajo el campo: asi se lee como
+   parte del rotulo del momento y no como una opcion suelta del formulario. */
+.lbl-na{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.lbl-na span{display:flex;align-items:center;gap:5px;font-weight:normal;
+  font-size:12px;color:var(--texto-2);white-space:nowrap}
+.lbl-na input{width:auto;margin:0}
+
+/* Fila de casillas cortas en operaciones y materiales. Se envuelve cuando no
+   caben, en vez de encogerlas hasta volverlas ilegibles. */
+.ot-fila-corta{display:flex;gap:6px;margin-top:6px;align-items:center;flex-wrap:wrap}
+.ot-fila-corta input{flex:1 1 110px;min-width:0}
+.ot-fila-corta input.ancho2{flex:2 1 220px}
+/* La unidad es un <select> nativo para que en Android abra el selector del
+   sistema y no una lista que hay que perseguir con el dedo. No se estira:
+   "GAL" no necesita el mismo ancho que una cantidad. */
+.ot-fila-corta select{flex:0 1 128px;min-width:104px}
+
+/* Estado del reporte en el circuito. El color va en un filete lateral y en la
+   pastilla, no en el fondo del bloque: un fondo de color a ancho completo
+   compite con el formulario que tiene debajo. */
+.ot-flujo{border-left:3px solid var(--line);background:var(--bg-2);
+  border-radius:8px;padding:10px 12px;margin-bottom:14px}
+.ot-flujo.borrador{border-left-color:var(--t3)}
+.ot-flujo.enviado {border-left-color:var(--acento)}
+.ot-flujo.devuelto{border-left-color:var(--danger)}
+.ot-flujo.firmado {border-left-color:var(--ok,#2e7d5b)}
+.ot-flujo-pastilla{display:inline-block;font-size:11px;font-weight:700;
+  letter-spacing:.04em;padding:2px 8px;border-radius:999px;
+  background:var(--line);color:var(--texto-2)}
+.ot-flujo-rastro{font-size:12px;color:var(--texto-2);margin-top:6px;line-height:1.5}
+.ot-flujo-motivo{margin-top:8px;padding:8px 10px;border-radius:6px;
+  background:var(--bg);border:1px solid var(--danger);font-size:13px}
+.ot-flujo-acciones{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.ot-flujo-acciones button{flex:1 1 150px}
+
+/* Bandeja de pendientes */
+.pend-item{border-left:3px solid var(--acento);background:var(--bg-2);
+  border-radius:8px;padding:10px 12px;margin-bottom:10px;cursor:pointer}
+.pend-item.devuelto{border-left-color:var(--danger)}
+.pend-tit{font-size:14px;font-weight:600}
+.pend-sub{font-size:12px;color:var(--texto-2);margin-top:3px;line-height:1.5}
+
+/* Vista del documento antes de firmar. El iframe se deja a proporcion A4 para
+   que el supervisor lea las hojas tal como van a salir impresas. */
+/* Dictado por voz. El punto late mientras el microfono esta abierto: en campo,
+   con guantes y ruido, hay que poder saber de un vistazo si esta escuchando. */
+.dic-fila{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
+.dic-fila button{flex:1 1 170px;margin-top:0}
+.dic-btn.grabando{border-color:var(--danger);color:var(--danger);
+  background:var(--danger-bg)}
+.dic-punto{display:inline-block;width:9px;height:9px;border-radius:50%;
+  background:var(--danger);margin-right:7px;vertical-align:middle;
+  animation:dic-late 1.1s ease-in-out infinite}
+@keyframes dic-late{0%,100%{opacity:1}50%{opacity:.25}}
+.dic-parcial{font-size:13px;color:var(--texto-2);font-style:italic;
+  margin-top:6px;min-height:18px}
+
+/* Dialogo centrado. Se desplaza por dentro y no por la pagina de atras, que
+   en el telefono es lo que hace que uno pierda el boton de confirmar. */
+.dlg-modal{position:fixed;inset:0;z-index:9998;background:rgba(10,25,35,.55);
+  display:none;align-items:center;justify-content:center;padding:14px}
+.dlg-caja{background:var(--bg-0);border-radius:14px;width:100%;max-width:440px;
+  max-height:92vh;display:flex;flex-direction:column;overflow:hidden;
+  box-shadow:0 10px 40px rgba(0,0,0,.35)}
+.dlg-titulo{padding:14px 16px;font-size:16px;font-weight:600;
+  border-bottom:1px solid var(--line)}
+.dlg-cuerpo{padding:14px 16px;overflow:auto;flex:1}
+.dlg-pie{padding:12px 16px;border-top:1px solid var(--line);
+  display:flex;gap:8px;flex-wrap:wrap}
+.dlg-pie button{flex:1 1 140px;margin-top:0}
+
+.doc-modal{position:fixed;inset:0;z-index:9998;background:rgba(10,25,35,.92);
+  display:none;flex-direction:column;padding:10px;gap:8px}
+.doc-modal iframe{flex:1;width:100%;background:#fff;border:0;border-radius:8px}
+.doc-modal-barra{display:flex;gap:8px;flex-wrap:wrap}
+.doc-modal-barra button{flex:1 1 140px}
+.ot-quitar{color:var(--danger);cursor:pointer;white-space:nowrap;font-size:13px;
+  padding:0 4px}
+/* Campo calculado: se ve, no se edita. El borde punteado y el fondo tenue lo
+   distinguen de una casilla que espera que alguien escriba. */
+input.calculado{background:var(--bg-2);border-style:dashed;color:var(--texto-2);
+  cursor:default}
+
+/* Guardar e imprimir son dos acciones del mismo momento: separadas en dos
+   filas parecian pertenecer a secciones distintas. */
+.ot-acciones{display:flex;gap:10px;margin-top:18px;flex-wrap:wrap}
+.ot-acciones button{flex:1 1 200px}
+.btn-secondary.ancho-auto{width:auto;padding-left:18px;padding-right:18px}
+
+/* El color va en un filete lateral y no en el fondo de la fila: con quince
+   equipos seguidos, quince fondos de color compiten entre si y se pierde la
+   jerarquia del arbol. El filete se lee de un vistazo y no grita. */
+/* El estado iba como barra de color de 3px a la izquierda del equipo. Ahi
+   caia pegada a la guia vertical del arbol y las dos competian por el mismo
+   canal: dos verticales juntas, una que significa jerarquia y otra que
+   significa estado, se leen como una sola cosa confusa.
+   Ademas era redundante, porque la pastilla de la derecha ya dice "Operando"
+   o "Dado de baja" con todas las letras. El color se va a la pastilla, que es
+   donde ya estaba el dato. */
+.est-eq-item{padding:8px 8px 8px 4px}
+.est-eq-item.est-op  .est-pill{color:#1C7C54;border-color:#1C7C54}
+.est-eq-item.est-dis .est-pill{color:#0C5292;border-color:#0C5292}
+.est-eq-item.est-no  .est-pill{color:#B3261E;border-color:#B3261E}
+.est-eq-item.est-rep .est-pill{color:#B26A00;border-color:#B26A00}
+.est-eq-l1{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.est-eq-desc{flex:1;min-width:0;font-size:13.5px}
+.est-eq-l2{font-size:12px;color:var(--texto-2);margin-top:3px;
+  font-family:var(--mono,monospace)}
+.est-eq-l2 b{color:var(--texto);font-weight:600}
+.est-sap{font-family:var(--mono,monospace);font-size:12px;font-weight:600;
+  background:var(--hover);border:1px solid var(--linea);border-radius:5px;
+  padding:1px 6px;white-space:nowrap}
+.est-pill{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;
+  border:1px solid currentColor}
+.est-op .est-pill{color:#1C7C54}
+.est-dis .est-pill{color:#0C5292}
+.est-no .est-pill{color:#B3261E}
+.est-rep .est-pill{color:#B26A00}
+.est-nd .est-pill{color:var(--texto-2)}
+</style>
+
+<script>
+/* Mismo criterio que index.html: el tema se aplica antes del primer
+   pintado. En iframe del mismo origen comparte localStorage, asi que
+   arranca con el tema correcto sin esperar el postMessage. */
+(function () {
+  var t;
+  try { t = localStorage.getItem("kx_tema"); } catch (e) { t = null; }
+  if (t !== "claro" && t !== "oscuro") {
+    t = window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches
+      ? "oscuro" : "claro";
+  }
+  document.documentElement.setAttribute("data-tema", t);
+})();
+/* El contenedor avisa cuando el usuario cambia de tema con el modulo abierto. */
+window.addEventListener("message", function (e) {
+  if (e.data && e.data.tipo === "kx-tema" && (e.data.tema === "claro" || e.data.tema === "oscuro")) {
+    document.documentElement.setAttribute("data-tema", e.data.tema);
+  }
+});
+</script>
+
+<style>
+/* ═══════════════════════════════════════════════════════════════════════
+   CATALOGO DE REPUESTOS
+   ───────────────────────────────────────────────────────────────────────
+   Biblioteca de repuestos de variador por marca y modelo, con imagen.
+   La pieza no se identifica en campo por el nombre del catalogo sino por
+   lo que esta impreso sobre ella, asi que la marcacion y la fotografia
+   pesan mas que la denominacion. Todo lo demas es apoyo.
+
+   Corre embebido en index.html y tambien suelto en pestana aparte. Los
+   colores salen del bloque de tema de arriba; aqui no hay ni un hex.
+   ═══════════════════════════════════════════════════════════════════════ */
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:var(--bg);color:var(--tx);font-family:var(--ff);font-size:15px;line-height:1.45}
-body{padding-bottom:env(safe-area-inset-bottom)}
+html,body{margin:0;padding:0;height:100%}
+body{
+  background:var(--bg);color:var(--t1);
+  font-family:var(--sans);font-size:14.5px;line-height:1.45;
+  display:flex;flex-direction:column;overflow:hidden;
+}
 button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
-:focus-visible{outline:2px solid var(--info);outline-offset:2px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 
-/* ---------- barra superior ---------- */
-.top{position:sticky;top:0;z-index:20;background:var(--bg-2);border-bottom:1px solid var(--line)}
-.top-row{display:flex;align-items:center;gap:var(--sp);padding:10px 12px}
-.top h1{margin:0;font-size:16px;font-weight:600;letter-spacing:.01em;flex:1}
-.top .rol{font-family:var(--fm);font-size:11px;color:var(--tx-3);border:1px solid var(--line-2);border-radius:var(--r);padding:2px 6px}
+/* ---------- cabecera ---------- */
+.rep-top{flex-shrink:0;background:var(--surface);border-bottom:1px solid var(--line);padding:10px 14px 0}
+.rep-top-fila{display:flex;align-items:center;gap:10px;margin-bottom:9px}
+.rep-top h1{margin:0;font-size:15px;font-weight:600;flex:1}
+.rep-rol{
+  font-family:var(--mono);font-size:11px;color:var(--t3);
+  border:1px solid var(--line);border-radius:6px;padding:2px 7px;flex-shrink:0;
+}
+.rep-buscar{display:flex;gap:7px;margin-bottom:9px}
+.rep-buscar input{
+  flex:1;min-width:0;background:var(--surface-2);border:1px solid var(--line);
+  border-radius:8px;padding:9px 12px;font-family:var(--mono);font-size:13.5px;
+}
+.rep-buscar input::placeholder{color:var(--t3);font-family:var(--sans)}
+.rep-buscar button{
+  background:var(--brand);color:var(--brand-t);border:1px solid var(--brand);
+  border-radius:8px;padding:0 15px;font-size:13px;font-weight:500;flex-shrink:0;
+}
+.rep-filtros{display:flex;gap:7px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
+.rep-filtros::-webkit-scrollbar{display:none}
+.rep-filtros select{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+  padding:6px 8px;font-size:12.5px;min-width:118px;flex:0 0 auto;
+}
 
-.search{display:flex;gap:6px;padding:0 12px 10px}
-.search input{flex:1;background:var(--bg-3);border:1px solid var(--line-2);border-radius:var(--r);padding:10px 12px;font-family:var(--fm);font-size:14px}
-.search input::placeholder{color:var(--tx-3);font-family:var(--ff)}
-.search button{background:var(--bg-3);border:1px solid var(--line-2);border-radius:var(--r);padding:0 14px;color:var(--tx-2)}
+/* ---------- listado ---------- */
+.rep-meta{
+  flex-shrink:0;padding:7px 14px;font-family:var(--mono);font-size:11.5px;
+  color:var(--t3);border-bottom:1px solid var(--line-soft);background:var(--bg);
+}
+.rep-lista{
+  flex:1;overflow-y:auto;padding:12px 14px 70px;
+  display:grid;gap:9px;align-content:start;
+}
+.rep-card{
+  display:grid;grid-template-columns:78px 1fr;gap:11px;
+  background:var(--surface);border:1px solid var(--line);border-radius:11px;
+  padding:9px;text-align:left;width:100%;font-family:inherit;
+  transition:border-color .15s,box-shadow .15s,transform .12s;
+}
+.rep-card:hover{border-color:var(--accent);transform:translateY(-2px);box-shadow:var(--sombra)}
+.rep-card:active{transform:translateY(0);box-shadow:none}
+.rep-thumb{
+  width:78px;height:78px;border-radius:8px;background:var(--surface-2);
+  border:1px solid var(--line);object-fit:cover;display:block;
+}
+.rep-thumb-vacio{
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  color:var(--t3);font-size:10px;line-height:1.25;padding:4px;
+}
+.rep-cuerpo{min-width:0;display:flex;flex-direction:column;gap:3px}
+.rep-den{font-weight:600;font-size:13.5px;color:var(--t1);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rep-pn{font-family:var(--mono);font-size:13px;color:var(--brand-fg);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rep-sub{font-size:11.5px;color:var(--t3);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rep-chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:2px}
+.rep-chip{
+  font-size:10.5px;font-family:var(--mono);padding:1px 6px;border-radius:999px;
+  background:var(--surface-2);color:var(--t3);border:1px solid var(--line-soft);
+}
+.rep-chip.crit{background:var(--crit-bg);color:var(--crit);border-color:transparent}
+.rep-chip.obs{background:var(--warn-bg);color:var(--warn);border-color:transparent}
 
-.filtros{display:flex;gap:6px;overflow-x:auto;padding:0 12px 10px;scrollbar-width:none}
-.filtros::-webkit-scrollbar{display:none}
-.filtros select{background:var(--bg-3);border:1px solid var(--line-2);border-radius:var(--r);padding:7px 8px;font-size:13px;min-width:112px;flex:0 0 auto}
+.rep-vacio{padding:44px 26px;text-align:center;color:var(--t2);font-size:13.5px}
+.rep-vacio b{display:block;color:var(--t1);font-weight:600;font-size:14.5px;margin-bottom:7px}
+.rep-cargando{padding:30px;text-align:center;color:var(--t3);font-size:12.5px}
 
-/* ---------- resultados ---------- */
-.meta{padding:8px 12px;color:var(--tx-3);font-size:12px;font-family:var(--fm);border-bottom:1px solid var(--line)}
-.lista{padding:10px 12px 96px;display:grid;gap:8px}
-.card{display:grid;grid-template-columns:76px 1fr;gap:10px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-lg);padding:8px;text-align:left;width:100%}
-.card:active{border-color:var(--line-2)}
-.thumb{width:76px;height:76px;border-radius:var(--r);background:var(--bg-3);border:1px solid var(--line);object-fit:cover;display:block}
-.thumb-vacio{display:flex;align-items:center;justify-content:center;color:var(--tx-3);font-size:10px;text-align:center;padding:4px;line-height:1.2}
-.card-cuerpo{min-width:0;display:flex;flex-direction:column;gap:3px}
-.card-den{font-weight:500;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card-pn{font-family:var(--fm);font-size:13px;color:var(--tx);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card-sub{font-size:12px;color:var(--tx-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chips{display:flex;gap:4px;flex-wrap:wrap;margin-top:2px}
-.chip{font-size:10.5px;font-family:var(--fm);padding:1px 5px;border-radius:3px;border:1px solid var(--line-2);color:var(--tx-2)}
-.chip.crit{border-color:var(--alert);color:var(--alert)}
-.chip.obs{border-color:var(--warn);color:var(--warn)}
-.chip.sinfoto{border-color:var(--line-2);color:var(--tx-3)}
-
-.vacio{padding:40px 24px;text-align:center;color:var(--tx-2);font-size:14px}
-.vacio b{display:block;color:var(--tx);font-weight:500;margin-bottom:6px}
+.rep-fab{
+  position:absolute;right:16px;bottom:16px;z-index:12;
+  width:52px;height:52px;border-radius:26px;border:none;
+  background:var(--brand);color:var(--brand-t);font-size:26px;line-height:1;
+  box-shadow:var(--sombra-alta);
+}
 
 /* ---------- ficha ---------- */
-.ficha{position:fixed;inset:0;z-index:40;background:var(--bg);overflow-y:auto;display:none}
-.ficha.on{display:block}
-.ficha-top{position:sticky;top:0;background:var(--bg-2);border-bottom:1px solid var(--line);padding:10px 12px;display:flex;align-items:center;gap:10px;z-index:2}
-.ficha-top h2{margin:0;font-size:15px;font-weight:600;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.icon-btn{background:none;border:1px solid var(--line-2);border-radius:var(--r);width:34px;height:34px;color:var(--tx-2);flex:0 0 auto;font-size:16px;line-height:1}
-.ficha-cuerpo{padding:12px 12px 120px;display:grid;gap:14px}
+.rep-ficha{
+  position:absolute;inset:0;z-index:20;background:var(--bg);
+  display:none;flex-direction:column;
+}
+.rep-ficha.abierta{display:flex}
+.rep-ficha-top{
+  flex-shrink:0;display:flex;align-items:center;gap:10px;
+  padding:9px 14px;background:var(--surface);border-bottom:1px solid var(--line);
+}
+.rep-ficha-top h2{margin:0;font-size:14.5px;font-weight:600;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rep-ico-btn{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+  width:34px;height:34px;color:var(--t2);flex:0 0 auto;font-size:16px;line-height:1;
+}
+.rep-ficha-cuerpo{flex:1;overflow-y:auto;padding:13px 14px 16px;display:grid;gap:13px;align-content:start}
+.rep-ficha-pie{
+  flex-shrink:0;display:flex;gap:8px;padding:10px 14px;
+  background:var(--surface);border-top:1px solid var(--line);
+}
+.rep-ficha-pie button{
+  flex:1;padding:10px;border-radius:8px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--t1);font-size:13px;
+}
+.rep-ficha-pie button.primario{
+  background:var(--brand);border-color:var(--brand);color:var(--brand-t);font-weight:500;
+}
 
-.galeria{display:grid;gap:6px}
-.galeria-main{width:100%;aspect-ratio:4/3;object-fit:contain;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--r-lg)}
-.galeria-tiras{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
-.galeria-tiras::-webkit-scrollbar{display:none}
-.tira{width:56px;height:56px;flex:0 0 auto;border-radius:var(--r);border:1px solid var(--line);object-fit:cover;opacity:.55}
-.tira.sel{opacity:1;border-color:var(--info)}
-.galeria-pie{display:flex;justify-content:space-between;align-items:center;gap:8px;color:var(--tx-2);font-size:12px;min-height:18px}
-.galeria-pie .tipo{font-family:var(--fm);font-size:11px;color:var(--tx-3)}
+.rep-galeria{display:grid;gap:7px}
+.rep-gal-main{
+  width:100%;aspect-ratio:4/3;object-fit:contain;cursor:zoom-in;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:11px;
+}
+.rep-gal-tiras{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
+.rep-gal-tiras::-webkit-scrollbar{display:none}
+.rep-tira{
+  width:54px;height:54px;flex:0 0 auto;border-radius:7px;object-fit:cover;
+  border:2px solid transparent;opacity:.55;background:var(--surface-2);
+}
+.rep-tira.sel{opacity:1;border-color:var(--accent)}
+.rep-gal-pie{display:flex;justify-content:space-between;gap:9px;
+  align-items:baseline;min-height:17px;font-size:12px;color:var(--t2)}
+.rep-gal-pie .tipo{font-family:var(--mono);font-size:11px;color:var(--t3);flex-shrink:0}
 
-.bloque{border:1px solid var(--line);border-radius:var(--r-lg);background:var(--bg-2);overflow:hidden}
-.bloque h3{margin:0;padding:9px 12px;font-size:12px;font-weight:600;color:var(--tx-2);border-bottom:1px solid var(--line);background:var(--bg-3)}
-.kv{display:grid;grid-template-columns:104px 1fr;gap:2px 10px;padding:10px 12px;font-size:13.5px}
-.kv dt{color:var(--tx-3);font-size:12px;padding-top:2px}
-.kv dd{margin:0;font-family:var(--fm);word-break:break-word}
-.fila{padding:9px 12px;border-top:1px solid var(--line);display:flex;justify-content:space-between;gap:10px;align-items:baseline}
-.fila:first-of-type{border-top:none}
-.fila .et{font-size:11.5px;color:var(--tx-3)}
-.fila .vl{font-family:var(--fm);font-size:13.5px;text-align:right;word-break:break-word}
-.fila .vl.pend{color:var(--warn)}
+.rep-bloque{background:var(--surface);border:1px solid var(--line);border-radius:11px;overflow:hidden}
+.rep-bloque h3{
+  margin:0;padding:8px 13px;font-size:11.5px;font-weight:600;letter-spacing:.04em;
+  color:var(--t3);background:var(--surface-2);border-bottom:1px solid var(--line-soft);
+}
+.rep-fila{
+  padding:9px 13px;border-top:1px solid var(--line-soft);
+  display:flex;justify-content:space-between;gap:12px;align-items:baseline;
+}
+.rep-fila:first-of-type{border-top:none}
+.rep-fila .et{font-size:11.5px;color:var(--t3);flex-shrink:0}
+.rep-fila .vl{font-family:var(--mono);font-size:13px;text-align:right;word-break:break-word}
+.rep-fila .vl.pend{color:var(--warn);font-family:var(--sans);font-size:12.5px}
+.rep-fila .vl .nota{display:block;font-family:var(--sans);font-size:11px;color:var(--t3)}
+.rep-kv{display:grid;grid-template-columns:100px 1fr;gap:3px 12px;padding:11px 13px;margin:0}
+.rep-kv dt{color:var(--t3);font-size:11.5px;padding-top:2px}
+.rep-kv dd{margin:0;font-family:var(--mono);font-size:13px;word-break:break-word}
 
-.acciones{position:fixed;left:0;right:0;bottom:0;z-index:45;background:var(--bg-2);border-top:1px solid var(--line);padding:10px 12px calc(10px + env(safe-area-inset-bottom));display:flex;gap:8px}
-.acciones button{flex:1;padding:11px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--bg-3);color:var(--tx);font-size:14px}
-.acciones button.primario{background:var(--info);border-color:var(--info);color:#fff;font-weight:500}
-.acciones button:disabled{opacity:.45}
+/* ---------- modales ---------- */
+.rep-modal{
+  position:absolute;inset:0;z-index:40;background:var(--velo);
+  display:none;align-items:flex-end;justify-content:center;
+}
+.rep-modal.abierta{display:flex}
+.rep-modal-caja{
+  background:var(--surface);border:1px solid var(--line);border-bottom:0;
+  border-radius:14px 14px 0 0;width:100%;max-width:560px;max-height:94%;
+  overflow-y:auto;padding:15px 15px 18px;box-shadow:var(--sombra-alta);
+}
+.rep-modal-caja h3{margin:0 0 13px;font-size:14.5px;font-weight:600}
+.rep-campo{display:grid;gap:4px;margin-bottom:10px}
+.rep-campo label{font-size:11.5px;color:var(--t3)}
+.rep-campo input,.rep-campo select,.rep-campo textarea{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+  padding:9px 10px;font-size:13.5px;width:100%;
+}
+.rep-campo.mono input{font-family:var(--mono)}
+.rep-duo{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.rep-check{display:flex;align-items:center;gap:9px;margin-bottom:10px;font-size:13px;color:var(--t2)}
+.rep-check input{width:17px;height:17px;accent-color:var(--accent);flex-shrink:0}
+.rep-ayuda{font-size:11.5px;color:var(--t3);margin:-4px 0 11px;line-height:1.45}
+.rep-modal-pie{display:flex;gap:9px;margin-top:5px}
+.rep-modal-pie button{
+  flex:1;padding:10px;border-radius:8px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--t1);font-size:13.5px;
+}
+.rep-modal-pie button.primario{
+  background:var(--brand);border-color:var(--brand);color:var(--brand-t);font-weight:500;
+}
+.rep-modal-pie button:disabled{opacity:.5;cursor:default}
+.rep-aviso{
+  padding:9px 12px;border-radius:8px;font-size:12.5px;margin-bottom:11px;line-height:1.4;
+}
+.rep-aviso.err{background:var(--crit-bg);color:var(--crit)}
+.rep-aviso.ok{background:var(--ok-bg);color:var(--ok)}
 
-.fab{position:fixed;right:14px;bottom:calc(16px + env(safe-area-inset-bottom));z-index:30;width:52px;height:52px;border-radius:26px;background:var(--info);border:none;color:#fff;font-size:26px;line-height:1;box-shadow:0 3px 10px rgba(0,0,0,.4)}
+.rep-visor{
+  position:absolute;inset:0;z-index:60;background:rgba(0,0,0,.93);
+  display:none;align-items:center;justify-content:center;
+}
+.rep-visor.abierta{display:flex}
+.rep-visor img{max-width:100%;max-height:100%;object-fit:contain}
+.rep-visor button{
+  position:absolute;top:12px;right:14px;width:38px;height:38px;border-radius:19px;
+  border:none;background:rgba(255,255,255,.15);color:#fff;font-size:18px;
+}
 
-/* ---------- formularios ---------- */
-.modal{position:fixed;inset:0;z-index:60;background:rgba(6,8,11,.82);display:none;align-items:flex-end}
-.modal.on{display:flex}
-.modal-caja{background:var(--bg-2);border-top:1px solid var(--line-2);border-radius:var(--r-lg) var(--r-lg) 0 0;width:100%;max-height:92vh;overflow-y:auto;padding:14px 14px calc(14px + env(safe-area-inset-bottom))}
-.modal-caja h3{margin:0 0 12px;font-size:15px;font-weight:600}
-.campo{display:grid;gap:4px;margin-bottom:10px}
-.campo label{font-size:12px;color:var(--tx-2)}
-.campo input,.campo select,.campo textarea{background:var(--bg-3);border:1px solid var(--line-2);border-radius:var(--r);padding:9px 10px;font-size:14px;width:100%}
-.campo textarea{min-height:60px;resize:vertical}
-.campo.mono input{font-family:var(--fm)}
-.duo{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.check{display:flex;align-items:center;gap:8px;margin-bottom:10px;font-size:13.5px;color:var(--tx-2)}
-.check input{width:18px;height:18px;accent-color:var(--info)}
-.modal-pie{display:flex;gap:8px;margin-top:6px}
-.modal-pie button{flex:1;padding:11px;border-radius:var(--r);border:1px solid var(--line-2);background:var(--bg-3);color:var(--tx)}
-.modal-pie button.primario{background:var(--info);border-color:var(--info);color:#fff;font-weight:500}
-.ayuda{font-size:12px;color:var(--tx-3);margin:-4px 0 10px;line-height:1.4}
-
-.aviso{padding:10px 12px;border-radius:var(--r);font-size:13px;margin-bottom:10px;border:1px solid}
-.aviso.err{border-color:var(--alert);color:var(--alert);background:rgba(194,90,74,.08)}
-.aviso.ok{border-color:var(--ok);color:var(--ok);background:rgba(63,157,107,.08)}
-
-.visor{position:fixed;inset:0;z-index:80;background:#000;display:none;align-items:center;justify-content:center}
-.visor.on{display:flex}
-.visor img{max-width:100%;max-height:100%;object-fit:contain}
-.visor button{position:absolute;top:calc(10px + env(safe-area-inset-top));right:12px;width:38px;height:38px;border-radius:19px;border:none;background:rgba(255,255,255,.14);color:#fff;font-size:18px}
-
-.cargando{padding:28px;text-align:center;color:var(--tx-3);font-size:13px}
-@media (prefers-reduced-motion:no-preference){.card,.acciones button{transition:border-color .12s ease}}
-@media(min-width:720px){
-  .lista{grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}
-  .ficha-cuerpo{max-width:760px;margin:0 auto}
+@media (min-width:760px){
+  .rep-lista{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
+  .rep-ficha-cuerpo{max-width:780px;margin:0 auto;width:100%}
+  .rep-modal{align-items:center}
+  .rep-modal-caja{border-radius:14px;border-bottom:1px solid var(--line);max-height:88%}
 }
 </style>
 </head>
+
 <body>
+<div id="rep-raiz" style="position:relative;flex:1;display:flex;flex-direction:column;min-height:0">
 
-<header class="top">
-  <div class="top-row">
-    <h1>Catálogo de repuestos</h1>
-    <span class="rol" id="rolChip">—</span>
+  <header class="rep-top">
+    <div class="rep-top-fila">
+      <h1>Catálogo de repuestos</h1>
+      <span class="rep-rol" id="rep-rol">—</span>
+    </div>
+    <div class="rep-buscar">
+      <input id="rep-q" type="search" inputmode="search" enterkeyhint="search"
+             autocomplete="off" placeholder="Número, marcación impresa o descripción">
+      <button type="button" id="rep-btn-buscar">Buscar</button>
+    </div>
+    <div class="rep-filtros">
+      <select id="rep-f-marca"><option value="">Todas las marcas</option></select>
+      <select id="rep-f-serie"><option value="">Todas las series</option></select>
+      <select id="rep-f-tipo"><option value="">Todos los tipos</option></select>
+      <select id="rep-f-estado">
+        <option value="activos">Solo activos</option>
+        <option value="todos">Incluir obsoletos</option>
+      </select>
+    </div>
+  </header>
+
+  <div class="rep-meta" id="rep-meta">Cargando catálogo…</div>
+  <div class="rep-lista" id="rep-listado"></div>
+  <button class="rep-fab" id="rep-fab" type="button" title="Repuesto nuevo" hidden>+</button>
+
+  <section class="rep-ficha" id="rep-ficha" aria-hidden="true">
+    <div class="rep-ficha-top">
+      <button class="rep-ico-btn" id="rep-volver" type="button" aria-label="Volver">&#8592;</button>
+      <h2 id="rep-ficha-titulo">—</h2>
+    </div>
+    <div class="rep-ficha-cuerpo" id="rep-ficha-cuerpo"></div>
+    <div class="rep-ficha-pie" id="rep-ficha-pie"></div>
+  </section>
+
+  <div class="rep-modal" id="rep-modal" role="dialog" aria-modal="true">
+    <div class="rep-modal-caja" id="rep-modal-caja"></div>
   </div>
-  <div class="search">
-    <input id="q" type="search" inputmode="search" enterkeyhint="search"
-           placeholder="Número, marcación impresa o descripción" autocomplete="off">
-    <button id="btnBuscar" type="button">Buscar</button>
+
+  <div class="rep-visor" id="rep-visor">
+    <img id="rep-visor-img" alt="">
+    <button type="button" id="rep-visor-cerrar" aria-label="Cerrar">&times;</button>
   </div>
-  <div class="filtros">
-    <select id="fMarca"><option value="">Todas las marcas</option></select>
-    <select id="fSerie"><option value="">Todas las series</option></select>
-    <select id="fTipo"><option value="">Todos los tipos</option></select>
-    <select id="fEstado">
-      <option value="activos">Solo activos</option>
-      <option value="todos">Incluir obsoletos</option>
-    </select>
-  </div>
-</header>
 
-<div class="meta" id="meta">Cargando catálogo…</div>
-<div class="lista" id="lista"></div>
-<button class="fab" id="fabNuevo" type="button" title="Agregar repuesto" hidden>+</button>
-
-<!-- ficha -->
-<section class="ficha" id="ficha" aria-hidden="true">
-  <div class="ficha-top">
-    <button class="icon-btn" id="btnCerrarFicha" type="button" aria-label="Volver">←</button>
-    <h2 id="fichaTitulo">—</h2>
-  </div>
-  <div class="ficha-cuerpo" id="fichaCuerpo"></div>
-  <div class="acciones" id="fichaAcciones"></div>
-</section>
-
-<!-- modal genérico -->
-<div class="modal" id="modal" role="dialog" aria-modal="true">
-  <div class="modal-caja" id="modalCaja"></div>
-</div>
-
-<!-- visor de imagen -->
-<div class="visor" id="visor">
-  <img id="visorImg" alt="">
-  <button type="button" id="visorCerrar" aria-label="Cerrar">✕</button>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 "use strict";
+/* ═══════════════════════════════════════════════════════════════════════
+   Conexion
+   Embebido en index.html hereda el cliente que aquel publica en window.sb,
+   con la sesion ya iniciada. Suelto en pestana aparte hace falta la clave
+   anonima; sin ella el modulo lo dice en vez de quedarse en blanco.
+   ═══════════════════════════════════════════════════════════════════════ */
+const REP_URL  = "";   /* URL del proyecto Supabase; solo para pestana aparte */
+const REP_ANON = "";   /* clave anonima; solo para pestana aparte */
 
-/* =====================================================================
-   Conexión
-   Si la app ya expone un cliente compartido (window.sb o window.supabaseClient)
-   se reutiliza. Si no, se crea con las constantes de abajo.
-   ===================================================================== */
-const SUPABASE_URL  = window.SUPABASE_URL  || "https://TU-PROYECTO.supabase.co";
-const SUPABASE_ANON  = window.SUPABASE_ANON_KEY || "TU_ANON_KEY";
+function repCliente() {
+  try {
+    if (window.parent !== window && window.parent.sb) return window.parent.sb;
+  } catch (e) { /* otro origen */ }
+  if (window.sb) return window.sb;
+  if (!REP_URL || !REP_ANON) return null;
+  return window.supabase.createClient(REP_URL, REP_ANON, {
+    auth: { persistSession: true, autoRefreshToken: true, lock: async (n, t, fn) => fn() }
+  });
+}
+const sb = repCliente();
 
-const sb = window.sb || window.supabaseClient || window.supabase.createClient(
-  SUPABASE_URL, SUPABASE_ANON,
-  { auth: { persistSession: true, autoRefreshToken: true, lock: async (n, t, fn) => fn() } }
-);
+const REP_BUCKET = "repuestos";
 
-const BUCKET = "repuestos";
-const TIPOS = [
-  ["tarjeta_control","Tarjeta de control"],
-  ["tarjeta_potencia","Tarjeta de potencia"],
-  ["tarjeta_gate_driver","Tarjeta gate driver"],
-  ["tarjeta_interfaz","Tarjeta de interfaz"],
-  ["fuente","Fuente de alimentación"],
-  ["modulo_igbt","Módulo IGBT"],
-  ["modulo_rectificador","Módulo rectificador"],
-  ["condensador_dc","Condensador de bus DC"],
-  ["ventilador","Ventilador"],
-  ["fusible","Fusible"],
-  ["contactor_precarga","Contactor de precarga"],
-  ["resistencia_precarga","Resistencia de precarga"],
-  ["reactor","Reactor"],
-  ["filtro","Filtro"],
-  ["hmi_teclado","HMI / teclado"],
-  ["sensor","Sensor"],
-  ["cable_comunicacion","Cable de comunicación"],
-  ["kit_repuestos","Kit de repuestos"],
-  ["otro","Otro"]
+const REP_TIPOS = [
+  ["tarjeta_control", "Tarjeta de control"],
+  ["tarjeta_potencia", "Tarjeta de potencia"],
+  ["tarjeta_gate_driver", "Tarjeta gate driver"],
+  ["tarjeta_interfaz", "Tarjeta de interfaz"],
+  ["fuente", "Fuente de alimentación"],
+  ["modulo_igbt", "Módulo IGBT"],
+  ["modulo_rectificador", "Módulo rectificador"],
+  ["condensador_dc", "Condensador de bus DC"],
+  ["ventilador", "Ventilador"],
+  ["fusible", "Fusible"],
+  ["contactor_precarga", "Contactor de precarga"],
+  ["resistencia_precarga", "Resistencia de precarga"],
+  ["reactor", "Reactor"],
+  ["filtro", "Filtro"],
+  ["hmi_teclado", "HMI o teclado"],
+  ["sensor", "Sensor"],
+  ["cable_comunicacion", "Cable de comunicación"],
+  ["kit_repuestos", "Kit de repuestos"],
+  ["otro", "Otro"]
 ];
-const CLASES = [
-  ["parte_numero","Parte número"],
-  ["marcacion_impresa","Marcación impresa"],
-  ["revision","Revisión / sufijo"],
-  ["codigo_sap","Código SAP"],
-  ["codigo_proveedor","Código de proveedor"],
-  ["codigo_alterno","Código alterno"],
-  ["numero_serie_formato","Formato de número de serie"]
+const REP_CLASES = [
+  ["parte_numero", "Parte número"],
+  ["marcacion_impresa", "Marcación impresa"],
+  ["revision", "Revisión o sufijo"],
+  ["codigo_sap", "Código SAP"],
+  ["codigo_proveedor", "Código de proveedor"],
+  ["codigo_alterno", "Código alterno"],
+  ["numero_serie_formato", "Formato de número de serie"]
 ];
-const TIPOS_IMG = [
-  ["pieza","Pieza completa"],
-  ["marcacion","Marcación o etiqueta"],
-  ["ubicacion","Ubicación en el equipo"],
-  ["conexion","Conexionado"],
-  ["despiece","Despiece"]
+const REP_TIPOS_IMG = [
+  ["pieza", "Pieza completa"],
+  ["marcacion", "Marcación o etiqueta"],
+  ["ubicacion", "Ubicación en el equipo"],
+  ["conexion", "Conexionado"],
+  ["despiece", "Despiece"]
+];
+const REP_FUENTES = [
+  ["etiqueta", "Etiqueta de la pieza"],
+  ["manual", "Manual del fabricante"],
+  ["cotizacion", "Cotización"],
+  ["sap", "SAP"],
+  ["foto_campo", "Foto de campo"]
 ];
 
-const etiqueta = (lista, v) => (lista.find(x => x[0] === v) || [null, v || "—"])[1];
-const $ = id => document.getElementById(id);
-const esc = s => String(s ?? "").replace(/[&<>"']/g, c =>
-  ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
+const repEtiq = (lista, v) => (lista.find(x => x[0] === v) || [null, v || "—"])[1];
+const repEl = id => document.getElementById(id);
+const repEsc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const repOpc = lista => lista.map(x =>
+  '<option value="' + repEsc(x[0]) + '">' + repEsc(x[1]) + "</option>").join("");
 
-let ROL = null;
-let puedeEditar = false, puedeSubirFoto = false;
-let FACETAS = [];
-let RESULTADOS = [];
-let ACTUAL = null;          // ficha abierta
-let GALERIA = [];           // imágenes de la ficha
-let GAL_IDX = 0;
+let repRol = null;
+let repPuedeEditar = false;
+let repPuedeFoto = false;
+let repFacetas = [];
+let repFilas = [];
+let repActual = null;
+let repGaleria = [];
 
-/* ---------- URLs firmadas con caché en memoria ---------- */
-const urlCache = new Map();
-async function urlFirmada(path, seg = 3600) {
+/* ---------- URLs firmadas, con cache en memoria ---------- */
+const repUrls = new Map();
+async function repUrlFirmada(path, seg) {
   if (!path) return null;
-  const hit = urlCache.get(path);
+  seg = seg || 3600;
+  const hit = repUrls.get(path);
   if (hit && hit.exp > Date.now()) return hit.url;
-  const { data, error } = await sb.storage.from(BUCKET).createSignedUrl(path, seg);
+  const { data, error } = await sb.storage.from(REP_BUCKET).createSignedUrl(path, seg);
   if (error || !data) return null;
-  urlCache.set(path, { url: data.signedUrl, exp: Date.now() + (seg - 120) * 1000 });
+  repUrls.set(path, { url: data.signedUrl, exp: Date.now() + (seg - 120) * 1000 });
   return data.signedUrl;
 }
 
-/* =====================================================================
+/* ═══════════════════════════════════════════════════════════════════════
    Arranque
-   ===================================================================== */
-async function iniciar() {
-  const { data: ses } = await sb.auth.getSession();
-  if (!ses || !ses.session) {
-    $("meta").textContent = "Sesión no iniciada. Ingresa desde el portal de Kronos-M.";
+   ═══════════════════════════════════════════════════════════════════════ */
+async function repIniciar() {
+  if (!sb) {
+    repEl("rep-meta").textContent =
+      "Sin cliente de datos. Abre el catálogo desde el menú de Kronos-M.";
     return;
   }
+  const { data: ses } = await sb.auth.getSession();
+  if (!ses || !ses.session) {
+    repEl("rep-meta").textContent = "Sesión no iniciada. Ingresa desde Kronos-M.";
+    return;
+  }
+
+  /* El rol lo resuelve la base, que es la misma fuente que leen las
+     politicas RLS. Si la llamada falla se cae al usuario del contenedor,
+     que ya lo tiene cargado. */
   try {
     const { data } = await sb.rpc("mi_rol");
-    ROL = data || null;
-  } catch (e) { ROL = null; }
+    repRol = data || null;
+  } catch (e) { repRol = null; }
+  if (!repRol) {
+    try {
+      if (window.parent !== window && window.parent.usuarioActual) {
+        repRol = window.parent.usuarioActual.rol || null;
+      }
+    } catch (e) { /* otro origen */ }
+  }
 
-  puedeEditar = ["admin", "supervisor"].includes(ROL);
-  puedeSubirFoto = puedeEditar || ROL === "tecnico";
-  $("rolChip").textContent = ROL || "sin rol";
-  $("fabNuevo").hidden = !puedeEditar;
+  repPuedeEditar = ["admin", "supervisor"].indexOf(repRol) >= 0;
+  repPuedeFoto = repPuedeEditar || repRol === "tecnico";
+  repEl("rep-rol").textContent = repRol || "sin rol";
+  repEl("rep-fab").hidden = !repPuedeEditar;
 
-  await cargarFacetas();
-  await buscar();
+  await repCargarFacetas();
+  await repBuscar();
 }
 
-async function cargarFacetas() {
+async function repCargarFacetas() {
   const { data, error } = await sb.rpc("rep_facetas");
   if (error) return;
-  FACETAS = data || [];
-  llenar($("fMarca"), "Todas las marcas", FACETAS.filter(f => f.faceta === "marca"));
-  llenar($("fTipo"), "Todos los tipos",
-    FACETAS.filter(f => f.faceta === "tipo")
-           .map(f => ({ valor: f.valor, etiqueta: etiqueta(TIPOS, f.valor), n: f.n })));
-  refrescarSeries();
+  repFacetas = data || [];
+  repLlenar(repEl("rep-f-marca"), "Todas las marcas",
+    repFacetas.filter(f => f.faceta === "marca"));
+  repLlenar(repEl("rep-f-tipo"), "Todos los tipos",
+    repFacetas.filter(f => f.faceta === "tipo").map(f =>
+      ({ valor: f.valor, etiqueta: repEtiq(REP_TIPOS, f.valor), n: f.n })));
+  repRefrescarSeries();
 }
 
-function llenar(sel, primera, filas) {
+function repLlenar(sel, primera, filas) {
   const prev = sel.value;
-  sel.innerHTML = "<option value=\"\">" + esc(primera) + "</option>" +
-    filas.map(f => "<option value=\"" + esc(f.valor) + "\">" +
-      esc(f.etiqueta) + " (" + f.n + ")</option>").join("");
-  if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
+  sel.innerHTML = '<option value="">' + repEsc(primera) + "</option>" +
+    filas.map(f => '<option value="' + repEsc(f.valor) + '">' +
+      repEsc(f.etiqueta) + " (" + f.n + ")</option>").join("");
+  if ([].slice.call(sel.options).some(o => o.value === prev)) sel.value = prev;
 }
 
-function refrescarSeries() {
-  const marca = $("fMarca").value;
-  let series = FACETAS.filter(f => f.faceta === "serie");
-  if (marca) {
-    const pref = marca + " · ";
-    series = series.filter(f => f.etiqueta.toUpperCase().startsWith(pref));
-  }
-  llenar($("fSerie"), "Todas las series",
+function repRefrescarSeries() {
+  const marca = repEl("rep-f-marca").value;
+  let series = repFacetas.filter(f => f.faceta === "serie");
+  if (marca) series = series.filter(f => f.etiqueta.toUpperCase().indexOf(marca + " · ") === 0);
+  repLlenar(repEl("rep-f-serie"), "Todas las series",
     series.map(f => ({ valor: f.valor, etiqueta: f.etiqueta.split(" · ").pop(), n: f.n })));
 }
 
-/* =====================================================================
-   Búsqueda
-   ===================================================================== */
-async function buscar() {
-  $("meta").textContent = "Buscando…";
-  $("lista").innerHTML = "<div class=\"cargando\">…</div>";
-  const params = {
-    p_texto: $("q").value.trim() || null,
-    p_marca: $("fMarca").value || null,
-    p_serie: $("fSerie").value || null,
-    p_tipo: $("fTipo").value || null,
-    p_solo_activos: $("fEstado").value === "activos",
+/* ═══════════════════════════════════════════════════════════════════════
+   Busqueda
+   ═══════════════════════════════════════════════════════════════════════ */
+async function repBuscar() {
+  repEl("rep-meta").textContent = "Buscando…";
+  repEl("rep-listado").innerHTML = '<div class="rep-cargando">…</div>';
+  const { data, error } = await sb.rpc("rep_buscar", {
+    p_texto: repEl("rep-q").value.trim() || null,
+    p_marca: repEl("rep-f-marca").value || null,
+    p_serie: repEl("rep-f-serie").value || null,
+    p_tipo: repEl("rep-f-tipo").value || null,
+    p_solo_activos: repEl("rep-f-estado").value === "activos",
     p_limit: 200
-  };
-  const { data, error } = await sb.rpc("rep_buscar", params);
+  });
   if (error) {
-    $("meta").textContent = "No se pudo consultar el catálogo.";
-    $("lista").innerHTML = "<div class=\"vacio\"><b>Consulta fallida</b>" +
-      esc(error.message) + "</div>";
+    repEl("rep-meta").textContent = "No se pudo consultar el catálogo.";
+    repEl("rep-listado").innerHTML = '<div class="rep-vacio"><b>Consulta fallida</b>' +
+      repEsc(error.message) + "</div>";
     return;
   }
-  RESULTADOS = data || [];
-  pintarLista();
+  repFilas = data || [];
+  repPintarLista();
 }
 
-function pintarLista() {
-  const cont = $("lista");
-  const sinFoto = RESULTADOS.filter(r => !r.imagen_thumb).length;
-  $("meta").textContent = RESULTADOS.length + " repuesto(s)" +
+function repPintarLista() {
+  const cont = repEl("rep-listado");
+  const sinFoto = repFilas.filter(r => !r.imagen_thumb).length;
+  repEl("rep-meta").textContent = repFilas.length + " repuesto(s)" +
     (sinFoto ? " · " + sinFoto + " sin imagen" : "");
 
-  if (!RESULTADOS.length) {
-    cont.innerHTML = "<div class=\"vacio\"><b>Nada coincide con esa búsqueda</b>" +
+  if (!repFilas.length) {
+    cont.innerHTML = '<div class="rep-vacio"><b>Nada coincide con esa búsqueda</b>' +
       "Prueba con el número tal como está impreso en la pieza, o quita los filtros." +
       "</div>";
     return;
   }
 
-  cont.innerHTML = RESULTADOS.map((r, i) => {
+  cont.innerHTML = repFilas.map((r, i) => {
     const sub = [r.marca, r.serie, r.aplicaciones].filter(Boolean).join(" · ");
     const chips = [];
-    if (r.critico) chips.push("<span class=\"chip crit\">crítico</span>");
-    if (r.estado !== "activo") chips.push("<span class=\"chip obs\">" + esc(r.estado) + "</span>");
-    chips.push("<span class=\"chip\">" + esc(etiqueta(TIPOS, r.tipo)) + "</span>");
-    if (!r.imagen_thumb) chips.push("<span class=\"chip sinfoto\">sin imagen</span>");
+    if (r.critico) chips.push('<span class="rep-chip crit">crítico</span>');
+    if (r.estado !== "activo") chips.push('<span class="rep-chip obs">' + repEsc(r.estado) + "</span>");
+    chips.push('<span class="rep-chip">' + repEsc(repEtiq(REP_TIPOS, r.tipo)) + "</span>");
+    if (!r.imagen_thumb) chips.push('<span class="rep-chip">sin imagen</span>');
     const img = r.imagen_thumb
-      ? "<img class=\"thumb\" data-path=\"" + esc(r.imagen_thumb) + "\" alt=\"\">"
-      : "<div class=\"thumb thumb-vacio\">sin<br>imagen</div>";
-    return "<button class=\"card\" type=\"button\" data-i=\"" + i + "\">" + img +
-      "<div class=\"card-cuerpo\">" +
-        "<div class=\"card-den\">" + esc(r.denominacion) + "</div>" +
-        "<div class=\"card-pn\">" + esc(r.parte_numero || r.marcacion || "sin código") + "</div>" +
-        "<div class=\"card-sub\">" + esc(sub) + "</div>" +
-        "<div class=\"chips\">" + chips.join("") + "</div>" +
+      ? '<img class="rep-thumb" data-path="' + repEsc(r.imagen_thumb) + '" alt="">'
+      : '<div class="rep-thumb rep-thumb-vacio">sin<br>imagen</div>';
+    return '<button class="rep-card" type="button" data-i="' + i + '">' + img +
+      '<div class="rep-cuerpo">' +
+        '<div class="rep-den">' + repEsc(r.denominacion) + "</div>" +
+        '<div class="rep-pn">' + repEsc(r.parte_numero || r.marcacion || "sin código") + "</div>" +
+        '<div class="rep-sub">' + repEsc(sub) + "</div>" +
+        '<div class="rep-chips">' + chips.join("") + "</div>" +
       "</div></button>";
   }).join("");
 
-  cont.querySelectorAll(".thumb[data-path]").forEach(async el => {
-    const u = await urlFirmada(el.dataset.path);
+  cont.querySelectorAll(".rep-thumb[data-path]").forEach(async el => {
+    const u = await repUrlFirmada(el.dataset.path);
     if (u) el.src = u;
   });
 }
 
-/* =====================================================================
+/* ═══════════════════════════════════════════════════════════════════════
    Ficha
-   ===================================================================== */
-async function abrirFicha(id) {
-  const { data, error } = await sb
-    .from("rep_repuesto")
+   ═══════════════════════════════════════════════════════════════════════ */
+async function repAbrirFicha(id) {
+  const { data, error } = await sb.from("rep_repuesto")
     .select("*, rep_identificador(*), rep_aplicacion(*), rep_imagen(*)")
-    .eq("id", id)
-    .single();
-  if (error) { alert("No se pudo abrir la ficha: " + error.message); return; }
+    .eq("id", id).single();
+  if (error) { repEl("rep-meta").textContent = "No se pudo abrir la ficha."; return; }
 
-  ACTUAL = data;
-  GALERIA = (data.rep_imagen || []).sort((a, b) =>
+  repActual = data;
+  repGaleria = (data.rep_imagen || []).slice().sort((a, b) =>
     (b.principal ? 1 : 0) - (a.principal ? 1 : 0) ||
     a.tipo_imagen.localeCompare(b.tipo_imagen));
-  GAL_IDX = 0;
 
-  $("fichaTitulo").textContent = data.denominacion;
-  $("ficha").classList.add("on");
-  $("ficha").setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
-  pintarFicha();
+  repEl("rep-ficha-titulo").textContent = data.denominacion;
+  repEl("rep-ficha").classList.add("abierta");
+  repEl("rep-ficha").setAttribute("aria-hidden", "false");
+  repPintarFicha();
 }
 
-function cerrarFicha() {
-  $("ficha").classList.remove("on");
-  $("ficha").setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
-  ACTUAL = null;
+function repCerrarFicha() {
+  repEl("rep-ficha").classList.remove("abierta");
+  repEl("rep-ficha").setAttribute("aria-hidden", "true");
+  repActual = null;
+  repGaleria = [];
 }
 
-function pintarFicha() {
-  const r = ACTUAL;
-  const ident = (r.rep_identificador || []).sort((a, b) =>
+function repPintarFicha() {
+  const r = repActual;
+  const ident = (r.rep_identificador || []).slice().sort((a, b) =>
     (b.principal ? 1 : 0) - (a.principal ? 1 : 0) || a.clase.localeCompare(b.clase));
   const apl = r.rep_aplicacion || [];
 
-  const bloqueGaleria = GALERIA.length
-    ? "<div class=\"galeria\">" +
-        "<img class=\"galeria-main\" id=\"galMain\" alt=\"\">" +
-        "<div class=\"galeria-pie\">" +
-          "<span id=\"galDesc\"></span><span class=\"tipo\" id=\"galTipo\"></span>" +
-        "</div>" +
-        (GALERIA.length > 1
-          ? "<div class=\"galeria-tiras\" id=\"galTiras\">" + GALERIA.map((g, i) =>
-              "<img class=\"tira" + (i === 0 ? " sel" : "") + "\" data-i=\"" + i +
-              "\" data-path=\"" + esc(g.path_thumb) + "\" alt=\"\">").join("") + "</div>"
+  const galeria = repGaleria.length
+    ? '<div class="rep-galeria">' +
+        '<img class="rep-gal-main" id="rep-gal-main" alt="">' +
+        '<div class="rep-gal-pie"><span id="rep-gal-desc"></span>' +
+          '<span class="tipo" id="rep-gal-tipo"></span></div>' +
+        (repGaleria.length > 1
+          ? '<div class="rep-gal-tiras" id="rep-gal-tiras">' + repGaleria.map((g, i) =>
+              '<img class="rep-tira' + (i === 0 ? " sel" : "") + '" data-i="' + i +
+              '" data-path="' + repEsc(g.path_thumb) + '" alt="">').join("") + "</div>"
           : "") +
       "</div>"
-    : "<div class=\"bloque\"><h3>Imágenes</h3><div class=\"vacio\" style=\"padding:22px 16px\">" +
+    : '<div class="rep-bloque"><h3>Imágenes</h3><div class="rep-vacio" style="padding:24px 18px">' +
       "<b>Esta pieza aún no tiene fotografía</b>" +
-      (puedeSubirFoto
-        ? "Agrega una desde el botón inferior. La foto de la marcación es la más útil en campo."
+      (repPuedeFoto
+        ? "Agrégala desde el botón de abajo. La foto de la marcación es la más útil en campo."
         : "Pídele a un supervisor que cargue una.") +
       "</div></div>";
 
   const filasIdent = ident.length
     ? ident.map(i =>
-        "<div class=\"fila\"><span class=\"et\">" + esc(etiqueta(CLASES, i.clase)) +
-        (i.fuente ? " · " + esc(i.fuente) : "") +
-        "</span><span class=\"vl\">" + esc(i.valor) + "</span></div>").join("")
-    : "<div class=\"fila\"><span class=\"et\">—</span>" +
-      "<span class=\"vl pend\">Sin códigos registrados</span></div>";
+        '<div class="rep-fila"><span class="et">' + repEsc(repEtiq(REP_CLASES, i.clase)) +
+        (i.fuente ? " · " + repEsc(repEtiq(REP_FUENTES, i.fuente)) : "") +
+        '</span><span class="vl">' + repEsc(i.valor) + "</span></div>").join("")
+    : '<div class="rep-fila"><span class="et">—</span>' +
+      '<span class="vl pend">Sin códigos registrados</span></div>';
 
   const filasApl = apl.length
     ? apl.map(a => {
         const modelo = [a.serie, a.modelo, a.frame].filter(Boolean).join(" · ") || a.marca;
         const rango = (a.potencia_min_kw || a.potencia_max_kw)
-          ? (a.potencia_min_kw ?? "?") + "–" + (a.potencia_max_kw ?? "?") + " kW " : "";
+          ? (a.potencia_min_kw == null ? "?" : a.potencia_min_kw) + "–" +
+            (a.potencia_max_kw == null ? "?" : a.potencia_max_kw) + " kW "
+          : "";
         const det = rango + (a.tension_v ? a.tension_v + " V" : "");
-        return "<div class=\"fila\"><span class=\"et\">" + esc(a.marca) +
+        return '<div class="rep-fila"><span class="et">' + repEsc(a.marca) +
           (a.confirmado ? "" : " · sin confirmar") + "</span>" +
-          "<span class=\"vl" + (a.confirmado ? "" : " pend") + "\">" + esc(modelo) +
-          (det ? "<br><span class=\"et\">" + esc(det) + "</span>" : "") + "</span></div>";
+          '<span class="vl' + (a.confirmado ? "" : " pend") + '">' + repEsc(modelo) +
+          (det ? '<span class="nota">' + repEsc(det) + "</span>" : "") + "</span></div>";
       }).join("")
-    : "<div class=\"fila\"><span class=\"et\">—</span>" +
-      "<span class=\"vl pend\">Sin aplicaciones registradas</span></div>";
+    : '<div class="rep-fila"><span class="et">—</span>' +
+      '<span class="vl pend">Sin aplicaciones registradas</span></div>';
 
-  $("fichaCuerpo").innerHTML =
-    bloqueGaleria +
-    "<div class=\"bloque\"><h3>Identificación</h3>" + filasIdent + "</div>" +
-    "<div class=\"bloque\"><h3>Aplica a</h3>" + filasApl + "</div>" +
-    "<div class=\"bloque\"><h3>Ficha</h3><dl class=\"kv\">" +
-      "<dt>Marca</dt><dd>" + esc(r.marca) + (r.serie ? " " + esc(r.serie) : "") + "</dd>" +
-      "<dt>Tipo</dt><dd>" + esc(etiqueta(TIPOS, r.tipo)) + "</dd>" +
-      "<dt>Estado</dt><dd>" + esc(r.estado) + (r.critico ? " · crítico" : "") + "</dd>" +
-      "<dt>Material</dt><dd>" + esc(r.codigo_material || "no enlazado") + "</dd>" +
-      (r.observaciones ? "<dt>Notas</dt><dd>" + esc(r.observaciones) + "</dd>" : "") +
+  repEl("rep-ficha-cuerpo").innerHTML = galeria +
+    '<div class="rep-bloque"><h3>Identificación</h3>' + filasIdent + "</div>" +
+    '<div class="rep-bloque"><h3>Aplica a</h3>' + filasApl + "</div>" +
+    '<div class="rep-bloque"><h3>Ficha</h3><dl class="rep-kv">' +
+      "<dt>Marca</dt><dd>" + repEsc(r.marca) + (r.serie ? " " + repEsc(r.serie) : "") + "</dd>" +
+      "<dt>Tipo</dt><dd>" + repEsc(repEtiq(REP_TIPOS, r.tipo)) + "</dd>" +
+      "<dt>Estado</dt><dd>" + repEsc(r.estado) + (r.critico ? " · crítico" : "") + "</dd>" +
+      "<dt>Material</dt><dd>" + repEsc(r.codigo_material || "no enlazado") + "</dd>" +
+      (r.observaciones ? "<dt>Notas</dt><dd>" + repEsc(r.observaciones) + "</dd>" : "") +
     "</dl></div>";
 
-  $("fichaAcciones").innerHTML =
-    (puedeSubirFoto ? "<button type=\"button\" class=\"primario\" id=\"btnFoto\">Agregar imagen</button>" : "") +
-    (puedeEditar ? "<button type=\"button\" id=\"btnCodigo\">Agregar código</button>" +
-                   "<button type=\"button\" id=\"btnAplic\">Agregar aplicación</button>" : "") ||
-    "<button type=\"button\" id=\"btnCerrar2\">Volver</button>";
+  const acciones =
+    (repPuedeFoto ? '<button type="button" class="primario" id="rep-b-foto">Agregar imagen</button>' : "") +
+    (repPuedeEditar ? '<button type="button" id="rep-b-codigo">Agregar código</button>' +
+                      '<button type="button" id="rep-b-aplic">Agregar aplicación</button>' : "");
+  repEl("rep-ficha-pie").innerHTML = acciones ||
+    '<button type="button" id="rep-b-volver">Volver al listado</button>';
 
-  if (GALERIA.length) mostrarImagen(0);
+  if (repGaleria.length) repMostrarImagen(0);
 }
 
-async function mostrarImagen(i) {
-  GAL_IDX = i;
-  const g = GALERIA[i];
+async function repMostrarImagen(i) {
+  const g = repGaleria[i];
   if (!g) return;
-  const main = $("galMain");
+  const main = repEl("rep-gal-main");
   if (main) {
-    const u = await urlFirmada(g.path_full);
+    const u = await repUrlFirmada(g.path_full);
     if (u) { main.src = u; main.dataset.full = u; }
   }
-  const d = $("galDesc"), t = $("galTipo");
+  const d = repEl("rep-gal-desc"), t = repEl("rep-gal-tipo");
   if (d) d.textContent = g.descripcion || "";
-  if (t) t.textContent = etiqueta(TIPOS_IMG, g.tipo_imagen);
-  const tiras = $("galTiras");
+  if (t) t.textContent = repEtiq(REP_TIPOS_IMG, g.tipo_imagen);
+  const tiras = repEl("rep-gal-tiras");
   if (tiras) {
-    tiras.querySelectorAll(".tira").forEach(async el => {
+    tiras.querySelectorAll(".rep-tira").forEach(async el => {
       el.classList.toggle("sel", Number(el.dataset.i) === i);
       if (!el.src) {
-        const u = await urlFirmada(el.dataset.path);
+        const u = await repUrlFirmada(el.dataset.path);
         if (u) el.src = u;
       }
     });
   }
 }
 
-/* =====================================================================
-   Imágenes: reducción en el navegador antes de subir
-   ===================================================================== */
-function leerImagen(file) {
+/* ═══════════════════════════════════════════════════════════════════════
+   Imagenes: reduccion en el navegador antes de subir
+   La conectividad de campo no admite subir el JPG original de 4 MB, y el
+   listado necesita una miniatura que cargue de una. Se generan los dos
+   derivados aqui y se suben ambos.
+   ═══════════════════════════════════════════════════════════════════════ */
+function repLeerImagen(file) {
   return new Promise((res, rej) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -511,7 +1160,7 @@ function leerImagen(file) {
   });
 }
 
-function redimensionar(img, lado, calidad) {
+function repRedimensionar(img, lado, calidad) {
   const escala = Math.min(1, lado / Math.max(img.width, img.height));
   const w = Math.round(img.width * escala);
   const h = Math.round(img.height * escala);
@@ -521,334 +1170,340 @@ function redimensionar(img, lado, calidad) {
   return new Promise(res => c.toBlob(b => res({ blob: b, w: w, h: h }), "image/webp", calidad));
 }
 
-async function subirImagen(file, meta) {
-  const img = await leerImagen(file);
-  const full = await redimensionar(img, 1600, 0.82);
-  const thumb = await redimensionar(img, 320, 0.75);
-  if (!full.blob || !thumb.blob) throw new Error("El navegador no pudo generar el WebP");
+async function repSubirImagen(file, meta) {
+  const img = await repLeerImagen(file);
+  const full = await repRedimensionar(img, 1600, 0.82);
+  const mini = await repRedimensionar(img, 320, 0.75);
+  if (!full.blob || !mini.blob) throw new Error("El navegador no pudo generar el WebP");
 
-  const base = [
-    (ACTUAL.marca || "sin-marca").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-    (ACTUAL.serie || "sin-serie").toLowerCase().replace(/[^a-z0-9]+/g, "-"),
-    ACTUAL.id
-  ].join("/");
-  const uid = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+  const limpiar = s => String(s || "").toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const base = [limpiar(repActual.marca) || "sin-marca",
+                limpiar(repActual.serie) || "sin-serie",
+                repActual.id].join("/");
+  const uid = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
   const pFull = base + "/" + uid + "_full.webp";
-  const pThumb = base + "/" + uid + "_thumb.webp";
-
+  const pMini = base + "/" + uid + "_thumb.webp";
   const opt = { contentType: "image/webp", upsert: false };
-  let r = await sb.storage.from(BUCKET).upload(pFull, full.blob, opt);
-  if (r.error) throw r.error;
-  r = await sb.storage.from(BUCKET).upload(pThumb, thumb.blob, opt);
-  if (r.error) {
-    await sb.storage.from(BUCKET).remove([pFull]);
-    throw r.error;
-  }
 
+  let r = await sb.storage.from(REP_BUCKET).upload(pFull, full.blob, opt);
+  if (r.error) throw r.error;
+  r = await sb.storage.from(REP_BUCKET).upload(pMini, mini.blob, opt);
+  if (r.error) { await sb.storage.from(REP_BUCKET).remove([pFull]); throw r.error; }
+
+  /* Si la fila no entra, las dos imagenes se borran: no se dejan huerfanas
+     en Storage consumiendo cuota sin nadie que las referencie. */
   const { error } = await sb.from("rep_imagen").insert({
-    repuesto_id: ACTUAL.id,
+    repuesto_id: repActual.id,
     tipo_imagen: meta.tipo,
     path_full: pFull,
-    path_thumb: pThumb,
+    path_thumb: pMini,
     descripcion: meta.descripcion || null,
-    ancho_px: full.w,
-    alto_px: full.h,
-    bytes: full.blob.size,
+    ancho_px: full.w, alto_px: full.h, bytes: full.blob.size,
     principal: !!meta.principal,
     tomada_en_campo: !!meta.campo
   });
   if (error) {
-    await sb.storage.from(BUCKET).remove([pFull, pThumb]);
+    await sb.storage.from(REP_BUCKET).remove([pFull, pMini]);
     throw error;
   }
 }
 
-/* =====================================================================
+/* ═══════════════════════════════════════════════════════════════════════
    Modales
-   ===================================================================== */
-function abrirModal(html) {
-  $("modalCaja").innerHTML = html;
-  $("modal").classList.add("on");
+   ═══════════════════════════════════════════════════════════════════════ */
+function repAbrirModal(html) {
+  repEl("rep-modal-caja").innerHTML = html;
+  repEl("rep-modal").classList.add("abierta");
 }
-function cerrarModal() {
-  $("modal").classList.remove("on");
-  $("modalCaja").innerHTML = "";
+function repCerrarModal() {
+  repEl("rep-modal").classList.remove("abierta");
+  repEl("rep-modal-caja").innerHTML = "";
 }
-function aviso(txt, clase) {
-  const c = $("modalCaja");
-  const prev = c.querySelector(".aviso");
+function repAviso(txt, clase) {
+  const c = repEl("rep-modal-caja");
+  const prev = c.querySelector(".rep-aviso");
   if (prev) prev.remove();
   const d = document.createElement("div");
-  d.className = "aviso " + (clase || "err");
+  d.className = "rep-aviso " + (clase || "err");
   d.textContent = txt;
   c.prepend(d);
   c.scrollTop = 0;
 }
-const opciones = lista => lista.map(x =>
-  "<option value=\"" + esc(x[0]) + "\">" + esc(x[1]) + "</option>").join("");
 
-function modalNuevoRepuesto() {
-  abrirModal(
-    "<h3>Nuevo repuesto</h3>" +
-    "<div class=\"duo\">" +
-      "<div class=\"campo\"><label for=\"nMarca\">Marca</label>" +
-        "<input id=\"nMarca\" placeholder=\"Yaskawa\" autocomplete=\"off\"></div>" +
-      "<div class=\"campo\"><label for=\"nSerie\">Serie</label>" +
-        "<input id=\"nSerie\" placeholder=\"iQpump / GA700\" autocomplete=\"off\"></div>" +
+/* Tras cualquier alta se relee la ficha desde la base en vez de parchear
+   el objeto en memoria: si una politica RLS bloqueo la escritura, aqui se
+   nota de inmediato en lugar de mostrar un dato que no quedo guardado. */
+async function repRefrescarActual() {
+  const id = repActual.id;
+  repCerrarFicha();
+  await repBuscar();
+  await repAbrirFicha(id);
+}
+
+function repModalNuevo() {
+  repAbrirModal(
+    "<h3>Repuesto nuevo</h3>" +
+    '<div class="rep-duo">' +
+      '<div class="rep-campo"><label for="rep-n-marca">Marca</label>' +
+        '<input id="rep-n-marca" placeholder="Yaskawa" autocomplete="off"></div>' +
+      '<div class="rep-campo"><label for="rep-n-serie">Serie</label>' +
+        '<input id="rep-n-serie" placeholder="iQpump / GA700" autocomplete="off"></div>' +
     "</div>" +
-    "<div class=\"campo\"><label for=\"nDen\">Denominación</label>" +
-      "<input id=\"nDen\" placeholder=\"Tarjeta de control\" autocomplete=\"off\"></div>" +
-    "<div class=\"campo\"><label for=\"nTipo\">Tipo</label>" +
-      "<select id=\"nTipo\">" + opciones(TIPOS) + "</select></div>" +
-    "<div class=\"campo mono\"><label for=\"nPN\">Parte número</label>" +
-      "<input id=\"nPN\" placeholder=\"ETC740361\" autocomplete=\"off\"></div>" +
-    "<div class=\"campo mono\"><label for=\"nMarc\">Marcación impresa sobre la pieza</label>" +
-      "<input id=\"nMarc\" placeholder=\"ETC740361-S0515.M\" autocomplete=\"off\"></div>" +
-    "<p class=\"ayuda\">Copia la marcación tal como aparece serigrafiada, con guiones y puntos. " +
+    '<div class="rep-campo"><label for="rep-n-den">Denominación</label>' +
+      '<input id="rep-n-den" placeholder="Tarjeta de control" autocomplete="off"></div>' +
+    '<div class="rep-campo"><label for="rep-n-tipo">Tipo</label>' +
+      '<select id="rep-n-tipo">' + repOpc(REP_TIPOS) + "</select></div>" +
+    '<div class="rep-campo mono"><label for="rep-n-pn">Parte número</label>' +
+      '<input id="rep-n-pn" placeholder="ETC740361" autocomplete="off"></div>' +
+    '<div class="rep-campo mono"><label for="rep-n-marc">Marcación impresa sobre la pieza</label>' +
+      '<input id="rep-n-marc" placeholder="ETC740361-S0515.M" autocomplete="off"></div>' +
+    '<p class="rep-ayuda">Copia la marcación tal como está serigrafiada, con guiones y puntos. ' +
       "Es lo que el técnico va a leer en el sitio.</p>" +
-    "<div class=\"campo mono\"><label for=\"nSap\">Código de material (SAP)</label>" +
-      "<input id=\"nSap\" autocomplete=\"off\"></div>" +
-    "<label class=\"check\"><input type=\"checkbox\" id=\"nCrit\">Repuesto crítico</label>" +
-    "<div class=\"modal-pie\">" +
-      "<button type=\"button\" data-cerrar>Cancelar</button>" +
-      "<button type=\"button\" class=\"primario\" id=\"nGuardar\">Guardar repuesto</button>" +
+    '<div class="rep-campo mono"><label for="rep-n-sap">Código de material (SAP)</label>' +
+      '<input id="rep-n-sap" autocomplete="off"></div>' +
+    '<label class="rep-check"><input type="checkbox" id="rep-n-crit">Repuesto crítico</label>' +
+    '<div class="rep-modal-pie">' +
+      '<button type="button" data-cerrar>Cancelar</button>' +
+      '<button type="button" class="primario" id="rep-n-guardar">Guardar repuesto</button>' +
     "</div>"
   );
 
-  $("nGuardar").addEventListener("click", async () => {
-    const marca = $("nMarca").value.trim();
-    const den = $("nDen").value.trim();
-    if (!marca || !den) { aviso("Marca y denominación son obligatorias."); return; }
-    $("nGuardar").disabled = true;
+  repEl("rep-n-guardar").addEventListener("click", async () => {
+    const marca = repEl("rep-n-marca").value.trim();
+    const den = repEl("rep-n-den").value.trim();
+    if (!marca || !den) { repAviso("Marca y denominación son obligatorias."); return; }
+    const btn = repEl("rep-n-guardar");
+    btn.disabled = true;
+
     const { data, error } = await sb.from("rep_repuesto").insert({
       marca: marca,
-      serie: $("nSerie").value.trim() || null,
+      serie: repEl("rep-n-serie").value.trim() || null,
       denominacion: den,
-      tipo: $("nTipo").value,
-      critico: $("nCrit").checked,
-      codigo_material: $("nSap").value.trim() || null
+      tipo: repEl("rep-n-tipo").value,
+      critico: repEl("rep-n-crit").checked,
+      codigo_material: repEl("rep-n-sap").value.trim() || null
     }).select("id").single();
-    if (error) { aviso(error.message); $("nGuardar").disabled = false; return; }
+    if (error) { repAviso(error.message); btn.disabled = false; return; }
 
     const ids = [];
-    if ($("nPN").value.trim())
+    if (repEl("rep-n-pn").value.trim()) {
       ids.push({ repuesto_id: data.id, clase: "parte_numero",
-                 valor: $("nPN").value.trim(), principal: true });
-    if ($("nMarc").value.trim())
+                 valor: repEl("rep-n-pn").value.trim(), principal: true, fuente: "manual" });
+    }
+    if (repEl("rep-n-marc").value.trim()) {
       ids.push({ repuesto_id: data.id, clase: "marcacion_impresa",
-                 valor: $("nMarc").value.trim(), fuente: "etiqueta" });
-    if (ids.length) await sb.from("rep_identificador").insert(ids);
+                 valor: repEl("rep-n-marc").value.trim(), fuente: "etiqueta" });
+    }
+    if (ids.length) {
+      const res = await sb.from("rep_identificador").insert(ids).select("id");
+      if (res.error) {
+        repAviso("El repuesto quedó guardado, pero los códigos no: " + res.error.message);
+      }
+    }
 
-    cerrarModal();
-    await cargarFacetas();
-    await buscar();
-    await abrirFicha(data.id);
+    repCerrarModal();
+    await repCargarFacetas();
+    await repBuscar();
+    await repAbrirFicha(data.id);
   });
 }
 
-function modalImagen() {
-  abrirModal(
+function repModalImagen() {
+  repAbrirModal(
     "<h3>Agregar imagen</h3>" +
-    "<div class=\"campo\"><label for=\"iFile\">Fotografía</label>" +
-      "<input id=\"iFile\" type=\"file\" accept=\"image/*\" capture=\"environment\"></div>" +
-    "<div class=\"campo\"><label for=\"iTipo\">Qué muestra</label>" +
-      "<select id=\"iTipo\">" + opciones(TIPOS_IMG) + "</select></div>" +
-    "<div class=\"campo\"><label for=\"iDesc\">Descripción</label>" +
-      "<input id=\"iDesc\" placeholder=\"Etiqueta lateral, esquina inferior derecha\"></div>" +
-    (puedeEditar
-      ? "<label class=\"check\"><input type=\"checkbox\" id=\"iPpal\">Usar como imagen principal</label>"
+    '<div class="rep-campo"><label for="rep-i-file">Fotografía</label>' +
+      '<input id="rep-i-file" type="file" accept="image/*" capture="environment"></div>' +
+    '<div class="rep-campo"><label for="rep-i-tipo">Qué muestra</label>' +
+      '<select id="rep-i-tipo">' + repOpc(REP_TIPOS_IMG) + "</select></div>" +
+    '<div class="rep-campo"><label for="rep-i-desc">Descripción</label>' +
+      '<input id="rep-i-desc" placeholder="Etiqueta lateral, esquina inferior derecha"></div>' +
+    (repPuedeEditar
+      ? '<label class="rep-check"><input type="checkbox" id="rep-i-ppal">Usar como imagen principal</label>'
       : "") +
-    "<label class=\"check\"><input type=\"checkbox\" id=\"iCampo\" checked>Tomada en campo</label>" +
-    "<p class=\"ayuda\">La imagen se reduce en el teléfono antes de subir: 1600 px para consulta y " +
-      "320 px para el listado.</p>" +
-    "<div class=\"modal-pie\">" +
-      "<button type=\"button\" data-cerrar>Cancelar</button>" +
-      "<button type=\"button\" class=\"primario\" id=\"iGuardar\">Subir imagen</button>" +
+    '<label class="rep-check"><input type="checkbox" id="rep-i-campo" checked>Tomada en campo</label>' +
+    '<p class="rep-ayuda">La imagen se reduce en el equipo antes de subir: 1600 px para consulta ' +
+      "y 320 px para el listado.</p>" +
+    '<div class="rep-modal-pie">' +
+      '<button type="button" data-cerrar>Cancelar</button>' +
+      '<button type="button" class="primario" id="rep-i-guardar">Subir imagen</button>' +
     "</div>"
   );
 
-  $("iGuardar").addEventListener("click", async () => {
-    const f = $("iFile").files[0];
-    if (!f) { aviso("Selecciona o toma una fotografía."); return; }
-    const btn = $("iGuardar");
+  repEl("rep-i-guardar").addEventListener("click", async () => {
+    const f = repEl("rep-i-file").files[0];
+    if (!f) { repAviso("Selecciona o toma una fotografía."); return; }
+    const btn = repEl("rep-i-guardar");
     btn.disabled = true; btn.textContent = "Subiendo…";
     try {
-      const ppal = puedeEditar && $("iPpal").checked;
+      const chk = repEl("rep-i-ppal");
+      const ppal = repPuedeEditar && chk && chk.checked;
       if (ppal) {
+        /* El indice unico parcial solo admite una principal por pieza. */
         await sb.from("rep_imagen").update({ principal: false })
-          .eq("repuesto_id", ACTUAL.id).eq("principal", true);
+          .eq("repuesto_id", repActual.id).eq("principal", true).select("id");
       }
-      await subirImagen(f, {
-        tipo: $("iTipo").value,
-        descripcion: $("iDesc").value.trim(),
+      await repSubirImagen(f, {
+        tipo: repEl("rep-i-tipo").value,
+        descripcion: repEl("rep-i-desc").value.trim(),
         principal: ppal,
-        campo: $("iCampo").checked
+        campo: repEl("rep-i-campo").checked
       });
-      cerrarModal();
-      const id = ACTUAL.id;
-      cerrarFicha();
-      await buscar();
-      await abrirFicha(id);
+      repCerrarModal();
+      await repRefrescarActual();
     } catch (e) {
-      aviso(e.message || "No se pudo subir la imagen.");
+      repAviso(e.message || "No se pudo subir la imagen.");
       btn.disabled = false; btn.textContent = "Subir imagen";
     }
   });
 }
 
-function modalCodigo() {
-  abrirModal(
+function repModalCodigo() {
+  repAbrirModal(
     "<h3>Agregar código</h3>" +
-    "<div class=\"campo\"><label for=\"cClase\">Clase</label>" +
-      "<select id=\"cClase\">" + opciones(CLASES) + "</select></div>" +
-    "<div class=\"campo mono\"><label for=\"cValor\">Valor</label>" +
-      "<input id=\"cValor\" autocomplete=\"off\"></div>" +
-    "<div class=\"campo\"><label for=\"cFuente\">Fuente</label>" +
-      "<select id=\"cFuente\">" +
-        "<option value=\"etiqueta\">Etiqueta de la pieza</option>" +
-        "<option value=\"manual\">Manual del fabricante</option>" +
-        "<option value=\"cotizacion\">Cotización</option>" +
-        "<option value=\"sap\">SAP</option>" +
-        "<option value=\"foto_campo\">Foto de campo</option>" +
-      "</select></div>" +
-    "<label class=\"check\"><input type=\"checkbox\" id=\"cPpal\">Código principal de la pieza</label>" +
-    "<div class=\"modal-pie\">" +
-      "<button type=\"button\" data-cerrar>Cancelar</button>" +
-      "<button type=\"button\" class=\"primario\" id=\"cGuardar\">Guardar código</button>" +
+    '<div class="rep-campo"><label for="rep-c-clase">Clase</label>' +
+      '<select id="rep-c-clase">' + repOpc(REP_CLASES) + "</select></div>" +
+    '<div class="rep-campo mono"><label for="rep-c-valor">Valor</label>' +
+      '<input id="rep-c-valor" autocomplete="off"></div>' +
+    '<div class="rep-campo"><label for="rep-c-fuente">Fuente</label>' +
+      '<select id="rep-c-fuente">' + repOpc(REP_FUENTES) + "</select></div>" +
+    '<label class="rep-check"><input type="checkbox" id="rep-c-ppal">' +
+      "Código principal de la pieza</label>" +
+    '<div class="rep-modal-pie">' +
+      '<button type="button" data-cerrar>Cancelar</button>' +
+      '<button type="button" class="primario" id="rep-c-guardar">Guardar código</button>' +
     "</div>"
   );
 
-  $("cGuardar").addEventListener("click", async () => {
-    const v = $("cValor").value.trim();
-    if (!v) { aviso("Escribe el valor del código."); return; }
-    $("cGuardar").disabled = true;
-    const ppal = $("cPpal").checked;
+  repEl("rep-c-guardar").addEventListener("click", async () => {
+    const v = repEl("rep-c-valor").value.trim();
+    if (!v) { repAviso("Escribe el valor del código."); return; }
+    const btn = repEl("rep-c-guardar");
+    btn.disabled = true;
+    const ppal = repEl("rep-c-ppal").checked;
     if (ppal) {
       await sb.from("rep_identificador").update({ principal: false })
-        .eq("repuesto_id", ACTUAL.id).eq("principal", true);
+        .eq("repuesto_id", repActual.id).eq("principal", true).select("id");
     }
     const { error } = await sb.from("rep_identificador").insert({
-      repuesto_id: ACTUAL.id,
-      clase: $("cClase").value,
+      repuesto_id: repActual.id,
+      clase: repEl("rep-c-clase").value,
       valor: v,
-      fuente: $("cFuente").value,
+      fuente: repEl("rep-c-fuente").value,
       principal: ppal
-    });
-    if (error) { aviso(error.message); $("cGuardar").disabled = false; return; }
-    cerrarModal();
-    const id = ACTUAL.id;
-    cerrarFicha();
-    await buscar();
-    await abrirFicha(id);
+    }).select("id").single();
+    if (error) { repAviso(error.message); btn.disabled = false; return; }
+    repCerrarModal();
+    await repRefrescarActual();
   });
 }
 
-function modalAplicacion() {
-  abrirModal(
+function repModalAplicacion() {
+  repAbrirModal(
     "<h3>Agregar aplicación</h3>" +
-    "<div class=\"duo\">" +
-      "<div class=\"campo\"><label for=\"aMarca\">Marca</label>" +
-        "<input id=\"aMarca\" value=\"" + esc(ACTUAL.marca) + "\"></div>" +
-      "<div class=\"campo\"><label for=\"aSerie\">Serie</label>" +
-        "<input id=\"aSerie\" value=\"" + esc(ACTUAL.serie || "") + "\"></div>" +
+    '<div class="rep-duo">' +
+      '<div class="rep-campo"><label for="rep-a-marca">Marca</label>' +
+        '<input id="rep-a-marca" value="' + repEsc(repActual.marca) + '"></div>' +
+      '<div class="rep-campo"><label for="rep-a-serie">Serie</label>' +
+        '<input id="rep-a-serie" value="' + repEsc(repActual.serie || "") + '"></div>' +
     "</div>" +
-    "<div class=\"duo\">" +
-      "<div class=\"campo mono\"><label for=\"aModelo\">Modelo</label>" +
-        "<input id=\"aModelo\" placeholder=\"CIMR-PW4A0414\"></div>" +
-      "<div class=\"campo\"><label for=\"aFrame\">Frame</label>" +
-        "<input id=\"aFrame\" placeholder=\"F\"></div>" +
+    '<div class="rep-duo">' +
+      '<div class="rep-campo mono"><label for="rep-a-modelo">Modelo</label>' +
+        '<input id="rep-a-modelo" placeholder="CIMR-PW4A0414"></div>' +
+      '<div class="rep-campo"><label for="rep-a-frame">Frame</label>' +
+        '<input id="rep-a-frame" placeholder="F"></div>' +
     "</div>" +
-    "<div class=\"duo\">" +
-      "<div class=\"campo\"><label for=\"aPmin\">Potencia mín. (kW)</label>" +
-        "<input id=\"aPmin\" type=\"number\" inputmode=\"decimal\" step=\"0.1\"></div>" +
-      "<div class=\"campo\"><label for=\"aPmax\">Potencia máx. (kW)</label>" +
-        "<input id=\"aPmax\" type=\"number\" inputmode=\"decimal\" step=\"0.1\"></div>" +
+    '<div class="rep-duo">' +
+      '<div class="rep-campo"><label for="rep-a-pmin">Potencia mín. (kW)</label>' +
+        '<input id="rep-a-pmin" type="number" inputmode="decimal" step="0.1"></div>' +
+      '<div class="rep-campo"><label for="rep-a-pmax">Potencia máx. (kW)</label>' +
+        '<input id="rep-a-pmax" type="number" inputmode="decimal" step="0.1"></div>' +
     "</div>" +
-    "<div class=\"campo\"><label for=\"aTension\">Tensión (V)</label>" +
-      "<input id=\"aTension\" type=\"number\" inputmode=\"numeric\"></div>" +
-    "<label class=\"check\"><input type=\"checkbox\" id=\"aConf\">" +
+    '<div class="rep-campo"><label for="rep-a-tension">Tensión (V)</label>' +
+      '<input id="rep-a-tension" type="number" inputmode="numeric"></div>' +
+    '<label class="rep-check"><input type="checkbox" id="rep-a-conf">' +
       "Verificada contra manual o contra la unidad</label>" +
-    "<p class=\"ayuda\">Sin verificar, la aplicación queda marcada y no debe usarse como base " +
+    '<p class="rep-ayuda">Sin verificar queda marcada en la ficha y no debe usarse como base ' +
       "de un pedido.</p>" +
-    "<div class=\"modal-pie\">" +
-      "<button type=\"button\" data-cerrar>Cancelar</button>" +
-      "<button type=\"button\" class=\"primario\" id=\"aGuardar\">Guardar aplicación</button>" +
+    '<div class="rep-modal-pie">' +
+      '<button type="button" data-cerrar>Cancelar</button>' +
+      '<button type="button" class="primario" id="rep-a-guardar">Guardar aplicación</button>' +
     "</div>"
   );
 
-  $("aGuardar").addEventListener("click", async () => {
-    const marca = $("aMarca").value.trim();
-    if (!marca) { aviso("La marca es obligatoria."); return; }
-    $("aGuardar").disabled = true;
-    const num = v => (v === "" || v === null ? null : Number(v));
+  repEl("rep-a-guardar").addEventListener("click", async () => {
+    const marca = repEl("rep-a-marca").value.trim();
+    if (!marca) { repAviso("La marca es obligatoria."); return; }
+    const btn = repEl("rep-a-guardar");
+    btn.disabled = true;
+    const num = v => (v === "" || v == null ? null : Number(v));
     const { error } = await sb.from("rep_aplicacion").insert({
-      repuesto_id: ACTUAL.id,
+      repuesto_id: repActual.id,
       marca: marca,
-      serie: $("aSerie").value.trim() || null,
-      modelo: $("aModelo").value.trim() || null,
-      frame: $("aFrame").value.trim() || null,
-      potencia_min_kw: num($("aPmin").value),
-      potencia_max_kw: num($("aPmax").value),
-      tension_v: num($("aTension").value),
-      confirmado: $("aConf").checked
-    });
-    if (error) { aviso(error.message); $("aGuardar").disabled = false; return; }
-    cerrarModal();
-    const id = ACTUAL.id;
-    cerrarFicha();
-    await buscar();
-    await abrirFicha(id);
+      serie: repEl("rep-a-serie").value.trim() || null,
+      modelo: repEl("rep-a-modelo").value.trim() || null,
+      frame: repEl("rep-a-frame").value.trim() || null,
+      potencia_min_kw: num(repEl("rep-a-pmin").value),
+      potencia_max_kw: num(repEl("rep-a-pmax").value),
+      tension_v: num(repEl("rep-a-tension").value),
+      confirmado: repEl("rep-a-conf").checked
+    }).select("id").single();
+    if (error) { repAviso(error.message); btn.disabled = false; return; }
+    repCerrarModal();
+    await repRefrescarActual();
   });
 }
 
-/* =====================================================================
+/* ═══════════════════════════════════════════════════════════════════════
    Eventos
-   ===================================================================== */
-$("btnBuscar").addEventListener("click", buscar);
-$("q").addEventListener("keydown", e => { if (e.key === "Enter") buscar(); });
-$("fMarca").addEventListener("change", () => { refrescarSeries(); buscar(); });
-$("fSerie").addEventListener("change", buscar);
-$("fTipo").addEventListener("change", buscar);
-$("fEstado").addEventListener("change", buscar);
+   ═══════════════════════════════════════════════════════════════════════ */
+repEl("rep-btn-buscar").addEventListener("click", repBuscar);
+repEl("rep-q").addEventListener("keydown", e => { if (e.key === "Enter") repBuscar(); });
+repEl("rep-f-marca").addEventListener("change", () => { repRefrescarSeries(); repBuscar(); });
+repEl("rep-f-serie").addEventListener("change", repBuscar);
+repEl("rep-f-tipo").addEventListener("change", repBuscar);
+repEl("rep-f-estado").addEventListener("change", repBuscar);
+repEl("rep-fab").addEventListener("click", repModalNuevo);
+repEl("rep-volver").addEventListener("click", repCerrarFicha);
 
-$("lista").addEventListener("click", e => {
-  const card = e.target.closest(".card");
-  if (card) abrirFicha(RESULTADOS[Number(card.dataset.i)].id);
+repEl("rep-listado").addEventListener("click", e => {
+  const card = e.target.closest(".rep-card");
+  if (card) repAbrirFicha(repFilas[Number(card.dataset.i)].id);
 });
 
-$("btnCerrarFicha").addEventListener("click", cerrarFicha);
-$("fabNuevo").addEventListener("click", modalNuevoRepuesto);
-
-$("ficha").addEventListener("click", e => {
-  const tira = e.target.closest(".tira");
-  if (tira) { mostrarImagen(Number(tira.dataset.i)); return; }
-  if (e.target.id === "galMain" && e.target.dataset.full) {
-    $("visorImg").src = e.target.dataset.full;
-    $("visor").classList.add("on");
+repEl("rep-ficha").addEventListener("click", e => {
+  const tira = e.target.closest(".rep-tira");
+  if (tira) { repMostrarImagen(Number(tira.dataset.i)); return; }
+  if (e.target.id === "rep-gal-main" && e.target.dataset.full) {
+    repEl("rep-visor-img").src = e.target.dataset.full;
+    repEl("rep-visor").classList.add("abierta");
     return;
   }
-  if (e.target.id === "btnFoto") modalImagen();
-  if (e.target.id === "btnCodigo") modalCodigo();
-  if (e.target.id === "btnAplic") modalAplicacion();
-  if (e.target.id === "btnCerrar2") cerrarFicha();
+  if (e.target.id === "rep-b-foto") repModalImagen();
+  if (e.target.id === "rep-b-codigo") repModalCodigo();
+  if (e.target.id === "rep-b-aplic") repModalAplicacion();
+  if (e.target.id === "rep-b-volver") repCerrarFicha();
 });
 
-$("modal").addEventListener("click", e => {
-  if (e.target.id === "modal" || e.target.hasAttribute("data-cerrar")) cerrarModal();
+repEl("rep-modal").addEventListener("click", e => {
+  if (e.target.id === "rep-modal" || e.target.hasAttribute("data-cerrar")) repCerrarModal();
 });
-$("visorCerrar").addEventListener("click", () => $("visor").classList.remove("on"));
-$("visor").addEventListener("click", e => {
-  if (e.target.id === "visor") $("visor").classList.remove("on");
+repEl("rep-visor-cerrar").addEventListener("click", () =>
+  repEl("rep-visor").classList.remove("abierta"));
+repEl("rep-visor").addEventListener("click", e => {
+  if (e.target.id === "rep-visor") repEl("rep-visor").classList.remove("abierta");
 });
 
 document.addEventListener("keydown", e => {
   if (e.key !== "Escape") return;
-  if ($("visor").classList.contains("on")) { $("visor").classList.remove("on"); return; }
-  if ($("modal").classList.contains("on")) { cerrarModal(); return; }
-  if ($("ficha").classList.contains("on")) cerrarFicha();
+  if (repEl("rep-visor").classList.contains("abierta")) {
+    repEl("rep-visor").classList.remove("abierta"); return;
+  }
+  if (repEl("rep-modal").classList.contains("abierta")) { repCerrarModal(); return; }
+  if (repEl("rep-ficha").classList.contains("abierta")) repCerrarFicha();
 });
 
-iniciar();
+repIniciar();
 </script>
 </body>
 </html>
