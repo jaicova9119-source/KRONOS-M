@@ -353,7 +353,10 @@ try {
 
 var CLAVE_COLA    = 'dp_pendientes';        /* la misma que usa index.html */
 var CLAVE_ESPEJO  = 'dp_espejo_unidades';
-var CLAVE_ADMIN   = 'dp_es_admin';          /* cache: sin señal no se puede consultar */
+/* Cache del permiso delegado: sin señal no se puede consultar. Ya no es
+   "es admin": el admin tampoco lo tiene si no se lo delega. */
+var CLAVE_PERMISO = 'dp_puedo_estado_monitoreo';
+var CLAVE_ADMIN_VIEJA = 'dp_es_admin';      /* cache anterior, se limpia */
 var CLAVE_MOTIVOS = 'dp_motivos_exclusion';
 
 var $ = function(id){ return document.getElementById(id); };
@@ -370,7 +373,7 @@ function aviso(cont, texto, clase){
    no usar getUser() para decidir si hay sesion, porque esa si consulta
    al servidor y sin señal responde error.
    ===================================================================== */
-var SESION = null, ES_ADMIN = false, MOTIVOS = [];
+var SESION = null, PUEDE_ESTADO = false, MOTIVOS = [];
 
 function pintarSesion(){
   var e = $('sesion');
@@ -449,8 +452,8 @@ function cerrarSesion(){
   }
   if(!confirm('Cerrar sesion en este dispositivo?')) return;
   sb.auth.signOut().catch(function(){}).then(function(){
-    SESION = null; ES_ADMIN = false;
-    almacen.removeItem(CLAVE_ADMIN);
+    SESION = null; PUEDE_ESTADO = false;
+    almacen.removeItem(CLAVE_PERMISO);
     mostrarLogin('Sesion cerrada.', '');
   });
 }
@@ -458,14 +461,15 @@ function cerrarSesion(){
 /* El permiso real lo verifica la base en cada RPC. Este cache es solo
    para saber si se dibuja el control cuando no hay señal. */
 function cargarPermisos(){
-  try { ES_ADMIN = almacen.getItem(CLAVE_ADMIN) === '1'; } catch(e){}
+  try { almacen.removeItem(CLAVE_ADMIN_VIEJA); } catch(e){}
+  try { PUEDE_ESTADO = almacen.getItem(CLAVE_PERMISO) === '1'; } catch(e){}
   try { MOTIVOS = JSON.parse(almacen.getItem(CLAVE_MOTIVOS) || '[]'); } catch(e){ MOTIVOS = []; }
   if(!navigator.onLine || !sb) return;
 
-  sb.rpc('dp_es_admin').then(function(r){
+  sb.rpc('dp_puedo_estado_monitoreo').then(function(r){
     if(r.error) return;
-    ES_ADMIN = (r.data === true);
-    almacen.setItem(CLAVE_ADMIN, ES_ADMIN ? '1' : '0');
+    PUEDE_ESTADO = (r.data === true);
+    almacen.setItem(CLAVE_PERMISO, PUEDE_ESTADO ? '1' : '0');
     if(unidad) pintarEstado();
   }).catch(function(){});
 
@@ -1158,7 +1162,7 @@ function pintarEstado(){
       + (nota ? '<br><span style="opacity:.8">' + esc(nota) + '</span>' : '');
 
   box.innerHTML = '<div class="aviso ' + (activo ? 'ok' : 'warn') + '">' + txt
-    + (ES_ADMIN
+    + (PUEDE_ESTADO
         ? '<div style="margin-top:10px"><button class="b sec" id="btn-estado">'
           + (activo ? 'Sacar del monitoreo' : 'Reactivar monitoreo') + '</button></div>'
         : '')
