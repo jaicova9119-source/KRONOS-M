@@ -2428,15 +2428,18 @@ function keLibro(ExcelJS, d, meta){
       { k:'nota', t:'Nota', w:44 },
       { k:'fuera_desde', t:'Fuera desde', w:12 },
       { k:'dias_fuera', t:'Dias fuera', w:10, f:V },
-      { k:'declarado_por', t:'Declarado por', w:26 },
+      { k:'registrado_el', t:'Registrado el', w:12 },
+      { k:'declarado_por', t:'Registrado por', w:26 },
     ], d.fuera.map(x => ({
         ...x,
         motivo: x.motivo || x.motivo_cod || null,
-        fuera_desde: x.fuera_desde ? String(x.fuera_desde).slice(0, 10) : 'sin registro'
+        fuera_desde: x.fuera_desde ? String(x.fuera_desde).slice(0, 10) : 'sin fecha',
+        registrado_el: x.registrado_el ? String(x.registrado_el).slice(0, 10) : null
       })), {
       titulo: 'Unidades fuera de monitoreo \u00b7 ' + meta.ambito,
       sub: 'No se descargan datos ni se calcula su condicion hasta que se reactiven. '
-         + '"Sin registro" es una unidad que salio antes de que existiera la bitacora de estados.'
+         + '"Fuera desde" es el dia en que la unidad salio; "Registrado el", cuando se anoto en la '
+         + 'plataforma. "Sin fecha" es una unidad que salio antes de que existiera la bitacora de estados.'
     });
     ws.getColumn('nota').alignment = { wrapText:true, vertical:'top' };
   }
