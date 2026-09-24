@@ -2978,8 +2978,8 @@ input,select,textarea{font-family:inherit;font-size:15px;}
           <option value="reprogramada">Reprogramada</option>
         </select>
       </div>
-      <div class="field corto"><label>Avance acumulado (%)</label><input id="prog-e-avance" type="number" min="0" max="100" step="5"/></div>
-      <div class="field corto"><label>HH <b>de esta jornada</b></label><input id="prog-e-hh" type="number" step="0.5" placeholder="Solo del día"/></div>
+      <div class="field corto"><label id="prog-e-avance-lbl">Avance acumulado (%)</label><input id="prog-e-avance" type="number" min="0" max="100" step="5"/></div>
+      <div class="field corto"><label id="prog-e-hh-lbl">HH <b>de esta jornada</b></label><input id="prog-e-hh" type="number" step="0.5" placeholder="Solo del día"/></div>
     </div>
 
     <!-- El lider es quien firma arriba en el FO-016 y los demas figuran al
@@ -14436,8 +14436,34 @@ async function progBorrarJornada(fecha) {
 }
 
 function progToggleMotivo() {
-  const noEjec = document.getElementById("prog-e-estado").value === "no_ejecutada";
+  const estado = document.getElementById("prog-e-estado").value;
+  const noEjec = estado === "no_ejecutada";
   document.getElementById("prog-e-motivo-wrap").style.display = noEjec ? "" : "none";
+
+  /* El formulario se ajusta al estado en vez de esperar a que el tecnico
+     falle y leer un aviso. Lo que se pide en cada caso deberia verse antes de
+     escribir, no despues de guardar. */
+  const avance = document.getElementById("prog-e-avance");
+  const lblAv  = document.getElementById("prog-e-avance-lbl");
+  const lblHH  = document.getElementById("prog-e-hh-lbl");
+
+  if (estado === "ejecutada") {
+    // Ejecutada es 100% por definicion: se rellena y se bloquea.
+    avance.value = "100";
+    avance.readOnly = true;
+    avance.style.opacity = ".6";
+    lblAv.innerHTML = "Avance acumulado (%) <b>· 100 al cerrar</b>";
+  } else {
+    avance.readOnly = false;
+    avance.style.opacity = "";
+    lblAv.innerHTML = estado === "en_ejecucion"
+      ? "Avance acumulado (%) <b>· obligatorio</b>"
+      : "Avance acumulado (%)";
+  }
+
+  lblHH.innerHTML = noEjec
+    ? "HH <b>de esta jornada</b>"
+    : "HH <b>de esta jornada</b> · obligatorio";
 }
 
 async function progGuardarEjecucion() {
@@ -14449,6 +14475,39 @@ async function progGuardarEjecucion() {
   if (estado === "no_ejecutada" && !motivo) {
     toast("Indica el motivo de no ejecución");
     return;
+  }
+
+  const hhTxt     = document.getElementById("prog-e-hh").value.trim();
+  const avanceEl  = document.getElementById("prog-e-avance");
+  let   avanceTxt = avanceEl.value.trim();
+
+  /* Una actividad ejecutada esta al 100% por definicion. Pedir que ademas se
+     escriba el numero solo sirve para que alguien teclee 90 por costumbre y
+     la actividad quede eternamente a medias. */
+  if (estado === "ejecutada") {
+    avanceTxt = "100";
+    avanceEl.value = "100";
+  }
+
+  /* Las horas son el registro de lo que costo el trabajo. Sin ellas la
+     jornada existe pero no mide nada, y el indicador de horas de la semana
+     sale corto sin que nadie sepa por que. Una no ejecutada si puede ir sin
+     horas: no se trabajo. */
+  if (estado !== "no_ejecutada" && hhTxt === "") {
+    toast("Faltan las horas hombre de esta jornada");
+    document.getElementById("prog-e-hh").focus();
+    return;
+  }
+
+  /* Dejarla en ejecucion sin decir por donde va convierte el tablero en una
+     lista de cosas empezadas de las que nadie sabe cuanto falta. */
+  if (estado === "en_ejecucion") {
+    const n = parseInt(avanceTxt, 10);
+    if (avanceTxt === "" || isNaN(n) || n <= 0 || n >= 100) {
+      toast("Indica el avance: entre 1 y 99 %. Si ya terminó, márcala como ejecutada.");
+      avanceEl.focus();
+      return;
+    }
   }
 
   const personal = progComponerPersonal();
@@ -14463,10 +14522,8 @@ async function progGuardarEjecucion() {
   const { data, error } = await sb.rpc("programa_registrar_ejecucion", {
     p_actividad_id: progActual.id,
     p_estado: estado,
-    p_avance: document.getElementById("prog-e-avance").value !== ""
-      ? parseInt(document.getElementById("prog-e-avance").value, 10) : null,
-    p_hh_ele: document.getElementById("prog-e-hh").value !== ""
-      ? parseFloat(document.getElementById("prog-e-hh").value) : null,
+    p_avance: avanceTxt !== "" ? parseInt(avanceTxt, 10) : null,
+    p_hh_ele: hhTxt !== "" ? parseFloat(hhTxt) : null,
     // Se manda cadena vacía en vez de null para poder BORRAR un campo:
     // con null la función conserva el valor anterior.
     p_personal: personal,
