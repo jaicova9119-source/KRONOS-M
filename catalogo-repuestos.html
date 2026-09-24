@@ -1620,6 +1620,23 @@ async function repCerrarBitacora(lecturaId, repuestoId, editados) {
   } catch (e) { /* la traza no debe bloquear el guardado */ }
 }
 
+/* PostgREST rechaza un INSERT de varias filas si los objetos no tienen
+   EXACTAMENTE las mismas claves: devuelve PGRST102 y no entra ninguna, no
+   una si y otra no. Por eso toda fila de identificador se arma aqui, con
+   el juego completo de campos, y nunca a mano en cada sitio. */
+function repFilaIdent(repuestoId, clase, valor, opc) {
+  const o = opc || {};
+  return {
+    repuesto_id: repuestoId,
+    clase: clase,
+    valor: valor,
+    fuente: o.fuente || null,
+    principal: o.principal === true,
+    verificado: o.verificado === true,
+    notas: o.notas || null
+  };
+}
+
 const REP_MAPA_ALTA = {
   marca: "rep-n-marca",
   serie: "rep-n-serie",
@@ -1779,22 +1796,20 @@ function repModalNuevo() {
     const pn = repEl("rep-n-pn").value.trim();
     const mc = repEl("rep-n-marc").value.trim();
     if (pn) {
-      ids.push(Object.assign({ repuesto_id: data.id, clase: "parte_numero",
-                               valor: pn, principal: true }, origen("parte_numero", pn)));
+      ids.push(repFilaIdent(data.id, "parte_numero", pn,
+        Object.assign({ principal: true }, origen("parte_numero", pn))));
     }
     if (mc) {
-      ids.push(Object.assign({ repuesto_id: data.id, clase: "marcacion_impresa",
-                               valor: mc }, origen("marcacion_impresa", mc)));
+      ids.push(repFilaIdent(data.id, "marcacion_impresa", mc,
+        origen("marcacion_impresa", mc)));
     }
     if (prop.revision) {
-      ids.push({ repuesto_id: data.id, clase: "revision", valor: prop.revision,
-                 fuente: "ocr_imagen", verificado: false });
+      ids.push(repFilaIdent(data.id, "revision", prop.revision,
+        { fuente: "ocr_imagen", verificado: false }));
     }
     repEl("rep-n-extras").querySelectorAll("input[type=checkbox]:checked").forEach(c => {
-      ids.push({ repuesto_id: data.id, clase: "codigo_alterno",
-                 valor: c.dataset.valor,
-                 notas: c.dataset.etiqueta || null,
-                 fuente: "ocr_imagen", verificado: false });
+      ids.push(repFilaIdent(data.id, "codigo_alterno", c.dataset.valor,
+        { fuente: "ocr_imagen", verificado: false, notas: c.dataset.etiqueta || null }));
     });
 
     repPendientes = [];
@@ -1803,7 +1818,11 @@ function repModalNuevo() {
          RLS vuelve sin error y sin filas, y se reporta como exito. */
       const res = await sb.from("rep_identificador").insert(ids).select("id");
       if (res.error) {
-        repPendientes.push("Los códigos no se guardaron: " + res.error.message);
+        const m = (res.error.code === "PGRST102")
+          ? "Los códigos no se guardaron por un defecto de formato en el envío. " +
+            "Repórtalo: el detalle es " + res.error.message
+          : "Los códigos no se guardaron: " + res.error.message;
+        repPendientes.push(m);
       } else if (!res.data || res.data.length !== ids.length) {
         repPendientes.push("Se esperaban " + ids.length + " código(s) y se guardaron " +
           ((res.data && res.data.length) || 0) + ". Revisa los permisos de escritura.");
@@ -1972,9 +1991,10 @@ function repModalImagen() {
         const marcados = [].slice.call(cajaExtras.querySelectorAll("input:checked"))
           .map(c => repLecturaFicha.nuevos[Number(c.dataset.i)])
           .filter(Boolean)
-          .map(c => ({ repuesto_id: repActual.id, clase: c.clase, valor: c.valor,
-                       notas: c.clase === "codigo_alterno" ? c.etiqueta : null,
-                       fuente: "ocr_imagen", verificado: false }));
+          .map(c => repFilaIdent(repActual.id, c.clase, c.valor, {
+            fuente: "ocr_imagen", verificado: false,
+            notas: c.clase === "codigo_alterno" ? c.etiqueta : null
+          }));
         if (marcados.length) {
           const res = await sb.from("rep_identificador").insert(marcados).select("id");
           if (res.error) repAviso("La foto entró, pero los códigos no: " + res.error.message);
@@ -2022,14 +2042,13 @@ function repModalCodigo() {
       await sb.from("rep_identificador").update({ principal: false })
         .eq("repuesto_id", repActual.id).eq("principal", true).select("id");
     }
-    const { error } = await sb.from("rep_identificador").insert({
-      repuesto_id: repActual.id,
-      clase: repEl("rep-c-clase").value,
-      valor: v,
-      fuente: repEl("rep-c-fuente").value,
-      principal: ppal,
-      verificado: repEl("rep-c-ver").checked
-    }).select("id").single();
+    const { error } = await sb.from("rep_identificador")
+      .insert(repFilaIdent(repActual.id, repEl("rep-c-clase").value, v, {
+        fuente: repEl("rep-c-fuente").value,
+        principal: ppal,
+        verificado: repEl("rep-c-ver").checked
+      }))
+      .select("id").single();
     if (error) { repAviso(error.message); btn.disabled = false; return; }
     repCerrarModal();
     await repRefrescarActual();
