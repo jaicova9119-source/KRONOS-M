@@ -1750,7 +1750,11 @@ function keLibro(ExcelJS, d, meta){
   }
 
   f += 1;
-  f = tit(f, 'Que trae cada hoja');
+  const filaIndice = f;
+  f = tit(f, 'Que trae cada hoja',
+    'Toca el nombre de una hoja para ir a ella. Cada hoja tiene arriba a la izquierda '
+    + 'el boton para volver aqui.');
+  const indice = [];
   [['Operacional', 'Ultima lectura de cada unidad, etapa por etapa.'],
    ['Detalle', 'Todos los puntos medidos en la ultima ronda, sin normalizar.'],
    ['Historico', 'Todas las rondas de los ultimos 24 meses.'],
@@ -1766,6 +1770,7 @@ function keLibro(ExcelJS, d, meta){
    ['Configuracion VFD', 'Parametros vigentes del variador.'],
    ['Protecciones', 'Ajustes de proteccion por unidad, en formato largo.']
   ].forEach(([h, t]) => {
+    indice.push({ fila: f, hoja: h });
     cb.getCell(f, 2).value = h;
     cb.getCell(f, 2).font = { bold:true, size:9, color:{ argb:KE_C.azul2 } };
     cb.getCell(f, 2).alignment = { vertical:'top', indent:1 };
@@ -2604,7 +2609,9 @@ function keLibro(ExcelJS, d, meta){
     { k:'pst_marca', t:'PST marca', w:13 },
     { k:'pst_modelo', t:'PST modelo', w:13 },
     { k:'pst_sap', t:'PST SAP', w:11 }
-  ], d.placas, { vacioSi: x => !x.motor_serial });
+  ], d.placas, { vacioSi: x => !x.motor_serial,
+    titulo: 'Placas del equipo instalado \u00b7 ' + meta.ambito,
+    sub: 'Datos de placa de la corrida vigente. Las filas atenuadas no tienen motor registrado.' });
 
   /* ── Propuestas ── */
   if (d.propuestas.length)
@@ -2650,7 +2657,9 @@ function keLibro(ExcelJS, d, meta){
       { k:'cable_longitud', t:'Longitud de cable', w:14 },
       { k:'cable_tipo', t:'Tipo de cable', w:14 },
       { k:'observaciones', t:'Observaciones', w:38 }
-    ], d.setup);
+    ], d.setup, {
+      titulo: 'Configuracion del variador \u00b7 ' + meta.ambito,
+      sub: 'Parametros del ajuste vigente de cada unidad.' });
 
   /* ── Protecciones ── */
   if (d.protecciones.length)
@@ -2666,7 +2675,9 @@ function keLibro(ExcelJS, d, meta){
       { k:'activa', t:'Activa', w:9 },
       { k:'ajuste_origen', t:'Origen del ajuste', w:16 },
       { k:'nota', t:'Nota', w:34 }
-    ], d.protecciones);
+    ], d.protecciones, {
+      titulo: 'Protecciones del variador \u00b7 ' + meta.ambito,
+      sub: 'Una fila por proteccion y unidad, del ajuste vigente.' });
 
   /* La marca de fuera de monitoreo en ambar donde aparezca, para que no se
      pierda entre veinte columnas de datos que se ven normales. */
@@ -2681,7 +2692,74 @@ function keLibro(ExcelJS, d, meta){
     });
   });
 
+  keNavegacion(wb, cb, indice, filaIndice);
   return wb;
+}
+
+/* ── Navegacion entre hojas ──────────────────────────────────────────────
+   Hipervinculos internos en celdas con forma de boton. ExcelJS no dibuja
+   formas, y una forma con macro no abre en el celular ni pasa el filtro
+   de adjuntos del correo; un hipervinculo de celda funciona en Excel de
+   escritorio y movil sin nada mas.
+
+   Se arma al final porque el indice del Resumen se escribe antes de que
+   existan las hojas: solo aqui se sabe cuales salieron en este archivo. */
+function keLink(hoja, celda){
+  return "#'" + String(hoja).replace(/'/g, "''") + "'!" + (celda || 'A1');
+}
+
+function keNavegacion(wb, cb, indice, filaIndice){
+  const borde = { style:'thin', color:{ argb:KE_C.azul2 } };
+  const caja  = { top:borde, left:borde, bottom:borde, right:borde };
+
+  /* Indice: cada nombre es un boton. Una hoja que no salio en este
+     archivo -sin historico, sin propuestas- se deja en gris y se dice,
+     en vez de dejar un vinculo que no lleva a ninguna parte. */
+  indice.forEach(({ fila, hoja }) => {
+    const c = cb.getCell(fila, 2);
+    if (wb.getWorksheet(hoja)){
+      c.value = { text: '\u25b8  ' + hoja, hyperlink: keLink(hoja) };
+      c.font  = { bold:true, size:9, color:{ argb:KE_C.azul } };
+      c.fill  = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.fAzul } };
+      c.border = caja;
+    } else {
+      c.value = hoja + '  (no incluida)';
+      c.font  = { size:9, italic:true, color:{ argb:KE_C.gris2 } };
+    }
+    c.alignment = { vertical:'middle', indent:1 };
+    if ((cb.getRow(fila).height || 0) < 18) cb.getRow(fila).height = 18;
+  });
+
+  /* Acceso al indice desde la banda de encabezado: el indice queda abajo,
+     despues de las cifras, y sin esto hay que bajar a buscarlo. */
+  const ir = cb.getCell(3, 8);
+  ir.value = { text: 'Ver hojas \u25be', hyperlink: keLink('Resumen', 'B' + filaIndice) };
+  ir.font  = { size:9, bold:true, underline:true, color:{ argb:KE_C.blanco } };
+  ir.alignment = { horizontal:'right', vertical:'middle' };
+
+  /* Boton de vuelta en A1 de cada hoja. El titulo y el subtitulo pasan a
+     la columna B: en A1 quedaria tapado por el boton. La fila 1 esta en el
+     panel congelado de todas las hojas, asi que el boton se ve aunque se
+     baje o se corra a la derecha. */
+  wb.worksheets.forEach(ws => {
+    if (ws.name === 'Resumen') return;
+    [1, 2].forEach(r => {
+      const a = ws.getCell(r, 1), b = ws.getCell(r, 2);
+      if (a.isMerged || b.isMerged) return;
+      if (a.value != null && b.value == null){
+        b.value = a.value; b.font = a.font;
+        a.value = null;    a.font = {};
+      }
+    });
+    const c = ws.getCell(1, 1);
+    c.value = { text: '\u25c2 Resumen', hyperlink: keLink('Resumen') };
+    c.font  = { bold:true, size:9, color:{ argb:KE_C.blanco } };
+    c.fill  = { type:'pattern', pattern:'solid', fgColor:{ argb:KE_C.azul } };
+    c.alignment = { horizontal:'center', vertical:'middle' };
+    c.border = caja;
+    if ((ws.getColumn(1).width || 0) < 11) ws.getColumn(1).width = 11;
+    if ((ws.getRow(1).height || 0) < 20) ws.getRow(1).height = 20;
+  });
 }
 
 /* ---------- accion de pantalla ---------- */
