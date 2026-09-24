@@ -1396,6 +1396,31 @@ function keLibro(ExcelJS, d, meta){
   d.aislamiento = d.aislamiento || [];
   d.bitacora    = d.bitacora    || [];
   d.fuera       = d.fuera       || [];
+
+  /* Una unidad fuera de monitoreo esta en todas las hojas con sus datos
+     medidos, marcada. Lo que no hace es contar como ronda vencida ni
+     entrar a las bandas de carga: ahi su ultima lectura es anterior a la
+     salida y describiria una operacion que ya no existe. */
+  const FUERA = new Map(d.fuera.map(x => [x.unidad, x]));
+  const etqFuera = u => {
+    const x = FUERA.get(u);
+    return x ? 'Fuera de monitoreo' + ((x.motivo || x.motivo_cod) ? ' \u00b7 ' + (x.motivo || x.motivo_cod) : '')
+             : 'En monitoreo';
+  };
+  [d.operacional, d.historico].forEach(arr => (arr || []).forEach(r => {
+    r.estado_mon = etqFuera(r.unidad);
+  }));
+  (d.runlife || []).forEach(r => {
+    if (!FUERA.has(r.unidad)) return;
+    const x = FUERA.get(r.unidad);
+    r.nivel = 'Fuera de monitoreo';
+    r.observaciones = 'Fuera de monitoreo'
+      + ((x.motivo || x.motivo_cod) ? ': ' + (x.motivo || x.motivo_cod) : '')
+      + (x.fuera_desde ? ' desde ' + String(x.fuera_desde).slice(0, 10) : '')
+      + '. Nivel no evaluado: los indicadores son los de la ultima medicion antes de la salida.'
+      + (r.observaciones ? ' ' + r.observaciones : '');
+  });
+  const enMon = x => !FUERA.has(x.unidad);
   /* Se agregan las columnas en °F sobre los mismos objetos. Convertir aquí
      y no en cada hoja evita que dos hojas muestren temperaturas distintas
      por haber redondeado en momentos diferentes. */
@@ -1457,15 +1482,17 @@ function keLibro(ExcelJS, d, meta){
   cb.getCell(3, 2).font = { size:9, color:{ argb:'FFD6E4F0' } };
 
   /* ── Datos que alimentan el tablero ─────────────────────────────── */
-  const conL   = d.operacional.filter(x => x.fecha);
-  const sinL   = d.operacional.filter(x => !x.fecha);
-  const atras  = d.operacional.filter(x => x.dias_sin_medir > 90);
+  const opMon  = d.operacional.filter(enMon);
+  const nFuera = d.operacional.length - opMon.length;
+  const conL   = opMon.filter(x => x.fecha);
+  const sinL   = opMon.filter(x => !x.fecha);
+  const atras  = opMon.filter(x => x.dias_sin_medir > 90);
   const alDia  = conL.filter(x => !(x.dias_sin_medir > 90));
 
   /* La ultima ronda de cada unidad dentro del historico: es donde viven
      los porcentajes de carga, que operacional no trae. */
   const ultCarga = new Map();
-  (d.historico || []).forEach(r => ultCarga.set(r.unidad, r));
+  (d.historico || []).filter(enMon).forEach(r => ultCarga.set(r.unidad, r));
   const cargas = [...ultCarga.values()];
 
   const propAbiertas = (d.propuestas || []).filter(p => p.estado);
@@ -1502,7 +1529,8 @@ function keLibro(ExcelJS, d, meta){
   cb.getRow(5).height = 13; cb.getRow(6).height = 30; cb.getRow(7).height = 13;
 
   tarjeta(2, 2, 'UNIDADES EN EL AMBITO', d.operacional.length,
-          conL.length + ' con lectura');
+          nFuera ? opMon.length + ' en monitoreo \u00b7 ' + nFuera + ' fuera'
+                 : conL.length + ' con lectura');
   tarjeta(4, 2, 'AL DIA', alDia.length,
           'ronda de los ultimos 90 dias', KE_C.verde);
   tarjeta(6, 2, 'RONDA VENCIDA', atras.length,
@@ -1752,6 +1780,7 @@ function keLibro(ExcelJS, d, meta){
   keHoja(wb, 'Operacional', [
     { k:'unidad', t:'Unidad', w:11 }, { k:'campo', t:'Campo', w:13 },
     { k:'pad', t:'PAD', w:13 }, { k:'sistema', t:'Sistema', w:9 },
+    { k:'estado_mon', t:'Estado', w:22 },
     { k:'fecha', t:'Fecha de lectura', w:13 },
     { k:'dias_sin_medir', t:'Dias sin medir', w:11, f:V },
     { k:'condicion', t:'Condicion', w:11 },
@@ -1799,6 +1828,7 @@ function keLibro(ExcelJS, d, meta){
     keHoja(wb, 'Historico', [
       { k:'unidad', t:'Unidad', w:11 }, { k:'campo', t:'Campo', w:13 },
       { k:'pad', t:'PAD', w:13 }, { k:'sistema', t:'Sistema', w:9 },
+      { k:'estado_mon', t:'Estado', w:22 },
       { k:'ronda', t:'Ronda', w:7, f:V },
       { k:'fecha', t:'Fecha', w:12 },
       { k:'dias_desde_anterior', t:'Dias desde anterior', w:14, f:V },
@@ -2290,12 +2320,14 @@ function keLibro(ExcelJS, d, meta){
       n === 'Crítico'  ? KE_C.fRojo :
       n === 'Atención' ? KE_C.fNaranja :
       n === 'Vigilar'  ? KE_C.fAzul :
-      n === 'Sin datos'? KE_C.fGris : null;
+      n === 'Sin datos'? KE_C.fGris :
+      n === 'Fuera de monitoreo' ? KE_C.fGris : null;
     const textoNivel = n =>
       n === 'Crítico'  ? KE_C.rojo :
       n === 'Atención' ? KE_C.naranja :
       n === 'Vigilar'  ? KE_C.azul2 :
-      n === 'Sin datos'? KE_C.gris : KE_C.verde;
+      n === 'Sin datos'? KE_C.gris :
+      n === 'Fuera de monitoreo' ? KE_C.naranja : KE_C.verde;
 
     let f = F + 1;
     d.runlife.forEach(r => {
@@ -2636,6 +2668,19 @@ function keLibro(ExcelJS, d, meta){
       { k:'nota', t:'Nota', w:34 }
     ], d.protecciones);
 
+  /* La marca de fuera de monitoreo en ambar donde aparezca, para que no se
+     pierda entre veinte columnas de datos que se ven normales. */
+  ['Operacional', 'Historico'].forEach(n => {
+    const ws = wb.getWorksheet(n);
+    if (!ws) return;
+    const col = ws.getColumn('estado_mon');
+    if (!col) return;
+    col.eachCell((c, r) => {
+      if (typeof c.value === 'string' && c.value.indexOf('Fuera de monitoreo') === 0)
+        c.font = { size:9.5, bold:true, color:{ argb:KE_C.naranja } };
+    });
+  });
+
   return wb;
 }
 
@@ -2731,20 +2776,15 @@ async function kpExportarEntrega(){
     } catch(e){}
     operacional.forEach(x => ubic.set(x.unidad,
       { campo: x.campo || null, pad: x.pad || null, sistema: x.sistema || null }));
-    const enAmbito = u => {
-      const l = ubic.get(u);
-      if (!l) return false;
-      if (c && l.campo !== c) return false;
-      if (s && l.sistema && l.sistema !== s) return false;
-      return true;
-    };
 
     let fuera = [];
     try {
       const { data, error } = await sb.rpc('dp_entrega_fuera_monitoreo');
       if (error) throw new Error(error.message);
-      fuera = (data || []).filter(x => enAmbito(x.unidad))
-        .map(x => ({ ...x, ...ubic.get(x.unidad) }));
+      /* La funcion ya trae campo y sistema de la unidad: se filtra con
+         eso y no con la flota, que es solo BES. */
+      fuera = (data || []).filter(x =>
+        (!c || x.campo === c) && (!s || !x.sistema || x.sistema === s));
     } catch(e){
       console.warn('[Kronos-M] Fuera de monitoreo no disponible:', e.message);
     }
