@@ -12206,7 +12206,7 @@ async function cargarPanelPerfil() {
                  un equipo entra al maestro: ese criterio lo tiene quien
                  administra, no el organigrama.
 
-                 Y son cuatro marcas y no una porque son cuatro criterios
+                 Y son cinco marcas y no una porque son cinco criterios
                  distintos. Dárselas todas a la misma persona no cuesta nada;
                  unirlas ahora y separarlas después obliga a revisar cada
                  asignación una por una. -->
@@ -12219,6 +12219,8 @@ async function cargarPanelPerfil() {
                "Confirma dónde está físicamente un equipo tras un traslado."],
               ["datos",       u.aprueba_datos,       "Aprobar datos técnicos",
                "Valida los campos propuestos frente a lo que dice SAP."],
+              ["monitoreo",   u.gestiona_monitoreo,  "Gestionar estado de monitoreo",
+               "Saca o reactiva unidades del monitoreo desde Captura, con motivo. Fuera de monitoreo no se descarga data ni se calcula condición."],
             ].map(([k, val, titulo, ayuda]) => `
               <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;cursor:pointer;font-weight:400;text-transform:none;letter-spacing:0;color:var(--text-1);margin-bottom:9px">
                 <input type="checkbox" data-permiso-usuario="${u.id}" data-permiso="${k}" ${val ? "checked" : ""} style="margin-top:2px">
@@ -12537,7 +12539,8 @@ async function cargarPanelPerfil() {
           }
         }
         const que = { validador: "validar mediciones", altas: "aprobar altas",
-                      movimientos: "aprobar movimientos", datos: "aprobar datos técnicos" }[chk.dataset.permiso];
+                      movimientos: "aprobar movimientos", datos: "aprobar datos técnicos",
+                      monitoreo: "cambiar el estado de monitoreo" }[chk.dataset.permiso];
         toast((data.nombre || "El usuario") + (chk.checked ? " ya puede " : " ya no puede ") + que);
       };
     });
