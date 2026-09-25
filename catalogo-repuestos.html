@@ -644,7 +644,36 @@ button{cursor:pointer}
   background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
   width:34px;height:34px;color:var(--t2);flex:0 0 auto;font-size:16px;line-height:1;
 }
-.rep-ficha-cuerpo{flex:1;overflow-y:auto;padding:13px 14px 16px;display:grid;gap:13px;align-content:start}
+/* Flujo de bloque, no grid. Los bloques llevan overflow:hidden y eso hace
+   que su tamano minimo automatico sea cero: dentro de un grid de altura
+   acotada las filas se comprimen por debajo del contenido y lo recortan
+   en vez de dejar crecer el scroll. En flujo normal eso no puede pasar. */
+.rep-ficha-cuerpo{flex:1;overflow-y:auto;padding:13px 14px 20px;display:block}
+
+/* Tres zonas. En movil van apiladas y el codigo va primero, porque es lo
+   que se viene a mirar. En pantalla ancha la foto pasa a una columna
+   propia y los datos quedan al lado, sin desplazar nada. */
+.rep-ficha-grid{
+  display:grid;gap:13px;align-content:start;
+  grid-template-areas:"res" "med" "det";
+}
+.rep-zona-res{grid-area:res}
+.rep-zona-med{grid-area:med;min-width:0}
+.rep-zona-det{grid-area:det;min-width:0}
+.rep-zona-det > * + *{margin-top:13px}
+
+.rep-resumen{
+  background:var(--surface);border:1px solid var(--line);
+  border-radius:11px;padding:12px 14px;
+}
+.rep-res-codigo{
+  font-family:var(--mono);font-size:19px;font-weight:600;line-height:1.25;
+  word-break:break-all;color:var(--t1);
+}
+.rep-res-codigo.vacio{font-family:var(--sans);font-size:14px;font-weight:500;color:var(--warn)}
+.rep-res-et{font-size:11.5px;color:var(--t3);margin-bottom:3px}
+.rep-res-sub{font-size:12.5px;color:var(--t2);margin-top:5px}
+.rep-resumen .rep-chips{margin-top:9px}
 .rep-ficha-pie{
   flex-shrink:0;display:flex;gap:8px;padding:10px 14px;
   background:var(--surface);border-top:1px solid var(--line);
@@ -659,7 +688,7 @@ button{cursor:pointer}
 
 .rep-galeria{display:grid;gap:7px}
 .rep-gal-main{
-  width:100%;aspect-ratio:4/3;object-fit:contain;cursor:zoom-in;
+  width:100%;aspect-ratio:4/3;max-height:40vh;object-fit:contain;cursor:zoom-in;
   background:var(--surface-2);border:1px solid var(--line);border-radius:11px;
 }
 .rep-gal-tiras{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}
@@ -678,13 +707,19 @@ button{cursor:pointer}
   margin:0;padding:8px 13px;font-size:11.5px;font-weight:600;letter-spacing:.04em;
   color:var(--t3);background:var(--surface-2);border-bottom:1px solid var(--line-soft);
 }
+/* Apiladas por defecto: un codigo largo no cabe al lado de su etiqueta en
+   un telefono, y partirlo a mitad es peor que bajarlo de linea. */
 .rep-fila{
   padding:9px 13px;border-top:1px solid var(--line-soft);
-  display:flex;justify-content:space-between;gap:12px;align-items:baseline;
+  display:flex;flex-direction:column;gap:2px;
+}
+@media (min-width:520px){
+  .rep-fila{flex-direction:row;justify-content:space-between;gap:14px;align-items:baseline}
+  .rep-fila .vl{text-align:right}
 }
 .rep-fila:first-of-type{border-top:none}
 .rep-fila .et{font-size:11.5px;color:var(--t3);flex-shrink:0}
-.rep-fila .vl{font-family:var(--mono);font-size:13px;text-align:right;word-break:break-word}
+.rep-fila .vl{font-family:var(--mono);font-size:13px;word-break:break-word;min-width:0}
 .rep-fila .vl.pend{color:var(--warn);font-family:var(--sans);font-size:12.5px}
 .rep-fila .vl .nota{display:block;font-family:var(--sans);font-size:11px;color:var(--t3)}
 .rep-kv{display:grid;grid-template-columns:100px 1fr;gap:3px 12px;padding:11px 13px;margin:0}
@@ -835,7 +870,14 @@ button{cursor:pointer}
 
 @media (min-width:760px){
   .rep-lista{grid-template-columns:repeat(auto-fill,minmax(330px,1fr))}
-  .rep-ficha-cuerpo{max-width:780px;margin:0 auto;width:100%}
+  .rep-ficha-cuerpo{max-width:1040px;margin:0 auto;width:100%}
+  .rep-ficha-grid{
+    grid-template-columns:minmax(0,5fr) minmax(0,6fr);
+    grid-template-areas:"med res" "med det";
+    column-gap:16px;
+  }
+  .rep-zona-med{position:sticky;top:0;align-self:start}
+  .rep-gal-main{max-height:none}
   .rep-modal{align-items:center}
   .rep-modal-caja{border-radius:14px;border-bottom:1px solid var(--line);max-height:88%}
 }
@@ -1248,16 +1290,47 @@ function repPintarFicha() {
       '</span><button type="button" id="rep-banner-x" aria-label="Cerrar">&times;</button></div>'
     : "";
 
-  repEl("rep-ficha-cuerpo").innerHTML = banner + galeria +
-    '<div class="rep-bloque"><h3>Identificación</h3>' + filasIdent + "</div>" +
-    '<div class="rep-bloque"><h3>Aplica a</h3>' + filasApl + "</div>" +
-    '<div class="rep-bloque"><h3>Ficha</h3><dl class="rep-kv">' +
-      "<dt>Marca</dt><dd>" + repEsc(r.marca) + (r.serie ? " " + repEsc(r.serie) : "") + "</dd>" +
-      "<dt>Tipo</dt><dd>" + repEsc(repEtiq(REP_TIPOS, r.tipo)) + "</dd>" +
-      "<dt>Estado</dt><dd>" + repEsc(r.estado) + (r.critico ? " · crítico" : "") + "</dd>" +
-      "<dt>Material</dt><dd>" + repEsc(r.codigo_material || "no enlazado") + "</dd>" +
-      (r.observaciones ? "<dt>Notas</dt><dd>" + repEsc(r.observaciones) + "</dd>" : "") +
-    "</dl></div>";
+  /* El codigo encabeza la ficha. Es el dato por el que se abre esto en
+     campo, con el telefono en una mano y la pieza en la otra. */
+  const ppal = ident.find(i => i.clase === "parte_numero" && i.principal)
+            || ident.find(i => i.clase === "parte_numero")
+            || ident.find(i => i.clase === "marcacion_impresa")
+            || ident[0] || null;
+
+  const chips = [];
+  if (r.critico) chips.push('<span class="rep-chip crit">crítico</span>');
+  if (r.estado !== "activo") chips.push('<span class="rep-chip obs">' + repEsc(r.estado) + "</span>");
+  chips.push('<span class="rep-chip">' + repEsc(repEtiq(REP_TIPOS, r.tipo)) + "</span>");
+  const sinVer = ident.filter(i => !i.verificado).length;
+  if (sinVer) chips.push('<span class="rep-chip obs">' + sinVer + " sin verificar</span>");
+
+  const resumen = '<div class="rep-resumen">' +
+    '<div class="rep-res-et">' +
+      (ppal ? repEsc(repEtiq(REP_CLASES, ppal.clase)) : "Identificación") + "</div>" +
+    '<div class="rep-res-codigo' + (ppal ? "" : " vacio") + '">' +
+      (ppal ? repEsc(ppal.valor) : "Sin código registrado") + "</div>" +
+    '<div class="rep-res-sub">' +
+      repEsc([r.marca, r.serie].filter(Boolean).join(" ")) +
+      (ppal && !ppal.verificado ? " · sin verificar" : "") + "</div>" +
+    '<div class="rep-chips">' + chips.join("") + "</div>" +
+  "</div>";
+
+  repEl("rep-ficha-cuerpo").innerHTML = banner +
+    '<div class="rep-ficha-grid">' +
+      '<div class="rep-zona-res">' + resumen + "</div>" +
+      '<div class="rep-zona-med">' + galeria + "</div>" +
+      '<div class="rep-zona-det">' +
+        '<div class="rep-bloque"><h3>Identificación</h3>' + filasIdent + "</div>" +
+        '<div class="rep-bloque"><h3>Aplica a</h3>' + filasApl + "</div>" +
+        '<div class="rep-bloque"><h3>Ficha</h3><dl class="rep-kv">' +
+          "<dt>Marca</dt><dd>" + repEsc(r.marca) + (r.serie ? " " + repEsc(r.serie) : "") + "</dd>" +
+          "<dt>Tipo</dt><dd>" + repEsc(repEtiq(REP_TIPOS, r.tipo)) + "</dd>" +
+          "<dt>Estado</dt><dd>" + repEsc(r.estado) + (r.critico ? " · crítico" : "") + "</dd>" +
+          "<dt>Material</dt><dd>" + repEsc(r.codigo_material || "no enlazado") + "</dd>" +
+          (r.observaciones ? "<dt>Notas</dt><dd>" + repEsc(r.observaciones) + "</dd>" : "") +
+        "</dl></div>" +
+      "</div>" +
+    "</div>";
 
   const acciones =
     (repPuedeFoto ? '<button type="button" class="primario" id="rep-b-foto">Agregar imagen</button>' : "") +
