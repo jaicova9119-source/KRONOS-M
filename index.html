@@ -2871,8 +2871,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="ee-firma-ejec-vista" style="margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn-secondary" type="button" id="ee-btn-firmar-ejec">Firmar</button>
+      <button class="btn-secondary" type="button" id="ee-btn-firma-img-ejec">Cargar imagen</button>
       <button class="btn-secondary" type="button" id="ee-btn-borrar-firma-ejec" style="display:none">Quitar firma</button>
     </div>
+    <input type="file" id="ee-firma-ejec-archivo" accept="image/*" style="display:none"/>
 
     <button class="btn-primary" id="ee-btn-guardar-ens" style="margin-top:12px">Guardar ensayo</button>
   </div>
@@ -8619,8 +8621,9 @@ async function eeFirmar(id) {
   if (!ensayo) return;
 
   const conTrazo = confirm(
-    "¿Quieres dibujar tu firma en pantalla?\n\n"
-    + "Aceptar: se abre el lienzo y la firma sale impresa en el informe.\n"
+    "¿Quieres que tu firma salga impresa en el informe?\n\n"
+    + "Aceptar: se abre el recuadro para firmar a mano, cargar una imagen "
+    + "o usar tu firma recordada.\n"
     + "Cancelar: se firma solo con tu nombre y la fecha, y el informe queda "
     + "con la raya en blanco por si prefieres firmarlo en papel."
   );
@@ -8629,7 +8632,8 @@ async function eeFirmar(id) {
 
   const quien = (usuarioActual && usuarioActual.nombre) || "";
   firmaAbrir(img => eeEnviarFirma(id, img),
-             quien ? "Firma de " + quien : "Firma del revisor");
+             quien ? "Firma de " + quien : "Firma del revisor",
+             { recordada: EE_FIRMA_PROPIA });
 }
 
 async function eeEnviarFirma(id, imagen) {
@@ -8890,13 +8894,34 @@ function eeFirmaPintarVista() {
   }
 }
 
+/* Firma propia del usuario en este dispositivo: la misma que recuerda el
+   módulo de órdenes para el ejecutor, así se traza o se carga una sola vez. */
+const EE_FIRMA_PROPIA = "kronos.firma.ejecutor";
+
 function eeFirmarEjecutante() {
   const quien = (usuarioActual && usuarioActual.nombre) || "";
   firmaAbrir(img => {
     eeFirmaEjec = img;
     eeFirmaPintarVista();
     toast("Firma registrada. Recuerda guardar el ensayo.");
-  }, quien ? "Firma de " + quien : "Firma del ejecutante");
+  }, quien ? "Firma de " + quien : "Firma del ejecutante", { recordada: EE_FIRMA_PROPIA });
+}
+
+function eeFirmaEjecArchivo(input) {
+  const arch = input && input.files && input.files[0];
+  input.value = "";
+  if (!arch) return;
+  const lector = new FileReader();
+  lector.onload = () => {
+    otFirmaNormalizar(lector.result).then(img => {
+      eeFirmaEjec = img;
+      try { if (!localStorage.getItem(EE_FIRMA_PROPIA)) localStorage.setItem(EE_FIRMA_PROPIA, img); } catch (e) { /* lleno */ }
+      eeFirmaPintarVista();
+      toast("Firma cargada. Recuerda guardar el ensayo.");
+    }).catch(e => toast("No se pudo usar esa imagen: " + e.message));
+  };
+  lector.onerror = () => toast("No se pudo leer el archivo");
+  lector.readAsDataURL(arch);
 }
 
 function eeSellarTecnico(ensayo) {
@@ -9417,7 +9442,7 @@ function eeBloquearSiFirmado(ensayo) {
     btn.textContent = bloquear ? "Ensayo firmado" : "Guardar ensayo";
   }
   // Un ensayo cerrado tampoco admite cambiar la firma del ejecutante.
-  ["ee-btn-firmar-ejec", "ee-btn-borrar-firma-ejec"].forEach(bid => {
+  ["ee-btn-firmar-ejec", "ee-btn-firma-img-ejec", "ee-btn-borrar-firma-ejec"].forEach(bid => {
     const b = document.getElementById(bid);
     if (b) b.disabled = bloquear;
   });
@@ -9462,6 +9487,8 @@ document.getElementById("ee-f-tipo").addEventListener("change", eeToggleGenerado
 document.getElementById("ee-btn-guardar-maq").onclick = guardarMaquina;
 document.getElementById("ee-btn-guardar-ens").onclick = guardarEnsayo;
 document.getElementById("ee-btn-firmar-ejec").onclick = eeFirmarEjecutante;
+document.getElementById("ee-btn-firma-img-ejec").onclick = () => document.getElementById("ee-firma-ejec-archivo").click();
+document.getElementById("ee-firma-ejec-archivo").onchange = e => eeFirmaEjecArchivo(e.target);
 document.getElementById("ee-btn-borrar-firma-ejec").onclick = () => {
   eeFirmaEjec = "";
   eeFirmaPintarVista();
@@ -19392,11 +19419,20 @@ let firmaLimites = null;   // caja del trazo, para recortar al guardar
    abre entrega una función que recibe la imagen; si no se entrega
    ninguna, se mantiene el destino original de la orden de trabajo. */
 let firmaDestino = null;
+/* Clave de localStorage con la firma propia del dueño del dispositivo. Solo
+   la pasan quienes firman por sí mismos (ejecutante y revisor de ensayos);
+   las órdenes manejan la suya aparte. */
+let firmaClaveRecordada = null;
 
-function firmaAbrir(destino, titulo) {
+function firmaAbrir(destino, titulo, opciones) {
   firmaDestino = typeof destino === "function" ? destino : null;
+  firmaClaveRecordada = (opciones && opciones.recordada) || null;
+  let recordada = "";
+  try { recordada = firmaClaveRecordada ? localStorage.getItem(firmaClaveRecordada) || "" : ""; } catch (e) { /* sin almacenamiento */ }
+  const bRec = document.getElementById("ot-firma-recordada");
+  if (bRec) bRec.style.display = recordada ? "" : "none";
   const rot = document.getElementById("ot-firma-rotulo");
-  if (rot) rot.textContent = titulo || "Firme con el dedo dentro del recuadro";
+  if (rot) rot.textContent = titulo || "Firme dentro del recuadro";
   const cap = document.getElementById("ot-firma-modal");
   cap.style.display = "flex";
   /* Se bloquea el scroll de fondo: sin esto el gesto de firmar arrastra la
@@ -19424,8 +19460,32 @@ function firmaAbrir(destino, titulo) {
   document.getElementById("ot-firma-guardar").disabled = true;
 }
 
+/* Firma escaneada o fotografiada: se normaliza igual que en las órdenes
+   (fondo transparente, recorte al trazo, ancho acotado). */
+function firmaDesdeArchivo(input) {
+  const arch = input && input.files && input.files[0];
+  input.value = "";
+  if (!arch) return;
+  const lector = new FileReader();
+  lector.onload = () => {
+    otFirmaNormalizar(lector.result)
+      .then(img => firmaEntregar(img))
+      .catch(e => toast("No se pudo usar esa imagen: " + e.message));
+  };
+  lector.onerror = () => toast("No se pudo leer el archivo");
+  lector.readAsDataURL(arch);
+}
+
+function firmaUsarRecordada() {
+  let g = "";
+  try { g = firmaClaveRecordada ? localStorage.getItem(firmaClaveRecordada) || "" : ""; } catch (e) { /* nada */ }
+  if (!g) { toast("No hay firma recordada en este dispositivo"); return; }
+  firmaEntregar(g);
+}
+
 function firmaCerrar() {
   firmaDestino = null;
+  firmaClaveRecordada = null;
   document.getElementById("ot-firma-modal").style.display = "none";
   document.body.style.overflow = "";
 }
@@ -19509,7 +19569,17 @@ function firmaAceptar() {
   out.height = Math.round(h * escala);
   out.getContext("2d").drawImage(cv, x, y, w, h, 0, 0, out.width, out.height);
 
-  const imagen = out.toDataURL("image/png");
+  firmaEntregar(out.toDataURL("image/png"));
+}
+
+/* Punto único de salida del lienzo, venga la firma trazada, cargada o
+   recordada. La primera firma propia se recuerda sola en el dispositivo,
+   como la del ejecutor en las órdenes. */
+function firmaEntregar(imagen) {
+  if (firmaClaveRecordada) {
+    try { if (!localStorage.getItem(firmaClaveRecordada)) localStorage.setItem(firmaClaveRecordada, imagen); }
+    catch (e) { /* almacenamiento lleno: la firma se usa igual */ }
+  }
   if (firmaDestino) {
     const cb = firmaDestino;
     firmaDestino = null;
@@ -19649,19 +19719,42 @@ function firmaPintarVista() {
   <iframe id="ot-doc-marco" title="Documento FO-016"></iframe>
 </div>
 
-<!-- Lienzo de firma. Fuera de los paneles para que cubra toda la pantalla. -->
-<div id="ot-firma-modal" style="display:none;position:fixed;inset:0;z-index:9999;
-     background:rgba(10,25,35,.92);flex-direction:column;padding:12px;gap:10px">
-  <div id="ot-firma-rotulo" style="color:#fff;font-size:14px;text-align:center">
-    Firme con el dedo dentro del recuadro
-  </div>
-  <canvas id="ot-firma-canvas"
-          style="flex:1;width:100%;background:#fff;border-radius:8px;
-                 touch-action:none;display:block"></canvas>
-  <div style="display:flex;gap:8px">
-    <button type="button" class="btn-secondary" style="flex:1" onclick="firmaCerrar()">Cancelar</button>
-    <button type="button" class="btn-secondary" style="flex:1" onclick="firmaLimpiar()">Limpiar</button>
-    <button type="button" class="btn-primary" id="ot-firma-guardar" style="flex:1.4" onclick="firmaAceptar()">Usar firma</button>
+<!-- Lienzo de firma. Fuera de los paneles para que cubra toda la pantalla.
+     El lienzo va dentro de un contenedor con min-height:0 y posicion
+     absoluta: si se deja que el canvas tome su alto por proporcion, en un
+     monitor ancho crece mas que la ventana y empuja los botones fuera de
+     vista, con el scroll bloqueado. En PC la caja se acota y se centra. -->
+<style>
+  #ot-firma-modal { display:none; position:fixed; inset:0; z-index:9999;
+    background:rgba(10,25,35,.92); padding:12px; align-items:center; justify-content:center; }
+  #ot-firma-caja { display:flex; flex-direction:column; gap:10px; width:100%; height:100%; }
+  #ot-firma-lienzo { flex:1; min-height:0; position:relative; }
+  #ot-firma-canvas { position:absolute; inset:0; width:100%; height:100%;
+    background:#fff; border-radius:8px; touch-action:none; display:block; }
+  #ot-firma-acciones { display:flex; gap:8px; flex-wrap:wrap; }
+  #ot-firma-acciones button { flex:1 1 120px; }
+  @media (min-width: 760px) {
+    #ot-firma-caja { max-width:760px; max-height:460px; }
+  }
+</style>
+<div id="ot-firma-modal">
+  <div id="ot-firma-caja">
+    <div style="display:flex;align-items:center;gap:8px">
+      <button type="button" class="icon-btn" style="color:#fff" onclick="firmaCerrar()" aria-label="Cancelar">&#8592;</button>
+      <div id="ot-firma-rotulo" style="color:#fff;font-size:14px;flex:1;text-align:center">
+        Firme dentro del recuadro
+      </div>
+      <span style="width:32px"></span>
+    </div>
+    <div id="ot-firma-lienzo"><canvas id="ot-firma-canvas"></canvas></div>
+    <div id="ot-firma-acciones">
+      <button type="button" class="btn-secondary" onclick="firmaCerrar()">Cancelar</button>
+      <button type="button" class="btn-secondary" onclick="firmaLimpiar()">Limpiar</button>
+      <button type="button" class="btn-secondary" onclick="document.getElementById('ot-firma-archivo').click()">Cargar imagen</button>
+      <button type="button" class="btn-secondary" id="ot-firma-recordada" style="display:none" onclick="firmaUsarRecordada()">Usar mi firma recordada</button>
+      <button type="button" class="btn-primary" id="ot-firma-guardar" onclick="firmaAceptar()">Usar firma</button>
+    </div>
+    <input type="file" id="ot-firma-archivo" accept="image/*" style="display:none" onchange="firmaDesdeArchivo(this)"/>
   </div>
 </div>
 
@@ -19678,6 +19771,10 @@ function firmaPintarVista() {
   cv.addEventListener("pointerup", firmaFin);
   cv.addEventListener("pointercancel", firmaFin);
   cv.addEventListener("pointerleave", firmaFin);
+  document.addEventListener("keydown", e => {
+    const md = document.getElementById("ot-firma-modal");
+    if (e.key === "Escape" && md && md.style.display !== "none") firmaCerrar();
+  });
 })();
 
 /* ============================================================
