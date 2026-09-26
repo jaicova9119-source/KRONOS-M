@@ -4023,7 +4023,8 @@ async function hubContar() {
   };
 
   const esRevisor = usuarioActual
-    && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+    && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor"
+        || usuarioActual.es_validador === true);
   const miAuth = usuarioActual && usuarioActual.auth_user_id;
 
   const tareas = {
@@ -8576,7 +8577,7 @@ function eeTarjetaEnsayo(e, m) {
       ${e.estado === "rechazado" && e.nota_revision
         ? `<div class="mat-stock" style="color:var(--danger)">Devuelto: ${e.nota_revision}</div>` : ""}
       ${e.estado === "firmado" && e.revisor_nombre
-        ? `<div class="mat-stock">Firmado por ${e.revisor_nombre}${e.revisado_en ? " · " + String(e.revisado_en).slice(0, 10) : ""}</div>` : ""}
+        ? `<div class="mat-stock">Firmado por ${e.revisor_nombre}${e.revisado_en ? " · " + String(e.revisado_en).slice(0, 10) : ""}${eeEsAutorrevision(e) ? " · autorrevisión" : ""}</div>` : ""}
       <div class="mat-stock">${e.temp_devanado != null ? e.temp_devanado + " °C devanado" : "sin temperatura"}
         · ${e.v_prueba || "?"} VDC · ${e.megger || ""}</div>
       <table class="tabla-ficha" style="margin-top:8px">
@@ -8597,8 +8598,18 @@ function eeTarjetaEnsayo(e, m) {
     </div>`;
 }
 
+/* Firma la revisión quien tiene rol admin o supervisor, o el permiso
+   delegado de validador. ee_firmar aplica la misma regla en el servidor. */
 function eeEsRevisor() {
-  return !!usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+  return !!usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor"
+    || usuarioActual.es_validador === true);
+}
+
+/* Autorrevisión: el mismo usuario ejecutó y firmó la revisión. Se permite
+   cuando no hay otra persona que valide, pero no se disimula: quien recibe
+   el informe debe saber que no hubo una segunda mirada. */
+function eeEsAutorrevision(e) {
+  return !!(e && e.revisado_por && e.usuario_id && e.revisado_por === e.usuario_id);
 }
 
 function eeBadgeEstado(e) {
@@ -8619,6 +8630,10 @@ function eeBadgeEstado(e) {
 async function eeFirmar(id) {
   const ensayo = eeEnsayos.find(x => x.id === id);
   if (!ensayo) return;
+
+  if (usuarioActual && ensayo.usuario_id && ensayo.usuario_id === usuarioActual.auth_user_id
+      && !confirm("Este ensayo lo ejecutaste tú. Si lo firmas como revisor, la tarjeta y el "
+                  + "informe lo indicarán como autorrevisión.\n\n¿Continuar?")) return;
 
   const conTrazo = confirm(
     "¿Quieres que tu firma salga impresa en el informe?\n\n"
@@ -9984,10 +9999,13 @@ function eeBloqueFirmas(e) {
 
   const firmado = e.estado === "firmado";
 
-  const marca = firmado ? "" : `
+  const marca = !firmado ? `
     <div class="inf-nota" style="margin-top:6px;font-style:italic">
       Documento sin firma de revisión. No válido como registro cerrado.
-    </div>`;
+    </div>` : eeEsAutorrevision(e) ? `
+    <div class="inf-nota" style="margin-top:6px">
+      Autorrevisión: el ensayo fue ejecutado y revisado por la misma persona.
+    </div>` : "";
 
   return `
     <table class="inf-firmas">
@@ -12134,6 +12152,8 @@ async function manejarSesionActiva(session) {
     modulos: perfil.modulos ?? null,
     modulos_solo_lectura: perfil.modulos_solo_lectura ?? null,
     apps: perfil.apps ?? null,
+    // Permiso delegado: revisa y firma ensayos sin ser supervisor.
+    es_validador: !!perfil.es_validador,
   };
   sincronizarSelectorModulos();
   kmAlmacen.setItem(PERFIL_CACHE_KEY, JSON.stringify(perfil));
