@@ -811,6 +811,38 @@ button{cursor:pointer}
   display:block;margin-top:1px;
 }
 
+.rep-top-fila .rep-bt{
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+  padding:5px 11px;font-size:12.5px;color:var(--t2);flex-shrink:0;
+}
+.rep-tabla{width:100%;border-collapse:collapse;font-size:12px}
+.rep-tabla th,.rep-tabla td{
+  padding:6px 8px;border-bottom:1px solid var(--line-soft);text-align:left;
+  vertical-align:top;
+}
+.rep-tabla th{color:var(--t3);font-weight:600;font-size:11px}
+.rep-tabla td.mono{font-family:var(--mono);word-break:break-all}
+.rep-scroll-x{overflow-x:auto}
+.rep-cotejo{display:grid;gap:8px}
+.rep-match{
+  border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+  background:var(--surface-2);display:grid;gap:4px;
+}
+.rep-match.exacta{border-color:var(--ok)}
+.rep-match .cab{display:flex;justify-content:space-between;gap:9px;align-items:baseline}
+.rep-match .cod{font-family:var(--mono);font-size:13.5px}
+.rep-match .tipo-coincidencia{font-size:10.5px;font-family:var(--mono);flex-shrink:0}
+.rep-match.exacta .tipo-coincidencia{color:var(--ok)}
+.rep-match .tipo-coincidencia{color:var(--warn)}
+.rep-match .desc{font-size:12.5px;color:var(--t2)}
+.rep-match .cita{font-size:11px;color:var(--t3)}
+.rep-match button{
+  justify-self:start;margin-top:4px;padding:6px 11px;border-radius:7px;
+  border:1px solid var(--brand);background:var(--brand);color:var(--brand-t);font-size:12.5px;
+}
+.rep-match button:disabled{opacity:.5}
+.rep-progreso{font-family:var(--mono);font-size:12px;color:var(--t3);margin-bottom:9px}
+
 .rep-banner{
   padding:10px 13px;border-radius:9px;font-size:12.5px;line-height:1.45;
   background:var(--crit-bg);color:var(--crit);
@@ -890,6 +922,7 @@ button{cursor:pointer}
   <header class="rep-top">
     <div class="rep-top-fila">
       <h1>Catálogo de repuestos</h1>
+      <button type="button" class="rep-bt" id="rep-fuentes" hidden>Fuentes</button>
       <span class="rep-rol" id="rep-rol">—</span>
     </div>
     <div class="rep-buscar">
@@ -956,6 +989,7 @@ button{cursor:pointer}
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script>
 "use strict";
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1108,6 +1142,7 @@ async function repIniciar() {
   repEl("rep-rol").textContent = (repRol || "sin rol") +
     (repPuedeEditar ? " · alimenta" : " · solo lectura");
   repEl("rep-fab").hidden = !repPuedeEditar;
+  repEl("rep-fuentes").hidden = !repPuedeEditar;
 
   await repCargarFacetas();
   await repBuscar();
@@ -1263,7 +1298,12 @@ function repPintarFicha() {
         '<div class="rep-fila"><span class="et">' + repEsc(repEtiq(REP_CLASES, i.clase)) +
         (i.fuente ? " · " + repEsc(repEtiq(REP_FUENTES, i.fuente)) : "") +
         '</span><span class="vl">' + repEsc(i.valor) +
-        (i.verificado ? "" : '<span class="rep-sinver">sin verificar</span>') +
+        (i.verificado
+          ? (i.fuente_id
+             ? '<span class="rep-sinver" style="color:var(--ok)">verificado contra fuente' +
+               (i.fuente_fila ? " · fila " + i.fuente_fila : "") + "</span>"
+             : "")
+          : '<span class="rep-sinver">sin verificar</span>') +
         "</span></div>").join("")
     : '<div class="rep-fila"><span class="et">—</span>' +
       '<span class="vl pend">Sin códigos registrados</span></div>';
@@ -1335,7 +1375,9 @@ function repPintarFicha() {
   const acciones =
     (repPuedeFoto ? '<button type="button" class="primario" id="rep-b-foto">Agregar imagen</button>' : "") +
     (repPuedeEditar ? '<button type="button" id="rep-b-codigo">Agregar código</button>' +
-                      '<button type="button" id="rep-b-aplic">Agregar aplicación</button>' : "");
+                      '<button type="button" id="rep-b-aplic">Agregar aplicación</button>' +
+                      (ident.length ? '<button type="button" id="rep-b-cotejar">Cotejar</button>' : "")
+                    : "");
   repEl("rep-ficha-pie").innerHTML = acciones ||
     '<button type="button" id="rep-b-volver">Volver al listado</button>';
 
@@ -1720,6 +1762,99 @@ const REP_MAPA_ALTA = {
 };
 
 /* ═══════════════════════════════════════════════════════════════════════
+   Fuentes documentales
+   ───────────────────────────────────────────────────────────────────────
+   Una lista de partes del fabricante convierte `verificado` de casilla de
+   confianza en afirmacion con respaldo: este codigo coincide con el
+   renglon 412 de la lista Baker Hughes rev. C. Mismo criterio que rige
+   las reglas del resto de Kronos-M.
+
+   El cotejo PROPONE. Que un codigo aparezca en una lista no lo verifica:
+   la lista puede estar desactualizada o ser de otra serie. Confirma una
+   persona, y el sello de quien confirma lo pone el servidor.
+   ═══════════════════════════════════════════════════════════════════════ */
+const REP_LOTE_IMPORT = 400;   // filas por INSERT; mas alla PostgREST se atraganta
+let repImport = null;          // { filas, columnas, nombre, tipo }
+let repCotejoFilas = [];       // resultado vigente del cotejo
+
+function repHojaALineas(datos, tipo) {
+  const libro = XLSX.read(datos, { type: tipo === "csv" ? "string" : "array" });
+  const hoja = libro.Sheets[libro.SheetNames[0]];
+  /* defval:"" evita que las celdas vacias desaparezcan y desalineen el
+     mapeo de columnas. */
+  return XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false });
+}
+
+function repLeerArchivoLista(file) {
+  return new Promise((res, rej) => {
+    const esCsv = /\.csv$/i.test(file.name);
+    const fr = new FileReader();
+    fr.onerror = () => rej(new Error("No se pudo leer el archivo"));
+    fr.onload = () => {
+      try {
+        const datos = esCsv ? fr.result : new Uint8Array(fr.result);
+        const filas = repHojaALineas(datos, esCsv ? "csv" : "xlsx");
+        if (!filas.length) throw new Error("La primera hoja no tiene filas");
+        res({ filas: filas, columnas: Object.keys(filas[0]),
+              nombre: file.name, tipo: esCsv ? "csv" : "excel" });
+      } catch (e) { rej(e); }
+    };
+    if (esCsv) fr.readAsText(file); else fr.readAsArrayBuffer(file);
+  });
+}
+
+/* Propone el mapeo mirando los nombres de columna. Acierta en la mayoria
+   de listas; cuando no, el usuario lo corrige antes de importar. */
+function repAdivinarColumna(columnas, claves) {
+  const norm = s => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+  for (const k of claves) {
+    const hit = columnas.find(c => norm(c).indexOf(k) >= 0);
+    if (hit) return hit;
+  }
+  return "";
+}
+
+const repFilaFuenteItem = (fuenteId, codigo, o) => ({
+  fuente_id: fuenteId,
+  codigo: codigo,
+  descripcion: o.descripcion || null,
+  marca: o.marca || null,
+  modelo: o.modelo || null,
+  fila: o.fila == null ? null : o.fila,
+  extra: o.extra || null
+});
+
+/* ---------- Cotejo ---------- */
+async function repCotejar(codigos, marca) {
+  const limpios = (codigos || []).map(c => String(c || "").trim()).filter(c => c.length > 2);
+  if (!limpios.length) return [];
+  const { data, error } = await sb.rpc("rep_cotejar",
+    { p_codigos: limpios, p_marca: marca || null });
+  if (error) throw new Error(error.message);
+  return data || [];
+}
+
+function repPintarCotejo(filas) {
+  if (!filas.length) {
+    return '<p class="rep-ayuda">Ninguno de los códigos de esta pieza aparece en las ' +
+      "listas cargadas. Eso también dice algo: puede ser un código de un componente " +
+      "montado y no de la pieza, o faltar la lista de esa serie.</p>";
+  }
+  return '<div class="rep-cotejo">' + filas.map((m, i) =>
+    '<div class="rep-match' + (m.exacta ? " exacta" : "") + '">' +
+      '<div class="cab"><span class="cod">' + repEsc(m.codigo) + "</span>" +
+        '<span class="tipo-coincidencia">' +
+          (m.exacta ? "exacta" : "parcial") + "</span></div>" +
+      (m.descripcion ? '<div class="desc">' + repEsc(m.descripcion) + "</div>" : "") +
+      '<div class="cita">' + repEsc(m.fuente) +
+        (m.revision ? " · rev. " + repEsc(m.revision) : "") +
+        (m.fila ? " · fila " + m.fila : "") +
+        " · buscado como " + repEsc(m.consultado) + "</div>" +
+      '<button type="button" data-cotejo="' + i + '">Verificar con esta fuente</button>' +
+    "</div>").join("") + "</div>";
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    Modales
    ═══════════════════════════════════════════════════════════════════════ */
 function repAbrirModal(html) {
@@ -1749,6 +1884,198 @@ async function repRefrescarActual() {
   repCerrarFicha();
   await repBuscar();
   await repAbrirFicha(id);
+}
+
+async function repModalFuentes() {
+  repAbrirModal("<h3>Fuentes documentales</h3>" +
+    '<div class="rep-cargando">Cargando…</div>');
+  const { data, error } = await sb.from("rep_fuente")
+    .select("id, marca, titulo, tipo, revision, fecha_documento, n_items, material_terceros")
+    .order("marca").order("titulo");
+  if (error) { repAviso(error.message); return; }
+
+  const filas = (data || []).map(f =>
+    "<tr><td>" + repEsc(f.marca) + "</td>" +
+    "<td>" + repEsc(f.titulo) + (f.revision ? " · rev. " + repEsc(f.revision) : "") + "</td>" +
+    '<td class="mono">' + f.n_items + "</td>" +
+    "<td>" + repEsc(f.tipo) + "</td></tr>").join("");
+
+  repAbrirModal("<h3>Fuentes documentales</h3>" +
+    (filas
+      ? '<div class="rep-scroll-x"><table class="rep-tabla">' +
+        "<tr><th>Marca</th><th>Documento</th><th>Renglones</th><th>Tipo</th></tr>" +
+        filas + "</table></div>"
+      : '<p class="rep-ayuda">Todavía no hay listas cargadas.</p>') +
+    '<p class="rep-ayuda" style="margin-top:11px">Las listas del fabricante se cargan ' +
+      "desde Excel o CSV. Se guardan los códigos y su descripción, no el documento " +
+      "completo: son datos de hecho, y así el material de terceros no se replica " +
+      "dentro de Kronos-M.</p>" +
+    '<div class="rep-modal-pie">' +
+      '<button type="button" data-cerrar>Cerrar</button>' +
+      '<button type="button" class="primario" id="rep-f-nueva">Importar lista</button>' +
+    "</div>");
+
+  repEl("rep-f-nueva").addEventListener("click", repModalImportar);
+}
+
+function repModalImportar() {
+  repImport = null;
+  repAbrirModal("<h3>Importar lista de partes</h3>" +
+    '<div class="rep-campo"><label for="rep-f-file">Archivo Excel o CSV</label>' +
+      '<input id="rep-f-file" type="file" accept=".xlsx,.xls,.csv"></div>' +
+    '<div id="rep-f-paso2"></div>' +
+    '<div class="rep-modal-pie">' +
+      '<button type="button" data-cerrar>Cancelar</button>' +
+      '<button type="button" class="primario" id="rep-f-importar" disabled>Importar</button>' +
+    "</div>");
+
+  repEl("rep-f-file").addEventListener("change", async e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const paso2 = repEl("rep-f-paso2");
+    paso2.innerHTML = '<div class="rep-cargando">Leyendo el archivo…</div>';
+    try {
+      repImport = await repLeerArchivoLista(f);
+    } catch (err) {
+      paso2.innerHTML = "";
+      repAviso(err.message || "No se pudo leer el archivo");
+      return;
+    }
+
+    const cols = repImport.columnas;
+    const opc = sel => '<option value=""></option>' + cols.map(c =>
+      '<option value="' + repEsc(c) + '"' + (c === sel ? " selected" : "") + ">" +
+      repEsc(c) + "</option>").join("");
+
+    paso2.innerHTML =
+      '<p class="rep-progreso">' + repImport.filas.length + " filas · " +
+        cols.length + " columnas</p>" +
+      '<div class="rep-campo"><label for="rep-f-col-cod">Columna del código</label>' +
+        '<select id="rep-f-col-cod">' +
+        opc(repAdivinarColumna(cols, ["partnumber", "partno", "codigo", "code", "sku", "material", "pn"])) +
+        "</select></div>" +
+      '<div class="rep-campo"><label for="rep-f-col-desc">Columna de la descripción</label>' +
+        '<select id="rep-f-col-desc">' +
+        opc(repAdivinarColumna(cols, ["descrip", "description", "denomin", "nombre", "text"])) +
+        "</select></div>" +
+      '<div class="rep-campo"><label for="rep-f-col-mod">Columna del modelo (opcional)</label>' +
+        '<select id="rep-f-col-mod">' +
+        opc(repAdivinarColumna(cols, ["modelo", "model", "aplica", "equipo", "serie"])) +
+        "</select></div>" +
+      '<div class="rep-duo">' +
+        '<div class="rep-campo"><label for="rep-f-marca">Marca</label>' +
+          '<input id="rep-f-marca" placeholder="Baker Hughes"></div>' +
+        '<div class="rep-campo"><label for="rep-f-rev">Revisión</label>' +
+          '<input id="rep-f-rev" placeholder="C"></div>' +
+      "</div>" +
+      '<div class="rep-campo"><label for="rep-f-titulo">Título del documento</label>' +
+        '<input id="rep-f-titulo" value="' + repEsc(repImport.nombre) + '"></div>' +
+      '<div class="rep-duo">' +
+        '<div class="rep-campo"><label for="rep-f-fecha">Fecha del documento</label>' +
+          '<input id="rep-f-fecha" type="date"></div>' +
+        '<div class="rep-campo"><label for="rep-f-url">Enlace (opcional)</label>' +
+          '<input id="rep-f-url" placeholder="https://"></div>' +
+      "</div>" +
+      '<label class="rep-check"><input type="checkbox" id="rep-f-terceros" checked>' +
+        "Contenido del fabricante</label>" +
+      '<p class="rep-ayuda">Sin revisión ni fecha, citar la fuente dice poco: ' +
+        "las listas de partes cambian entre ediciones.</p>";
+
+    repEl("rep-f-importar").disabled = false;
+  });
+
+  repEl("rep-f-importar").addEventListener("click", async () => {
+    if (!repImport) { repAviso("Elige primero el archivo."); return; }
+    const colCod = repEl("rep-f-col-cod").value;
+    const marca = repEl("rep-f-marca").value.trim();
+    const titulo = repEl("rep-f-titulo").value.trim();
+    if (!colCod) { repAviso("Indica cuál columna trae el código."); return; }
+    if (!marca || !titulo) { repAviso("Marca y título son obligatorios."); return; }
+
+    const btn = repEl("rep-f-importar");
+    btn.disabled = true;
+    const paso2 = repEl("rep-f-paso2");
+
+    const url = repEl("rep-f-url").value.trim();
+    const { data: fuente, error: errF } = await sb.from("rep_fuente").insert({
+      marca: marca,
+      titulo: titulo,
+      tipo: repImport.tipo,
+      revision: repEl("rep-f-rev").value.trim() || null,
+      fecha_documento: repEl("rep-f-fecha").value || null,
+      url: url || null,
+      path_storage: url ? null : "importado:" + repImport.nombre,
+      material_terceros: repEl("rep-f-terceros").checked
+    }).select("id").single();
+    if (errF) { repAviso(errF.message); btn.disabled = false; return; }
+
+    const colDesc = repEl("rep-f-col-desc").value;
+    const colMod = repEl("rep-f-col-mod").value;
+    const vistos = new Set();
+    const filas = [];
+    repImport.filas.forEach((r, idx) => {
+      const cod = String(r[colCod] == null ? "" : r[colCod]).trim();
+      if (cod.length < 3) return;               // encabezados sueltos y filas vacias
+      const clave = cod.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      if (vistos.has(clave)) return;            // el indice unico rechazaria el lote entero
+      vistos.add(clave);
+      filas.push(repFilaFuenteItem(fuente.id, cod, {
+        descripcion: colDesc ? String(r[colDesc] || "").trim() : null,
+        marca: marca,
+        modelo: colMod ? String(r[colMod] || "").trim() : null,
+        fila: idx + 2                            // +2: fila 1 son los encabezados
+      }));
+    });
+
+    if (!filas.length) {
+      repAviso("Ninguna fila tenía un código utilizable en esa columna.");
+      await sb.from("rep_fuente").delete().eq("id", fuente.id);
+      btn.disabled = false;
+      return;
+    }
+
+    let puestas = 0;
+    for (let i = 0; i < filas.length; i += REP_LOTE_IMPORT) {
+      const lote = filas.slice(i, i + REP_LOTE_IMPORT);
+      paso2.innerHTML = '<p class="rep-progreso">Importando ' +
+        Math.min(i + lote.length, filas.length) + " de " + filas.length + "…</p>";
+      const res = await sb.from("rep_fuente_item").insert(lote).select("id");
+      if (res.error) {
+        repAviso("Se cortó en la fila " + (i + 1) + ": " + res.error.message);
+        break;
+      }
+      puestas += (res.data || []).length;
+    }
+
+    await sb.rpc("rep_fuente_recontar", { p_fuente_id: fuente.id });
+    repImport = null;
+    repCerrarModal();
+    repModalFuentes();
+  });
+}
+
+function repModalCotejo() {
+  const ident = (repActual.rep_identificador || []);
+  const codigos = ident.map(i => i.valor);
+  repAbrirModal("<h3>Cotejar contra las listas</h3>" +
+    '<div class="rep-cargando">Buscando…</div>');
+
+  /* El resultado se guarda aparte y el clic lo atiende el delegado unico
+     del modal: enganchar un escuchador nuevo en cada apertura los iria
+     acumulando sobre una caja que no se destruye. */
+  repCotejar(codigos, repActual.marca).then(filas => {
+    repCotejoFilas = filas;
+    repAbrirModal("<h3>Cotejar contra las listas</h3>" +
+      repPintarCotejo(filas) +
+      '<div class="rep-modal-pie">' +
+        '<button type="button" data-cerrar>Cerrar</button>' +
+      "</div>");
+  }).catch(err => {
+    repCotejoFilas = [];
+    repAbrirModal("<h3>Cotejar contra las listas</h3>" +
+      '<p class="rep-ayuda">' + repEsc(err.message || "No se pudo cotejar") + "</p>" +
+      '<div class="rep-modal-pie"><button type="button" data-cerrar>Cerrar</button></div>');
+  });
 }
 
 function repModalNuevo() {
@@ -2194,6 +2521,7 @@ repEl("rep-f-serie").addEventListener("change", repBuscar);
 repEl("rep-f-tipo").addEventListener("change", repBuscar);
 repEl("rep-f-estado").addEventListener("change", repBuscar);
 repEl("rep-fab").addEventListener("click", repModalNuevo);
+repEl("rep-fuentes").addEventListener("click", repModalFuentes);
 repEl("rep-volver").addEventListener("click", repCerrarFicha);
 
 repEl("rep-listado").addEventListener("click", e => {
@@ -2218,11 +2546,39 @@ repEl("rep-ficha").addEventListener("click", e => {
   if (e.target.id === "rep-b-foto") repModalImagen();
   if (e.target.id === "rep-b-codigo") repModalCodigo();
   if (e.target.id === "rep-b-aplic") repModalAplicacion();
+  if (e.target.id === "rep-b-cotejar") repModalCotejo();
   if (e.target.id === "rep-b-volver") repCerrarFicha();
 });
 
-repEl("rep-modal").addEventListener("click", e => {
-  if (e.target.id === "rep-modal" || e.target.hasAttribute("data-cerrar")) repCerrarModal();
+repEl("rep-modal").addEventListener("click", async e => {
+  if (e.target.id === "rep-modal" || e.target.hasAttribute("data-cerrar")) {
+    repCerrarModal();
+    return;
+  }
+  const b = e.target.closest("[data-cotejo]");
+  if (!b || !repActual) return;
+
+  const m = repCotejoFilas[Number(b.dataset.cotejo)];
+  if (!m) return;
+  /* Se sella el identificador que se consulto, no el renglon de la lista:
+     lo que se verifica es el codigo de la pieza; la lista es la evidencia.
+     El sello de quien valida y cuando lo pone el trigger en la base. */
+  const obj = (repActual.rep_identificador || []).find(i => i.valor === m.consultado);
+  if (!obj) { repAviso("Ese código ya no está en la pieza."); return; }
+  b.disabled = true;
+  const { data, error } = await sb.from("rep_identificador")
+    .update({ verificado: true, fuente_id: m.fuente_id, fuente_fila: m.fila })
+    .eq("id", obj.id).select("id");
+  if (error) { repAviso(error.message); b.disabled = false; return; }
+  if (!data || !data.length) {
+    repAviso("La base no aceptó el cambio. Revisa tus permisos de escritura.");
+    b.disabled = false;
+    return;
+  }
+  b.textContent = "Verificado";
+  repCerrarModal();
+  repPendientes = [];
+  await repRefrescarActual();
 });
 repEl("rep-visor-cerrar").addEventListener("click", () =>
   repEl("rep-visor").classList.remove("abierta"));
