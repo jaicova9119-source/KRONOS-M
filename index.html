@@ -8699,43 +8699,92 @@ function eeBadgeEstado(e) {
 /* La firma la ejecuta una funcion en el servidor: valida el rol, sella
    quien firma y cuando, y deja el ensayo cerrado. El navegador no
    escribe esos campos directamente. */
-async function eeFirmar(id) {
+/* Estado de la ventana de revisión abierta. */
+let eeRev = { id: null, img: "" };
+
+function eeFirmar(id) {
   const ensayo = eeEnsayos.find(x => x.id === id);
   if (!ensayo) return;
-
-  if (usuarioActual && ensayo.usuario_id && ensayo.usuario_id === usuarioActual.auth_user_id
-      && !confirm("Este ensayo lo ejecutaste tú. Si lo firmas como revisor, la tarjeta y el "
-                  + "informe lo indicarán como autorrevisión.\n\n¿Continuar?")) return;
-
-  const conTrazo = confirm(
-    "¿Quieres que tu firma salga impresa en el informe?\n\n"
-    + "Aceptar: se abre el recuadro para firmar a mano, cargar una imagen "
-    + "o usar tu firma recordada.\n"
-    + "Cancelar: se firma solo con tu nombre y la fecha, y el informe queda "
-    + "con la raya en blanco por si prefieres firmarlo en papel."
-  );
-
-  if (!conTrazo) { eeEnviarFirma(id, null); return; }
-
-  const quien = (usuarioActual && usuarioActual.nombre) || "";
-  firmaAbrir(img => eeEnviarFirma(id, img),
-             quien ? "Firma de " + quien : "Firma del revisor",
-             { recordada: EE_FIRMA_PROPIA });
+  eeRev = { id, img: "" };
+  const m = eeMaquinaActual;
+  document.getElementById("ee-rev-ensayo").textContent =
+    [(m && m.nombre_efectivo) || "", ensayo.fecha, ensayo.motivo || ""].filter(Boolean).join(" · ");
+  document.getElementById("ee-rev-auto").style.display =
+    usuarioActual && ensayo.usuario_id && ensayo.usuario_id === usuarioActual.auth_user_id ? "" : "none";
+  document.getElementById("ee-rev-nota").value = "";
+  document.getElementById("ee-rev-error").style.display = "none";
+  document.getElementById("ee-rev-ok").disabled = false;
+  eeRevPintar();
+  document.getElementById("ee-firmar-modal").style.display = "flex";
 }
 
-async function eeEnviarFirma(id, imagen) {
-  const nota = prompt("Observación de la revisión (opcional):", "") || null;
+function eeRevRecordadaDato() {
+  try { return localStorage.getItem(EE_FIRMA_PROPIA) || ""; } catch (e) { return ""; }
+}
+
+function eeRevPintar() {
+  const v = document.getElementById("ee-rev-vista");
+  v.innerHTML = eeRev.img
+    ? '<img src="' + eeRev.img + '" alt="Firma" style="max-height:70px;max-width:100%;background:#fff;'
+      + 'border:1px solid var(--line);border-radius:6px;padding:4px">'
+    : '<span class="mat-stock">Sin firma: el informe sale con tu nombre y la fecha, y la raya en blanco para firmar en papel.</span>';
+  const rec = eeRevRecordadaDato();
+  document.getElementById("ee-rev-usar").style.display = rec && rec !== eeRev.img ? "" : "none";
+  document.getElementById("ee-rev-quitar").style.display = eeRev.img ? "" : "none";
+}
+
+function eeRevTrazar() {
+  const quien = (usuarioActual && usuarioActual.nombre) || "";
+  firmaAbrir(img => { eeRev.img = img; eeRevPintar(); },
+             quien ? "Firma de " + quien : "Firma del revisor", { recordada: EE_FIRMA_PROPIA });
+}
+
+function eeRevArchivo(input) {
+  const arch = input && input.files && input.files[0];
+  input.value = "";
+  if (!arch) return;
+  const lector = new FileReader();
+  lector.onload = () => {
+    otFirmaNormalizar(lector.result).then(img => {
+      eeRev.img = img;
+      try { if (!localStorage.getItem(EE_FIRMA_PROPIA)) localStorage.setItem(EE_FIRMA_PROPIA, img); } catch (e) { /* lleno */ }
+      eeRevPintar();
+    }).catch(e => eeRevError("No se pudo usar esa imagen: " + e.message));
+  };
+  lector.onerror = () => eeRevError("No se pudo leer el archivo.");
+  lector.readAsDataURL(arch);
+}
+
+function eeRevRecordada() { eeRev.img = eeRevRecordadaDato(); eeRevPintar(); }
+function eeRevQuitar() { eeRev.img = ""; eeRevPintar(); }
+function eeRevCerrar() { document.getElementById("ee-firmar-modal").style.display = "none"; }
+
+function eeRevError(msg) {
+  const el = document.getElementById("ee-rev-error");
+  el.textContent = msg;
+  el.style.display = "";
+}
+
+async function eeRevConfirmar() {
+  const btn = document.getElementById("ee-rev-ok");
+  btn.disabled = true;
+  document.getElementById("ee-rev-error").style.display = "none";
+  const nota = document.getElementById("ee-rev-nota").value.trim() || null;
   try {
-    const { data, error } = await sb.rpc("ee_firmar", { p_id: id, p_firma: imagen, p_nota: nota });
+    const { data, error } = await sb.rpc("ee_firmar", { p_id: eeRev.id, p_firma: eeRev.img || null, p_nota: nota });
     if (error) throw error;
-    // Un aviso que se va solo pasa desapercibido y el ensayo sigue pendiente
-    // sin que nadie sepa por qué: el rechazo se muestra y hay que cerrarlo.
-    if (!data || !data.ok) { alert("La revisión no quedó firmada.\n\n" + (data?.error || "Sin detalle del servidor.")); return; }
-    toast("Ensayo firmado");
+    if (!data || !data.ok) {
+      eeRevError("La revisión no quedó firmada: " + (data?.error || "sin detalle del servidor."));
+      btn.disabled = false;
+      return;
+    }
+    eeRevCerrar();
+    toast("Revisión firmada");
     abrirMaquina(eeMaquinaActual.id);
   } catch (err) {
     console.error(err);
-    alert("La revisión no quedó firmada.\n\n" + err.message);
+    eeRevError("La revisión no quedó firmada: " + err.message);
+    btn.disabled = false;
   }
 }
 
@@ -8790,19 +8839,42 @@ async function eeReabrir(id) {
   }
 }
 
-async function eeDevolver(id) {
-  const nota = prompt("Motivo por el que se devuelve al técnico:", "");
-  if (nota === null) return;
-  if (!nota.trim()) { toast("Debes indicar el motivo"); return; }
+let eeDevId = null;
+
+function eeDevolver(id) {
+  const ensayo = eeEnsayos.find(x => x.id === id);
+  if (!ensayo) return;
+  eeDevId = id;
+  document.getElementById("ee-dev-ensayo").textContent =
+    [(eeMaquinaActual && eeMaquinaActual.nombre_efectivo) || "", ensayo.fecha, ensayo.ejecutante_nombre || ensayo.tecnico || ""]
+      .filter(Boolean).join(" · ");
+  document.getElementById("ee-dev-nota").value = "";
+  document.getElementById("ee-dev-error").style.display = "none";
+  document.getElementById("ee-dev-ok").disabled = false;
+  document.getElementById("ee-devolver-modal").style.display = "flex";
+}
+
+async function eeDevConfirmar() {
+  const err = document.getElementById("ee-dev-error");
+  const btn = document.getElementById("ee-dev-ok");
+  const nota = document.getElementById("ee-dev-nota").value.trim();
+  if (!nota) { err.textContent = "Indica el motivo: el técnico lo necesita para corregir."; err.style.display = ""; return; }
+  btn.disabled = true;
+  err.style.display = "none";
   try {
-    const { data, error } = await sb.rpc("ee_rechazar", { p_id: id, p_nota: nota.trim() });
+    const { data, error } = await sb.rpc("ee_rechazar", { p_id: eeDevId, p_nota: nota });
     if (error) throw error;
-    if (!data || !data.ok) { toast(data?.error || "No se pudo devolver"); return; }
+    if (!data || !data.ok) {
+      err.textContent = "No se pudo devolver: " + (data?.error || "sin detalle del servidor.");
+      err.style.display = ""; btn.disabled = false; return;
+    }
+    document.getElementById("ee-devolver-modal").style.display = "none";
     toast("Ensayo devuelto al técnico");
     abrirMaquina(eeMaquinaActual.id);
-  } catch (err) {
-    console.error(err);
-    toast("No se pudo devolver: " + err.message);
+  } catch (e) {
+    console.error(e);
+    err.textContent = "No se pudo devolver: " + e.message;
+    err.style.display = ""; btn.disabled = false;
   }
 }
 
@@ -19744,6 +19816,61 @@ function firmaPintarVista() {
      respondia "elija que sale sobre su raya" y obligaba al supervisor a subir
      al formulario, configurar, guardar y volver a bajar. Aqui elige, firma y
      aprueba en un solo gesto. -->
+<!-- Revisión de ensayos eléctricos. Ventanas propias y no confirm/prompt:
+     en la app instalada esos diálogos nativos pueden quedar suprimidos, y
+     entonces confirm() devuelve "cancelar" sin mostrarse y la firma se corta
+     en silencio. Aquí todo se ve y los errores se muestran dentro. -->
+<div class="dlg-modal" id="ee-firmar-modal">
+  <div class="dlg-caja">
+    <div class="dlg-titulo">Firmar revisión</div>
+    <div class="dlg-cuerpo">
+      <div class="mat-stock" id="ee-rev-ensayo" style="margin-bottom:10px"></div>
+      <div class="hint-box" id="ee-rev-auto" style="display:none">
+        Este ensayo lo ejecutaste tú. Al firmarlo como revisor, la tarjeta y el
+        informe lo indicarán como <b>autorrevisión</b>.
+      </div>
+      <div class="field">
+        <label>Firma que sale en "Revisó"</label>
+        <div id="ee-rev-vista"></div>
+        <div style="display:flex;gap:8px;margin-top:6px;flex-wrap:wrap">
+          <button type="button" class="btn-secondary" style="flex:1 1 130px" onclick="eeRevTrazar()">Firmar en pantalla</button>
+          <button type="button" class="btn-secondary" style="flex:1 1 130px" onclick="document.getElementById('ee-rev-archivo').click()">Cargar imagen</button>
+          <button type="button" class="btn-secondary" style="flex:1 1 130px;display:none" id="ee-rev-usar" onclick="eeRevRecordada()">Usar mi firma recordada</button>
+          <button type="button" class="btn-secondary ancho-auto" style="flex:0 0 auto;display:none" id="ee-rev-quitar" onclick="eeRevQuitar()">Quitar</button>
+        </div>
+        <input type="file" id="ee-rev-archivo" accept="image/*" style="display:none" onchange="eeRevArchivo(this)"/>
+      </div>
+      <div class="field">
+        <label>Observación de la revisión (opcional)</label>
+        <textarea id="ee-rev-nota" rows="2"></textarea>
+      </div>
+      <div id="ee-rev-error" class="hint-box" style="display:none;border-color:var(--danger);color:var(--danger)"></div>
+    </div>
+    <div class="dlg-pie">
+      <button type="button" class="btn-secondary" onclick="eeRevCerrar()">Cancelar</button>
+      <button type="button" class="btn-primary" id="ee-rev-ok" onclick="eeRevConfirmar()">Firmar revisión</button>
+    </div>
+  </div>
+</div>
+
+<div class="dlg-modal" id="ee-devolver-modal">
+  <div class="dlg-caja">
+    <div class="dlg-titulo">Devolver ensayo</div>
+    <div class="dlg-cuerpo">
+      <div class="mat-stock" id="ee-dev-ensayo" style="margin-bottom:10px"></div>
+      <div class="field">
+        <label>Motivo por el que se devuelve al técnico</label>
+        <textarea id="ee-dev-nota" rows="3"></textarea>
+      </div>
+      <div id="ee-dev-error" class="hint-box" style="display:none;border-color:var(--danger);color:var(--danger)"></div>
+    </div>
+    <div class="dlg-pie">
+      <button type="button" class="btn-secondary" onclick="document.getElementById('ee-devolver-modal').style.display='none'">Cancelar</button>
+      <button type="button" class="btn-primary" id="ee-dev-ok" onclick="eeDevConfirmar()">Devolver</button>
+    </div>
+  </div>
+</div>
+
 <div class="dlg-modal" id="ot-firmar-modal">
   <div class="dlg-caja">
     <div class="dlg-titulo">Firmar y aprobar</div>
