@@ -1802,6 +1802,56 @@ function repHojaALineas(libro, nombreHoja) {
   return XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false });
 }
 
+/* Tablas pegadas desde la web. No se escribe un lector por sitio: el
+   portal del fabricante se rediseña y el lector se rompe en silencio,
+   justo cuando hace falta. Copiar y pegar sigue funcionando siempre. */
+function repDetectarSeparador(lineas) {
+  const muestra = lineas.slice(0, 12);
+  const cuenta = s => muestra.reduce((n, l) => n + (l.split(s).length - 1), 0);
+  /* El tabulador va primero: es lo que produce copiar una tabla HTML. */
+  if (cuenta("\t") >= muestra.length) return "\t";
+  if (cuenta(";") >= muestra.length) return ";";
+  if (cuenta(",") >= muestra.length) return ",";
+  return null;   // sin separador claro: se parte por dos o más espacios
+}
+
+function repTextoAMatriz(texto) {
+  const lineas = String(texto || "").split(/\r?\n/).map(l => l.replace(/\s+$/, ""))
+    .filter(l => l.trim().length);
+  if (lineas.length < 2) throw new Error("Pega al menos el encabezado y una fila");
+
+  const sep = repDetectarSeparador(lineas);
+  const partir = l => sep ? l.split(sep) : l.split(/\s{2,}/);
+  const matriz = lineas.map(l => partir(l).map(c => c.trim()));
+
+  const ancho = Math.max.apply(null, matriz.map(f => f.length));
+  if (ancho < 2) throw new Error("No se distinguen columnas en lo pegado");
+
+  /* Las tablas paginadas repiten el encabezado en cada bloque. */
+  const cab = matriz[0].join("|").toUpperCase();
+  const filas = [matriz[0]];
+  for (let i = 1; i < matriz.length; i++) {
+    if (matriz[i].join("|").toUpperCase() === cab) continue;
+    const f = matriz[i].slice();
+    while (f.length < ancho) f.push("");
+    filas.push(f);
+  }
+  if (filas.length < 2) throw new Error("Solo se encontraron encabezados");
+  while (filas[0].length < ancho) filas[0].push("Col " + (filas[0].length + 1));
+  /* Un encabezado vacío rompe el mapeo de columnas. */
+  filas[0] = filas[0].map((c, i) => c || ("Col " + (i + 1)));
+  return filas;
+}
+
+/* Se envuelve en un libro para que siga el mismo camino que un Excel:
+   una sola ruta de mapeo e importación, no dos. */
+function repMatrizALibro(matriz) {
+  const hoja = XLSX.utils.aoa_to_sheet(matriz);
+  const libro = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(libro, hoja, "PEGADO");
+  return libro;
+}
+
 function repB64ABytes(b64) {
   const bin = atob(b64);
   const out = new Uint8Array(bin.length);
@@ -1971,6 +2021,11 @@ async function repModalImportar() {
       '<div class="rep-cargando">Buscando hojas de cálculo…</div></div>' +
     '<div class="rep-campo"><label for="rep-imp-file">O un archivo del equipo</label>' +
       '<input id="rep-imp-file" type="file" accept=".xlsx,.xls,.csv"></div>' +
+    '<div class="rep-campo"><label for="rep-imp-pegar">O pega una tabla de la web</label>' +
+      '<textarea id="rep-imp-pegar" rows="4" ' +
+        'placeholder="Selecciona la tabla en la página, cópiala y pégala aquí"></textarea></div>' +
+    '<button type="button" class="rep-bt" id="rep-imp-usar-pegado" ' +
+      'style="width:100%;margin-bottom:11px">Usar lo pegado</button>' +
     '<div id="rep-imp-paso2"></div>' +
     '<div class="rep-modal-pie">' +
       '<button type="button" data-cerrar>Cancelar</button>' +
@@ -2017,6 +2072,26 @@ async function repModalImportar() {
     } catch (err) {
       paso2.innerHTML = "";
       repAviso(err.message || "No se pudo leer el archivo");
+    }
+  });
+
+  repEl("rep-imp-usar-pegado").addEventListener("click", () => {
+    const txt = repEl("rep-imp-pegar").value;
+    const paso2 = repEl("rep-imp-paso2");
+    if (!txt.trim()) { repAviso("Pega primero el contenido de la tabla."); return; }
+    try {
+      const matriz = repTextoAMatriz(txt);
+      repImport = {
+        libro: repMatrizALibro(matriz),
+        hojas: ["PEGADO"],
+        nombre: "Tabla pegada",
+        tipo: "otro",
+        origen: "pegado"
+      };
+      repPaso2Mapeo();
+    } catch (err) {
+      paso2.innerHTML = "";
+      repAviso(err.message || "No se pudo interpretar lo pegado");
     }
   });
 
@@ -2089,7 +2164,8 @@ function repPaso2Mapeo() {
   paso2.innerHTML =
       '<p class="rep-progreso">' + filas.length + " filas · " +
         cols.length + " columnas" +
-        (repImport.origen === "drive" ? " · desde Gestión Documental" : "") + "</p>" +
+        (repImport.origen === "drive" ? " · desde Gestión Documental" : "") +
+        (repImport.origen === "pegado" ? " · pegado desde la web" : "") + "</p>" +
       (repImport.hojas.length > 1 ? repSelectorHoja() : "") +
       '<div class="rep-campo"><label for="rep-imp-col-cod">Columna del código</label>' +
         '<select id="rep-imp-col-cod">' +
@@ -2112,8 +2188,13 @@ function repPaso2Mapeo() {
       '<div class="rep-campo"><label for="rep-imp-titulo">Título del documento</label>' +
         '<input id="rep-imp-titulo" value="' + repEsc(repImport.nombre) + '"></div>' +
       '<div class="rep-duo">' +
-        '<div class="rep-campo"><label for="rep-imp-fecha">Fecha del documento</label>' +
-          '<input id="rep-imp-fecha" type="date"></div>' +
+        '<div class="rep-campo"><label for="rep-imp-fecha">' +
+          (repImport.origen === "pegado" ? "Fecha de consulta" : "Fecha del documento") +
+          "</label>" +
+          '<input id="rep-imp-fecha" type="date"' +
+          (repImport.origen === "pegado"
+            ? ' value="' + new Date().toISOString().slice(0, 10) + '"' : "") +
+          "></div>" +
         '<div class="rep-campo"><label for="rep-imp-url">Enlace (opcional)</label>' +
           '<input id="rep-imp-url" placeholder="https://"></div>' +
       "</div>" +
@@ -2174,7 +2255,9 @@ async function repImportarFilas() {
     const nuevaFuente = {
       marca: marca,
       titulo: titulo,
-      tipo: repImport.tipo,
+      /* Lo pegado de un portal se cita por su URL y su fecha de consulta,
+         no por el archivo intermedio: la página cambia sin dejar rastro. */
+      tipo: repImport.origen === "pegado" ? (url ? "enlace" : "otro") : repImport.tipo,
       revision: repEl("rep-imp-rev").value.trim() || null,
       fecha_documento: repEl("rep-imp-fecha").value || null,
       url: url || null,
