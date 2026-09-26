@@ -4014,13 +4014,22 @@ async function abrirHub() {
 
 /* Abre una máquina de Ensayos desde el inicio. aplicarModulo dispara la
    carga sin esperarla, así que se espera a que la máquina esté en la lista. */
-async function hubIrAMaquina(id) {
+async function hubIrAMaquina(id, ensayoId) {
   aplicarModulo("ensayos");
-  for (let i = 0; i < 50 && !eeMaquinas.some(m => m.id === id); i++) {
-    await new Promise(r => setTimeout(r, 200));
+  // Se espera la carga que acaba de disparar aplicarModulo: con la lista
+  // vieja en memoria, la máquina se abría y la carga terminaba encima.
+  try { await eeMaquinasPromesa; } catch (e) { /* cargarMaquinas ya lo muestra */ }
+  if (!eeMaquinas.some(m => m.id === id)) {
+    toast("Esa máquina no está en el listado de Ensayos eléctricos");
+    return;
   }
-  if (eeMaquinas.some(m => m.id === id)) abrirMaquina(id);
-  else toast("Esa máquina no está en el listado de Ensayos eléctricos");
+  await abrirMaquina(id);
+  if (!ensayoId) return;
+  const card = document.getElementById("ee-card-" + ensayoId);
+  if (!card) return;
+  card.scrollIntoView({ behavior: "smooth", block: "center" });
+  card.style.boxShadow = "0 0 0 3px var(--acento, #1f5f99)";
+  setTimeout(() => { card.style.boxShadow = ""; }, 2500);
 }
 
 /* Cada entrada devuelve un numero o null. allSettled evita que una
@@ -4198,7 +4207,7 @@ async function hubPintar(c) {
           </button>`).join("")}
       </div>` : "";
     pf.querySelectorAll("[data-hub-pf]").forEach(b => {
-      b.onclick = () => hubIrAMaquina(lista[+b.dataset.hubPf].maquina_id);
+      b.onclick = () => hubIrAMaquina(lista[+b.dataset.hubPf].maquina_id, lista[+b.dataset.hubPf].id);
     });
   }
 
@@ -8364,7 +8373,16 @@ const EE_BORRADOR = "kronos_ensayo_borrador";
 /* ============================================================
    Lista de maquinas
    ============================================================ */
-async function cargarMaquinas() {
+/* Promesa de la carga en curso: quien necesita la lista ya cargada (por
+   ejemplo, entrar a una máquina desde el inicio) espera esta, en vez de
+   adivinar cuándo terminó. */
+let eeMaquinasPromesa = null;
+function cargarMaquinas() {
+  eeMaquinasPromesa = cargarMaquinasInterno();
+  return eeMaquinasPromesa;
+}
+
+async function cargarMaquinasInterno() {
   const cont = document.getElementById("ee-lista");
   cont.innerHTML = '<div class="loading">Cargando máquinas...</div>';
   try {
@@ -8623,7 +8641,7 @@ function eeTarjetaEnsayo(e, m) {
   }).join("");
 
   return `
-    <div style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px">
+    <div id="ee-card-${e.id}" style="border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:10px;transition:box-shadow .4s">
       <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
         <b>${e.fecha} ${eeBadgeEstado(e)}</b>
         <span class="mat-stock">${e.motivo || ""} · ${e.ejecutante_nombre || e.tecnico || ""}</span>
@@ -8710,12 +8728,14 @@ async function eeEnviarFirma(id, imagen) {
   try {
     const { data, error } = await sb.rpc("ee_firmar", { p_id: id, p_firma: imagen, p_nota: nota });
     if (error) throw error;
-    if (!data || !data.ok) { toast(data?.error || "No se pudo firmar"); return; }
+    // Un aviso que se va solo pasa desapercibido y el ensayo sigue pendiente
+    // sin que nadie sepa por qué: el rechazo se muestra y hay que cerrarlo.
+    if (!data || !data.ok) { alert("La revisión no quedó firmada.\n\n" + (data?.error || "Sin detalle del servidor.")); return; }
     toast("Ensayo firmado");
     abrirMaquina(eeMaquinaActual.id);
   } catch (err) {
     console.error(err);
-    toast("No se pudo firmar: " + err.message);
+    alert("La revisión no quedó firmada.\n\n" + err.message);
   }
 }
 
