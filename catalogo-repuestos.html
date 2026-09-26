@@ -815,6 +815,18 @@ button{cursor:pointer}
   background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
   padding:5px 11px;font-size:12.5px;color:var(--t2);flex-shrink:0;
 }
+.rep-archivos{display:grid;gap:6px;max-height:44vh;overflow-y:auto;margin-bottom:11px}
+.rep-arch{
+  display:grid;gap:2px;padding:9px 11px;text-align:left;width:100%;
+  border:1px solid var(--line);border-radius:9px;background:var(--surface-2);
+  font-family:inherit;color:var(--t1);
+}
+.rep-arch:hover{border-color:var(--accent)}
+.rep-arch .nom{font-size:13px;font-weight:500;word-break:break-word}
+.rep-arch .ruta{font-size:11px;color:var(--t3);word-break:break-all}
+.rep-arch .est{font-size:11px;font-family:var(--mono);margin-top:2px}
+.rep-arch .est.ok{color:var(--ok)}
+.rep-arch .est.vieja{color:var(--warn)}
 .rep-tabla{width:100%;border-collapse:collapse;font-size:12px}
 .rep-tabla th,.rep-tabla td{
   padding:6px 8px;border-bottom:1px solid var(--line-soft);text-align:left;
@@ -1777,12 +1789,44 @@ const REP_LOTE_IMPORT = 400;   // filas por INSERT; mas alla PostgREST se atraga
 let repImport = null;          // { filas, columnas, nombre, tipo }
 let repCotejoFilas = [];       // resultado vigente del cotejo
 
-function repHojaALineas(datos, tipo) {
-  const libro = XLSX.read(datos, { type: tipo === "csv" ? "string" : "array" });
-  const hoja = libro.Sheets[libro.SheetNames[0]];
-  /* defval:"" evita que las celdas vacias desaparezcan y desalineen el
-     mapeo de columnas. */
+function repAbrirLibro(datos, tipo) {
+  return XLSX.read(datos, { type: tipo === "csv" ? "string" : "array" });
+}
+
+/* defval:"" evita que las celdas vacias desaparezcan y desalineen el
+   mapeo de columnas; raw:false deja los numeros como texto, que es lo
+   que interesa cuando la columna es un codigo de parte. */
+function repHojaALineas(libro, nombreHoja) {
+  const hoja = libro.Sheets[nombreHoja || libro.SheetNames[0]];
+  if (!hoja) return [];
   return XLSX.utils.sheet_to_json(hoja, { defval: "", raw: false });
+}
+
+function repB64ABytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+/* Trae el archivo desde el espejo de Drive. El contenido no esta en
+   Supabase, asi que lo pide la Edge Function con la cuenta de servicio
+   que ya sincroniza las carpetas. */
+async function repTraerDeDrive(fileId) {
+  const { data, error } = await sb.functions.invoke("drive-descargar",
+    { body: { file_id: fileId } });
+  if (error) {
+    let msg = "No se pudo traer el archivo";
+    try {
+      if (error.context && typeof error.context.json === "function") {
+        const c = await error.context.json();
+        if (c && c.error) msg = c.error;
+      }
+    } catch (e) { /* cuerpo no legible */ }
+    throw new Error(msg);
+  }
+  if (!data || data.error) throw new Error((data && data.error) || "Descarga vacía");
+  return data;
 }
 
 function repLeerArchivoLista(file) {
@@ -1793,10 +1837,10 @@ function repLeerArchivoLista(file) {
     fr.onload = () => {
       try {
         const datos = esCsv ? fr.result : new Uint8Array(fr.result);
-        const filas = repHojaALineas(datos, esCsv ? "csv" : "xlsx");
-        if (!filas.length) throw new Error("La primera hoja no tiene filas");
-        res({ filas: filas, columnas: Object.keys(filas[0]),
-              nombre: file.name, tipo: esCsv ? "csv" : "excel" });
+        const libro = repAbrirLibro(datos, esCsv ? "csv" : "xlsx");
+        res({ libro: libro, hojas: libro.SheetNames,
+              nombre: file.name, tipo: esCsv ? "csv" : "excel",
+              origen: "local" });
       } catch (e) { rej(e); }
     };
     if (esCsv) fr.readAsText(file); else fr.readAsArrayBuffer(file);
@@ -1906,10 +1950,10 @@ async function repModalFuentes() {
         "<tr><th>Marca</th><th>Documento</th><th>Renglones</th><th>Tipo</th></tr>" +
         filas + "</table></div>"
       : '<p class="rep-ayuda">Todavía no hay listas cargadas.</p>') +
-    '<p class="rep-ayuda" style="margin-top:11px">Las listas del fabricante se cargan ' +
-      "desde Excel o CSV. Se guardan los códigos y su descripción, no el documento " +
-      "completo: son datos de hecho, y así el material de terceros no se replica " +
-      "dentro de Kronos-M.</p>" +
+    '<p class="rep-ayuda" style="margin-top:11px">Las listas se toman de Gestión ' +
+      "Documental: el archivo sigue viviendo allí y aquí solo se indexan sus " +
+      "códigos y descripciones. Si la lista se actualiza en Drive, el selector " +
+      "avisa que lo indexado quedó viejo.</p>" +
     '<div class="rep-modal-pie">' +
       '<button type="button" data-cerrar>Cerrar</button>' +
       '<button type="button" class="primario" id="rep-f-nueva">Importar lista</button>' +
@@ -1918,16 +1962,49 @@ async function repModalFuentes() {
   repEl("rep-f-nueva").addEventListener("click", repModalImportar);
 }
 
-function repModalImportar() {
+async function repModalImportar() {
   repImport = null;
   repAbrirModal("<h3>Importar lista de partes</h3>" +
-    '<div class="rep-campo"><label for="rep-f-file">Archivo Excel o CSV</label>' +
+    '<div class="rep-campo"><label for="rep-f-buscar">Buscar en Gestión Documental</label>' +
+      '<input id="rep-f-buscar" placeholder="repuestos, baker, triol…" autocomplete="off"></div>' +
+    '<div class="rep-archivos" id="rep-f-lista">' +
+      '<div class="rep-cargando">Buscando hojas de cálculo…</div></div>' +
+    '<div class="rep-campo"><label for="rep-f-file">O un archivo del equipo</label>' +
       '<input id="rep-f-file" type="file" accept=".xlsx,.xls,.csv"></div>' +
     '<div id="rep-f-paso2"></div>' +
     '<div class="rep-modal-pie">' +
       '<button type="button" data-cerrar>Cancelar</button>' +
       '<button type="button" class="primario" id="rep-f-importar" disabled>Importar</button>' +
     "</div>");
+
+  await repListarCandidatas("");
+  let reloj = null;
+  repEl("rep-f-buscar").addEventListener("input", e => {
+    clearTimeout(reloj);
+    const v = e.target.value.trim();
+    reloj = setTimeout(() => repListarCandidatas(v), 350);
+  });
+
+  repEl("rep-f-lista").addEventListener("click", async e => {
+    const b = e.target.closest(".rep-arch");
+    if (!b) return;
+    const paso2 = repEl("rep-f-paso2");
+    paso2.innerHTML = '<div class="rep-cargando">Trayendo el archivo desde Drive…</div>';
+    try {
+      const d = await repTraerDeDrive(b.dataset.fid);
+      const esCsv = /csv/i.test(d.mime || "") || /\.csv$/i.test(d.nombre || "");
+      const bytes = repB64ABytes(d.contenido_base64);
+      const datos = esCsv ? new TextDecoder().decode(bytes) : bytes;
+      const libro = repAbrirLibro(datos, esCsv ? "csv" : "xlsx");
+      repImport = { libro: libro, hojas: libro.SheetNames, nombre: d.nombre,
+                    tipo: esCsv ? "csv" : "excel", origen: "drive",
+                    fileId: d.file_id, ruta: d.ruta, md5: d.md5 };
+      repPaso2Mapeo();
+    } catch (err) {
+      paso2.innerHTML = "";
+      repAviso(err.message || "No se pudo traer el archivo");
+    }
+  });
 
   repEl("rep-f-file").addEventListener("change", async e => {
     const f = e.target.files[0];
@@ -1936,20 +2013,84 @@ function repModalImportar() {
     paso2.innerHTML = '<div class="rep-cargando">Leyendo el archivo…</div>';
     try {
       repImport = await repLeerArchivoLista(f);
+      repPaso2Mapeo();
     } catch (err) {
       paso2.innerHTML = "";
       repAviso(err.message || "No se pudo leer el archivo");
-      return;
     }
+  });
 
-    const cols = repImport.columnas;
+  repEl("rep-f-importar").addEventListener("click", repImportarFilas);
+}
+
+async function repListarCandidatas(texto) {
+  const cont = repEl("rep-f-lista");
+  if (!cont) return;
+  const { data, error } = await sb.rpc("rep_fuentes_candidatas",
+    { p_texto: texto || null, p_limite: 60 });
+  if (error) { cont.innerHTML = '<p class="rep-ayuda">' + repEsc(error.message) + "</p>"; return; }
+  const filas = data || [];
+  if (!filas.length) {
+    cont.innerHTML = '<p class="rep-ayuda">Ninguna hoja de cálculo coincide. ' +
+      "Prueba con el nombre de la marca o de la carpeta.</p>";
+    return;
+  }
+  cont.innerHTML = filas.map(f => {
+    let est = "";
+    if (f.desactualizada) {
+      est = '<span class="est vieja">indexada, pero el archivo cambió desde entonces</span>';
+    } else if (f.fuente_id) {
+      est = '<span class="est ok">ya indexada · ' + f.n_items + " renglones</span>";
+    }
+    return '<button type="button" class="rep-arch" data-fid="' + repEsc(f.file_id) + '">' +
+      '<span class="nom">' + repEsc(f.nombre) + "</span>" +
+      '<span class="ruta">' + repEsc(f.ruta || "") + "</span>" + est + "</button>";
+  }).join("");
+}
+
+/* La marca sale de la carpeta cuando se puede: estas listas cuelgan de
+   rutas como .../DRIVES CENTRILIFT/REPUESTOS VARIADORES. */
+const REP_MARCAS_RUTA = [
+  ["CENTRILIFT", "Baker Hughes"], ["BAKER", "Baker Hughes"],
+  ["YASKAWA", "Yaskawa"], ["TRIOL", "Triol"], ["WEG", "WEG"],
+  ["MITSUBISHI", "Mitsubishi"], ["EATON", "Eaton"], ["ABB", "ABB"],
+  ["SCHNEIDER", "Schneider"], ["DANFOSS", "Danfoss"]
+];
+
+function repMarcaDeRuta(ruta, nombre) {
+  const t = ((ruta || "") + " " + (nombre || "")).toUpperCase();
+  const hit = REP_MARCAS_RUTA.find(m => t.indexOf(m[0]) >= 0);
+  return hit ? hit[1] : "";
+}
+
+function repPaso2Mapeo() {
+  const paso2 = repEl("rep-f-paso2");
+  /* Cambiar de hoja repinta el formulario; lo ya escrito se conserva. */
+  const previo = {};
+  ["rep-f-marca", "rep-f-rev", "rep-f-titulo", "rep-f-fecha", "rep-f-url"]
+    .forEach(id => { const el = repEl(id); if (el) previo[id] = el.value; });
+  const hoja = repImport.hojaSel || repImport.hojas[0];
+  repImport.hojaSel = hoja;
+  const filas = repHojaALineas(repImport.libro, hoja);
+  repImport.filas = filas;
+  if (!filas.length) {
+    paso2.innerHTML = '<p class="rep-ayuda">La hoja «' + repEsc(hoja) + "» no tiene filas.</p>" +
+      (repImport.hojas.length > 1 ? repSelectorHoja() : "");
+    repEl("rep-f-importar").disabled = true;
+    if (repImport.hojas.length > 1) repEngancharHoja();
+    return;
+  }
+  const cols = Object.keys(filas[0]);
+  repImport.columnas = cols;
     const opc = sel => '<option value=""></option>' + cols.map(c =>
       '<option value="' + repEsc(c) + '"' + (c === sel ? " selected" : "") + ">" +
       repEsc(c) + "</option>").join("");
 
-    paso2.innerHTML =
-      '<p class="rep-progreso">' + repImport.filas.length + " filas · " +
-        cols.length + " columnas</p>" +
+  paso2.innerHTML =
+      '<p class="rep-progreso">' + filas.length + " filas · " +
+        cols.length + " columnas" +
+        (repImport.origen === "drive" ? " · desde Gestión Documental" : "") + "</p>" +
+      (repImport.hojas.length > 1 ? repSelectorHoja() : "") +
       '<div class="rep-campo"><label for="rep-f-col-cod">Columna del código</label>' +
         '<select id="rep-f-col-cod">' +
         opc(repAdivinarColumna(cols, ["partnumber", "partno", "codigo", "code", "sku", "material", "pn"])) +
@@ -1981,10 +2122,40 @@ function repModalImportar() {
       '<p class="rep-ayuda">Sin revisión ni fecha, citar la fuente dice poco: ' +
         "las listas de partes cambian entre ediciones.</p>";
 
-    repEl("rep-f-importar").disabled = false;
+  Object.keys(previo).forEach(id => {
+    const el = repEl(id);
+    if (el && previo[id]) el.value = previo[id];
   });
+  const elMarca = repEl("rep-f-marca");
+  if (elMarca && !elMarca.value) {
+    elMarca.value = repMarcaDeRuta(repImport.ruta, repImport.nombre);
+  }
 
-  repEl("rep-f-importar").addEventListener("click", async () => {
+  repEl("rep-f-importar").disabled = false;
+  if (repImport.hojas.length > 1) repEngancharHoja();
+}
+
+/* Un libro con varias hojas es lo normal en estas listas: una por
+   capacidad o por serie. Se indexa la que el usuario elija, y cada hoja
+   puede dar su propia fuente. */
+function repSelectorHoja() {
+  return '<div class="rep-campo"><label for="rep-f-hoja">Hoja del libro</label>' +
+    '<select id="rep-f-hoja">' + repImport.hojas.map(x =>
+      '<option value="' + repEsc(x) + '"' +
+      (x === repImport.hojaSel ? " selected" : "") + ">" + repEsc(x) + "</option>").join("") +
+    "</select></div>";
+}
+
+function repEngancharHoja() {
+  const sel = repEl("rep-f-hoja");
+  if (!sel) return;
+  sel.addEventListener("change", e => {
+    repImport.hojaSel = e.target.value;
+    repPaso2Mapeo();
+  });
+}
+
+async function repImportarFilas() {
     if (!repImport) { repAviso("Elige primero el archivo."); return; }
     const colCod = repEl("rep-f-col-cod").value;
     const marca = repEl("rep-f-marca").value.trim();
@@ -1997,16 +2168,37 @@ function repModalImportar() {
     const paso2 = repEl("rep-f-paso2");
 
     const url = repEl("rep-f-url").value.trim();
-    const { data: fuente, error: errF } = await sb.from("rep_fuente").insert({
+    /* Se guarda la referencia al archivo, no una copia: si la lista se
+       actualiza en Drive, el espejo cambia de md5 y el selector avisa
+       que los renglones indexados quedaron viejos. */
+    const nuevaFuente = {
       marca: marca,
       titulo: titulo,
       tipo: repImport.tipo,
       revision: repEl("rep-f-rev").value.trim() || null,
       fecha_documento: repEl("rep-f-fecha").value || null,
       url: url || null,
-      path_storage: url ? null : "importado:" + repImport.nombre,
+      path_storage: null,
+      drive_file_id: repImport.fileId || null,
+      ruta_origen: repImport.ruta || null,
+      hoja: repImport.hojas.length > 1 ? repImport.hojaSel : null,
+      md5_origen: repImport.md5 || null,
+      indexado_en: new Date().toISOString(),
       material_terceros: repEl("rep-f-terceros").checked
-    }).select("id").single();
+    };
+    if (!nuevaFuente.drive_file_id && !nuevaFuente.url) {
+      nuevaFuente.path_storage = "cargado-local:" + repImport.nombre;
+    }
+
+    /* Reindexar sustituye: los renglones viejos se van con la fuente. */
+    if (repImport.fileId) {
+      await sb.from("rep_fuente").delete()
+        .eq("drive_file_id", repImport.fileId)
+        .eq("hoja", nuevaFuente.hoja);
+    }
+
+    const { data: fuente, error: errF } = await sb.from("rep_fuente")
+      .insert(nuevaFuente).select("id").single();
     if (errF) { repAviso(errF.message); btn.disabled = false; return; }
 
     const colDesc = repEl("rep-f-col-desc").value;
@@ -2051,7 +2243,6 @@ function repModalImportar() {
     repImport = null;
     repCerrarModal();
     repModalFuentes();
-  });
 }
 
 function repModalCotejo() {
