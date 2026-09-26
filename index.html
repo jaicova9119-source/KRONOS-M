@@ -2769,8 +2769,13 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="field"><label>Marcación de bornes</label>
       <select id="ee-f-marcacion"><option value="NEMA">NEMA (T1, T2, T3...)</option><option value="IEC">IEC (U1, V1, W1...)</option></select>
     </div>
-    <div class="field"><label>Número de bobinas</label>
-      <select id="ee-f-nbob"><option value="3">3 bobinas (6 puntas)</option><option value="6">6 bobinas (12 puntas)</option></select>
+    <div class="field"><label>Terminales accesibles en caja de bornes</label>
+      <select id="ee-f-nterm">
+        <option value="3">3 puntas · solo entre líneas</option>
+        <option value="6">6 puntas · 3 bobinas</option>
+        <option value="12">12 puntas · 6 bobinas</option>
+      </select>
+      <div class="mat-stock">Define si la resistencia óhmica puede medirse bobina por bobina o solo entre líneas.</div>
     </div>
     <div class="field"><label>Criticidad</label>
       <select id="ee-f-criticidad"><option value="">—</option><option>A - Crítico</option><option>B - Importante</option><option>C - Auxiliar</option></select>
@@ -2844,6 +2849,14 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div id="ee-tablas-ir"></div>
 
     <div class="section-label">Resistencia óhmica por bobina</div>
+    <div class="field" id="ee-bobconf-wrap" style="display:none"><label>Configuración de medición</label>
+      <select id="ee-e-bobconf" onchange="eePintarBobinas(); eeRecalcular()">
+        <option value="BOBINA">Por bobina · puentes retirados</option>
+        <option value="LINEA">Entre líneas · conexión cerrada</option>
+        <option value="AMBAS">Ambas</option>
+      </select>
+      <div class="mat-stock" id="ee-bobconf-nota"></div>
+    </div>
     <div id="ee-tabla-bob"></div>
     <div class="field"><label>Temp. de medición (°C)</label><input id="ee-e-trdev" type="number" step="0.5"/></div>
     <div class="field"><label>Instrumento</label><input id="ee-e-micro" placeholder="Micro-ohmetro / multimetro"/></div>
@@ -8240,6 +8253,50 @@ const EE_PUNTO = {
 const EE_FASES = marc => marc === "IEC" ? ["U", "V", "W"] : ["A", "B", "C"];
 const EE_BORNES = marc => marc === "IEC" ? ["U1", "V1", "W1"] : ["T1", "T2", "T3"];
 
+/* ---------- Resistencia óhmica: qué pares se pueden medir ----------
+   Depende de las puntas que salen a la caja de bornes. Con 3 solo se mide
+   entre líneas. Con 6 o 12, cada bobina entre su inicio y su fin con los
+   puentes retirados (NEMA MG-1: T1–T4…; IEC 60034-8: U1–U2…, U5–U6 para la
+   segunda sección). Entre líneas se lee 2·R en estrella y 2/3·R en
+   triángulo, así que las dos configuraciones nunca se comparan entre sí. */
+const EE_TERMINALES = m => {
+  const n = Number(m && m.n_terminales);
+  if (n === 3 || n === 6 || n === 12) return n;
+  return Number(m && m.n_bobinas) >= 6 ? 12 : 3;   // vista sin la columna aún
+};
+const EE_PARES_BOBINA = {
+  NEMA: { 6: ["T1–T4", "T2–T5", "T3–T6"],
+          12: ["T1–T4", "T2–T5", "T3–T6", "T7–T10", "T8–T11", "T9–T12"] },
+  IEC:  { 6: ["U1–U2", "V1–V2", "W1–W2"],
+          12: ["U1–U2", "V1–V2", "W1–W2", "U5–U6", "V5–V6", "W5–W6"] },
+};
+const EE_PARES_LINEA = marc => {
+  const b = EE_BORNES(marc);
+  return [`${b[0]}–${b[1]}`, `${b[1]}–${b[2]}`, `${b[0]}–${b[2]}`];
+};
+const EE_CONF_TXT = { BOBINA: "por bobina", LINEA: "entre líneas" };
+// Misma regla que la migración SQL, para filas guardadas antes de la columna.
+const EE_RE_BOBINA = /^(T1[–-]T4|T2[–-]T5|T3[–-]T6|T7[–-]T10|T8[–-]T11|T9[–-]T12|U1[–-]U2|V1[–-]V2|W1[–-]W2|U5[–-]U6|V5[–-]V6|W5[–-]W6)$/;
+const EE_confDe = b => b.configuracion || b.conf
+  || (EE_RE_BOBINA.test(String(b.par || "").replace(/\s/g, "")) ? "BOBINA" : "LINEA");
+const EE_slugPar = p => String(p).replace(/[^A-Za-z0-9]/g, "_");
+
+/* Desbalance por configuración: [{conf, n, desb, parMax}]. Entrada con
+   par, resistencia (o r) y configuración. */
+function EE_desbPorConfig(bobs) {
+  const out = [];
+  ["BOBINA", "LINEA"].forEach(conf => {
+    const xs = bobs.map(b => ({ par: b.par, r: Number(b.r ?? b.resistencia), conf: EE_confDe(b) }))
+                   .filter(b => b.conf === conf && isFinite(b.r) && b.r > 0);
+    const desb = EE_desbalance(xs.map(b => b.r));
+    if (desb == null) return;
+    const prom = xs.reduce((a, b) => a + b.r, 0) / xs.length;
+    const parMax = xs.slice().sort((a, b) => Math.abs(b.r - prom) - Math.abs(a.r - prom))[0].par;
+    out.push({ conf, n: xs.length, desb, parMax });
+  });
+  return out;
+}
+
 /* ---------- Estado del modulo ---------- */
 let eeMaquinas = [];
 let eeMaquinaActual = null;
@@ -8262,6 +8319,16 @@ async function cargarMaquinas() {
        copia que nadie actualiza acaba mintiendo. Se filtran en la carga y no
        solo al pintar, para que su ficha tampoco sea alcanzable desde aqui. */
     eeMaquinas = (data || []).filter(m => !m.es_motor_bes);
+    /* v_maquinas_electricas se creó antes de n_terminales y no la expone.
+       Mientras no se recree, se lee de la tabla; si falla, EE_TERMINALES la
+       deduce de n_bobinas. Cuando la vista la traiga, esto no se ejecuta. */
+    if (eeMaquinas.length && !("n_terminales" in eeMaquinas[0])) {
+      try {
+        const { data: nt } = await sb.from("maquinas_electricas").select("id,n_terminales").limit(1000);
+        const mapa = new Map((nt || []).map(r => [r.id, r.n_terminales]));
+        eeMaquinas.forEach(m => { if (mapa.has(m.id)) m.n_terminales = mapa.get(m.id); });
+      } catch (e) { console.warn("n_terminales no disponible", e); }
+    }
     renderMaquinas();
   } catch (e) {
     console.error(e);
@@ -8370,7 +8437,8 @@ async function abrirMaquina(id) {
     ["Corriente / rpm / Hz", [m.amperios && m.amperios + " A", m.rpm && m.rpm + " rpm", m.hz && m.hz + " Hz"].filter(Boolean).join(" · ")],
     ["Tipo de devanado", m.tipo_devanado],
     ["Mínimo IEEE 43 (estator)", EE_minimoGrupo(m, "ESTATOR") + " MΩ"],
-    ["Marcación / bobinas", m.marcacion + " · " + m.n_bobinas],
+    ["Marcación / terminales", m.marcacion + " · " + EE_TERMINALES(m) + " puntas · "
+        + (EE_TERMINALES(m) === 12 ? 6 : 3) + " bobinas"],
     ["Criticidad", m.criticidad],
     ["En Activos", m.vinculado_a_activos ? "Sí · " + (m.id_interno || "") : "No vinculada"],
     ["Estado", m.retirada_manual
@@ -8662,7 +8730,7 @@ function nuevaMaquina() {
   document.getElementById("ee-f-tipo").value = "MOTOR";
   document.getElementById("ee-f-devanado").value = "aleatorio";
   document.getElementById("ee-f-marcacion").value = "NEMA";
-  document.getElementById("ee-f-nbob").value = "3";
+  document.getElementById("ee-f-nterm").value = "3";
   document.getElementById("ee-f-equipo").value = "";
   eeToggleGenerador();
 }
@@ -8679,7 +8747,7 @@ function editarMaquina(id) {
   v("voltaje", m.voltaje); v("vcampo", m.voltaje_campo); v("amp", m.amperios); v("rpm", m.rpm);
   v("hz", m.hz); v("criticidad", m.criticidad); v("notas", m.notas);
   v("tipo", m.tipo_maquina); v("devanado", m.tipo_devanado); v("marcacion", m.marcacion);
-  v("nbob", m.n_bobinas); v("equipo", m.equipo_id || "");
+  v("nterm", EE_TERMINALES(m)); v("equipo", m.equipo_id || "");
   document.getElementById("ee-f-excitacion").value = m.excitacion || "";
   document.getElementById("ee-eq-elegido").innerHTML = m.vinculado_a_activos
     ? `<div class="hint-box">Vinculada a Activos: <b>${m.id_interno || ""}</b> · ${m.nombre_efectivo}</div>`
@@ -8754,7 +8822,11 @@ async function guardarMaquina() {
     excitacion: g("tipo") === "GENERADOR" ? (document.getElementById("ee-f-excitacion").value || null) : null,
     potencia_kw: num("kw"), potencia_kva: num("kva"), voltaje: num("voltaje"),
     voltaje_campo: num("vcampo"), amperios: num("amp"), rpm: num("rpm"), hz: num("hz"),
-    tipo_devanado: g("devanado"), marcacion: g("marcacion"), n_bobinas: Number(g("nbob")) || 3,
+    tipo_devanado: g("devanado"), marcacion: g("marcacion"),
+    // n_bobinas se sigue escribiendo para el informe, el asistente y la
+    // captura de campo: 3 y 6 puntas son 3 bobinas; 12 puntas, 6.
+    n_terminales: Number(g("nterm")) || 3,
+    n_bobinas: Number(g("nterm")) === 12 ? 6 : 3,
     criticidad: g("criticidad") || null, notas: g("notas") || null,
     actualizado_en: new Date().toISOString(),
   };
@@ -9012,22 +9084,64 @@ function eePintarTablas() {
         </tr>`).join("")}
     </table></div>`).join("");
 
-  const bornes = EE_BORNES(m.marcacion);
-  const pares = m.n_bobinas >= 6
-    ? ["T1–T4", "T2–T5", "T3–T6", "T7–T10", "T8–T11", "T9–T12"]
-    : [`${bornes[0]}–${bornes[1]}`, `${bornes[1]}–${bornes[2]}`, `${bornes[0]}–${bornes[2]}`];
-  document.getElementById("ee-tabla-bob").innerHTML = `
+  // Ensayo nuevo o recién abierto: configuración por defecto según puntas.
+  eeBobExtras = [];
+  const nt = EE_TERMINALES(m);
+  document.getElementById("ee-bobconf-wrap").style.display = nt >= 6 ? "" : "none";
+  document.getElementById("ee-e-bobconf").value = nt >= 6 ? "BOBINA" : "LINEA";
+  eePintarBobinas(false);
+}
+
+/* Filas guardadas en un ensayo que no caben en la disposición actual (la
+   máquina cambió de puntas o de marcación). Se muestran igual para que al
+   guardar no se borren. */
+let eeBobExtras = [];
+
+function eePintarBobinas(conservar = true) {
+  const m = eeMaquinaActual;
+  const cont = document.getElementById("ee-tabla-bob");
+  const nt = EE_TERMINALES(m);
+  const marc = m.marcacion === "IEC" ? "IEC" : "NEMA";
+  const sel = document.getElementById("ee-e-bobconf");
+  let conf = nt >= 6 ? sel.value : "LINEA";
+  if (!["BOBINA", "LINEA", "AMBAS"].includes(conf)) conf = "LINEA";
+
+  // Lo digitado se conserva al cambiar de configuración.
+  const previo = {};
+  if (conservar) eeLeerBobinas(true).forEach(b => { previo[b.conf + "|" + b.par] = b; });
+
+  const filas = [];
+  if (conf !== "LINEA") EE_PARES_BOBINA[marc][nt].forEach(par => filas.push({ par, conf: "BOBINA" }));
+  if (conf !== "BOBINA") EE_PARES_LINEA(marc).forEach(par => filas.push({ par, conf: "LINEA" }));
+  eeBobExtras.forEach(x => { if (!filas.some(f => f.par === x.par)) filas.push({ par: x.par, conf: x.conf, extra: true }); });
+
+  document.getElementById("ee-bobconf-nota").textContent =
+    conf === "LINEA" ? "Conexión cerrada. En estrella se lee el doble de la resistencia de fase; solo es comparable con otras lecturas entre líneas."
+    : "Retira los puentes y mide cada bobina entre su inicio y su fin.";
+
+  const fila = f => `
+        <tr>
+          <td><b>${f.par}</b>${f.extra ? ' <span class="mat-stock">· registrado antes</span>' : ""}</td>
+          <td><input class="ee-in" id="ee-bob-${EE_slugPar(f.par)}" type="number" step="0.001" oninput="eeRecalcular()"></td>
+          <td><select class="ee-in" id="ee-bobe-${EE_slugPar(f.par)}" onchange="eeRecalcular()">
+            <option>Buena</option><option>Dudosa</option><option>Mala</option></select></td>
+        </tr>`;
+  const grupos = ["BOBINA", "LINEA"].map(c => [c, filas.filter(f => f.conf === c)]).filter(([, xs]) => xs.length);
+  cont.innerHTML = `
     <table class="tabla-ficha">
       <tr><th>Par</th><th>Resistencia (Ω)</th><th>Estado</th></tr>
-      ${pares.map((p, i) => `
-        <tr>
-          <td><b>${p}</b></td>
-          <td><input class="ee-in" id="ee-bob-${i}" type="number" step="0.001" oninput="eeRecalcular()"></td>
-          <td><select class="ee-in" id="ee-bobe-${i}" onchange="eeRecalcular()">
-            <option>Buena</option><option>Dudosa</option><option>Mala</option></select></td>
-        </tr>`).join("")}
+      ${grupos.map(([c, xs]) => (grupos.length > 1 || nt >= 6
+          ? `<tr><td colspan="3" class="mat-stock">${c === "BOBINA" ? "Por bobina · puentes retirados" : "Entre líneas · conexión cerrada"}</td></tr>` : "")
+        + xs.map(fila).join("")).join("")}
     </table>`;
-  document.getElementById("ee-tabla-bob").dataset.pares = JSON.stringify(pares);
+  cont.dataset.pares = JSON.stringify(filas.map(f => ({ par: f.par, conf: f.conf })));
+
+  Object.values(previo).forEach(b => {
+    const el = document.getElementById("ee-bob-" + EE_slugPar(b.par));
+    const es = document.getElementById("ee-bobe-" + EE_slugPar(b.par));
+    if (el && isFinite(b.r)) el.value = b.r;
+    if (es) es.value = b.estado;
+  });
 }
 
 function eeLeerMediciones() {
@@ -9052,13 +9166,13 @@ function eeLeerMediciones() {
   return out;
 }
 
-function eeLeerBobinas() {
+function eeLeerBobinas(todas = false) {
   const pares = JSON.parse(document.getElementById("ee-tabla-bob").dataset.pares || "[]");
-  return pares.map((p, i) => ({
-    par: p,
-    r: parseFloat(document.getElementById("ee-bob-" + i)?.value),
-    estado: document.getElementById("ee-bobe-" + i)?.value || "Buena",
-  })).filter(b => isFinite(b.r) || b.estado !== "Buena");
+  return pares.map(f => ({
+    par: f.par, conf: f.conf,
+    r: parseFloat(document.getElementById("ee-bob-" + EE_slugPar(f.par))?.value),
+    estado: document.getElementById("ee-bobe-" + EE_slugPar(f.par))?.value || "Buena",
+  })).filter(b => todas || isFinite(b.r) || b.estado !== "Buena");
 }
 
 function eeRecalcular() {
@@ -9086,8 +9200,9 @@ function eeRecalcular() {
   });
 
   const bob = eeLeerBobinas();
-  const db = EE_desbalance(bob.map(b => b.r).filter(r => isFinite(r)));
-  if (db != null) html += `<div class="ee-fila"><b>Resistencia entre bobinas</b><span class="mat-stock">Desviación ${EE_num(db)} %</span>${EE_pill(EE_evDes(db))}</div>`;
+  EE_desbPorConfig(bob).forEach(x => {
+    html += `<div class="ee-fila"><b>Resistencia ${EE_CONF_TXT[x.conf]}</b><span class="mat-stock">Desviación ${EE_num(x.desb)} %${x.desb > 2 ? " · mayor en " + x.parMax : ""}</span>${EE_pill(EE_evDes(x.desb))}</div>`;
+  });
   const malas = bob.filter(b => b.estado === "Mala").map(b => b.par);
   if (malas.length) html += `<div class="hint-box">&#9888;&#65039; Bobinas reportadas en mal estado: ${malas.join(", ")}</div>`;
   if (!isFinite(T)) html += '<div class="hint-box">&#9888;&#65039; Sin temperatura de devanado no hay corrección a 40 °C, y la tendencia histórica deja de ser comparable.</div>';
@@ -9143,6 +9258,11 @@ function eeRestaurarBorrador() {
     if (dias > 7) { localStorage.removeItem(EE_BORRADOR); return; }
     if (!confirm("Hay un ensayo sin terminar para esta máquina. ¿Recuperarlo?")) {
       localStorage.removeItem(EE_BORRADOR); return;
+    }
+    // La configuración de bobinas decide qué filas existen: va primero.
+    if (b.campos["ee-e-bobconf"] && EE_TERMINALES(eeMaquinaActual) >= 6) {
+      document.getElementById("ee-e-bobconf").value = b.campos["ee-e-bobconf"];
+      eePintarBobinas(false);
     }
     Object.entries(b.campos).forEach(([id, v]) => {
       const el = document.getElementById(id); if (el) el.value = v;
@@ -9206,7 +9326,7 @@ async function guardarEnsayo() {
     if (e2) throw e2;
 
     const filasBob = eeLeerBobinas().map(b => ({
-      ensayo_id: ensayoId, par: b.par,
+      ensayo_id: ensayoId, par: b.par, configuracion: b.conf,
       resistencia: isFinite(b.r) ? b.r : null, estado: b.estado,
     }));
     if (filasBob.length) {
@@ -9250,13 +9370,25 @@ function editarEnsayo(id) {
     s("30", d.ir_30s_ing ?? d.ir_30s); s("60", d.ir_1min_ing ?? d.ir_1min);
     s("600", d.ir_10min_ing ?? d.ir_10min); s("dar", d.dar); s("pi", d.pi);
   });
-  const pares = JSON.parse(document.getElementById("ee-tabla-bob").dataset.pares || "[]");
-  (e.ensayo_bobinas || []).forEach(b => {
-    const i = pares.indexOf(b.par);
-    if (i >= 0) {
-      const el = document.getElementById("ee-bob-" + i); if (el && b.resistencia != null) el.value = b.resistencia;
-      const es = document.getElementById("ee-bobe-" + i); if (es && b.estado) es.value = b.estado;
+  const guardadas = (e.ensayo_bobinas || []).map(b => ({ ...b, conf: EE_confDe(b) }));
+  if (guardadas.length) {
+    const confs = new Set(guardadas.map(b => b.conf));
+    const nt = EE_TERMINALES(eeMaquinaActual);
+    if (nt >= 6) document.getElementById("ee-e-bobconf").value = confs.size > 1 ? "AMBAS" : [...confs][0];
+    // Lo que no cabe en la disposición actual se muestra aparte; así no se
+    // borra al guardar (guardarEnsayo reemplaza todas las filas del ensayo).
+    const marc = eeMaquinaActual.marcacion === "IEC" ? "IEC" : "NEMA";
+    const layout = new Set([...(nt >= 6 ? EE_PARES_BOBINA[marc][nt] : []), ...EE_PARES_LINEA(marc)]);
+    eeBobExtras = guardadas.filter(b => !layout.has(b.par)).map(b => ({ par: b.par, conf: b.conf }));
+    if (nt < 6 && confs.has("BOBINA")) {
+      document.getElementById("ee-bobconf-wrap").style.display = "";
+      document.getElementById("ee-e-bobconf").value = confs.size > 1 ? "AMBAS" : "BOBINA";
     }
+    eePintarBobinas(false);
+  }
+  guardadas.forEach(b => {
+    const el = document.getElementById("ee-bob-" + EE_slugPar(b.par)); if (el && b.resistencia != null) el.value = b.resistencia;
+    const es = document.getElementById("ee-bobe-" + EE_slugPar(b.par)); if (es && b.estado) es.value = b.estado;
   });
   eeSellarTecnico(e);
   eeBloquearSiFirmado(e);
@@ -9416,11 +9548,20 @@ function eeDictamen(lista, m) {
     hallazgos.push(`Dispersión del ${EE_num(dIR, 0)} % en la IR entre fases del estator, lo que sugiere un deterioro localizado en una fase y no una degradación uniforme.`);
   }
 
-  const d = EE_desbalance(bobs.map(b => Number(b.resistencia)).filter(x => isFinite(x)));
-  if (d != null) {
-    if (d > 5) { peor("bad"); hallazgos.push(`Desbalance resistivo entre bobinas del ${EE_num(d)} %, por encima del 5 %: posible espira en corto o conexión defectuosa.`); }
-    else if (d > 2) { peor("warn"); hallazgos.push(`Desbalance resistivo entre bobinas del ${EE_num(d)} % (2 a 5 %). Vigilar.`); }
-  }
+  // Por configuración: R por bobina y 2·R o 2/3·R entre líneas no se mezclan.
+  let desbBobina = false;
+  const desbCfg = EE_desbPorConfig(bobs);
+  const desbMax = desbCfg.length ? Math.max(...desbCfg.map(x => x.desb)) : -1;
+  desbCfg.forEach(x => {
+    const etq = EE_CONF_TXT[x.conf];
+    if (x.desb > 5) {
+      peor("bad"); if (x.conf === "BOBINA") desbBobina = true;
+      hallazgos.push(`Desbalance resistivo ${etq} del ${EE_num(x.desb)} %, por encima del 5 %; la lectura más alejada del promedio es ${x.parMax}: posible espira en corto o conexión defectuosa.`);
+    } else if (x.desb > 2) {
+      peor("warn");
+      hallazgos.push(`Desbalance resistivo ${etq} del ${EE_num(x.desb)} % (2 a 5 %), mayor desviación en ${x.parMax}. Vigilar.`);
+    }
+  });
   const malas = bobs.filter(b => b.estado === "Mala").map(b => b.par);
   const dudosas = bobs.filter(b => b.estado === "Dudosa").map(b => b.par);
   if (malas.length) { peor("bad"); hallazgos.push(`Bobinas reportadas en mal estado: ${malas.join(", ")}.`); }
@@ -9462,7 +9603,9 @@ function eeDictamen(lista, m) {
     if (hallazgos.some(h => h.includes("por debajo del mínimo") || h.includes("PI") && h.includes("por debajo de 1.0")))
       recs.unshift("No energizar hasta corregir. Secar el devanado y repetir el ensayo; si el valor persiste, evaluar limpieza profunda o rebobinado.");
     if (hallazgos.some(h => h.includes("Desbalance resistivo") && h.includes("por encima del 5")))
-      recs.push("Verificar apriete y estado de las conexiones, y medir bobina por bobina para descartar espiras en corto.");
+      recs.push(desbBobina
+        ? "Verificar apriete y estado de las conexiones e inspeccionar la bobina señalada en la medición por bobina para descartar espiras en corto."
+        : "Verificar apriete y estado de las conexiones, y medir bobina por bobina para descartar espiras en corto.");
     if (malas.length) recs.push("Intervención de taller sobre las bobinas señaladas antes del retorno a servicio.");
   } else if (nivel === "warn") {
     recs.push("Apto para servicio con seguimiento: acortar el intervalo de ensayo y comparar la tendencia en la próxima medición.");
@@ -9480,7 +9623,7 @@ function eeDictamen(lista, m) {
     piMuyBajo: hallazgos.some(h => h.includes("PI") && h.includes("por debajo de 1.0")),
     piBajo: hallazgos.some(h => h.includes("zona cuestionable (1.0 a 2.0)")),
     darBajo: hallazgos.some(h => h.includes("DAR")),
-    desbAlto: d != null && d > 5, desbAlgo: d != null && d > 2,
+    desbAlto: desbMax > 5, desbAlgo: desbMax > 2,
     bobMalas: malas.length > 0,
     condHumeda: ["Húmedo", "Contaminado (aceite/químicos)"].includes(e.condicion),
   };
@@ -9592,8 +9735,11 @@ function eeInformeHTML(e, m, historia) {
     ? `<img src="${logo}" class="inf-logo" height="${EE_LOGO_ALTO}"` +
       `${logoAR ? ` width="${Math.round(EE_LOGO_ALTO * logoAR)}"` : ""} alt=""/>`
     : "";
-  const bobs = e.ensayo_bobinas || [];
-  const desb = EE_desbalance(bobs.map(b => Number(b.resistencia)).filter(x => isFinite(x)));
+  const bobs = (e.ensayo_bobinas || []).map(b => ({ ...b, conf: EE_confDe(b) }))
+    .sort((a, b) => (a.conf === b.conf ? 0 : a.conf === "BOBINA" ? -1 : 1)
+      || String(a.par).localeCompare(String(b.par), "es", { numeric: true }));
+  const desbs = EE_desbPorConfig(bobs);
+  const dosConf = new Set(bobs.map(b => b.conf)).size > 1;
 
   const ficha = [
     ["Equipo", m.nombre_efectivo], ["Código SAP", m.sap_efectivo], ["Serial", m.serial_efectivo],
@@ -9645,12 +9791,13 @@ function eeInformeHTML(e, m, historia) {
     ${eeTablaInforme(e, m)}
 
     ${bobs.length ? `
-      <h3>Resistencia óhmica por bobina
-        ${desb != null ? `<span class="inf-min">desbalance ${EE_num(desb)} %</span>` : ""}</h3>
+      <h3>Resistencia óhmica ${dosConf ? "" : EE_CONF_TXT[bobs[0].conf]}
+        ${desbs.length ? `<span class="inf-min">desbalance ${desbs.map(x => EE_num(x.desb) + " %" + (dosConf ? " " + EE_CONF_TXT[x.conf] : "")).join(" · ")}</span>` : ""}</h3>
       <table class="inf-tabla">
-        <tr><th>Par</th><th>Resistencia (Ω)</th><th>Estado</th></tr>
-        ${bobs.map(b => `<tr><td>${b.par}</td><td>${EE_num(b.resistencia, 3)}</td><td>${b.estado || ""}</td></tr>`).join("")}
+        <tr><th>Par</th>${dosConf ? "<th>Medición</th>" : ""}<th>Resistencia (Ω)</th><th>Estado</th></tr>
+        ${bobs.map(b => `<tr><td>${b.par}</td>${dosConf ? `<td>${EE_CONF_TXT[b.conf]}</td>` : ""}<td>${EE_num(b.resistencia, 3)}</td><td>${b.estado || ""}</td></tr>`).join("")}
       </table>
+      <div class="inf-nota">${bobs.some(b => b.conf === "BOBINA") ? "Por bobina: puentes retirados, cada bobina medida entre su inicio y su fin. " : ""}${bobs.some(b => b.conf === "LINEA") ? "Entre líneas: conexión cerrada; comparable solo con otras lecturas entre líneas." : ""}</div>
       ${e.temp_medicion_bobinas != null || e.instrumento_bobinas
         ? `<div class="inf-nota">Medido a ${e.temp_medicion_bobinas ?? "—"} °C con ${e.instrumento_bobinas || "instrumento no registrado"}.</div>` : ""}` : ""}
 
