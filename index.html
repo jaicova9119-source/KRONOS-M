@@ -2415,6 +2415,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
     <div class="section-label">Requiere tu atención</div>
     <div id="hub-atencion" class="hub-grid-atencion"></div>
+    <div id="hub-por-firmar"></div>
 
     <div class="section-label" style="margin-top:22px">Módulos</div>
     <div id="hub-modulos" class="hub-grid-modulos"></div>
@@ -2866,11 +2867,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
     <div class="field" style="margin-top:12px"><label>Observaciones</label><textarea id="ee-e-obs" rows="3"></textarea></div>
 
-    <div class="section-label">Firma</div>
-    <p class="hint-box">Opcional. Si firmas aquí, la firma sale impresa en el informe. Si prefieres firmar en papel, déjalo vacío y el informe saldrá con la línea en blanco.</p>
+    <div class="section-label">Firma del ejecutante · Realizó</div>
+    <p class="hint-box">Opcional. Es la firma de quien hizo el ensayo y sale en la casilla "Realizó" del informe. Si prefieres firmar en papel, déjalo vacío. La firma de revisión ("Revisó") no va aquí: se hace con el botón <b>Firmar</b> de la tarjeta del ensayo, después de guardarlo.</p>
     <div id="ee-firma-ejec-vista" style="margin-bottom:8px"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
-      <button class="btn-secondary" type="button" id="ee-btn-firmar-ejec">Firmar</button>
+      <button class="btn-secondary" type="button" id="ee-btn-firmar-ejec">Firmar (Realizó)</button>
       <button class="btn-secondary" type="button" id="ee-btn-firma-img-ejec">Cargar imagen</button>
       <button class="btn-secondary" type="button" id="ee-btn-borrar-firma-ejec" style="display:none">Quitar firma</button>
     </div>
@@ -4011,6 +4012,17 @@ async function abrirHub() {
   hubPintar(cifras);
 }
 
+/* Abre una máquina de Ensayos desde el inicio. aplicarModulo dispara la
+   carga sin esperarla, así que se espera a que la máquina esté en la lista. */
+async function hubIrAMaquina(id) {
+  aplicarModulo("ensayos");
+  for (let i = 0; i < 50 && !eeMaquinas.some(m => m.id === id); i++) {
+    await new Promise(r => setTimeout(r, 200));
+  }
+  if (eeMaquinas.some(m => m.id === id)) abrirMaquina(id);
+  else toast("Esa máquina no está en el listado de Ensayos eléctricos");
+}
+
 /* Cada entrada devuelve un numero o null. allSettled evita que una
    consulta caida arrastre a las demas. */
 async function hubContar() {
@@ -4034,6 +4046,27 @@ async function hubContar() {
     documentos:     () => contar("documentos"),
     ensayos:        () => contar("ensayos_electricos"),
     porFirmar:      () => contar("ensayos_electricos", q => q.eq("estado", "pendiente_firma")),
+
+    /* Cuáles son, no solo cuántos: el revisor ve máquina, fecha y quién lo
+       ejecutó, y entra directo. Los más antiguos primero. */
+    porFirmarLista: async () => {
+                      if (!esRevisor) return null;
+                      const r = await sb.from("ensayos_electricos").select("*")
+                        .eq("estado", "pendiente_firma").order("fecha", { ascending: true }).limit(8);
+                      if (r.error) throw r.error;
+                      const ens = r.data || [];
+                      const ids = [...new Set(ens.map(e => e.maquina_id).filter(Boolean))];
+                      let nombres = {};
+                      if (ids.length) {
+                        const rm = await sb.from("v_maquinas_electricas").select("id,nombre_efectivo").in("id", ids);
+                        (rm.data || []).forEach(m => { nombres[m.id] = m.nombre_efectivo; });
+                      }
+                      return ens.map(e => ({
+                        id: e.id, maquina_id: e.maquina_id, fecha: e.fecha,
+                        maquina: nombres[e.maquina_id] || "Máquina",
+                        quien: e.ejecutante_nombre || e.tecnico || "", motivo: e.motivo || "",
+                      }));
+                    },
 
     /* Un técnico solo cuenta los ensayos devueltos que él ejecutó: pedirle
        atención sobre el trabajo de otro es ruido, no información. */
@@ -4083,7 +4116,8 @@ async function hubContar() {
 async function hubPintar(c) {
   const n = v => (v == null ? "—" : Number(v).toLocaleString("es-CO"));
   const esRevisor = usuarioActual
-    && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+    && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor"
+        || usuarioActual.es_validador === true);
   const esAdmin = usuarioActual && usuarioActual.rol === "admin";
 
   /* La franja de atencion solo muestra lo que de verdad requiere accion:
@@ -4146,6 +4180,26 @@ async function hubPintar(c) {
   }
   if (del.aprueba_datos && c.compsPend) {
     alertas.push({ n: c.compsPend, t: "datos por completar", clase: "avisa", ir: irAPendientes });
+  }
+
+  /* Lista de ensayos por firmar debajo de la franja. */
+  const pf = document.getElementById("hub-por-firmar");
+  if (pf) {
+    const lista = esRevisor && Array.isArray(c.porFirmarLista) ? c.porFirmarLista : [];
+    pf.innerHTML = lista.length ? `
+      <div class="mat-stock" style="margin:10px 0 6px">Ensayos por firmar${c.porFirmar > lista.length ? ` · ${lista.length} más antiguos de ${n(c.porFirmar)}` : ""}</div>
+      <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+        ${lista.map((x, i) => `
+          <button type="button" data-hub-pf="${i}" style="display:flex;justify-content:space-between;gap:8px;width:100%;
+                  padding:9px 12px;background:none;border:0;border-top:${i ? "1px solid var(--line)" : "0"};
+                  text-align:left;cursor:pointer;color:var(--text-0);font:inherit">
+            <span><b>${x.maquina}</b> <span class="mat-stock">· ${x.fecha}${x.motivo ? " · " + x.motivo : ""}</span></span>
+            <span class="mat-stock" style="white-space:nowrap">${x.quien}</span>
+          </button>`).join("")}
+      </div>` : "";
+    pf.querySelectorAll("[data-hub-pf]").forEach(b => {
+      b.onclick = () => hubIrAMaquina(lista[+b.dataset.hubPf].maquina_id);
+    });
   }
 
   const cont = document.getElementById("hub-atencion");
@@ -8589,7 +8643,7 @@ function eeTarjetaEnsayo(e, m) {
         <button class="btn-primary" onclick="verInforme('${e.id}')">Informe</button>
         <button class="btn-secondary" onclick="editarEnsayo('${e.id}')">${e.estado === "firmado" ? "Ver" : "Editar"}</button>
         ${eeEsRevisor() && e.estado !== "firmado" ? `
-          <button class="btn-secondary" onclick="eeFirmar('${e.id}')">Firmar</button>
+          <button class="btn-secondary" onclick="eeFirmar('${e.id}')">Firmar revisión</button>
           <button class="btn-secondary" onclick="eeDevolver('${e.id}')">Devolver</button>` : ""}
         ${e.estado !== "firmado" ? `<button class="btn-secondary" onclick="borrarEnsayo('${e.id}')">Eliminar</button>` : ""}
         ${e.estado === "firmado" && usuarioActual && usuarioActual.rol === "admin" ? `
@@ -8901,11 +8955,11 @@ function eeFirmaPintarVista() {
       + 'style="max-height:70px;max-width:100%;background:#fff;'
       + 'border:1px solid var(--line);border-radius:6px;padding:4px">';
     if (btnQuitar) btnQuitar.style.display = "";
-    if (btnFirmar) btnFirmar.textContent = "Volver a firmar";
+    if (btnFirmar) btnFirmar.textContent = "Volver a firmar (Realizó)";
   } else {
     cont.innerHTML = '<span class="mat-stock">Sin firma. El informe sale con la raya en blanco para firmar a mano.</span>';
     if (btnQuitar) btnQuitar.style.display = "none";
-    if (btnFirmar) btnFirmar.textContent = "Firmar";
+    if (btnFirmar) btnFirmar.textContent = "Firmar (Realizó)";
   }
 }
 
