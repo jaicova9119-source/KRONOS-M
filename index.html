@@ -10202,10 +10202,15 @@ function eeImprimirInforme() {
        Un relleno simple solo se aplicaría en la primera y la última hoja. */
     + '<style>@page{size:21.0cm 29.7cm;margin:0}'
     + 'html,body{margin:0;padding:0;background:#fff}'
-    + 'body{padding:0 1.2cm}'
+    /* En #print-root y no en el body: el CSS de impresión de la app fuerza
+       padding:0!important en html y body. */
+    + 'body.imprimiendo > #print-root{padding:0 1.2cm!important;box-sizing:border-box}'
     + '.pg-marco{width:100%;border-collapse:collapse}'
     + '.pg-marco>thead>tr>td,.pg-marco>tfoot>tr>td,.pg-marco>tbody>tr>td{padding:0;border:0}'
     + '.pg-marco .pg-hueco{height:1.2cm}'
+    /* La fila del marco contiene todo el informe: la regla general de no
+       partir filas (#print-root tr) la empujaría entera a la hoja siguiente. */
+    + '#print-root table.pg-marco,#print-root .pg-marco>tbody>tr{break-inside:auto!important;page-break-inside:auto!important}'
     /* Antes el informe se estiraba a min-height:273mm en columna flex y el
        pie se clavaba abajo con margin-top:auto. Esos 273mm son el área útil
        solo si el navegador no imprime su propia banda de encabezado y pie;
@@ -10222,10 +10227,14 @@ function eeImprimirInforme() {
     + 'break-inside:avoid;page-break-inside:avoid}'
     + '#print-root .inf-cierre{break-after:avoid;page-break-after:avoid}</style>'
     + '</head><body class="imprimiendo">'
+    /* #print-root tiene que ser hijo directo del body: el CSS de impresión
+       oculta todo lo demás (body.imprimiendo > *). El marco va por dentro. */
+    + '<div id="print-root">'
     + '<table class="pg-marco"><thead><tr><td><div class="pg-hueco"></div></td></tr></thead>'
     + '<tfoot><tr><td><div class="pg-hueco"></div></td></tr></tfoot><tbody><tr><td>'
-    + '<div id="print-root">' + inf.outerHTML + '</div>'
+    + inf.outerHTML
     + '</td></tr></tbody></table>'
+    + '</div>'
     + '</body></html>';
 
   const previo = document.getElementById("ee-marco-impresion");
