@@ -4005,7 +4005,7 @@ async function abrirHub() {
     new Date().toLocaleDateString("es-CO", {
       weekday: "long", day: "numeric", month: "long", year: "numeric"
     });
-  document.getElementById("hub-pie").textContent = "Kronos-M · JAC Engineering";
+  document.getElementById("hub-pie").textContent = "Kronos-M · JAC Engineering · versión " + KM_VERSION;
 
   hubPintar({});                 // estructura inmediata, cifras despues
   const cifras = await hubContar();
@@ -8373,6 +8373,11 @@ const EE_BORRADOR = "kronos_ensayo_borrador";
 /* ============================================================
    Lista de maquinas
    ============================================================ */
+/* Versión visible en el pie del inicio. Con un service worker de por medio,
+   subir un archivo nuevo no garantiza que el navegador lo esté usando: esta
+   marca permite comprobarlo sin abrir herramientas de desarrollo. */
+const KM_VERSION = "2026-09-26 · firma-revision-v2";
+
 /* Promesa de la carga en curso: quien necesita la lista ya cargada (por
    ejemplo, entrar a una máquina desde el inicio) espera esta, en vez de
    adivinar cuándo terminó. */
@@ -10189,8 +10194,18 @@ function eeImprimirInforme() {
   const html = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
     + '<title>' + titulo.replace(/[<>&]/g, "") + '</title>'
     + '<style>' + estilos + '</style>'
-    + '<style>@page{size:21.0cm 29.7cm;margin:1.2cm}'
+    /* Margen de @page en cero: es la única forma de que Chrome y Edge no
+       impriman su encabezado y pie (fecha, título, URL, número de página);
+       lo mismo que hace el FO-016. El margen real va dentro de la hoja: a
+       los lados como relleno del body, y arriba y abajo como el thead y el
+       tfoot vacíos de .pg-marco, que el navegador repite en cada página.
+       Un relleno simple solo se aplicaría en la primera y la última hoja. */
+    + '<style>@page{size:21.0cm 29.7cm;margin:0}'
     + 'html,body{margin:0;padding:0;background:#fff}'
+    + 'body{padding:0 1.2cm}'
+    + '.pg-marco{width:100%;border-collapse:collapse}'
+    + '.pg-marco>thead>tr>td,.pg-marco>tfoot>tr>td,.pg-marco>tbody>tr>td{padding:0;border:0}'
+    + '.pg-marco .pg-hueco{height:1.2cm}'
     /* Antes el informe se estiraba a min-height:273mm en columna flex y el
        pie se clavaba abajo con margin-top:auto. Esos 273mm son el área útil
        solo si el navegador no imprime su propia banda de encabezado y pie;
@@ -10207,7 +10222,10 @@ function eeImprimirInforme() {
     + 'break-inside:avoid;page-break-inside:avoid}'
     + '#print-root .inf-cierre{break-after:avoid;page-break-after:avoid}</style>'
     + '</head><body class="imprimiendo">'
+    + '<table class="pg-marco"><thead><tr><td><div class="pg-hueco"></div></td></tr></thead>'
+    + '<tfoot><tr><td><div class="pg-hueco"></div></td></tr></tfoot><tbody><tr><td>'
     + '<div id="print-root">' + inf.outerHTML + '</div>'
+    + '</td></tr></tbody></table>'
     + '</body></html>';
 
   const previo = document.getElementById("ee-marco-impresion");

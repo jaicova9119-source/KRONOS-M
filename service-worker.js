@@ -12,7 +12,7 @@
  * cargue sin señal.
  */
 
-const CACHE_NAME = "kronos-m-v41";
+const CACHE_NAME = "kronos-m-v42";
 
 /* Archivos propios. Estos tienen que quedar guardados si o si: sin ellos
    la app no abre sin señal. */
@@ -37,6 +37,24 @@ const LIBRERIAS = [
   "https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js",
   "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
 ];
+
+/* Pide a la red revalidando contra el servidor. Un fetch normal pasa por
+   la cache HTTP del navegador: si el servidor entrego el archivo con
+   permiso de reutilizarlo, el navegador responde con esa copia sin
+   preguntar, y "red primero" termina sirviendo la version anterior.
+   Con no-cache el navegador consulta siempre; si no cambio, el servidor
+   contesta 304 sin reenviar el archivo, asi que el costo es minimo.
+   Se arma una Request nueva a partir de la URL porque una peticion de
+   navegacion no admite opciones al reenviarla. */
+function redFresca(req) {
+  return fetch(new Request(req.url, {
+    method: "GET",
+    headers: req.headers,
+    credentials: "same-origin",
+    cache: "no-cache",
+    redirect: req.redirect,   // navegación: manual; el navegador sigue la redirección
+  }));
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -99,7 +117,7 @@ self.addEventListener("fetch", (event) => {
      falla, responde lo guardado. */
   if (req.mode === "navigate") {
     event.respondWith(
-      fetch(req)
+      redFresca(req)
         .then((respuesta) => {
           if (respuesta && respuesta.ok) {
             const copia = respuesta.clone();
@@ -143,7 +161,7 @@ self.addEventListener("fetch", (event) => {
   if (url.startsWith(self.location.origin) &&
       new URL(url).pathname.endsWith(".js")) {
     event.respondWith(
-      fetch(req)
+      redFresca(req)
         .then((respuesta) => {
           if (respuesta && respuesta.ok) {
             const copia = respuesta.clone();
