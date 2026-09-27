@@ -4043,9 +4043,9 @@ async function hubContar() {
     return count;
   };
 
-  const esRevisor = usuarioActual
-    && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor"
-        || usuarioActual.es_validador === true);
+  /* Ensayos por firmar y devueltos dependen del permiso delegado, no del
+     rol: firmar un ensayo es competencia técnica. */
+  const firmaEnsayos = !!usuarioActual && usuarioActual.firma_ensayos === true;
   const miAuth = usuarioActual && usuarioActual.auth_user_id;
 
   const tareas = {
@@ -4059,7 +4059,7 @@ async function hubContar() {
     /* Cuáles son, no solo cuántos: el revisor ve máquina, fecha y quién lo
        ejecutó, y entra directo. Los más antiguos primero. */
     porFirmarLista: async () => {
-                      if (!esRevisor) return null;
+                      if (!firmaEnsayos) return null;
                       const r = await sb.from("ensayos_electricos").select("*")
                         .eq("estado", "pendiente_firma").order("fecha", { ascending: true }).limit(8);
                       if (r.error) throw r.error;
@@ -4081,7 +4081,7 @@ async function hubContar() {
        atención sobre el trabajo de otro es ruido, no información. */
     devueltos:      () => contar("ensayos_electricos", q => {
                        q = q.eq("estado", "rechazado");
-                       return esRevisor || !miAuth ? q : q.eq("usuario_id", miAuth);
+                       return firmaEnsayos || !miAuth ? q : q.eq("usuario_id", miAuth);
                      }),
 
     /* Aprobaciones del módulo de activos: son las mismas tres colas que
@@ -4124,9 +4124,11 @@ async function hubContar() {
    consulta una vez por sesion y se guarda. */
 async function hubPintar(c) {
   const n = v => (v == null ? "—" : Number(v).toLocaleString("es-CO"));
+  // Reportes FO-016: los revisa el supervisor, por rol.
   const esRevisor = usuarioActual
-    && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor"
-        || usuarioActual.es_validador === true);
+    && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor");
+  // Ensayos eléctricos: los firma quien tiene el permiso delegado.
+  const firmaEnsayos = !!usuarioActual && usuarioActual.firma_ensayos === true;
   const esAdmin = usuarioActual && usuarioActual.rol === "admin";
 
   /* La franja de atencion solo muestra lo que de verdad requiere accion:
@@ -4139,12 +4141,12 @@ async function hubPintar(c) {
     setTimeout(() => document.querySelector('[data-tab="pendientes"]').click(), 60);
   };
 
-  if (esRevisor && c.porFirmar) {
+  if (firmaEnsayos && c.porFirmar) {
     alertas.push({ n: c.porFirmar, t: "ensayos por firmar", clase: "avisa",
                    ir: () => aplicarModulo("ensayos") });
   }
   if (c.devueltos) {
-    alertas.push({ n: c.devueltos, t: esRevisor ? "ensayos devueltos" : "ensayos tuyos devueltos",
+    alertas.push({ n: c.devueltos, t: firmaEnsayos ? "ensayos devueltos" : "ensayos tuyos devueltos",
                    clase: "urgente", ir: () => aplicarModulo("ensayos") });
   }
   if (esAdmin && c.usuariosPend) {
@@ -4194,7 +4196,7 @@ async function hubPintar(c) {
   /* Lista de ensayos por firmar debajo de la franja. */
   const pf = document.getElementById("hub-por-firmar");
   if (pf) {
-    const lista = esRevisor && Array.isArray(c.porFirmarLista) ? c.porFirmarLista : [];
+    const lista = firmaEnsayos && Array.isArray(c.porFirmarLista) ? c.porFirmarLista : [];
     pf.innerHTML = lista.length ? `
       <div class="mat-stock" style="margin:10px 0 6px">Ensayos por firmar${c.porFirmar > lista.length ? ` · ${lista.length} más antiguos de ${n(c.porFirmar)}` : ""}</div>
       <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
@@ -4215,9 +4217,11 @@ async function hubPintar(c) {
   if (!alertas.length) {
     cont.className = "";
     cont.innerHTML = '<div class="hint-box" style="margin:0">&#10003; '
-      + (esRevisor
+      + (firmaEnsayos
           ? "Nada pendiente: sin ensayos por firmar y sin aprobaciones en cola."
-          : "Nada pendiente: no tienes ensayos devueltos para corregir.")
+          : esRevisor
+            ? "Nada pendiente: sin reportes por revisar ni aprobaciones en cola."
+            : "Nada pendiente: no tienes ensayos devueltos para corregir.")
       + '</div>';
   } else {
     cont.className = "hub-grid-atencion";
@@ -8376,7 +8380,7 @@ const EE_BORRADOR = "kronos_ensayo_borrador";
 /* Versión visible en el pie del inicio. Con un service worker de por medio,
    subir un archivo nuevo no garantiza que el navegador lo esté usando: esta
    marca permite comprobarlo sin abrir herramientas de desarrollo. */
-const KM_VERSION = "2026-09-26 · firma-revision-v2";
+const KM_VERSION = "2026-09-26 · permiso-firma-ensayos";
 
 /* Promesa de la carga en curso: quien necesita la lista ya cargada (por
    ejemplo, entrar a una máquina desde el inicio) espera esta, en vez de
@@ -8675,11 +8679,11 @@ function eeTarjetaEnsayo(e, m) {
     </div>`;
 }
 
-/* Firma la revisión quien tiene rol admin o supervisor, o el permiso
-   delegado de validador. ee_firmar aplica la misma regla en el servidor. */
+/* Firma y devuelve ensayos solo quien tiene el permiso delegado "Firmar
+   ensayos eléctricos". ee_firmar, ee_rechazar y el disparador de la tabla
+   aplican la misma regla en el servidor. */
 function eeEsRevisor() {
-  return !!usuarioActual && (usuarioActual.rol === "admin" || usuarioActual.rol === "supervisor"
-    || usuarioActual.es_validador === true);
+  return !!usuarioActual && usuarioActual.firma_ensayos === true;
 }
 
 /* Autorrevisión: el mismo usuario ejecutó y firmó la revisión. Se permite
@@ -12325,8 +12329,10 @@ async function manejarSesionActiva(session) {
     modulos: perfil.modulos ?? null,
     modulos_solo_lectura: perfil.modulos_solo_lectura ?? null,
     apps: perfil.apps ?? null,
-    // Permiso delegado: revisa y firma ensayos sin ser supervisor.
     es_validador: !!perfil.es_validador,
+    // Permiso delegado de firmar ensayos eléctricos. Es competencia, no
+    // rango: ni supervisor ni admin lo tienen por su rol.
+    firma_ensayos: !!perfil.firma_ensayos,
   };
   sincronizarSelectorModulos();
   kmAlmacen.setItem(PERFIL_CACHE_KEY, JSON.stringify(perfil));
@@ -12618,6 +12624,7 @@ async function cargarPanelPerfil() {
             <div class="u-chips">
               <span class="u-chip rol">${ROL_TXT[u.rol] || u.rol}</span>
               ${u.es_validador ? '<span class="u-chip val">Validador</span>' : ""}
+              ${u.firma_ensayos ? '<span class="u-chip val">Firma ensayos</span>' : ""}
               ${u.alcance_corporativo
                   ? '<span class="u-chip">Corporativo</span>'
                   : ((u._cuencas || []).length
@@ -12664,6 +12671,8 @@ async function cargarPanelPerfil() {
             ${[
               ["validador",   u.es_validador,        "Validar y corregir mediciones",
                "Relee ensayos y pruebas de aislamiento; toda corrección queda registrada con su motivo."],
+              ["ensayos",     u.firma_ensayos,       "Firmar ensayos eléctricos",
+               "Firma la revisión de ensayos de aislamiento y resistencia, y puede devolverlos al técnico. Ni supervisor ni admin la tienen por su rol."],
               ["altas",       u.aprueba_altas,       "Aprobar altas de equipo",
                "Decide que un equipo entra al maestro. Toca SAP y el catálogo."],
               ["movimientos", u.aprueba_movimientos, "Aprobar movimientos",
