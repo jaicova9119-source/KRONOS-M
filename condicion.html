@@ -971,7 +971,7 @@ body.kp-oscuro{background:var(--bg)}
   <button class="kp-chip" id="kpExportar" onclick="kpExportarEntrega()"
           title="Libro de datos operacionales por campo">Exportar datos</button>
   <button class="kp-chip" id="kcExportar" onclick="kcExportarCliente()"
-          title="Libro en el formato que se entrega al cliente · version 2026-09-27 d">Formato cliente</button>
+          title="Libro en el formato que se entrega al cliente · version 2026-09-27 e">Formato cliente</button>
 </div>
 
 <div class="kp-panel" id="kpPanel">
@@ -4403,7 +4403,24 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
 /* Version del formato cliente: sale en el aviso de error y en la ayuda del
    boton, para confirmar que el navegador tiene el archivo nuevo y no una
    copia guardada por el service worker. */
-const KC_VERSION = '2026-09-27 d';
+const KC_VERSION = '2026-09-27 e';
+
+/* ExcelJS propio de este modulo. keExcelJS reutiliza el de la ventana
+   principal, pero ese vive en otro contexto de JavaScript: las fechas que
+   se crean aqui no pasan su prueba "instanceof Date" y al escribir el
+   archivo aborta con "could not understand type of value". La exportacion
+   tecnica no lo nota porque escribe las fechas como texto. */
+async function kcExcelJS(){
+  if (window.ExcelJS) return window.ExcelJS;
+  await new Promise((ok, err) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+    s.onload = ok;
+    s.onerror = () => err(new Error('No se pudo descargar ExcelJS. La exportacion necesita conexion.'));
+    document.head.appendChild(s);
+  });
+  return window.ExcelJS;
+}
 async function kcExportarCliente(){
   let campos = [];
   try {
@@ -4422,7 +4439,7 @@ async function kcExportarCliente(){
   if (btn) btn.disabled = true;
   aviso('Leyendo datos\u2026');
   try {
-    const ExcelJS = await keExcelJS();
+    const ExcelJS = await kcExcelJS();
     const sb = kpCliente();
     const pedir = async (fn, args) => {
       const { data, error } = await kcRpc(fn, args);
@@ -4470,7 +4487,8 @@ async function kcExportarCliente(){
       avance: (n, t) => aviso('Hoja de pozo ' + n + '/' + t + '\u2026')
     }, lienzo);
     aviso('Escribiendo archivo\u2026');
-    const buf = await wb.xlsx.writeBuffer();
+    let buf;
+    try { buf = await wb.xlsx.writeBuffer(); } catch(e){ throw new Error('al escribir el archivo: ' + e.message); }
     const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     const a = document.createElement('a');
     a.href = url;
