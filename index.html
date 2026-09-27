@@ -8380,7 +8380,7 @@ const EE_BORRADOR = "kronos_ensayo_borrador";
 /* Versión visible en el pie del inicio. Con un service worker de por medio,
    subir un archivo nuevo no garantiza que el navegador lo esté usando: esta
    marca permite comprobarlo sin abrir herramientas de desarrollo. */
-const KM_VERSION = "2026-09-26 · permiso-firma-ensayos";
+const KM_VERSION = "2026-09-26 · vista-validacion";
 
 /* Promesa de la carga en curso: quien necesita la lista ya cargada (por
    ejemplo, entrar a una máquina desde el inicio) espera esta, en vez de
@@ -8523,6 +8523,10 @@ async function abrirMaquina(id) {
     ["Mínimo IEEE 43 (estator)", EE_minimoGrupo(m, "ESTATOR") + " MΩ"],
     ["Marcación / terminales", m.marcacion + " · " + EE_TERMINALES(m) + " puntas · "
         + (EE_TERMINALES(m) === 12 ? 6 : 3) + " bobinas"],
+    // Solo llega si la vista expone validada_* (v_maquinas_electricas_columnas.sql).
+    ["Validación", m.validada_en
+        ? String(m.validada_en).slice(0, 10) + (m.validada_nombre ? " · " + m.validada_nombre : "")
+        : ("validada_en" in m ? "Pendiente" : "")],
     ["Criticidad", m.criticidad],
     ["En Activos", m.vinculado_a_activos ? "Sí · " + (m.id_interno || "") : "No vinculada"],
     ["Estado", m.retirada_manual
