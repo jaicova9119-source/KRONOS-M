@@ -4136,9 +4136,18 @@ async function hubPintar(c) {
      aviso se muestra solo a quien PUEDE resolverlo: avisar de algo que uno no
      puede hacer no es informar, es estorbar, y ensena a ignorar la franja. */
   const alertas = [];
-  const irAPendientes = () => {
+  /* Abre Aprobaciones y baja a la sección del aviso. La lista se carga
+     después del clic en la pestaña, así que se espera a que aparezca. */
+  const irAPendientes = seccion => async () => {
     aplicarModulo("activos");
-    setTimeout(() => document.querySelector('[data-tab="pendientes"]').click(), 60);
+    await new Promise(r => setTimeout(r, 60));
+    document.querySelector('[data-tab="pendientes"]').click();
+    if (!seccion) return;
+    for (let i = 0; i < 50; i++) {
+      const el = document.getElementById("apr-" + seccion);
+      if (el) { el.scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+      await new Promise(r => setTimeout(r, 150));
+    }
   };
 
   if (firmaEnsayos && c.porFirmar) {
@@ -4184,13 +4193,13 @@ async function hubPintar(c) {
                    clase: "avisa", ir: () => aplicarModulo("ensayos") });
   }
   if (del.aprueba_movimientos && c.movsPend) {
-    alertas.push({ n: c.movsPend, t: "movimientos por aprobar", clase: "avisa", ir: irAPendientes });
+    alertas.push({ n: c.movsPend, t: "movimientos por aprobar", clase: "avisa", ir: irAPendientes("movimientos") });
   }
   if (del.aprueba_altas && c.altasPend) {
-    alertas.push({ n: c.altasPend, t: "altas por aprobar", clase: "avisa", ir: irAPendientes });
+    alertas.push({ n: c.altasPend, t: "altas por aprobar", clase: "avisa", ir: irAPendientes("altas") });
   }
   if (del.aprueba_datos && c.compsPend) {
-    alertas.push({ n: c.compsPend, t: "datos por completar", clase: "avisa", ir: irAPendientes });
+    alertas.push({ n: c.compsPend, t: "datos por completar", clase: "avisa", ir: irAPendientes("datos") });
   }
 
   /* Lista de ensayos por firmar debajo de la franja. */
@@ -8380,7 +8389,7 @@ const EE_BORRADOR = "kronos_ensayo_borrador";
 /* Versión visible en el pie del inicio. Con un service worker de por medio,
    subir un archivo nuevo no garantiza que el navegador lo esté usando: esta
    marca permite comprobarlo sin abrir herramientas de desarrollo. */
-const KM_VERSION = "2026-09-26 · vista-validacion";
+const KM_VERSION = "2026-09-26 · aprobaciones-delegadas";
 
 /* Promesa de la carga en curso: quien necesita la lista ya cargada (por
    ejemplo, entrar a una máquina desde el inicio) espera esta, en vez de
@@ -8563,8 +8572,9 @@ async function abrirMaquina(id) {
       <div class="ot-flujo devuelto" style="margin-bottom:12px">
         <span class="ot-flujo-pastilla">ALTA DE CAMPO POR VALIDAR</span>
         <div class="ot-flujo-rastro">Registrada en campo y todav&iacute;a sin confirmar.
-          Se le pueden hacer ensayos, pero un supervisor debe verificar que no
-          sea un duplicado de otra m&aacute;quina ya registrada.</div>
+          Se le pueden hacer ensayos, pero quien tenga delegada la aprobaci&oacute;n
+          de datos t&eacute;cnicos debe verificar que no sea un duplicado de otra
+          m&aacute;quina ya registrada.</div>
         ${(APRUEBA && APRUEBA.aprueba_datos) ? `<div class="ot-flujo-acciones">
           <button class="btn-primary" onclick="eeValidarMaquina('${m.id}', true)">Validar</button>
           <button class="btn-secondary" onclick="eeValidarMaquina('${m.id}', false)">Rechazar</button>
@@ -8808,29 +8818,56 @@ async function eeRevConfirmar() {
 /* Validar o rechazar un alta de campo. Rechazar no borra: retira la maquina,
    porque si ya tiene ensayos colgando borrarla los dejaria huerfanos. La
    funcion de la base se niega en ese caso y lo dice. */
-async function eeValidarMaquina(id, validar) {
-  let motivo = null;
-  if (!validar) {
-    motivo = prompt("Motivo del rechazo (por ejemplo: duplicada de otra m\u00e1quina):", "");
-    if (motivo === null) return;
-    if (!motivo.trim()) { toast("Debes indicar el motivo"); return; }
-  } else if (!confirm("Validar esta m\u00e1quina. Confirma que no es duplicado de " +
-                      "otra ya registrada. \u00bfContinuar?")) {
-    return;
-  }
+/* Ventana propia y no confirm/prompt: en la app instalada esos diálogos
+   pueden quedar suprimidos y la acción se cancelaba sin aviso. */
+let eeValMaq = { id: null, validar: true };
+
+function eeValidarMaquina(id, validar) {
+  eeValMaq = { id, validar: !!validar };
+  const m = eeMaquinas.find(x => x.id === id) || eeMaquinaActual || {};
+  document.getElementById("ee-valmaq-titulo").textContent = validar ? "Validar máquina" : "Rechazar alta de campo";
+  document.getElementById("ee-valmaq-maquina").textContent =
+    [m.sap_efectivo || m.codigo_sap || "", m.nombre_efectivo || "", m.serial_efectivo ? "serial " + m.serial_efectivo : ""]
+      .filter(Boolean).join(" · ");
+  document.getElementById("ee-valmaq-texto").textContent = validar
+    ? "Confirma que esta máquina no es un duplicado de otra ya registrada. Quedará validada a tu nombre."
+    : "Rechazar retira la máquina del listado. Si ya tiene ensayos, primero hay que reasignarlos a la máquina correcta.";
+  document.getElementById("ee-valmaq-motivo-wrap").style.display = validar ? "none" : "";
+  document.getElementById("ee-valmaq-motivo").value = "";
+  document.getElementById("ee-valmaq-error").style.display = "none";
+  const ok = document.getElementById("ee-valmaq-ok");
+  ok.textContent = validar ? "Validar" : "Rechazar";
+  ok.disabled = false;
+  document.getElementById("ee-valmaq-modal").style.display = "flex";
+}
+
+async function eeValMaqConfirmar() {
+  const err = document.getElementById("ee-valmaq-error");
+  const btn = document.getElementById("ee-valmaq-ok");
+  const fallo = msg => { err.textContent = msg; err.style.display = ""; btn.disabled = false; };
+  const { id, validar } = eeValMaq;
+  const motivo = validar ? null : document.getElementById("ee-valmaq-motivo").value.trim();
+  if (!validar && !motivo) { fallo("Indica el motivo del rechazo."); return; }
+  btn.disabled = true;
+  err.style.display = "none";
   try {
-    const { data, error } = await sb.rpc("maquina_validar", {
-      p_id: id, p_validar: !!validar, p_motivo: motivo,
-    });
+    const { data, error } = await sb.rpc("maquina_validar", { p_id: id, p_validar: validar, p_motivo: motivo });
     if (error) throw error;
-    if (!data || !data.ok) { toast(data?.error || "No se pudo"); return; }
-    toast(validar ? "M\u00e1quina validada" : "M\u00e1quina rechazada y retirada");
+    if (!data || !data.ok) { fallo((validar ? "No se validó: " : "No se rechazó: ") + (data?.error || "sin detalle del servidor.")); return; }
     await cargarMaquinas();
-    eeMaquinaActual = eeMaquinas.find(x => x.id === id) || eeMaquinaActual;
-    abrirMaquina(id);
-  } catch (err) {
-    console.error(err);
-    toast("No se pudo: " + err.message);
+    const m = eeMaquinas.find(x => x.id === id);
+    // Confirmación con lo que devuelve la vista, no con la respuesta de la
+    // función: si algo revierte el cambio, se dice aquí.
+    if (validar && m && "validada_en" in m && !m.validada_en) {
+      fallo("El servidor respondió que la validó, pero la máquina sigue sin validar. Algo en la base revirtió el cambio.");
+      return;
+    }
+    document.getElementById("ee-valmaq-modal").style.display = "none";
+    toast(validar ? "Máquina validada" : "Máquina rechazada y retirada");
+    if (m) { eeMaquinaActual = m; abrirMaquina(id); } else { abrirPanel("panel-ee-maquinas"); renderMaquinas(); }
+  } catch (e) {
+    console.error(e);
+    fallo((validar ? "No se validó: " : "No se rechazó: ") + e.message);
   }
 }
 
@@ -13025,9 +13062,13 @@ async function cargarPanelPerfil() {
 
 async function cargarPendientes() {
   const titulo = document.getElementById("pendientes-titulo");
-  const esSupervisor = usuarioActual && (usuarioActual.rol === "supervisor" || usuarioActual.rol === "admin");
-  titulo.textContent = esSupervisor ? "Aprobaciones" : "Pendientes de sincronizar";
-  if (esSupervisor) {
+  /* Quien tiene delegada alguna aprobación ve Aprobaciones, sea cual sea su
+     rol. Decidirlo por rol dejaba a un ingeniero con las tres delegaciones
+     en la vista de técnico, mientras el inicio le anunciaba los pendientes. */
+  const del = await cargarDelegaciones();
+  const aprueba = !!(del && (del.aprueba_altas || del.aprueba_movimientos || del.aprueba_datos));
+  titulo.textContent = aprueba ? "Aprobaciones" : "Pendientes de sincronizar";
+  if (aprueba) {
     await cargarPanelAprobacion();
   } else {
     await cargarPendientesTecnico();
@@ -13114,7 +13155,7 @@ async function cargarPanelAprobacion() {
     + "</div>";
 
   if (permisos.aprueba_movimientos && movs.data?.length) {
-    html += '<div class="section-label">Movimientos</div>';
+    html += '<div class="section-label" id="apr-movimientos">Movimientos</div>';
     movs.data.forEach(m => {
       const eq = m.equipos || {};
       const titulo = m.tipo_movimiento === "cambio_ubicacion"
@@ -13129,7 +13170,7 @@ async function cargarPanelAprobacion() {
   }
 
   if (permisos.aprueba_altas && altas.data?.length) {
-    html += '<div class="section-label">Solicitudes de alta</div>';
+    html += '<div class="section-label" id="apr-altas">Solicitudes de alta</div>';
     altas.data.forEach(a => {
       const eq = a.equipos || {};
       html += filaAprobacion({
@@ -13141,7 +13182,7 @@ async function cargarPanelAprobacion() {
   }
 
   if (permisos.aprueba_datos && comps.data?.length) {
-    html += '<div class="section-label">Complementos de información</div>';
+    html += '<div class="section-label" id="apr-datos">Complementos de información</div>';
     comps.data.forEach(c => {
       const eq = c.equipos || {};
       html += filaAprobacion({
@@ -19889,6 +19930,25 @@ function firmaPintarVista() {
     <div class="dlg-pie">
       <button type="button" class="btn-secondary" onclick="eeRevCerrar()">Cancelar</button>
       <button type="button" class="btn-primary" id="ee-rev-ok" onclick="eeRevConfirmar()">Firmar revisión</button>
+    </div>
+  </div>
+</div>
+
+<div class="dlg-modal" id="ee-valmaq-modal">
+  <div class="dlg-caja">
+    <div class="dlg-titulo" id="ee-valmaq-titulo">Validar máquina</div>
+    <div class="dlg-cuerpo">
+      <div class="mat-stock" id="ee-valmaq-maquina" style="margin-bottom:10px"></div>
+      <p class="hint-box" id="ee-valmaq-texto"></p>
+      <div class="field" id="ee-valmaq-motivo-wrap" style="display:none">
+        <label>Motivo del rechazo</label>
+        <textarea id="ee-valmaq-motivo" rows="2" placeholder="Por ejemplo: duplicada de otra máquina"></textarea>
+      </div>
+      <div id="ee-valmaq-error" class="hint-box" style="display:none;border-color:var(--danger);color:var(--danger)"></div>
+    </div>
+    <div class="dlg-pie">
+      <button type="button" class="btn-secondary" onclick="document.getElementById('ee-valmaq-modal').style.display='none'">Cancelar</button>
+      <button type="button" class="btn-primary" id="ee-valmaq-ok" onclick="eeValMaqConfirmar()">Validar</button>
     </div>
   </div>
 </div>
