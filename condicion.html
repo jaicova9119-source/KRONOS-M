@@ -3233,9 +3233,35 @@ function kcHdr(ws, r, c, v, color){
   x.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
   return x;
 }
+/* Deja cada valor en un tipo que ExcelJS sabe escribir. Las funciones de
+   la base pueden devolver objetos o listas en algunos campos (jsonb); si
+   uno de esos llega crudo a una celda, ExcelJS aborta todo el libro con
+   "could not understand type of value". */
+function kcValor(v){
+  if (v === undefined || v === null) return null;
+  if (v instanceof Date) return isNaN(v) ? null : v;
+  if (typeof v === 'number') return isFinite(v) ? v : null;
+  if (typeof v === 'string' || typeof v === 'boolean') return v;
+  if (typeof v === 'bigint') return Number(v);
+  if (Array.isArray(v)) return v.map(x => (x && typeof x === 'object') ? JSON.stringify(x) : String(x)).join(', ');
+  if (typeof v === 'object'){
+    if ('formula' in v){
+      const r = v.result;
+      if (r === null || r === undefined || (typeof r === 'number' && !isFinite(r))) return { formula: v.formula };
+      if (r instanceof Date || typeof r === 'number' || typeof r === 'string' || typeof r === 'boolean') return v;
+      return { formula: v.formula, result: String(kcValor(r)) };
+    }
+    if ('text' in v && 'hyperlink' in v) return v;
+    if ('richText' in v) return v;
+    const t = v.nombre ?? v.texto ?? v.label ?? v.valor ?? v.name ?? v.value;
+    if (t != null && typeof t !== 'object') return String(t);
+    return JSON.stringify(v);
+  }
+  return String(v);
+}
 function kcDat(ws, r, c, v, fmt){
   const x = ws.getCell(r, c);
-  x.value = (v === undefined) ? null : v;
+  x.value = kcValor(v);
   x.font = { name:KC.AR, size:10 };
   x.border = KC_BD;
   x.alignment = { horizontal:'center', vertical:'middle' };
@@ -3953,17 +3979,20 @@ function kcLibroCliente(ExcelJS, d, meta, lienzo){
   const REF = {};
   P.conHoja.forEach((u, i) => {
     const ws = wb.addWorksheet(kcHoja(u));
+    try {
     const nav = [['◄ OVERVIEW', 'OVERVIEW'], ['CONSOLIDATED', 'CONSOLIDATED'], ['OPTIMIZATION', 'OPTIMIZATION'], ['DATA EQUIPMENT', 'DATA EQUIPMENT']];
     if (i > 0) nav.push(['◄ ' + hojas[i - 1], hojas[i - 1]]);
     if (i < hojas.length - 1) nav.push([hojas[i + 1] + ' ►', hojas[i + 1]]);
     REF[u] = kcHojaPozo(wb, ws, P, u, nav, lienzo);
     kcAjustar(ws);
+    } catch(e){ throw new Error('hoja ' + kcHoja(u) + ': ' + e.message); }
     if (meta.avance) meta.avance(i + 1, P.conHoja.length);
   });
-  kcConsolidado(CO, P, REF, meta);
-  kcOptimizacion(wb, OP, P, REF, d, meta);
-  kcEquipos(DE, P, d);
-  kcOverview(wb, OV, P, REF, meta, lienzo);
+  const paso = (n, f) => { try { f(); } catch(e){ throw new Error('hoja ' + n + ': ' + e.message); } };
+  paso('CONSOLIDATED', () => kcConsolidado(CO, P, REF, meta));
+  paso('OPTIMIZATION', () => kcOptimizacion(wb, OP, P, REF, d, meta));
+  paso('DATA EQUIPMENT', () => kcEquipos(DE, P, d));
+  paso('OVERVIEW', () => kcOverview(wb, OV, P, REF, meta, lienzo));
   kcAjustar(CO, { 2: 30 }); kcAjustar(DE); kcAjustar(OP, OP.__fijos); kcAjustar(OV, OV.__fijos);
   return wb;
 }
@@ -4003,7 +4032,7 @@ function kcConsolidado(ws, P, REF, meta){
   });
   ws.addTable({ name: 'tblConsolidated', ref: 'A4', headerRow: true, totalsRow: false,
                 style: { theme: 'TableStyleLight1', showRowStripes: false },
-                columns: CH.map(n => ({ name: n, filterButton: true })), rows: filas.length ? filas : [CH.map(() => null)] });
+                columns: CH.map(n => ({ name: n, filterButton: true })), rows: filas.length ? filas.map(fi => fi.map(kcValor)) : [CH.map(() => null)] });
   CH.forEach((n, j) => kcHdr(ws, 4, j + 1, n));
   const NC = CH.length + 1;
   kcHdr(ws, 4, NC, 'LAST LOGBOOK ENTRY'); for (let k = 1; k < 10; k++) kcHdr(ws, 4, NC + k, null); ws.mergeCells(4, NC, 4, NC + 9);
