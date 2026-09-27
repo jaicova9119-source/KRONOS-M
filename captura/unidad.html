@@ -155,6 +155,32 @@
   .cerrar{background:none;border:0;font:600 14px var(--sans);color:var(--suave);
     padding:14px 0 0;width:100%;cursor:pointer}
   .oculto{display:none !important}
+
+  /* ---- Tablet y PC ----------------------------------------------
+     En telefono todo sigue igual. En pantallas anchas se aprovecha el
+     espacio: el contenido crece y las fichas de equipos se reparten en
+     columnas en lugar de una tira larga de 720 px. La cabecera alinea
+     su texto con el contenido para que no quede pegado al borde. */
+  header{padding-top:calc(13px + env(safe-area-inset-top, 0px))}
+  #equipos{display:grid;gap:10px;margin-top:10px;
+    grid-template-columns:repeat(auto-fill, minmax(min(100%, 320px), 1fr));align-items:start}
+  #equipos .eq{margin-top:0}
+  @media (min-width:720px){
+    main{max-width:1100px;padding:20px 24px}
+    header{padding-left:max(24px, calc((100% - 1100px) / 2 + 24px));
+           padding-right:max(24px, calc((100% - 1100px) / 2 + 24px))}
+    #paso-login{max-width:440px;margin:24px auto 0}
+    #paso-buscar{max-width:720px}
+    #btn-otra{max-width:360px}
+    /* En PC la hoja inferior se ve mejor como ventana centrada. */
+    dialog{max-width:620px;margin:auto;border-radius:14px}
+    .hoja{padding:22px 22px 22px}
+  }
+  @media (min-width:1600px){
+    main{max-width:1400px}
+    header{padding-left:max(24px, calc((100% - 1400px) / 2 + 24px));
+           padding-right:max(24px, calc((100% - 1400px) / 2 + 24px))}
+  }
 </style>
 </head>
 <body>

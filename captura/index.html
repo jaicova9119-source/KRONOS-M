@@ -292,8 +292,16 @@
   .field.editable label{color:var(--orange);}
   .field.editable input, .field.editable select{border-color:var(--orange-dim);}
 
-  .grid-fields{display:grid; grid-template-columns:1fr 1fr; gap:10px 12px;}
-  .grid-fields.g3{grid-template-columns:1fr 1fr 1fr;}
+  /* Rejilla fluida. Antes eran columnas fijas por punto de quiebre (2/3/4
+     y 3/4/6), y en los tamanos intermedios los campos quedaban o muy
+     apretados o estirados. Ahora cada campo pide un ancho minimo y el
+     navegador mete tantas columnas como quepan: en telefono salen 2 y 3
+     como antes, en tablet 3-4, en PC 5-7, sin tener que prever cada
+     pantalla. min(100%,...) evita desbordar en telefonos muy angostos. */
+  :root{--col-min:136px; --col-min-g3:88px;}
+  .grid-fields{display:grid; gap:10px 12px;
+    grid-template-columns:repeat(auto-fill, minmax(min(100%, var(--col-min)), 1fr));}
+  .grid-fields.g3{grid-template-columns:repeat(auto-fill, minmax(min(100%, var(--col-min-g3)), 1fr));}
   .unit-input{position:relative;}
   .unit-input .unit{position:absolute;right:12px;top:50%;transform:translateY(-50%);
     font-size:11.5px;color:var(--ink-soft);font-weight:600;pointer-events:none;}
@@ -346,17 +354,60 @@
   @media (min-width:640px){
     :root{--maxw:900px;}
     main{padding:24px 28px 120px;}
-    .grid-fields{grid-template-columns:repeat(3, 1fr);}
-    .grid-fields.g3{grid-template-columns:repeat(4, 1fr);}
+    :root{--col-min:180px; --col-min-g3:140px;}
     .action-card{padding:18px 20px;}
   }
   @media (min-width:1024px){
     :root{--maxw:1180px;}
     .app{border-left:1px solid var(--line);border-right:1px solid var(--line);box-shadow:0 0 40px rgba(19,75,112,.06);}
-    .grid-fields{grid-template-columns:repeat(4, 1fr);}
-    .grid-fields.g3{grid-template-columns:repeat(6, 1fr);}
     .home-grid{display:grid; grid-template-columns:1fr 1fr; gap:0 16px;}
     .submit-bar{max-width:520px; margin-left:auto; margin-right:auto;}
+  }
+  /* Monitores grandes: mas ancho util, la rejilla se reparte sola. */
+  @media (min-width:1600px){
+    :root{--maxw:1440px;}
+  }
+
+  /* ---- Barra de acciones de la medicion ------------------------------
+     Antes era un bloque de ~150 px (aviso + dos botones apilados) fijo al
+     fondo y centrado a 520 px, que tapaba justo la fila que se estaba
+     llenando. Ahora es una sola franja delgada del ancho del formulario:
+     se esconde mientras se baja registrando, vuelve al subir un poco o al
+     llegar al final, y en el movil se quita cuando el teclado esta
+     abierto, que es cuando mas estorba. */
+  html{scroll-padding-bottom:90px;}
+  .barra-med{position:sticky; bottom:calc(8px + env(safe-area-inset-bottom, 0px)); z-index:20;
+    display:flex; align-items:center; gap:10px; margin-top:6px; padding:8px 8px 8px 12px;
+    background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow);
+    transition:transform .22s ease, opacity .22s ease;}
+  .barra-med.oculta{transform:translateY(calc(100% + 24px)); opacity:0; pointer-events:none;}
+  .barra-med-info{flex:1; min-width:0; line-height:1.25;}
+  .barra-med-prog{background:none; border:none; padding:0; text-align:left; font-size:12.5px;
+    color:var(--ink-soft); font-weight:600; white-space:nowrap;}
+  .barra-med-prog b{font-family:'IBM Plex Mono',monospace; font-size:14px; color:var(--titulo);}
+  .barra-med-prog.completo b{color:var(--bes);}
+  #med-autosave{font-size:11px; color:var(--bes); font-weight:600; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis;}
+  .barra-med-btns{display:flex; gap:8px; flex-shrink:0;}
+  .btn-borrador{display:flex; align-items:center; justify-content:center; gap:6px; height:46px;
+    padding:0 14px; border:1.5px solid var(--line); border-radius:12px; background:var(--campo);
+    color:var(--titulo); font-weight:600; font-size:14px;}
+  .btn-borrador svg{width:17px; height:17px;}
+  .barra-med .btn-primary{width:auto; height:46px; padding:0 18px; font-size:16px;
+    box-shadow:0 3px 10px rgba(27,142,158,.28);}
+  .barra-med .txt-corto{display:none;}
+  @media (max-width:420px){
+    .barra-med .txt-largo{display:none;}
+    .barra-med .txt-corto{display:block; font-size:10.5px; margin-top:1px;}
+    .barra-med .btn-primary{padding:0 14px;}
+    .barra-med{gap:8px; padding-left:10px;}
+  }
+  @media (max-width:359px){
+    .btn-borrador span{display:none;}
+    .btn-borrador{width:46px; padding:0;}
+  }
+  @media (min-width:640px){
+    .barra-med .btn-primary{min-width:220px;}
   }
 
   /* ---- Login ---- */
@@ -677,18 +728,24 @@
         <div><div class="t">Medicion <span id="med-pozo-label" class="mono"></span></div><div class="s">62 puntos de medida</div></div>
       </div>
       <form id="form-medicion"></form>
-      <div class="submit-bar">
-        <div class="sync-note"><svg viewBox="0 0 24 24" fill="none"><path d="M12 8v5M12 16.5h.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="9.2" stroke="currentColor" stroke-width="1.6"/></svg>Se guarda en Kronos-M. Sin señal queda en este dispositivo y se sincroniza solo al recuperarla.</div>
-        <div id="med-autosave" class="hidden" style="font-size:12px;color:#1B7F4B;font-weight:600;margin:0 0 8px;"></div>
-        <div id="med-botones-normal">
-          <button class="btn-secondary" style="width:100%;margin:0 0 8px;padding:13px 18px;"
-                  onclick="guardarMedicion('BORRADOR')">Guardar borrador</button>
-          <button class="btn-primary" onclick="guardarMedicion('CONFIRMADA')">Confirmar medicion
+      <div class="barra-med" id="med-barra">
+        <div class="barra-med-info">
+          <button type="button" class="barra-med-prog" id="med-progreso" onclick="medIrAPendiente()"
+                  title="Ir al siguiente obligatorio vacio"></button>
+          <div id="med-autosave" class="hidden"></div>
+        </div>
+        <div id="med-botones-normal" class="barra-med-btns">
+          <button type="button" class="btn-borrador" onclick="guardarMedicion('BORRADOR')"
+                  aria-label="Guardar borrador" title="Guardar borrador">
+            <svg viewBox="0 0 24 24" fill="none"><path d="M5 4h11l3 3v12a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V4Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 4v5h7V4M8 20v-6h8v6" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+            <span>Borrador</span>
+          </button>
+          <button type="button" class="btn-primary" onclick="guardarMedicion('CONFIRMADA')"><span>Confirmar<span class="txt-largo"> medicion</span></span>
             <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
-        <div id="med-botones-completar" class="hidden">
-          <button class="btn-primary" onclick="guardarCompletado()">Guardar cambios
+        <div id="med-botones-completar" class="hidden barra-med-btns">
+          <button type="button" class="btn-primary" onclick="guardarCompletado()">Guardar cambios
             <svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
           </button>
         </div>
@@ -1361,6 +1418,7 @@ function ir(pantalla){
   document.querySelectorAll('main > section').forEach(function(s){ s.classList.add('hidden'); });
   document.getElementById('screen-' + pantalla).classList.remove('hidden');
   window.scrollTo(0,0);
+  if (pantalla === 'medicion-form' && typeof medBarraAlEntrar === 'function') medBarraAlEntrar();
 }
 function mostrarGuardando(boton, activo){
   if(activo){ boton.dataset.textoOriginal = boton.innerHTML; boton.innerHTML = 'Guardando...'; boton.disabled = true; }
@@ -2562,8 +2620,8 @@ function iniciarMedicion(){
     '<div class="grid-fields">' +
     '<div class="field readonly"><label>Unidad</label><input value="' + pozo + '" disabled></div>' +
     '<div class="field"><label>Realizado por</label><input id="med-realizo" value="' + tecnicoActual + '" readonly style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>' +
-    '</div>' +
-    '<div class="grid-fields">' +
+    /* Una sola rejilla para los cuatro: en telefono quedan en pares como
+       antes, en pantalla ancha en una fila y no a media tarjeta. */
     '<div class="field"><label>Fecha</label><input type="date" id="med-fecha" value="' + dpFechaLocal(ahora) + '"></div>' +
     '<div class="field"><label>Hora</label><input type="time" id="med-hora" value="' + dpHoraLocal(ahora) + '"></div>' +
     '</div>' +
@@ -3299,7 +3357,11 @@ function medLocalPintarSello(d){
   var e = document.getElementById('med-autosave');
   if (!e) return;
   var t = new Date(d ? d.ts : Date.now());
-  e.textContent = 'Copia en este dispositivo \u00b7 ' + (d ? d.n : 0) + ' valores \u00b7 '
+  /* Texto corto: ahora vive dentro de la barra inferior y en telefono no
+     cabe la frase completa. La version larga queda en el title. */
+  var hora = t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
+  e.textContent = 'Copia local \u00b7 ' + hora;
+  e.title = 'Copia en este dispositivo \u00b7 ' + (d ? d.n : 0) + ' valores \u00b7 '
     + t.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   e.classList.remove('hidden');
 }
@@ -3535,6 +3597,134 @@ function dpListarCompletables(){
     caja.innerHTML = h + '</div>';
   }).catch(function(){});
 }
+
+
+/* ============================================================
+   BARRA DE ACCIONES DE LA MEDICION
+   ============================================================
+   Tres trabajos: mostrar cuantos obligatorios faltan, esconderse
+   mientras el tecnico baja registrando y quitarse del medio cuando el
+   teclado del movil esta abierto.
+
+   El conteo se recalcula por eventos del formulario y, ademas, cuando
+   el formulario se redibuja: abrir un borrador rellena los campos por
+   codigo y eso no dispara 'input'.                                  */
+
+function medActualizarProgreso(){
+  var el = document.getElementById('med-progreso');
+  var f  = document.getElementById('form-medicion');
+  if (!el || !f) return;
+  var obl = f.querySelectorAll('.field.obligatorio input');
+  var tot = obl.length, ok = 0;
+  for (var i = 0; i < obl.length; i++) if (obl[i].value !== '') ok++;
+  if (tot){
+    el.innerHTML = '<b>' + ok + '/' + tot + '</b><span class="txt-largo"> obligatorios</span><span class="txt-corto"> oblig.</span>';
+    el.classList.toggle('completo', ok === tot);
+  } else {
+    var n = 0, todos = f.querySelectorAll('input[type="number"]');
+    for (var j = 0; j < todos.length; j++) if (todos[j].value !== '') n++;
+    el.innerHTML = '<b>' + n + '</b> valores';
+    el.classList.remove('completo');
+  }
+}
+
+/* Tocar el contador lleva al primer obligatorio vacio. Con 70 campos
+   es mas rapido que buscar asteriscos. */
+function medIrAPendiente(){
+  var f = document.getElementById('form-medicion');
+  if (!f) return;
+  var obl = f.querySelectorAll('.field.obligatorio input');
+  for (var i = 0; i < obl.length; i++){
+    if (obl[i].value === ''){
+      obl[i].scrollIntoView({block:'center', behavior:'smooth'});
+      var inp = obl[i];
+      setTimeout(function(){ try { inp.focus({preventScroll:true}); } catch(e){ inp.focus(); } }, 350);
+      return;
+    }
+  }
+}
+
+var medBarra = { ultimoY: 0, acum: 0 };
+
+function medBarraSet(oculta){
+  var b = document.getElementById('med-barra');
+  if (b) b.classList.toggle('oculta', !!oculta);
+}
+
+function medBarraFormVisible(){
+  var s = document.getElementById('screen-medicion-form');
+  return !!s && !s.classList.contains('hidden');
+}
+
+/* Teclado abierto: el viewport visual se encoge y el de layout no. En
+   PC no hay teclado en pantalla y esto nunca da verdadero. */
+function medTecladoAbierto(){
+  var vv = window.visualViewport;
+  return !!vv && (window.innerHeight - vv.height) > 150;
+}
+
+function medBarraAlEntrar(){
+  medBarra.ultimoY = window.scrollY || 0;
+  medBarra.acum = 0;
+  medBarraSet(false);
+  medActualizarProgreso();
+}
+
+function medBarraEvaluarScroll(){
+  if (!medBarraFormVisible()) return;
+  if (medTecladoAbierto()){ medBarraSet(true); return; }
+  var y = window.scrollY || 0;
+  var d = y - medBarra.ultimoY;
+  medBarra.ultimoY = y;
+  var doc = document.documentElement;
+  /* Arriba del todo o llegando al final siempre se ve: ahi es donde se
+     decide guardar. */
+  if (y < 80 || window.innerHeight + y >= doc.scrollHeight - 140){
+    medBarra.acum = 0; medBarraSet(false); return;
+  }
+  /* Se acumula el desplazamiento en una misma direccion para que un
+     temblor del dedo no la haga parpadear. */
+  if ((d > 0) !== (medBarra.acum > 0)) medBarra.acum = 0;
+  medBarra.acum += d;
+  if (medBarra.acum > 30) medBarraSet(true);
+  else if (medBarra.acum < -30) medBarraSet(false);
+}
+
+(function(){
+  var pend = false;
+  window.addEventListener('scroll', function(){
+    if (pend) return;
+    pend = true;
+    requestAnimationFrame(function(){ pend = false; medBarraEvaluarScroll(); });
+  }, {passive:true});
+
+  if (window.visualViewport){
+    window.visualViewport.addEventListener('resize', function(){
+      if (!medBarraFormVisible()) return;
+      /* Al cerrar el teclado vuelve: normalmente es porque se termino
+         de escribir y lo siguiente es guardar. */
+      medBarraSet(medTecladoAbierto());
+    });
+  }
+
+  function enganchar(){
+    var f = document.getElementById('form-medicion');
+    if (!f) return;
+    f.addEventListener('input',  medActualizarProgreso);
+    f.addEventListener('change', medActualizarProgreso);
+    /* Red de seguridad para rellenos por codigo que llegan tarde. */
+    f.addEventListener('focusin', medActualizarProgreso);
+    if (window.MutationObserver){
+      new MutationObserver(function(){
+        medActualizarProgreso();
+        /* El borrador se rellena justo despues de dibujar. */
+        setTimeout(medActualizarProgreso, 600);
+      }).observe(f, {childList:true});
+    }
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', enganchar);
+  else enganchar();
+})();
 
 function medSalirModoCompletar(){
   medCompletarId = null;
