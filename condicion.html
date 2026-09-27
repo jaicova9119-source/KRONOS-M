@@ -970,6 +970,8 @@ body.kp-oscuro{background:var(--bg)}
   <div class="kp-fbus" id="kpFBus"></div>
   <button class="kp-chip" id="kpExportar" onclick="kpExportarEntrega()"
           title="Libro de datos operacionales por campo">Exportar datos</button>
+  <button class="kp-chip" id="kcExportar" onclick="kcExportarCliente()"
+          title="Libro en el formato que se entrega al cliente">Formato cliente</button>
 </div>
 
 <div class="kp-panel" id="kpPanel">
@@ -2953,6 +2955,1446 @@ async function kpExportarEntrega(){
   } catch(e){
     if (btn){ btn.disabled = false; btn.textContent = previo; }
     alert('No se pudo exportar. ' + e.message);
+  }
+}
+
+
+/* ══════════════════════════════════════════════════════════════════
+   EXPORTACION · FORMATO CLIENTE
+   ------------------------------------------------------------------
+   Libro con la estructura que el cliente ya conoce: OVERVIEW,
+   CONSOLIDATED (ultima lectura y todas las variables), OPTIMIZATION,
+   DATA EQUIPMENT y una hoja por pozo con su historico completo.
+
+   Todo sale de la base: historico por punto (dp_entrega_cliente_
+   historico), capacidades por ronda (dp_entrega_historico), placas,
+   setup, bitacora, ensayos, run life y las mismas RPC del modulo de
+   optimizacion. La hoja OPTIMIZATION escribe en formulas la misma
+   cadena de koCalcular, con los parametros vigentes de opt_parametros:
+   al cambiar la F maxima en el archivo recalcula igual que el modulo.
+
+   Titulos en ingles y sin nombre de plataforma: es un entregable.
+
+   Las graficas se dibujan en canvas y se insertan como imagen (ExcelJS
+   no crea graficas nativas). Cada formula lleva su resultado calculado
+   para que el archivo se lea bien en celular y en la vista previa del
+   correo; Excel de escritorio igual recalcula al abrir.
+
+   No se usan barras de datos: con notas en la misma hoja ExcelJS emite
+   el XML en orden invalido y Excel descarta la hoja.
+   ══════════════════════════════════════════════════════════════════ */
+
+const KC = {
+  AR: 'Arial',
+  AZUL: 'FF0070C0', VERDE: 'FF00B050', FECHA: 'FFA6D1F8', FPREV: 'FFDDEBF7',
+  SEP: 'FFD9E1F2', NUEVA: 'FFFFF2CC', GRIS: 'FFEDEDED', FUERA: 'FFE7E6E6',
+  AMAR: 'FFFFEB84', ROJO: 'FFF8696B', VERD: 'FFC6EFCE', NAV: 'FFEAF1FB',
+  MORADO: 'FF7030A0', LINK: 'FF0070C0', TXTG: 'FFA6A6A6', ORO: 'FFBF8F00',
+  VISIBLES: 12
+};
+
+/* Orden estandar de columnas: igual para todas las unidades. Lo que una
+   unidad nunca midio sale ND y, si queda a la derecha de todo, plegado. */
+const KC_G = (() => {
+  const G = [];
+  const PH = ['A','B','C'], LL = ['A-B','A-C','B-C'];
+  const ll = p => p.replace('-', '').toLowerCase();
+  const PQ = [['fp','PF'],['kw','KW'],['kvar','KVAR'],['kva','KVA'],['thdv','THDV (%)'],['thd','THDI (%)'],['factork','K FACTOR']];
+  G.push(['DATE', [['_fecha','DATE']]]);
+  G.push(['OPERATION FREQUENCY Hz', [['_fop','']]]);
+  G.push(['MAXIMUM OPERATION FREQUENCY Hz', [['_fmax','']]]);
+  G.push(['CONTROL MODE', [['_mode','']]]);
+  G.push(['POWER QUALITY PST INPUT', PQ.map(([k,s]) => ['pst_in_' + k, s])]);
+  G.push(['PHASOR CURRENT UNBALANCE PST INPUT', PH.map(p => ['pst_in_ang_' + p.toLowerCase(), p + ' (°)'])]);
+  G.push(['PST INPUT VOLTAGE (Volt)', LL.map(p => ['pst_in_v_' + ll(p), p])]);
+  G.push(['PST INPUT CURRENT (Amp)', PH.map(p => ['pst_in_i_' + p.toLowerCase(), p])]);
+  [1, 2].forEach(n => {
+    G.push(['INPUT VOLTAGE VSD CONVERTER ' + n + ' (Volt)', LL.map(p => ['conv' + n + '_v_' + ll(p), p])]);
+    G.push(['CURRENT INPUT VSD CONVERTER ' + n + ' (Amp)', PH.map(p => ['conv' + n + '_i_' + p.toLowerCase(), p])]);
+  });
+  G.push(['VSD OUTPUT VOLTAGE (Volt)', LL.map(p => ['vfdout_v_' + ll(p), p])]);
+  G.push(['VSD OUTPUT CURRENT (Amp)', PH.map(p => ['vfdout_i_' + p.toLowerCase(), p])]);
+  G.push(['POWER QUALITY VFD OUTPUT', PQ.map(([k,s]) => ['vfdout_' + k, s])]);
+  G.push(['PHASOR CURRENT UNBALANCE VFD OUTPUT', PH.map(p => ['vfdout_ang_' + p.toLowerCase(), p + ' (°)'])]);
+  G.push(['BUS DC DRIVE', [['busdc_v','BUS DC VOLTS'],['busac_v','BUS AC VOLTS']]]);
+  G.push(['SUT TRANSFORMER OUTPUT VOLTAGE (Volt)', ['A-B','A-C','B-C','A-G','B-G','C-G'].map(p => ['sutout_v_' + ll(p), p])]);
+  G.push(['MOTOR CURRENT (Amp)', PH.map(p => ['sutout_i_' + p.toLowerCase(), p])]);
+  G.push(['WELL SENSOR', [['sf_pip_psi','PIP (psi)'],['sf_pdesc_psi','DISCH (psi)'],['sf_t_motor_c','T MTR (°F)'],
+                          ['sf_t_intake_c','T INT (°F)'],['sf_vib_x_g','Vx (g)'],['sf_vib_y_g','Vy (g)'],
+                          ['sf_ct_ma','CT (mA)'],['sf_vt_v','Vt (V)']]]);
+  G.push(['TEMPERATURES', [['hs1_c','HS1 (°C)'],['hs2_c','HS2 (°C)'],['hs3_c','HS3 (°C)'],['hs4_c','HS4 (°C)'],
+                           ['temp_inductor_c','INDUCTOR (°C)'],['temp_controller_c','CONTROLLER (°C)'],
+                           ['temp_igbt_u_c','IGBT U (°C)'],['temp_igbt_v_c','IGBT V (°C)'],['temp_igbt_w_c','IGBT W (°C)'],
+                           ['temp_sut_c','SUT (°C)'],['temp_pst_c','PST (°C)']]]);
+  return G;
+})();
+const KC_SIEMPRE = new Set(['_fecha','_fop','_fmax','_mode']);
+/* Temperaturas del sensor: la base las guarda en °C, el cliente las lee en °F. */
+const KC_EN_F = new Set(['sf_t_motor_c','sf_t_intake_c']);
+
+/* ---------- utilidades ---------- */
+const kcN = v => (v == null || v === '' || !isFinite(Number(v))) ? null : Number(v);
+const kcL = n => { let s = ''; n = Math.floor(n); while (n > 0){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
+/* Fecha como mediodia UTC: ExcelJS convierte con UTC y asi no se corre un dia. */
+const kcFecha = iso => { if (!iso) return null; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)) : null; };
+const kcDias = (a, b) => Math.round((kcFecha(a) - kcFecha(b)) / 86400000);
+const kcAF = c => { if (c == null) return null; const f = c * 9 / 5 + 32; return f <= 0 ? null : Math.round(f * 10) / 10; };
+const kcTxt = v => String(v == null ? '' : v).split(/\r?\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
+const kcNumPozo = u => { const m = String(u).match(/(\d+)/); return m ? +m[1] : 0; };
+const kcHoja = u => String(u).replace('-', ' ');          /* CYC-09 -> 'CYC 09' */
+/* Numero con miles con punto ('4.569') o normal. */
+const kcNumTexto = v => {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  let t = String(v).trim();
+  if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+  const n = Number(t.replace(',', '.'));
+  return isFinite(n) ? n : null;
+};
+
+const KC_TR = {
+  'en monitoreo':'In monitoring', 'falla de equipo de fondo':'Downhole equipment failure',
+  'otro (detallar en nota)':'Other (see logbook)', 'fuera de servicio, espera workover':'Out of service · awaiting workover',
+  'fuera de monitoreo':'Out of monitoring',
+  'mantenimiento':'Maintenance','operacion':'Operation','falla':'Failure','cambio de equipo':'Equipment change',
+  'configuracion':'Configuration','optimizacion':'Optimization','inspeccion':'Inspection',
+  'informativo':'Info','atencion':'Attention','critico':'Critical','pendiente':'Pending',
+  'requiere seguimiento':'Follow-up','completado':'Completed','resuelto':'Resolved','en proceso':'In progress'
+};
+const kcTr = v => {
+  if (v == null) return null;
+  const k = String(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+  return KC_TR[k] || String(v);
+};
+const kcModo = v => {
+  if (!v) return null;
+  const k = String(v).toLowerCase().replace(/[^a-z]/g, '');
+  if (['freset','freqset','frset','frequencyset'].includes(k)) return 'Freq Set';
+  if (k === 'pid') return 'PID';
+  if (k.indexOf('gas') >= 0) return 'Gas Control';
+  if (k === 'manualf' || k === 'manualfreq') return 'Manual Freq';
+  return String(v).trim();
+};
+
+/* Vinculo interno como formula HYPERLINK: funciona igual en Excel, en el
+   celular y en otros visores, y no depende de como la libreria escriba
+   las relaciones del archivo. */
+const kcHV = (texto, hoja, celda) => ({ formula: 'HYPERLINK("#\'' + hoja + '\'!' + (celda || 'A1') + '","' + String(texto).replace(/"/g, '""') + '")', result: String(texto) });
+/* Formula con su resultado. */
+const kcF = (f, r) => ({ formula: f.replace(/^=/, ''), result: (r === undefined || (typeof r === 'number' && !isFinite(r))) ? undefined : r });
+
+/* ---------- ancho y alto de celdas ----------
+   Excel no ajusta solo al abrir. Se estima con el ancho real de cada
+   letra en Arial: las mayusculas ocupan bastante mas que las minusculas
+   y tratarlas igual corta "MAGNETRON". */
+const KC_EM = {' ':.278,'i':.222,'l':.222,'j':.222,'I':.278,'f':.278,'t':.278,'r':.333,'.':.278,',':.278,'·':.278,':':.278,
+               '-':.333,'(':.333,')':.333,'/':.278,'m':.833,'w':.722,'M':.833,'W':.944,'%':.889,'Ω':.768};
+function kcPx(t, fs, b){
+  let w = 0;
+  for (const ch of String(t)){
+    let e;
+    if (KC_EM[ch] != null) e = KC_EM[ch];
+    else if (/[0-9]/.test(ch)) e = .556;
+    else if (ch !== ch.toLowerCase()) e = .70;
+    else if (ch !== ch.toUpperCase()) e = .54;
+    else e = .6;
+    w += e;
+  }
+  return w * fs * 96 / 72 * (b ? 1.06 : 1);
+}
+function kcMostrar(c){
+  const v = c.value, f = c.numFmt || '';
+  if (v == null) return '';
+  if (typeof v === 'object' && v.formula != null){
+    const r = v.result;
+    if (r == null) return f.indexOf('%') >= 0 ? '100.0%' : '0000.0';
+    if (typeof r === 'number') return f.indexOf('%') >= 0 ? (r * 100).toFixed(1) + '%' : String(Math.round(r * 1000) / 1000);
+    return String(r);
+  }
+  if (typeof v === 'object' && v.text != null) return String(v.text);
+  if (v instanceof Date) return '27-Aug-26';
+  if (typeof v === 'number'){
+    if (f.indexOf('%') >= 0) return (v * 100).toFixed(1) + '%';
+    return String(Math.round(v * 1000) / 1000);
+  }
+  return String(v);
+}
+function kcAjustar(ws, fijos){
+  const merges = [];
+  (ws.model.merges || []).forEach(rg => {
+    const m = rg.match(/^([A-Z]+)(\d+):([A-Z]+)(\d+)$/); if (!m) return;
+    const col = s => s.split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
+    merges.push({ c1: col(m[1]), r1: +m[2], c2: col(m[3]), r2: +m[4] });
+  });
+  const top = new Map(), dentro = new Set();
+  merges.forEach(g => {
+    top.set(g.r1 + ':' + g.c1, g);
+    for (let r = g.r1; r <= g.r2; r++) for (let c = g.c1; c <= g.c2; c++)
+      if (r !== g.r1 || c !== g.c1) dentro.add(r + ':' + c);
+  });
+  const necesita = {};
+  ws.eachRow({ includeEmpty:false }, (row, r) => row.eachCell({ includeEmpty:false }, (cell, c) => {
+    if (dentro.has(r + ':' + c)) return;
+    if (!(cell.border && cell.border.left && cell.border.left.style)) return;   /* titulos y notas no dimensionan */
+    const g = top.get(r + ':' + c); if (g && g.c2 > g.c1) return;
+    const fs = (cell.font && cell.font.size) || 10, b = !!(cell.font && cell.font.bold);
+    const t = kcMostrar(cell);
+    const wrap = !!(cell.alignment && cell.alignment.wrapText);
+    const partes = wrap ? t.split(/\s+/) : [t];
+    const px = Math.max(0, ...partes.map(p => kcPx(p, fs, b)));
+    necesita[c] = Math.max(necesita[c] || 7, Math.min((px + 12) / 7, 40));
+  }));
+  Object.entries(necesita).forEach(([c, w]) => { ws.getColumn(+c).width = w; });
+  Object.entries(fijos || {}).forEach(([c, w]) => { ws.getColumn(+c).width = w; });
+  const ancho = c => ws.getColumn(c).width || 8.43;
+  const alto = {};
+  ws.eachRow({ includeEmpty:false }, (row, r) => row.eachCell({ includeEmpty:false }, (cell, c) => {
+    if (dentro.has(r + ':' + c) || !(cell.alignment && cell.alignment.wrapText)) return;
+    const g = top.get(r + ':' + c); if (g && g.r2 > g.r1) return;
+    let W = 0; for (let x = (g ? g.c1 : c); x <= (g ? g.c2 : c); x++) W += ancho(x);
+    const disp = W * 7 - 10, fs = (cell.font && cell.font.size) || 10, b = !!(cell.font && cell.font.bold);
+    const sp = kcPx(' ', fs, b);
+    let lineas = 0;
+    kcMostrar(cell).split('\n').forEach(p => {
+      let cur = 0, n = 1;
+      p.split(/\s+/).filter(Boolean).forEach(w => {
+        const ww = kcPx(w, fs, b);
+        if (cur && cur + sp + ww > disp){ n += 1; cur = ww; } else cur += ww + (cur ? sp : 0);
+      });
+      lineas += n;
+    });
+    alto[r] = Math.max(alto[r] || 0, lineas * fs * 1.25 + 5);
+  }));
+  Object.entries(alto).forEach(([r, h]) => { ws.getRow(+r).height = Math.min(409, Math.max(16, h)); });
+}
+
+/* ---------- estilo ---------- */
+const kcBorde = { style:'thin', color:{ argb:'FF808080' } };
+const KC_BD = { left:kcBorde, right:kcBorde, top:kcBorde, bottom:kcBorde };
+const kcRelleno = argb => ({ type:'pattern', pattern:'solid', fgColor:{ argb } });
+function kcHdr(ws, r, c, v, color){
+  const x = ws.getCell(r, c);
+  if (v !== undefined) x.value = v;
+  x.font = { name:KC.AR, size:10, bold:true, color:{ argb:'FFFFFFFF' } };
+  x.fill = kcRelleno(color || KC.AZUL);
+  x.border = KC_BD;
+  x.alignment = { horizontal:'center', vertical:'middle', wrapText:true };
+  return x;
+}
+function kcDat(ws, r, c, v, fmt){
+  const x = ws.getCell(r, c);
+  x.value = (v === undefined) ? null : v;
+  x.font = { name:KC.AR, size:10 };
+  x.border = KC_BD;
+  x.alignment = { horizontal:'center', vertical:'middle' };
+  if (fmt) x.numFmt = fmt;
+  return x;
+}
+function kcLink(ws, r, c, texto, destino, conFondo){
+  const x = ws.getCell(r, c);
+  x.value = kcHV(texto, destino);
+  x.font = { name:KC.AR, size:10, bold:true, color:{ argb:KC.LINK }, underline:true };
+  if (conFondo !== false) x.fill = kcRelleno(KC.NAV);
+  x.alignment = { horizontal:'left', vertical:'middle' };
+  return x;
+}
+/* Formato condicional por expresion. La prioridad se lleva por hoja:
+   la primera regla que se agrega es la que manda. */
+function kcCF(ws, ref, formula, estilo){
+  ws.__kcPrio = (ws.__kcPrio || 0) + 1;
+  ws.addConditionalFormatting({ ref, rules:[{ type:'expression', priority: ws.__kcPrio,
+    formulae:[formula], style: estilo }] });
+}
+const kcFill = argb => ({ fill:{ type:'pattern', pattern:'solid', bgColor:{ argb } } });
+function kcBanda(ws, ref, aten, crit){
+  const a = ref.split(':')[0].replace(/\$/g, '');
+  kcCF(ws, ref, 'AND(ISNUMBER(' + a + '),' + a + '>=' + crit + ')', kcFill(KC.ROJO));
+  kcCF(ws, ref, 'AND(ISNUMBER(' + a + '),' + a + '>=' + aten + ')', kcFill(KC.AMAR));
+  kcCF(ws, ref, 'ISNUMBER(' + a + ')', kcFill(KC.VERD));
+}
+function kcImagen(wb, ws, png, col, fila, w, h){
+  if (!png) return;
+  const id = wb.addImage({ base64: png, extension: 'png' });
+  ws.addImage(id, { tl:{ col: col - 1, row: fila - 1 }, ext:{ width: w, height: h }, editAs:'oneCell' });
+}
+
+/* ══════════════ GRAFICAS EN CANVAS ══════════════
+   Se dibujan al doble de resolucion para que no salgan borrosas en
+   pantallas densas ni al imprimir; se insertan a tamano normal. */
+const KC_ESC = 2;
+const KC_COL = { azul:'#0070C0', verde:'#00A650', rojo:'#C00000', gris:'#7F7F7F', naranja:'#ED7D31', morado:'#7030A0',
+                 amar:'rgba(255,235,132,.55)', rosa:'rgba(248,105,107,.25)', rejilla:'#E6E6E6', texto:'#333333' };
+function kcLienzo(lienzo, w, h){
+  const cv = lienzo(w * KC_ESC, h * KC_ESC);
+  const g = cv.getContext('2d');
+  g.scale(KC_ESC, KC_ESC);
+  g.fillStyle = '#FFFFFF'; g.fillRect(0, 0, w, h);
+  return { cv, g, w, h };
+}
+const kcPng = L => L.cv.toDataURL('image/png').replace(/^data:image\/png;base64,/, '');
+const kcFont = (g, px, b) => { g.font = (b ? 'bold ' : '') + px + 'px Arial, Helvetica, sans-serif'; };
+const KC_MES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const kcMesTxt = t => { const d = new Date(t); return KC_MES[d.getUTCMonth()] + '-' + String(d.getUTCFullYear()).slice(2); };
+const kcDiaTxt = t => { const d = new Date(t); return String(d.getUTCDate()).padStart(2,'0') + '-' + KC_MES[d.getUTCMonth()] + '-' + String(d.getUTCFullYear()).slice(2); };
+function kcTicks(lo, hi, n){
+  if (!(hi > lo)){ const d = Math.abs(lo) * 0.1 || 1; lo -= d; hi += d; }
+  const paso0 = (hi - lo) / (n || 5), p10 = Math.pow(10, Math.floor(Math.log10(paso0)));
+  const paso = [1, 2, 2.5, 5, 10].map(k => k * p10).find(k => k >= paso0) || paso0;
+  const a = Math.floor(lo / paso) * paso, b = Math.ceil(hi / paso) * paso, t = [];
+  for (let v = a; v <= b + paso / 2; v += paso) t.push(Math.round(v / paso) * paso);
+  return { lo: a, hi: b, t };
+}
+/* Un panel con eje de tiempo comun. series: [{pts:[[t,y]], color, tipo:'linea'|'escalon'|'segmentos', marca, etiqueta, fmt, dy, soloCambios, leyenda}] */
+function kcPanel(g, box, x0, x1, series, op){
+  const { x, y, w, h } = box;
+  const ys = []; series.forEach(s => s.pts.forEach(p => { if (p[1] != null && isFinite(p[1])) ys.push(p[1]); }));
+  (op.extra || []).forEach(v => ys.push(v));
+  let lo = ys.length ? Math.min(...ys) : 0, hi = ys.length ? Math.max(...ys) : 1;
+  const pad = (hi - lo) * 0.18 || Math.abs(hi) * 0.1 || 1; lo -= pad; hi += pad;
+  if (op.min != null) lo = Math.min(lo, op.min);
+  const tk = kcTicks(lo, hi, 4); lo = tk.lo; hi = tk.hi;
+  const X = t => x + (x1 === x0 ? w / 2 : (t - x0) / (x1 - x0) * w);
+  const Y = v => y + h - (v - lo) / (hi - lo) * h;
+  (op.bandas || []).forEach(([a, b, col]) => {
+    const ya = Y(Math.min(Math.max(a, lo), hi)), yb = Y(Math.min(Math.max(b, lo), hi));
+    if (yb < ya){ g.fillStyle = col; g.fillRect(x, yb, w, ya - yb); }
+  });
+  g.strokeStyle = KC_COL.rejilla; g.lineWidth = 0.6; kcFont(g, 7); g.fillStyle = KC_COL.texto; g.textAlign = 'right'; g.textBaseline = 'middle';
+  tk.t.forEach(v => { if (v < lo - 1e-9 || v > hi + 1e-9) return; const yy = Y(v); g.beginPath(); g.moveTo(x, yy); g.lineTo(x + w, yy); g.stroke(); g.fillText(String(Math.round(v * 100) / 100), x - 4, yy); });
+  (op.xticks || []).forEach(t => { const xx = X(t); g.beginPath(); g.moveTo(xx, y); g.lineTo(xx, y + h); g.stroke(); });
+  g.strokeStyle = '#000'; g.lineWidth = 0.8; g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + h); g.lineTo(x + w, y + h); g.stroke();
+  if (op.vline != null && op.vline >= x0 && op.vline <= x1 + 5 * 86400000){
+    g.save(); g.strokeStyle = KC_COL.rojo; g.setLineDash([2, 2]); g.lineWidth = 1; g.beginPath(); g.moveTo(X(op.vline), y); g.lineTo(X(op.vline), y + h); g.stroke(); g.restore();
+  }
+  kcFont(g, 7); g.save(); g.translate(x - 30, y + h / 2); g.rotate(-Math.PI / 2); g.textAlign = 'center'; g.fillStyle = KC_COL.texto; g.fillText(op.unidad || '', 0, 0); g.restore();
+  series.forEach(s => {
+    const pts = s.pts.filter(p => p[1] != null && isFinite(p[1]));
+    if (!pts.length) return;
+    g.strokeStyle = s.color; g.fillStyle = s.color; g.lineWidth = s.ancho || 1.4;
+    g.save(); if (s.guion) g.setLineDash(s.guion);
+    if (s.tipo === 'segmentos'){
+      (s.seg || []).forEach(sg => { g.beginPath(); g.moveTo(X(sg[0]), Y(sg[2])); g.lineTo(X(sg[1]), Y(sg[2])); g.stroke(); });
+    } else {
+      g.beginPath();
+      pts.forEach((p, i) => {
+        if (i === 0) g.moveTo(X(p[0]), Y(p[1]));
+        else if (s.tipo === 'escalon'){ g.lineTo(X(p[0]), Y(pts[i - 1][1])); g.lineTo(X(p[0]), Y(p[1])); }
+        else g.lineTo(X(p[0]), Y(p[1]));
+      });
+      g.stroke();
+    }
+    g.restore();
+    if (s.marca) pts.forEach(p => { g.beginPath(); if (s.marca === 's') g.rect(X(p[0]) - 2.3, Y(p[1]) - 2.3, 4.6, 4.6); else g.arc(X(p[0]), Y(p[1]), 2.4, 0, 7); g.fill(); });
+    if (s.etiqueta){
+      kcFont(g, 6); g.textAlign = 'center'; g.textBaseline = s.dy > 0 ? 'top' : 'bottom'; g.fillStyle = s.color;
+      let prev = null;
+      (s.etqPts || pts).forEach(p => {
+        if (s.soloCambios && prev != null && Math.abs(p[1] - prev) < 1e-9) return;
+        prev = p[1];
+        g.fillText(s.fmt ? s.fmt(p[1]) : String(Math.round(p[1])), X(p[0]) + (s.dx || 0), Y(p[1]) + (s.dy || -4));
+      });
+    }
+  });
+  let lx = x + 4; kcFont(g, 6.5); g.textBaseline = 'middle'; g.textAlign = 'left';
+  series.filter(s => s.leyenda).forEach(s => {
+    const ly = y + h - 8;
+    g.fillStyle = 'rgba(255,255,255,.85)'; const tw = kcPx(s.leyenda, 6.5) + 18; g.fillRect(lx - 2, ly - 6, tw, 12);
+    g.strokeStyle = s.color; g.lineWidth = 1.4; g.save(); if (s.guion) g.setLineDash(s.guion); g.beginPath(); g.moveTo(lx, ly); g.lineTo(lx + 12, ly); g.stroke(); g.restore();
+    g.fillStyle = KC_COL.texto; g.fillText(s.leyenda, lx + 15, ly); lx += tw + 6;
+  });
+  return { X, Y, lo, hi };
+}
+function kcEjeX(g, box, x0, x1){
+  const t = [], d = new Date(x0); let m = Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1);
+  const meses = Math.max(1, Math.round((x1 - x0) / (30.4 * 86400000))), paso = Math.max(1, Math.ceil(meses / 10));
+  let k = 0;
+  while (m <= x1){ if (k % paso === 0) t.push(m); const q = new Date(m); m = Date.UTC(q.getUTCFullYear(), q.getUTCMonth() + 1, 1); k++; }
+  return t;
+}
+
+function kcGraficaTendencia(lienzo, titulo, filas, nomPorFila, instalado){
+  const W = 840, H = 740, L = kcLienzo(lienzo, W, H), g = L.g;
+  kcFont(g, 13, true); g.fillStyle = '#000'; g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText(titulo + ' · OPERATING TREND', 16, 12);
+  const ts = filas.map(r => kcFecha(r._fecha).getTime());
+  let x0 = Math.min(...ts), x1 = Math.max(...ts);
+  const marg = Math.max(8 * 86400000, (x1 - x0) * 0.04); x0 -= marg; x1 += marg;
+  const box = (i, hh, yy) => ({ x: 62, y: yy, w: W - 90, h: hh });
+  const alt = [200, 120, 150, 150], ys = [44]; for (let i = 1; i < 4; i++) ys.push(ys[i - 1] + alt[i - 1] + 18);
+  const xt = kcEjeX(g, null, x0, x1);
+  const prom = (r, pre) => { const v = ['a','b','c'].map(p => kcN(r[pre + p])).filter(x => x != null && x > 0); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const val = (r, k) => { const v = kcN(r[k]); return v != null && v > 0 ? v : null; };
+  const inst = instalado ? kcFecha(instalado).getTime() : null;
+  /* placa por corrida: cambia en la fecha de instalacion, no en la lectura siguiente */
+  const seg = []; let cur = null;
+  filas.forEach((r, i) => {
+    const v = nomPorFila[i]; if (v == null){ cur = null; return; }
+    if (cur && cur[2] === v) cur[1] = ts[i]; else { cur = [ts[i], ts[i], v]; seg.push(cur); }
+  });
+  seg.forEach((s, k) => {
+    if (k + 1 < seg.length){ s[1] = (inst && s[1] < inst && inst <= seg[k + 1][0]) ? inst : seg[k + 1][0]; }
+    else s[1] = ts[ts.length - 1];
+    if (k > 0 && inst && seg[k - 1][1] <= inst && inst <= s[0]) s[0] = inst;
+  });
+  const ma = filas.map((r, i) => [ts[i], prom(r, 'sutout_i_')]);
+  const p1 = kcPanel(g, box(0, alt[0], ys[0]), x0, x1, [
+    { pts: ma, color: KC_COL.azul, marca: 'o', etiqueta: true, fmt: v => v.toFixed(1), leyenda: 'Motor current (A, avg 3φ)' },
+    { pts: seg.map(s => [s[0], s[2]]), tipo: 'segmentos', seg, color: KC_COL.rojo, guion: [4, 3], leyenda: 'Motor nameplate (A)' }
+  ], { unidad: 'A', xticks: xt, vline: inst, extra: seg.map(s => s[2]) });
+  kcFont(g, 6); g.fillStyle = KC_COL.rojo; g.textAlign = 'left'; g.textBaseline = 'bottom';
+  seg.forEach(s => g.fillText(Math.round(s[2]) + ' A', p1.X(s[0]) + 2, p1.Y(s[2]) - 2));
+  if (inst && inst >= x0 && inst <= x1){
+    kcFont(g, 6.5, true); g.fillStyle = KC_COL.rojo; g.textAlign = 'left'; g.textBaseline = 'bottom';
+    g.fillText('CURRENT RUN ▶', p1.X(inst) + 3, ys[0] + alt[0] - 3);
+    g.fillStyle = KC_COL.gris; g.textAlign = 'right'; g.textBaseline = 'top';
+    g.fillText('PREVIOUS RUN ◀', p1.X(inst) - 4, ys[0] + 3);
+    kcFont(g, 6); g.fillStyle = KC_COL.rojo; g.fillText('motor installed ' + kcDiaTxt(inst), p1.X(inst) - 4, ys[0] + 13);
+  }
+  const fo = filas.map((r, i) => [ts[i], val(r, '_fop')]), fx = filas.map((r, i) => [ts[i], val(r, '_fmax')]);
+  const p2 = kcPanel(g, box(1, alt[1], ys[1]), x0, x1, [
+    { pts: fo, tipo: 'escalon', color: KC_COL.azul, etiqueta: true, soloCambios: true, fmt: v => String(Math.round(v * 10) / 10), dy: 4, leyenda: 'Operation (Hz)' },
+    { pts: fx, tipo: 'escalon', color: KC_COL.gris, guion: [4, 3], ancho: 1.1, etiqueta: true, soloCambios: true, fmt: v => String(Math.round(v * 10) / 10), dy: -4, leyenda: 'Maximum (Hz)' }
+  ], { unidad: 'Hz', xticks: xt, vline: inst });
+  let pm = null; kcFont(g, 6.5, true); g.fillStyle = KC_COL.morado; g.textAlign = 'center'; g.textBaseline = 'bottom';
+  filas.forEach((r, i) => { const m = r._mode; if (m && m !== pm && (pm != null || m !== 'Freq Set') && fo[i][1] != null) g.fillText(m, p2.X(ts[i]), p2.Y(fo[i][1]) - 10); if (m) pm = m; });
+  kcPanel(g, box(2, alt[2], ys[2]), x0, x1, [
+    { pts: filas.map((r, i) => [ts[i], val(r, 'sf_pip_psi')]), color: KC_COL.verde, marca: 's', etiqueta: true, leyenda: 'PIP (psi)' }
+  ], { unidad: 'psi', xticks: xt, vline: inst });
+  const tm = filas.map((r, i) => [ts[i], val(r, 'sf_t_motor_c')]), ti = filas.map((r, i) => [ts[i], val(r, 'sf_t_intake_c')]);
+  kcPanel(g, box(3, alt[3], ys[3]), x0, x1, [
+    { pts: tm, color: KC_COL.naranja, marca: 'o', etiqueta: true, leyenda: 'Motor temp (°F)' },
+    { pts: ti, color: KC_COL.gris, marca: 'o', etiqueta: true, dy: 4, leyenda: 'Intake temp (°F)' }
+  ], { unidad: '°F', xticks: xt, vline: inst, extra: [275], bandas: [[250, 270, KC_COL.amar], [270, 1e6, KC_COL.rosa]] });
+  kcFont(g, 7); g.fillStyle = KC_COL.texto; g.textAlign = 'center'; g.textBaseline = 'top';
+  const bx = box(3, alt[3], ys[3]);
+  xt.forEach(t => g.fillText(kcMesTxt(t), bx.x + (t - x0) / (x1 - x0) * bx.w, bx.y + bx.h + 4));
+  return { png: kcPng(L), w: W, h: H };
+}
+
+function kcGraficaAislamiento(lienzo, titulo, ensayos){
+  const W = 860, H = 330, L = kcLienzo(lienzo, W, H), g = L.g;
+  kcFont(g, 12, true); g.fillStyle = '#000'; g.textAlign = 'left'; g.textBaseline = 'top';
+  g.fillText(titulo + ' · INSULATION TESTS (instrument reading, no temperature correction)', 14, 10);
+  const PISO = 0.1, cols = [KC_COL.azul, KC_COL.naranja, KC_COL.verde, KC_COL.morado];
+  const series = []; ensayos.forEach(e => { if (!series.includes(e.serial || '')) series.push(e.serial || ''); });
+  const col = e => cols[series.indexOf(e.serial || '') % 4];
+  const ts = ensayos.map(e => kcFecha(e.fecha).getTime());
+  const span = Math.max(30, (Math.max(...ts) - Math.min(...ts)) / 86400000);
+  const x0 = Math.min(...ts) - Math.max(20, span * .08) * 86400000, x1 = Math.max(...ts) + Math.max(20, span * .08) * 86400000;
+  const A = { x: 60, y: 52, w: 480, h: 210 };
+  const irs = []; ensayos.forEach(e => ['ir_1min','ir_10min'].forEach(k => { const v = kcN(e[k]); if (v != null) irs.push(v); }));
+  const iee = ensayos.map(e => kcN(e.umbral)).filter(v => v != null);
+  const lo = Math.log10(Math.min(...irs.concat(iee)) < PISO ? PISO / 2 : Math.min(...irs.concat(iee)) / 2);
+  const hi = Math.log10(Math.max(Math.max(...irs) * 3, 200));
+  const X = t => A.x + (t - x0) / (x1 - x0) * A.w, Y = v => A.y + A.h - (Math.log10(Math.max(v, PISO)) - lo) / (hi - lo) * A.h;
+  const banda = (a, b, c) => { const ya = Math.min(A.y + A.h, Y(Math.max(a, Math.pow(10, lo)))), yb = Math.max(A.y, Y(Math.min(b, Math.pow(10, hi)))); g.fillStyle = c; g.fillRect(A.x, yb, A.w, ya - yb); };
+  banda(1e-6, 20, KC_COL.rosa); banda(20, 100, KC_COL.amar);
+  kcFont(g, 9); g.fillStyle = KC_COL.texto; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillText('Insulation resistance (MΩ, log)', A.x, A.y - 4);
+  kcFont(g, 7); g.textAlign = 'right'; g.textBaseline = 'middle';
+  for (let p = Math.ceil(lo); p <= Math.floor(hi); p++){ const yy = Y(Math.pow(10, p)); g.strokeStyle = KC_COL.rejilla; g.beginPath(); g.moveTo(A.x, yy); g.lineTo(A.x + A.w, yy); g.stroke(); g.fillText(p >= 0 ? String(Math.pow(10, p)) : Math.pow(10, p).toFixed(-p), A.x - 4, yy); }
+  g.strokeStyle = '#000'; g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(A.x, A.y + A.h); g.lineTo(A.x + A.w, A.y + A.h); g.stroke();
+  series.forEach(sr => {
+    const pts = ensayos.filter(e => (e.serial || '') === sr && kcN(e.ir_1min) != null).map(e => [kcFecha(e.fecha).getTime(), kcN(e.ir_1min)]).sort((a, b) => a[0] - b[0]);
+    if (pts.length > 1){ g.strokeStyle = cols[series.indexOf(sr) % 4]; g.globalAlpha = .6; g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1]))); g.stroke(); g.globalAlpha = 1; }
+  });
+  const wIEEE = Math.max(6, span * .025) * 86400000;
+  ensayos.forEach(e => {
+    const t = kcFecha(e.fecha).getTime(), c = col(e);
+    const u = kcN(e.umbral);
+    if (u != null){ g.strokeStyle = KC_COL.rojo; g.lineWidth = 1.5; g.beginPath(); g.moveTo(X(t - wIEEE), Y(u)); g.lineTo(X(t + wIEEE), Y(u)); g.stroke(); g.lineWidth = 1;
+      kcFont(g, 6); g.fillStyle = KC_COL.rojo; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(String(u), X(t + wIEEE) + 2, Y(u)); }
+    [['ir_1min', 'o'], ['ir_10min', 'd']].forEach(([k, mk]) => {
+      const v = kcN(e[k]); if (v == null) return;
+      const xx = X(t), yy = Y(v);
+      g.strokeStyle = c; g.fillStyle = mk === 'o' ? c : '#FFFFFF'; g.lineWidth = 1.5; g.beginPath();
+      if (mk === 'o') g.arc(xx, yy, 4, 0, 7); else { g.moveTo(xx, yy - 5); g.lineTo(xx + 5, yy); g.lineTo(xx, yy + 5); g.lineTo(xx - 5, yy); g.closePath(); }
+      g.fill(); g.stroke(); g.lineWidth = 1;
+      kcFont(g, 6.5); g.fillStyle = v < PISO ? KC_COL.rojo : c; g.textBaseline = 'middle';
+      g.textAlign = mk === 'o' ? 'left' : 'right';
+      g.fillText(v < PISO ? '≈0' : String(Math.round(v * 100) / 100), xx + (mk === 'o' ? 7 : -8), yy);
+    });
+  });
+  kcFont(g, 7); g.fillStyle = KC_COL.texto; g.textAlign = 'center'; g.textBaseline = 'top';
+  kcEjeX(g, null, x0, x1).forEach(t => g.fillText(kcMesTxt(t), X(t), A.y + A.h + 4));
+  /* IP y DAR */
+  const B = { x: 610, y: 52, w: 220, h: 210 };
+  const idx = []; ensayos.forEach(e => ['ip','dar'].forEach(k => { const v = kcN(e[k]); if (v != null) idx.push(v); }));
+  const bl = 0.8, bh = Math.max(2.5, ...idx) * 1.15;
+  const XB = t => B.x + (t - x0) / (x1 - x0) * B.w, YB = v => B.y + B.h - (v - bl) / (bh - bl) * B.h;
+  kcFont(g, 9); g.fillStyle = KC_COL.texto; g.textAlign = 'left'; g.textBaseline = 'bottom'; g.fillText('IP (●)  ·  DAR (□)', B.x, B.y - 4);
+  const tk = kcTicks(bl, bh, 4); kcFont(g, 7); g.textAlign = 'right'; g.textBaseline = 'middle';
+  tk.t.forEach(v => { if (v < bl || v > bh) return; g.strokeStyle = KC_COL.rejilla; g.beginPath(); g.moveTo(B.x, YB(v)); g.lineTo(B.x + B.w, YB(v)); g.stroke(); g.fillStyle = KC_COL.texto; g.fillText(String(v), B.x - 4, YB(v)); });
+  g.strokeStyle = '#000'; g.beginPath(); g.moveTo(B.x, B.y); g.lineTo(B.x, B.y + B.h); g.lineTo(B.x + B.w, B.y + B.h); g.stroke();
+  ensayos.forEach(e => {
+    const t = kcFecha(e.fecha).getTime(), c = col(e);
+    [['ip', 'o', -6], ['dar', 's', 6]].forEach(([k, mk, dy]) => {
+      const v = kcN(e[k]); if (v == null) return;
+      g.strokeStyle = c; g.fillStyle = mk === 'o' ? c : '#FFFFFF'; g.lineWidth = 1.5; g.beginPath();
+      if (mk === 'o') g.arc(XB(t), YB(v), 4, 0, 7); else g.rect(XB(t) - 4, YB(v) - 4, 8, 8);
+      g.fill(); g.stroke(); g.lineWidth = 1;
+      kcFont(g, 6.5); g.fillStyle = c; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(k.toUpperCase() + ' ' + v, XB(t) + 7, YB(v) + dy);
+    });
+  });
+  kcFont(g, 7); g.fillStyle = KC_COL.texto; g.textAlign = 'center'; g.textBaseline = 'top';
+  kcEjeX(g, null, x0, x1).forEach((t, i, a) => { if (a.length <= 5 || i % 2 === 0) g.fillText(kcMesTxt(t), XB(t), B.y + B.h + 4); });
+  /* leyenda */
+  let lx = 60; const ly = H - 22; kcFont(g, 7); g.textBaseline = 'middle'; g.textAlign = 'left';
+  const item = (dib, txt) => { dib(lx + 6, ly); g.fillStyle = KC_COL.texto; g.fillText(txt, lx + 15, ly); lx += kcPx(txt, 7) + 30; };
+  item((x, y) => { g.fillStyle = '#000'; g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill(); }, '1 min');
+  item((x, y) => { g.strokeStyle = '#000'; g.fillStyle = '#FFF'; g.beginPath(); g.moveTo(x, y - 4); g.lineTo(x + 4, y); g.lineTo(x, y + 4); g.lineTo(x - 4, y); g.closePath(); g.fill(); g.stroke(); }, '10 min');
+  item((x, y) => { g.strokeStyle = KC_COL.rojo; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x - 6, y); g.lineTo(x + 6, y); g.stroke(); g.lineWidth = 1; }, 'IEEE 43 minimum (kV+1)');
+  series.forEach(sr => {
+    const e = ensayos.find(x => (x.serial || '') === sr);
+    item((x, y) => { g.fillStyle = cols[series.indexOf(sr) % 4]; g.beginPath(); g.arc(x, y, 3.5, 0, 7); g.fill(); },
+      (sr ? 'S/N ' + sr : 'S/N not recorded') + ' · ' + String(e._run || '').toLowerCase());
+  });
+  return { png: kcPng(L), w: W, h: H };
+}
+
+function kcGraficaDemanda(lienzo, filas){
+  const alto = Math.max(320, 24 * filas.length + 110), W = 640, L = kcLienzo(lienzo, W, alto), g = L.g;
+  kcFont(g, 12, true); g.fillStyle = '#000'; g.textAlign = 'left'; g.textBaseline = 'top';
+  g.fillText('ACTIVE POWER DEMAND BY UNIT · last reading', 14, 10);
+  const ord = filas.slice().sort((a, b) => b.kw - a.kw);
+  const mx = Math.max(...ord.map(f => f.kw)) * 1.6, x0 = 70, ww = W - 100, y0 = 40, paso = (alto - 80) / Math.max(ord.length, 1);
+  const tk = kcTicks(0, mx, 5);
+  kcFont(g, 7); g.textAlign = 'center'; g.textBaseline = 'top';
+  tk.t.forEach(v => { if (v > mx) return; const xx = x0 + v / mx * ww; g.strokeStyle = KC_COL.rejilla; g.beginPath(); g.moveTo(xx, y0); g.lineTo(xx, y0 + paso * ord.length); g.stroke(); g.fillStyle = KC_COL.texto; g.fillText(String(v), xx, y0 + paso * ord.length + 4); });
+  g.fillText('kW (PST input)', x0 + ww / 2, y0 + paso * ord.length + 16);
+  ord.forEach((f, i) => {
+    const yy = y0 + i * paso + paso * .18, hh = paso * .64, c = (f.fp != null && f.fp < 0.9) ? KC_COL.naranja : KC_COL.azul;
+    g.fillStyle = c; g.fillRect(x0, yy, f.kw / mx * ww, hh);
+    kcFont(g, 7); g.fillStyle = KC_COL.texto; g.textAlign = 'right'; g.textBaseline = 'middle'; g.fillText(f.u, x0 - 4, yy + hh / 2);
+    g.textAlign = 'left'; kcFont(g, 6.5); g.fillText(Math.round(f.kw) + ' kW' + (f.fp != null ? '  ·  PF ' + f.fp.toFixed(2) : ''), x0 + f.kw / mx * ww + 4, yy + hh / 2);
+  });
+  kcFont(g, 7); let lx = W - 170; const ly = alto - 16; g.textBaseline = 'middle';
+  [[KC_COL.azul, 'PF ≥ 0.90'], [KC_COL.naranja, 'PF < 0.90']].forEach(([c, t]) => { g.fillStyle = c; g.fillRect(lx, ly - 4, 10, 8); g.fillStyle = KC_COL.texto; g.textAlign = 'left'; g.fillText(t, lx + 14, ly); lx += 75; });
+  return { png: kcPng(L), w: W, h: alto };
+}
+
+/* Esquema propio del sistema BES, sin imagenes de fabricante. */
+function kcEsquemaBes(lienzo){
+  const W = 460, H = 760, L = kcLienzo(lienzo, W, H), g = L.g;
+  const X = x => x * W / 100, Y = y => H - y * H / 165;
+  const DB = '#1F3864', BL = '#0070C0', LB = '#DDEBF7', OR = '#ED7D31', GR = '#7F7F7F', VD = '#00A650', CA = '#8C6D3F';
+  const rect = (x, y, w, h, fc, ec, lw) => { g.fillStyle = fc; g.fillRect(X(x), Y(y + h), X(w), Y(0) - Y(h)); if (ec){ g.strokeStyle = ec; g.lineWidth = lw || 1; g.strokeRect(X(x), Y(y + h), X(w), Y(0) - Y(h)); } };
+  const txt = (x, y, t, px, col, b, al, bl) => { kcFont(g, px, b); g.fillStyle = col; g.textAlign = al || 'center'; g.textBaseline = bl || 'middle'; g.fillText(t, X(x), Y(y)); };
+  const lin = (pts, col, w, dash) => { g.save(); g.strokeStyle = col; g.lineWidth = w || 1; if (dash) g.setLineDash(dash); g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1]))); g.stroke(); g.restore(); };
+  txt(50, 160, 'ELECTRIC SUBMERSIBLE PUMP', 15, DB, true);
+  txt(50, 155.5, 'ARTIFICIAL LIFT SYSTEM', 12, BL);
+  const G0 = 128;
+  rect(0, 0, 100, G0, '#F4EFE6');
+  for (let y = 8; y < G0; y += 12) lin([[0, y], [100, y]], '#E6DCC8', .6);
+  rect(0, 4, 100, 16, 'rgba(234,217,184,.8)');
+  txt(4, 12, 'RESERVOIR', 9, CA, true, 'left');
+  lin([[0, G0], [100, G0]], CA, 1.5);
+  const caja = (x, y, w, h, t, s) => { g.fillStyle = LB; g.strokeStyle = DB; g.lineWidth = 1.2; g.beginPath(); g.rect(X(x), Y(y + h), X(w), Y(0) - Y(h)); g.fill(); g.stroke(); txt(x + w / 2, y + h / 2 + 1.5, t, 11, DB, true); txt(x + w / 2, y + h / 2 - 3, s, 7.5, DB); };
+  caja(4, G0 + 3, 15, 12, 'PST', 'phase shift'); caja(24, G0 + 3, 15, 15, 'VFD', 'drive'); caja(44, G0 + 3, 15, 12, 'SUT', 'step-up');
+  lin([[19.6, G0 + 9], [23.4, G0 + 9]], OR, 2); lin([[39.6, G0 + 9], [43.4, G0 + 9]], OR, 2);
+  const wx = 76;
+  rect(wx - 3, G0, 6, 10, GR, DB); rect(wx - 7, G0 + 6, 14, 2.5, GR, DB); rect(wx - 1.5, G0 + 10, 3, 4, GR, DB);
+  txt(wx, G0 + 16.5, 'WELLHEAD', 8, DB, true);
+  lin([[59.6, G0 + 9], [66, G0 + 9], [66, G0 + 4], [wx - 3, G0 + 4]], OR, 2);
+  rect(wx - 9, 6, 18, G0 - 6, '#FBFBFB', GR, 1.6);
+  rect(wx - 3, 76, 6, G0 - 76, '#D9D9D9', GR, .8);
+  g.save(); g.translate(X(wx - 11), Y(100)); g.rotate(-Math.PI / 2); kcFont(g, 8); g.fillStyle = GR; g.textAlign = 'center'; g.fillText('CASING', 0, 0); g.restore();
+  g.save(); g.translate(X(wx + 1.2), Y(106)); g.rotate(-Math.PI / 2); kcFont(g, 7.5); g.fillStyle = '#595959'; g.textAlign = 'center'; g.fillText('TUBING', 0, 0); g.restore();
+  lin([[wx + 4, G0], [wx + 4, 38]], OR, 1.6, [5, 3]);
+  txt(wx + 12.5, 97.5, 'POWER', 8, OR, true, 'left'); txt(wx + 12.5, 94.5, 'CABLE', 8, OR, true, 'left');
+  lin([[wx + 4.5, 96], [wx + 12, 96]], OR, .8);
+  const comps = [['PUMP', 76, 20, BL, 'multistage centrifugal'], ['INTAKE', 56, 6, '#5B9BD5', null], ['PROTECTOR', 50, 10, '#8FAADC', 'seal section'],
+                 ['MOTOR', 40, 15, DB, 'induction motor'], ['SENSOR', 25, 5, '#A5A5A5', 'downhole gauge']];
+  comps.forEach(([n, y0, h, fc, s]) => {
+    rect(wx - 3.2, y0 - h, 6.4, h, fc, DB);
+    txt(wx - 12, y0 - h / 2 + (s ? 1.4 : 0), n, 10, DB, true, 'right');
+    if (s) txt(wx - 12, y0 - h / 2 - 2.2, s, 7.5, '#595959', false, 'right');
+    lin([[wx - 11.5, y0 - h / 2], [wx - 3.4, y0 - h / 2]], DB, .6);
+  });
+  for (let y = 58; y < 76; y += 3) lin([[wx - 3, y], [wx + 3, y]], '#FFFFFF', .7);
+  [52, 54].forEach(y => lin([[wx - 3, y], [wx + 3, y]], '#FFFFFF', 1.4, [1, 1]));
+  [9, 12, 15, 18].forEach(y => [-1, 1].forEach(sg => {
+    g.fillStyle = CA; g.beginPath(); g.moveTo(X(wx + sg * 9), Y(y)); g.lineTo(X(wx + sg * 15), Y(y + 1)); g.lineTo(X(wx + sg * 15), Y(y - 1)); g.closePath(); g.fill();
+  }));
+  const flecha = (x, y1, y2) => { lin([[x, y1], [x, y2]], VD, 1.4); g.fillStyle = VD; g.beginPath(); g.moveTo(X(x), Y(y2 + 1.5)); g.lineTo(X(x - 1), Y(y2 - 1)); g.lineTo(X(x + 1), Y(y2 - 1)); g.closePath(); g.fill(); };
+  [84, 100, 114].forEach(y => flecha(wx, y, y + 8));
+  txt(wx - 10.5, 87, 'PRODUCED', 7.5, VD, true, 'right'); txt(wx - 10.5, 84.5, 'FLUID ▲', 7.5, VD, true, 'right');
+  txt(4, 112, 'MONITORED EACH ROUND', 9, DB, true, 'left');
+  ['PST input power quality', 'VFD input / output', 'SUT output voltage', 'Motor current', 'Downhole gauge: PIP,',
+   '   discharge, temperatures,', '   vibration', 'Insulation tests (IEEE 43)'].forEach((t, k) =>
+    txt(5, 107 - k * 4.4, (t.startsWith('   ') ? '' : '• ') + t, 8, '#404040', false, 'left'));
+  return { png: kcPng(L), w: W, h: H };
+}
+
+/* ══════════════ PREPARACION DE DATOS ══════════════ */
+function kcPreparar(d){
+  const mapa = (arr, k) => new Map((arr || []).map(x => [x[k || 'unidad'], x]));
+  const FUERA = mapa(d.fuera), PL = mapa(d.placas), ST = mapa(d.setup), RL = mapa(d.runlife), OP = mapa(d.op);
+  const CAP = new Map();
+  (d.cap || []).forEach(c => {
+    if (!CAP.has(c.unidad)) CAP.set(c.unidad, []);
+    CAP.get(c.unidad).push({ f: String(c.fecha).slice(0, 10), c });
+  });
+  CAP.forEach(a => a.sort((x, y) => x.f < y.f ? -1 : 1));
+  const capDe = (u, f) => {
+    const a = CAP.get(u) || []; let r = null;
+    a.forEach(x => { if (x.f <= f) r = x.c; });
+    return r;
+  };
+  const H = new Map();
+  (d.hist || []).forEach(r => {
+    const u = r.unidad; if (!u) return;
+    const fila = { _fecha: String(r.fecha).slice(0, 10), _fop: kcN(r.f_op), _fmax: kcN(r.hsc), _mode: kcModo(r.modo),
+                   _origen: r.origen || null, _inval: r.invalidos || {} };
+    Object.entries(r.valores || {}).forEach(([k, v]) => {
+      const n = kcN(v); if (n == null) return;
+      fila[k] = KC_EN_F.has(k) ? kcAF(n) : n;
+    });
+    if (!H.has(u)) H.set(u, []);
+    H.get(u).push(fila);
+  });
+  H.forEach((filas, u) => {
+    filas.sort((a, b) => a._fecha < b._fecha ? -1 : 1);
+    const st = ST.get(u) || {}, fset = st.ajustado_el ? String(st.ajustado_el).slice(0, 10) : null;
+    filas.forEach(f => { if (!f._mode && fset && f._fecha >= fset) f._mode = kcModo(st.modo_control); });
+  });
+  const todas = new Set([...OP.keys(), ...FUERA.keys(), ...H.keys()]);
+  const unidades = [...todas].filter(Boolean).sort((a, b) => kcNumPozo(a) - kcNumPozo(b));
+  const estado = u => {
+    if (FUERA.has(u)){
+      const x = FUERA.get(u), m = x.motivo || x.motivo_cod;
+      return 'Out of monitoring' + (m ? ' · ' + String(m).split('·').map(p => kcTr(p.trim())).join(' · ') : '');
+    }
+    return OP.has(u) ? 'In monitoring' : 'Not registered';
+  };
+  const bitPor = new Map(), aisPor = new Map();
+  (d.bit || []).forEach(b => { if (!bitPor.has(b.unidad)) bitPor.set(b.unidad, []); bitPor.get(b.unidad).push(b); });
+  (d.ais || []).forEach(a => { if (!aisPor.has(a.unidad)) aisPor.set(a.unidad, []); aisPor.get(a.unidad).push(a); });
+  return { FUERA, PL, ST, RL, OP, H, capDe, unidades, estado, bitPor, aisPor,
+           conHoja: unidades.filter(u => (H.get(u) || []).length) };
+}
+
+/* ══════════════ HOJA POR POZO ══════════════ */
+function kcHojaPozo(wb, ws, P, u, nav, lienzo){
+  const hoja = kcHoja(u), filas = P.H.get(u), pl = P.PL.get(u) || {}, st = P.ST.get(u) || {};
+  const est = P.estado(u);
+  const inst = pl.motor_desde ? String(pl.motor_desde).slice(0, 10) : ((P.RL.get(u) || {}).instalado_el || null);
+  const serieAct = pl.motor_serial || null;
+  const aplica = new Set();
+  KC_G.forEach(([, it]) => it.forEach(([k]) => { if (KC_SIEMPRE.has(k) || filas.some(f => typeof f[k] === 'number')) aplica.add(k); }));
+  ws.properties.outlineProperties = { summaryBelow: true, summaryRight: true };
+  /* navegacion */
+  let c = 1;
+  nav.forEach(([t, dst]) => { kcLink(ws, 1, c, t, dst); ws.mergeCells(1, c, 1, c + 1); c += 2; });
+  if (est.startsWith('Out')){
+    ws.properties.tabColor = { argb: 'FFA6A6A6' };
+    const x = ws.getCell(1, 14);
+    x.value = '⚠  ' + est.toUpperCase() + '  ·  readings kept for history; unit not in the current monitoring round';
+    x.font = { name: KC.AR, size: 10, bold: true, color: { argb: 'FF9C0006' } };
+    x.fill = kcRelleno('FFFFC7CE'); x.alignment = { horizontal: 'left', vertical: 'middle' };
+    ws.mergeCells(1, 14, 1, 30);
+  }
+  ws.getRow(1).height = 20;
+  /* encabezado de datos */
+  const K = {}; c = 1;
+  KC_G.forEach(([g, it]) => {
+    const c0 = c;
+    it.forEach(([k, s]) => { K[k] = c; kcHdr(ws, 3, c, s); c += 1; });
+    if (g === 'DATE') kcHdr(ws, 2, 1, 'WELL ' + hoja, KC.VERDE);
+    else {
+      kcHdr(ws, 2, c0, g);
+      for (let x = c0 + 1; x < c; x++) kcHdr(ws, 2, x, null);
+      if (c - 1 > c0) ws.mergeCells(2, c0, 2, c - 1);
+      if (it.length === 1 && it[0][1] === '') ws.mergeCells(2, c0, 3, c0);
+    }
+  });
+  const nCol = c - 1;
+  /* filas con franjas de corrida */
+  const DISP = [];
+  const hayPrev = inst && filas.some(f => f._fecha < inst);
+  if (hayPrev) DISP.push({ sep: 'PREVIOUS RUN  ·  readings before the current motor installation (' + kcDiaTxt(kcFecha(inst)) + ')' });
+  let puesta = false;
+  filas.forEach(f => {
+    f._prev = !!(inst && f._fecha < inst);
+    if (hayPrev && !f._prev && !puesta){ DISP.push({ sep: 'CURRENT RUN  ·  motor S/N ' + (serieAct || 'not recorded') + ' installed ' + kcDiaTxt(kcFecha(inst)) }); puesta = true; }
+    DISP.push({ f });
+  });
+  const R0 = 4, sepFont = { name: KC.AR, size: 10, bold: true, color: { argb: 'FF1F3864' } };
+  DISP.forEach((it, j) => {
+    const r = R0 + j;
+    if (it.sep){
+      const x = ws.getCell(r, 1); x.value = it.sep; x.font = sepFont; x.fill = kcRelleno(KC.SEP); x.alignment = { horizontal: 'left', vertical: 'middle' };
+      ws.mergeCells(r, 1, r, nCol); return;
+    }
+    const f = it.f;
+    Object.entries(K).forEach(([k, col]) => {
+      if (k === '_fecha'){ const x = kcDat(ws, r, col, kcFecha(f._fecha), 'dd-mmm-yy'); x.fill = kcRelleno(f._prev ? KC.FPREV : KC.FECHA); return; }
+      const v = f[k];
+      if (k === '_mode'){
+        const x = kcDat(ws, r, col, v || 'ND');
+        if (!v) x.font = { name: KC.AR, size: 9, color: { argb: KC.TXTG } };
+        else if (v !== 'Freq Set') x.font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.MORADO } };
+        return;
+      }
+      if (typeof v === 'number'){ const x = kcDat(ws, r, col, v); if (Math.abs(v) < 10 && v !== Math.trunc(v)) x.numFmt = '0.0##'; return; }
+      const x = kcDat(ws, r, col, 'ND'); x.font = { name: KC.AR, size: 9, color: { argb: KC.TXTG } }; x.fill = kcRelleno(KC.GRIS);
+      if (f._inval && f._inval[k] != null) x.note = 'Value ' + f._inval[k] + ' marked as not valid at capture.';
+    });
+  });
+  const ult = R0 + DISP.length - 1;
+  const rango = (k, r) => kcL(K[k]) + r;
+  ['sf_t_motor_c'].forEach(k => kcBanda(ws, rango(k, R0) + ':' + rango(k, ult), 250, 270));
+  ['sf_vib_x_g', 'sf_vib_y_g'].forEach(k => kcBanda(ws, rango(k, R0) + ':' + rango(k, ult), 0.8, 1.5));
+  /* ── bloque de analisis ── */
+  const A0 = ult + 3, AR = A0 + 2;
+  kcHdr(ws, A0, 1, 'WELL ' + hoja, KC.VERDE); kcHdr(ws, A0 + 1, 1, 'DATE');
+  kcHdr(ws, A0, 2, 'PST INPUT POWER FACTOR'); kcHdr(ws, A0 + 1, 2, null); ws.mergeCells(A0, 2, A0 + 1, 2);
+  const GR = [['AMP OUT VSD', 'vfdout_i_'], ['AMP INPUT PST', 'pst_in_i_'], ['AMP OUT PST #1 HEX Δ', 'conv1_i_'], ['AMP OUT PST #2 HEX Y', 'conv2_i_'], ['AMP OUT SUT', 'sutout_i_']];
+  const GC = {}; c = 3;
+  GR.forEach(([n]) => { kcHdr(ws, A0, c, n); kcHdr(ws, A0, c + 1, null); kcHdr(ws, A0, c + 2, null); ws.mergeCells(A0, c, A0, c + 2);
+                         ['NOM', 'LOAD', '%'].forEach((s, j) => kcHdr(ws, A0 + 1, c + j, s)); GC[n] = c; c += 3; });
+  ws.getCell(A0, GC['AMP INPUT PST']).note = 'NOM = PST kVA / (√3 × 480 V). Output windings: half the kVA each.';
+  ws.getCell(A0, GC['AMP OUT SUT']).note = 'NOM = SUT kVA / (√3 × TAP configured).';
+  const MC = c; kcHdr(ws, A0, c, 'MOTOR ESP'); for (let x = 1; x < 5; x++) kcHdr(ws, A0, c + x, null); ws.mergeCells(A0, c, A0, c + 4);
+  ['AMP. NOM.', 'LOAD', '%', 'HP', 'VOLT'].forEach((s, j) => kcHdr(ws, A0 + 1, c + j, s)); c += 5;
+  const KC_ = c; kcHdr(ws, A0, c, 'KVA'); kcHdr(ws, A0 + 1, c, 'PST IN'); c += 1;
+  const UNB = [['MOTOR', 'sutout_i_', ['a','b','c'], 'sutout_v_', ['ab','ac','bc']], ['IN PST', 'pst_in_i_', ['a','b','c'], 'pst_in_v_', ['ab','ac','bc']],
+               ['OUT 1 PST', 'conv1_i_', ['a','b','c'], 'conv1_v_', ['ab','ac','bc']], ['OUT 2 PST', 'conv2_i_', ['a','b','c'], 'conv2_v_', ['ab','ac','bc']],
+               ['OUT VSD', 'vfdout_i_', ['a','b','c'], 'vfdout_v_', ['ab','ac','bc']]];
+  const IU = c; kcHdr(ws, A0, c, 'ELECTRICAL CURRENT UNBALANCE'); for (let x = 1; x < 5; x++) kcHdr(ws, A0, c + x, null); ws.mergeCells(A0, c, A0, c + 4);
+  UNB.forEach((x, j) => kcHdr(ws, A0 + 1, c + j, x[0])); c += 5;
+  const VU = c; kcHdr(ws, A0, c, 'ELECTRICAL VOLTAGE UNBALANCE'); for (let x = 1; x < 5; x++) kcHdr(ws, A0, c + x, null); ws.mergeCells(A0, c, A0, c + 4);
+  UNB.forEach((x, j) => kcHdr(ws, A0 + 1, c + j, x[0])); c += 5;
+  const AEND = c - 1, S3 = Math.sqrt(3);
+  const tapCfg = kcNumTexto(st.tap_configurado);
+  const nums = (f, pre, subs) => subs.map(s => f[pre + s]).filter(v => typeof v === 'number');
+  const mnom = [];
+  DISP.forEach((it, j) => {
+    const r = AR + j, tr = R0 + j;
+    if (it.sep){ const x = ws.getCell(r, 1); x.value = it.sep; x.font = sepFont; x.fill = kcRelleno(KC.SEP); x.alignment = { horizontal: 'left', vertical: 'middle' }; ws.mergeCells(r, 1, r, AEND); return; }
+    const f = it.f, cap = P.capDe(u, f._fecha) || {};
+    const x = kcDat(ws, r, 1, kcF('=' + rango('_fecha', tr), kcFecha(f._fecha)), 'dd-mmm-yy'); x.fill = kcRelleno(f._prev ? KC.FPREV : KC.FECHA);
+    const pf = f.pst_in_fp;
+    kcDat(ws, r, 2, kcF('=IF(' + rango('pst_in_fp', tr) + '="ND","-",' + rango('pst_in_fp', tr) + ')', typeof pf === 'number' ? pf : '-'), '0.00');
+    const pstKva = kcN(cap.pst_cap_kva), sutKva = kcN(cap.sut_cap_kva);
+    const NOMS = {
+      'AMP OUT VSD': kcN(cap.vfd_cap_a),
+      'AMP INPUT PST': pstKva ? pstKva * 1000 / (S3 * 480) : null,
+      'AMP OUT PST #1 HEX Δ': pstKva ? pstKva * 1000 / 2 / (S3 * 480) : null,
+      'AMP OUT PST #2 HEX Y': pstKva ? pstKva * 1000 / 2 / (S3 * 480) : null,
+      'AMP OUT SUT': (sutKva && tapCfg) ? sutKva * 1000 / (S3 * tapCfg) : null
+    };
+    GR.forEach(([n, pre]) => {
+      const gc = GC[n], nom = NOMS[n], v = nums(f, pre, ['a','b','c']), carga = v.length ? Math.max(...v) : null;
+      const rg = kcL(K[pre + 'a']) + tr + ':' + kcL(K[pre + 'c']) + tr;
+      kcDat(ws, r, gc, nom != null ? Math.round(nom * 10) / 10 : '-', '0');
+      kcDat(ws, r, gc + 1, kcF('=IFERROR(IF(MAX(' + rg + ')=0,"-",MAX(' + rg + ')),"-")', carga != null && carga !== 0 ? carga : '-'), '0.0');
+      const pct = (nom && carga) ? carga / (Math.round(nom * 10) / 10) : null;
+      kcDat(ws, r, gc + 2, kcF('=IFERROR(' + kcL(gc + 1) + r + '/' + kcL(gc) + r + ',"-")', pct != null ? pct : '-'), '0.0%');
+    });
+    let mn = kcN(cap.motor_cap_a); if (mn == null && inst && f._fecha >= inst) mn = kcN(pl.motor_i);
+    mnom.push(mn);
+    const vm = nums(f, 'sutout_i_', ['a','b','c']), cm = vm.length ? Math.max(...vm) : null;
+    const rgm = kcL(K.sutout_i_a) + tr + ':' + kcL(K.sutout_i_c) + tr;
+    const xm = kcDat(ws, r, MC, mn != null ? mn : '-');
+    if (mn == null && inst) xm.note = 'Current motor installed ' + kcDiaTxt(kcFecha(inst)) + '; no nameplate recorded for the previous motor.';
+    kcDat(ws, r, MC + 1, kcF('=IFERROR(IF(MAX(' + rgm + ')=0,"-",MAX(' + rgm + ')),"-")', cm != null && cm !== 0 ? cm : '-'), '0.0');
+    kcDat(ws, r, MC + 2, kcF('=IFERROR(' + kcL(MC + 1) + r + '/' + kcL(MC) + r + ',"-")', (mn && cm) ? cm / mn : '-'), '0.0%');
+    const actual = !(inst && f._fecha < inst);
+    kcDat(ws, r, MC + 3, actual && kcN(pl.motor_hp) != null ? kcN(pl.motor_hp) : '-');
+    kcDat(ws, r, MC + 4, actual && kcN(pl.motor_v) != null ? kcN(pl.motor_v) : '-');
+    const pv = ['ab','ac','bc'].map(s => f['pst_in_v_' + s]), pi = ['a','b','c'].map(s => f['pst_in_i_' + s]);
+    const prods = pv.map((v, i) => (typeof v === 'number' && typeof pi[i] === 'number') ? v * pi[i] : null).filter(v => v != null);
+    const kva = prods.length === 3 ? prods.reduce((a, b) => a + b, 0) / 3 * S3 / 1000 : null;
+    const pr = ['ab','ac','bc'].map((s, i) => rango('pst_in_v_' + s, tr) + '*' + rango('pst_in_i_' + ['a','b','c'][i], tr)).join(',');
+    kcDat(ws, r, KC_, kcF('=IFERROR(AVERAGE(' + pr + ')*SQRT(3)/1000,"-")', kva != null ? kva : '-'), '0');
+    UNB.forEach(([, ip, ips, vp, vps], j) => {
+      [[IU, ip, ips], [VU, vp, vps]].forEach(([base, pre, subs]) => {
+        const cs = subs.map(s => rango(pre + s, tr)), av = 'AVERAGE(' + cs.join(',') + ')';
+        const vv = nums(f, pre, subs); let res = '-';
+        if (vv.length === 3){ const a = (vv[0] + vv[1] + vv[2]) / 3; if (a) res = Math.max(...vv.map(x => Math.abs(x - a))) / a; }
+        kcDat(ws, r, base + j, kcF('=IFERROR(IF(COUNT(' + cs.join(',') + ')<3,"-",MAX(' + cs.map(x => 'ABS(' + x + '-' + av + ')').join(',') + ')/' + av + '),"-")', res), '0.00%');
+      });
+    });
+  });
+  const aUlt = A0 + 1 + DISP.length;
+  GR.forEach(([n]) => kcBanda(ws, kcL(GC[n] + 2) + AR + ':' + kcL(GC[n] + 2) + aUlt, 0.9, 1.0));
+  kcBanda(ws, kcL(MC + 2) + AR + ':' + kcL(MC + 2) + aUlt, 0.9, 1.0);
+  kcBanda(ws, kcL(IU) + AR + ':' + kcL(IU + 4) + aUlt, 0.05, 0.10);
+  /* plegado: se ven las ultimas 12 filas */
+  const plegar = (a, b) => {
+    if (ws.getCell(a, 1).fill && ws.getCell(a, 1).fill.fgColor && ws.getCell(a, 1).fill.fgColor.argb === KC.SEP) a += 1;
+    const n = b - a + 1; if (n <= KC.VISIBLES) return;
+    for (let r = a; r <= b - KC.VISIBLES; r++){ ws.getRow(r).outlineLevel = 1; ws.getRow(r).hidden = true; }
+    const x = ws.getCell(b - KC.VISIBLES + 1, 1);
+    x.note = (n - KC.VISIBLES) + ' older rows hidden. Click [+] on the left margin to expand.';
+  };
+  plegar(R0, ult); plegar(AR, aUlt);
+  /* ── ensayos electricos ── */
+  const banner = (r, t, ancho) => { const x = kcHdr(ws, r, 1, t); x.alignment = { horizontal: 'left', vertical: 'middle' }; for (let k = 2; k <= ancho; k++) kcHdr(ws, r, k, null); ws.mergeCells(r, 1, r, ancho); ws.getRow(r).height = 18; };
+  const fila = (r, vals, spans, fn, fmts) => {
+    let cc = 1; const ini = [];
+    vals.forEach((v, j) => {
+      const x = fn === 'h' ? kcHdr(ws, r, cc, v) : kcDat(ws, r, cc, v, fmts ? fmts[j] : null);
+      x.alignment = { horizontal: x.alignment.horizontal || 'center', vertical: 'middle', wrapText: true };
+      for (let k = cc + 1; k < cc + spans[j]; k++){ const y = ws.getCell(r, k); y.border = KC_BD; }
+      if (spans[j] > 1) ws.mergeCells(r, cc, r, cc + spans[j] - 1);
+      ini.push(cc); cc += spans[j];
+    });
+    return ini;
+  };
+  const corrida = (fe, serie, retirado) => {
+    if (String(retirado || '').toLowerCase().startsWith('s') || retirado === true) return 'Previous run';
+    if (serie && serieAct && String(serie).trim() === String(serieAct).trim()) return 'Current run';
+    if (!fe) return '—';
+    return (inst && fe < inst) ? 'Previous run' : 'Current run';
+  };
+  const T0 = aUlt + 3;
+  const thT = ['DATE', 'RUN', 'TESTED', 'EQUIPMENT SERIAL', 'PHASE RES. A–B (Ω)', 'PHASE RES. A–C (Ω)', 'PHASE RES. B–C (Ω)', 'IR 1 MIN (MΩ)', 'IR 10 MIN (MΩ)', 'IP', 'DAR', 'IEEE 43 MIN (MΩ)', 'RESULT'];
+  const spT = [1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 3], anchoT = spT.reduce((a, b) => a + b, 0);
+  banner(T0, 'THOROUGH ELECTRICAL TESTS', anchoT); fila(T0 + 1, thT, spT, 'h');
+  const ens = (P.aisPor.get(u) || []).slice().sort((a, b) => String(a.fecha) < String(b.fecha) ? -1 : 1);
+  const COMP = { MOTOR: 'Motor (terminals)', MOTOR_CABLE: 'Motor + cable (surface)', CABLE: 'Cable only', SUT: 'Step-up transformer', GENERADOR: 'Generator' };
+  ens.forEach((a, i) => {
+    const r = T0 + 2 + i, fe = String(a.fecha || '').slice(0, 10);
+    a._run = corrida(fe, a.serial, a.retirada);
+    const v = [kcFecha(fe), a._run, COMP[a.componente] || a.componente || '—', a.serial || 'not recorded', kcN(a.bal_ab), kcN(a.bal_ac), kcN(a.bal_bc),
+               kcN(a.ir_1min), kcN(a.ir_10min), kcN(a.ip), kcN(a.dar), kcN(a.umbral), a.dictamen || null];
+    const ini = fila(r, v, spT, 'd', ['dd-mmm-yy'].concat(Array(12).fill(null)));
+    if (a._run === 'Previous run') [ini[0], ini[1]].forEach(cc => { ws.getCell(r, cc).fill = kcRelleno(KC.FPREV); });
+    [7, 8].forEach(j => { if (v[j] != null && v[j] < 0.001) ws.getCell(r, ini[j]).numFmt = '0.0E+00'; });
+    ws.getCell(r, ini[12]).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+    if (/derivad/i.test(String(a.observaciones || ''))){ const x = ws.getCell(r, ini[7]); x.note = 'Derived: IR 10 min / IP from the instrument (not read directly).'; x.font = { name: KC.AR, size: 10, italic: true }; }
+  });
+  let tl = T0 + 1 + ens.length;
+  if (!ens.length){ tl = T0 + 2; kcDat(ws, tl, 1, 'No insulation test recorded'); for (let k = 2; k <= anchoT; k++) ws.getCell(tl, k).border = KC_BD; ws.mergeCells(tl, 1, tl, anchoT); }
+  else plegar(T0 + 2, tl);
+  let B0 = tl + 3;
+  const conIR = ens.filter(a => kcN(a.ir_1min) != null || kcN(a.ir_10min) != null);
+  if (conIR.length >= 2 && lienzo){
+    const g = kcGraficaAislamiento(lienzo, hoja, conIR);
+    kcImagen(wb, ws, g.png, anchoT + 2, T0, g.w, g.h);
+    B0 = Math.max(B0, T0 + Math.ceil(g.h / 20) + 2);
+  }
+  /* ── bitacora ── */
+  const thB = ['DATE', 'RUN', 'CATEGORY', 'SEVERITY', 'STATUS', 'OBSERVATIONS', 'RECOMMENDATIONS', 'BY', 'CLOSED'];
+  const spB = [1, 2, 1, 1, 1, 12, 12, 2, 1], anchoB = spB.reduce((a, b) => a + b, 0);
+  banner(B0, 'LOGBOOK  ·  every equipment change, intervention and event is recorded here', anchoB); fila(B0 + 1, thB, spB, 'h');
+  const bits = (P.bitPor.get(u) || []).slice().sort((a, b) => String(a.fecha || '9') < String(b.fecha || '9') ? -1 : 1);
+  bits.forEach((b, i) => {
+    const r = B0 + 2 + i, fe = /^\d{4}-\d{2}-\d{2}/.test(String(b.fecha || '')) ? String(b.fecha).slice(0, 10) : null;
+    const rl = corrida(fe, null, null), sev = kcTr(b.severidad);
+    const v = [fe ? kcFecha(fe) : 'No date', rl, kcTr(b.categoria), sev, kcTr(b.estado), kcTxt(b.observaciones) || null, kcTxt(b.recomendaciones) || null,
+               b.realizado_por || null, b.cerrado_en ? kcFecha(String(b.cerrado_en).slice(0, 10)) : null];
+    const ini = fila(r, v, spB, 'd', ['dd-mmm-yy', null, null, null, null, null, null, null, 'dd-mmm-yy']);
+    [5, 6].forEach(j => { const x = ws.getCell(r, ini[j]); x.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }; x.font = { name: KC.AR, size: 9 }; });
+    if (rl === 'Previous run') [ini[0], ini[1]].forEach(cc => { ws.getCell(r, cc).fill = kcRelleno(KC.FPREV); });
+    if (sev === 'Attention') ws.getCell(r, ini[3]).fill = kcRelleno(KC.AMAR);
+    if (sev === 'Critical') ws.getCell(r, ini[3]).fill = kcRelleno(KC.ROJO);
+  });
+  let bl = B0 + 1 + bits.length;
+  if (!bits.length){ bl = B0 + 2; kcDat(ws, bl, 1, 'No logbook entries'); for (let k = 2; k <= anchoB; k++) ws.getCell(bl, k).border = KC_BD; ws.mergeCells(bl, 1, bl, anchoB); }
+  else plegar(B0 + 2, bl);
+  /* ── tendencia ── */
+  let anchoImg = 0;
+  if (lienzo){
+    const g = kcGraficaTendencia(lienzo, hoja, filas, mnom, inst);
+    kcImagen(wb, ws, g.png, AEND + 2, A0, g.w, g.h); anchoImg = g.w;
+  }
+  /* columnas ND a la derecha de todo: plegadas */
+  const libre = AEND + 2 + Math.ceil(anchoImg / 64) + 1;
+  Object.entries(K).forEach(([k, col]) => { if (!aplica.has(k) && col > libre){ ws.getColumn(col).outlineLevel = 1; ws.getColumn(col).hidden = true; } });
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: 1, showGridLines: false }];
+  return { K, tr: ult, ar: aUlt, GC, MC, KC: KC_, IU, B0, filas, bits, inst };
+}
+
+/* ══════════════ MOTOR DE OPTIMIZACION ══════════════
+   Misma cadena que koCalcular en optimizacion.html, con los parametros
+   de opt_parametros. Se usa para dejar el resultado de cada formula; las
+   formulas de la hoja son las que mandan cuando el usuario edita. */
+function kcParametros(p){
+  p = p || {};
+  const n = k => (p[k] == null ? null : Number(p[k]));
+  return {
+    tabla: (Array.isArray(p.tabla_carga) && p.tabla_carga.length) ? p.tabla_carga : [[0.50,0.87],[0.60,0.90],[0.70,0.94],[0.80,0.95],[0.90,0.98],[1.00,1.00]],
+    cvd: (p.tabla_cvd && typeof p.tabla_cvd === 'object') ? p.tabla_cvd : { 2: [[40,11],[50,14],[60,16],[70,19],[80,22],[90,25],[100,27],[110,30],[120,33],[130,36],[140,39]] },
+    tcf: (Array.isArray(p.tabla_tcf) && p.tabla_tcf.length) ? p.tabla_tcf : [[140,1.13],[149,1.15],[158,1.17],[167,1.19],[176,1.21],[185,1.23],[194,1.25],[203,1.27],[212,1.29],[221,1.31],[230,1.33]],
+    modo: p.modo_factor_carga ? String(p.modo_factor_carga) : 'interp',
+    escala: p.caida_escala_frecuencia != null ? !!p.caida_escala_frecuencia : true,
+    fp: n('fp') != null ? n('fp') : 0.80,
+    kFiltro: n('k_filtro') != null ? n('k_filtro') : 1.07,
+    uTap: n('u_tap') != null ? n('u_tap') : 100,
+    vNom: 480
+  };
+}
+function kcInterp(t, x){
+  if (x == null || !isFinite(x)) return null;
+  if (x <= t[0][0]) return t[0][1];
+  if (x >= t[t.length - 1][0]) return t[t.length - 1][1];
+  for (let i = 0; i < t.length - 1; i++){ const [a, va] = t[i], [b, vb] = t[i + 1]; if (x >= a && x <= b) return va + (vb - va) * (x - a) / (b - a); }
+  return null;
+}
+function kcFactor(c, P){
+  const T = P.tabla; if (c == null) return null;
+  if (c <= T[0][0]) return T[0][1];
+  if (c >= T[T.length - 1][0]) return T[T.length - 1][1];
+  if (P.modo === 'banda'){ let f = T[0][1]; T.forEach(([a, v]) => { if (c >= a) f = v; }); return f; }
+  return kcInterp(T, c);
+}
+function kcCable(u, P){
+  if (u.cable_medido != null) return { v: u.cable_medido, org: 'measured in the field' };
+  const tab = P.cvd[u.awg] || P.cvd[String(u.awg)];
+  if (!tab || u.long_ft == null || u.i_placa == null) return { v: null, org: 'no gauge, length or nameplate current' };
+  const cvd = kcInterp(tab, u.i_placa), tcf = kcInterp(P.tcf, u.temp_f);
+  if (cvd == null || tcf == null) return { v: null, org: 'no well temperature' };
+  return { v: u.long_ft * cvd / 1000 * tcf,
+           org: Math.round(u.long_ft).toLocaleString('en-US') + ' ft × CVD ' + cvd.toFixed(1) + ' V/kft (AWG ' + u.awg + ', ' + u.i_placa + ' A) × TCF ' + tcf.toFixed(3) + ' (' + u.temp_f + ' °F)' };
+}
+function kcMotor(u, P, fProp, tapSel){
+  const r = { ok: false };
+  const carga = (u.i_mot != null && u.i_placa) ? u.i_mot / u.i_placa : null;
+  r.carga = carga; r.fProp = fProp != null ? fProp : u.f_max;
+  const vN0 = u.v_nom || P.vNom;
+  r.fc = carga != null ? kcFactor(carga, P) : null;
+  r.vOpt = (r.fc != null && u.v_placa != null) ? u.v_placa * r.fc : null;
+  r.rtAct = u.tap ? u.tap / vN0 : null;
+  r.resid = (r.rtAct && u.i_mot && u.i_vsd) ? (u.i_vsd - r.rtAct * u.i_mot) / (r.rtAct * u.i_mot) : null;
+  r.fMaxAct = (u.tap && u.cable != null && u.v_placa) ? (u.tap - (u.cable + (u.z != null && !u.kva ? u.z / 100 : 0) * u.tap)) * 60 / u.v_placa : null;
+  if (carga == null || u.v_placa == null || u.f_op == null || !r.fProp || u.cable == null) return r;
+  r.tapBase = P.escala ? (r.vOpt + u.cable) * r.fProp / 60 : r.vOpt * r.fProp / 60 + u.cable;
+  if (u.z != null){
+    const iSec = u.i_mot != null ? u.i_mot : u.i_placa;
+    r.sOper = r.tapBase * iSec * Math.sqrt(3) / 1000;
+    r.zE = u.kva ? u.z * r.sOper / u.kva : u.z;
+    r.pSut = r.zE / 100 * r.tapBase;
+  } else { r.zE = null; r.pSut = 0; }
+  r.tapNew = (r.tapBase + r.pSut) * u.k;
+  r.sel = tapSel != null ? tapSel : Math.ceil(r.tapNew - 1e-9);
+  const vN = u.v_nom || P.vNom, zF = r.zE != null ? r.zE / 100 : 0;
+  r.rtAct = u.tap ? u.tap / vN : null; r.rtNew = r.sel / vN;
+  r.dTap = u.tap ? r.sel - u.tap : null;
+  r.fMaxAct = u.tap ? (u.tap - (u.cable + zF * u.tap)) * 60 / u.v_placa : null;
+  r.fMaxProp = (r.sel - (u.cable + zF * r.sel)) * 60 / u.v_placa;
+  r.margen = r.fMaxProp - r.fProp;
+  r.resid = (r.rtAct && u.i_mot && u.i_vsd) ? (u.i_vsd - r.rtAct * u.i_mot) / (r.rtAct * u.i_mot) : null;
+  r.dA = r.rtAct ? (r.rtAct - r.rtNew) * u.i_mot : null;
+  r.dkW = r.dA != null ? Math.sqrt(3) * r.dA * vN * P.fp / 1000 : null;
+  r.v60 = (r.vOpt + u.cable + r.pSut) / r.rtNew;
+  r.vclamp = Math.min(r.v60 * r.fProp / 60, u.vmax || r.v60);
+  r.over = u.i_placa != null ? u.i_placa * r.rtNew : null;
+  r.hsc = Math.min(r.fMaxProp, r.fProp);
+  r.ok = true;
+  return r;
+}
+
+/* ══════════════ LIBRO ══════════════ */
+function kcLibroCliente(ExcelJS, d, meta, lienzo){
+  const P = kcPreparar(d);
+  const wb = new ExcelJS.Workbook();
+  wb.creator = meta.autor || ''; wb.lastModifiedBy = meta.autor || ''; wb.created = new Date();
+  wb.calcProperties = { fullCalcOnLoad: true };
+  const OV = wb.addWorksheet('OVERVIEW', { views: [{ showGridLines: false }] });
+  const CO = wb.addWorksheet('CONSOLIDATED', { views: [{ state: 'frozen', xSplit: 1, ySplit: 3, showGridLines: false }] });
+  const OP = wb.addWorksheet('OPTIMIZATION', { views: [{ showGridLines: false }], properties: { tabColor: { argb: 'FF00B050' } } });
+  const DE = wb.addWorksheet('DATA EQUIPMENT', { views: [{ state: 'frozen', xSplit: 2, ySplit: 4, showGridLines: false }] });
+  const hojas = P.conHoja.map(kcHoja);
+  const REF = {};
+  P.conHoja.forEach((u, i) => {
+    const ws = wb.addWorksheet(kcHoja(u));
+    const nav = [['◄ OVERVIEW', 'OVERVIEW'], ['CONSOLIDATED', 'CONSOLIDATED'], ['OPTIMIZATION', 'OPTIMIZATION'], ['DATA EQUIPMENT', 'DATA EQUIPMENT']];
+    if (i > 0) nav.push(['◄ ' + hojas[i - 1], hojas[i - 1]]);
+    if (i < hojas.length - 1) nav.push([hojas[i + 1] + ' ►', hojas[i + 1]]);
+    REF[u] = kcHojaPozo(wb, ws, P, u, nav, lienzo);
+    kcAjustar(ws);
+    if (meta.avance) meta.avance(i + 1, P.conHoja.length);
+  });
+  kcConsolidado(CO, P, REF, meta);
+  kcOptimizacion(wb, OP, P, REF, d, meta);
+  kcEquipos(DE, P, d);
+  kcOverview(wb, OV, P, REF, meta, lienzo);
+  kcAjustar(CO, { 2: 30 }); kcAjustar(DE); kcAjustar(OP, OP.__fijos); kcAjustar(OV, OV.__fijos);
+  return wb;
+}
+
+const kcRes = (wb, hoja, dir) => { const v = wb.getWorksheet(hoja).getCell(dir).value; return (v && typeof v === 'object' && 'formula' in v) ? v.result : (v && v.text ? v.text : v); };
+
+/* ══════════════ CONSOLIDATED ══════════════ */
+function kcConsolidado(ws, P, REF, meta){
+  const wb = ws.workbook;
+  ws.getCell('A1').value = 'CONSOLIDATED · ESP · LAST READING PER WELL'; ws.getCell('A1').font = { name: KC.AR, size: 12, bold: true };
+  ws.getCell('A2').value = 'Issued ' + kcDiaTxt(kcFecha(meta.fecha)) + '. Values link to each well sheet.'; ws.getCell('A2').font = { name: KC.AR, size: 10 };
+  kcLink(ws, 3, 1, '◄ OVERVIEW', 'OVERVIEW');
+  const CH = ['WELL','STATUS','LAST READING','OPERATION FREQUENCY (Hz)','MAXIMUM OPERATING FREQUENCY (Hz)','CONTROL MODE','PST INPUT POWER FACTOR',
+              'VSD OUTPUT POWER FACTOR','DC BUS (V)','AC BUS (V)','KVA LOAD','% PST INPUT LOAD','% OUTPUT LOAD 1 PST','% OUTPUT LOAD 2 PST',
+              '% VFD OUTPUT LOAD','% SUT OUTPUT LOAD','% ELECTRIC MOTOR LOAD','RUN LIFE (days)','PIP (psi)','TM (°F)','Vx (g)','Vy (g)','OPEN LOGBOOK ITEMS'];
+  const FM = [null,null,'dd-mmm-yy','0.0','0.0',null,'0.00','0.00','0','0.0','0','0.0%','0.0%','0.0%','0.0%','0.0%','0.0%','0','0','0','0.000','0.000','0'];
+  const us = P.conHoja, filas = [], notas = [];
+  const ABIERTO = ['Pending','Follow-up','In progress'];
+  us.forEach(u => {
+    const X = REF[u], h = kcHoja(u), q = "'" + h + "'!", t = X.tr, a = X.ar;
+    const lk = k => X.K[k] ? kcF('=' + q + kcL(X.K[k]) + t, kcRes(wb, h, kcL(X.K[k]) + t)) : '-';
+    const ak = col => kcF('=' + q + kcL(col) + a, kcRes(wb, h, kcL(col) + a));
+    const rl = P.RL.get(u) || {};
+    const bits = X.bits, abiertos = bits.filter(b => ABIERTO.includes(kcTr(b.estado))).length;
+    filas.push([kcHV(h, h), P.estado(u), lk('_fecha'), lk('_fop'), lk('_fmax'), lk('_mode'), lk('pst_in_fp'), lk('vfdout_fp'),
+                lk('busdc_v'), lk('busac_v'), ak(X.KC), ak(X.GC['AMP INPUT PST'] + 2), ak(X.GC['AMP OUT PST #1 HEX Δ'] + 2), ak(X.GC['AMP OUT PST #2 HEX Y'] + 2),
+                ak(X.GC['AMP OUT VSD'] + 2), ak(X.GC['AMP OUT SUT'] + 2), ak(X.MC + 2), kcN(rl.run_dias), lk('sf_pip_psi'), lk('sf_t_motor_c'),
+                lk('sf_vib_x_g'), lk('sf_vib_y_g'), kcHV(String(abiertos), h, 'A' + X.B0)]);
+    const fechadas = bits.filter(b => /^\d{4}-\d{2}-\d{2}/.test(String(b.fecha || '')));
+    if (fechadas.length){
+      const b = fechadas.reduce((m, x) => String(x.fecha) > String(m.fecha) ? x : m);
+      let cuerpo = kcTxt(b.observaciones).replace(/\n/g, ' '); if (cuerpo.length > 320) cuerpo = cuerpo.slice(0, 317).replace(/\s\S*$/, '') + '…';
+      let rec = kcTxt(b.recomendaciones).replace(/\n/g, ' '); if (rec.length > 200) rec = rec.slice(0, 197).replace(/\s\S*$/, '') + '…';
+      notas.push({ t: kcDiaTxt(kcFecha(String(b.fecha).slice(0, 10))) + ' · ' + kcTr(b.categoria) + ' · ' + kcTr(b.severidad) + ' · ' + kcTr(b.estado) + '\n' + cuerpo + (rec ? '\n► ' + rec : ''),
+                   sev: kcTr(b.severidad), abierto: ABIERTO.includes(kcTr(b.estado)), n: abiertos });
+    } else notas.push({ t: 'No logbook entries', n: abiertos });
+  });
+  ws.addTable({ name: 'tblConsolidated', ref: 'A4', headerRow: true, totalsRow: false,
+                style: { theme: 'TableStyleLight1', showRowStripes: false },
+                columns: CH.map(n => ({ name: n, filterButton: true })), rows: filas.length ? filas : [CH.map(() => null)] });
+  CH.forEach((n, j) => kcHdr(ws, 4, j + 1, n));
+  const NC = CH.length + 1;
+  kcHdr(ws, 4, NC, 'LAST LOGBOOK ENTRY'); for (let k = 1; k < 10; k++) kcHdr(ws, 4, NC + k, null); ws.mergeCells(4, NC, 4, NC + 9);
+  ws.getRow(4).height = 54;
+  filas.forEach((f, i) => {
+    const r = 5 + i;
+    f.forEach((v, j) => { const x = ws.getCell(r, j + 1); const val = x.value; kcDat(ws, r, j + 1, val, FM[j]); x.alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; });
+    const w = ws.getCell(r, 1); w.font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.LINK }, underline: true };
+    ws.getCell(r, 2).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+    ws.getCell(r, 6).font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.MORADO } };
+    const oc = ws.getCell(r, CH.length); oc.font = { name: KC.AR, size: 10, bold: notas[i].n > 0, color: { argb: KC.LINK }, underline: true };
+    if (notas[i].n > 0) oc.fill = kcRelleno(KC.AMAR);
+    const nc = kcDat(ws, r, NC, notas[i].t); nc.font = { name: KC.AR, size: 9 }; nc.alignment = { horizontal: 'left', vertical: 'top', wrapText: true };
+    for (let k = 1; k < 10; k++) ws.getCell(r, NC + k).border = KC_BD;
+    ws.mergeCells(r, NC, r, NC + 9);
+    if (notas[i].sev === 'Critical') nc.fill = kcRelleno('FFFCE4E4'); else if (notas[i].sev === 'Attention' || notas[i].abierto) nc.fill = kcRelleno('FFFFF2CC');
+  });
+  const n = 4 + filas.length, col = t => kcL(CH.indexOf(t) + 1);
+  if (filas.length){
+    kcCF(ws, 'A5:' + kcL(CH.length) + n, 'LEFT($B5,3)="Out"', { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: KC.FUERA } }, font: { color: { argb: 'FF7F7F7F' } } });
+    kcBanda(ws, col('% PST INPUT LOAD') + '5:' + col('% ELECTRIC MOTOR LOAD') + n, 0.9, 1.0);
+    kcBanda(ws, col('TM (°F)') + '5:' + col('TM (°F)') + n, 250, 270);
+    kcBanda(ws, col('Vx (g)') + '5:' + col('Vy (g)') + n, 0.8, 1.5);
+  }
+  /* ── todas las variables ── */
+  const V0 = n + 3, OFS = 2;
+  const K0 = us.length ? REF[us[0]].K : {};
+  const lastc = Math.max(...Object.values(K0)) + OFS;
+  const t3 = ws.getCell(3, 3); t3.value = kcHV('▼ ALL VARIABLES', 'CONSOLIDATED', 'A' + V0); t3.font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.LINK }, underline: true };
+  const b = kcHdr(ws, V0, 1, 'ALL VARIABLES · LAST READING PER WELL'); b.alignment = { horizontal: 'left', vertical: 'middle' };
+  for (let k = 2; k <= lastc; k++) kcHdr(ws, V0, k, null);
+  ws.mergeCells(V0, 1, V0, lastc);
+  kcHdr(ws, V0 + 1, 1, null); kcHdr(ws, V0 + 2, 1, 'WELL'); kcHdr(ws, V0 + 1, 2, null); kcHdr(ws, V0 + 2, 2, 'STATUS');
+  KC_G.forEach(([g, it]) => {
+    const c0 = K0[it[0][0]] + OFS, ce = K0[it[it.length - 1][0]] + OFS;
+    it.forEach(([k, s]) => kcHdr(ws, V0 + 2, K0[k] + OFS, g === 'DATE' ? 'LAST READING' : (s || g)));
+    if (g === 'DATE' || (it.length === 1 && it[0][1] === '')) kcHdr(ws, V0 + 1, c0, null);
+    else { kcHdr(ws, V0 + 1, c0, g); for (let k = c0 + 1; k <= ce; k++) kcHdr(ws, V0 + 1, k, null); if (ce > c0) ws.mergeCells(V0 + 1, c0, V0 + 1, ce); }
+  });
+  us.forEach((u, i) => {
+    const r = V0 + 3 + i, X = REF[u], h = kcHoja(u), q = "'" + h + "'!";
+    const w = kcDat(ws, r, 1, kcHV(h, h)); w.font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.LINK }, underline: true };
+    const s = kcDat(ws, r, 2, P.estado(u)); s.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+    Object.entries(X.K).forEach(([k, c]) => kcDat(ws, r, c + OFS, kcF('=' + q + kcL(c) + X.tr, kcRes(wb, h, kcL(c) + X.tr)), k === '_fecha' ? 'dd-mmm-yy' : 'General'));
+  });
+  const VL = V0 + 2 + us.length;
+  if (us.length){
+    kcCF(ws, 'A' + (V0 + 3) + ':' + kcL(lastc) + VL, 'LEFT($B' + (V0 + 3) + ',3)="Out"', { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: KC.FUERA } }, font: { color: { argb: 'FF7F7F7F' } } });
+    kcCF(ws, 'C' + (V0 + 3) + ':' + kcL(lastc) + VL, 'C' + (V0 + 3) + '="ND"', { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: KC.GRIS } }, font: { color: { argb: KC.TXTG } } });
+    const tm = kcL(K0.sf_t_motor_c + OFS); kcBanda(ws, tm + (V0 + 3) + ':' + tm + VL, 250, 270);
+    ['sf_vib_x_g', 'sf_vib_y_g'].forEach(k => { const cc = kcL(K0[k] + OFS); kcBanda(ws, cc + (V0 + 3) + ':' + cc + VL, 0.8, 1.5); });
+    ws.autoFilter = 'A' + (V0 + 2) + ':' + kcL(lastc) + VL;
+  }
+  const nt = ws.getCell(VL + 2, 1);
+  nt.value = 'ND = no data (variable not available on the installed equipment or not recorded in the last reading).  Grey rows = unit out of monitoring. Use the filter buttons on the STATUS column to show or hide them.';
+  nt.font = { name: KC.AR, size: 9, color: { argb: KC.TXTG } };
+  ws.__all = { V0, VL, kw: kcL(K0.pst_in_kw + OFS), kvar: kcL(K0.pst_in_kvar + OFS) };
+}
+
+/* ══════════════ OPTIMIZATION ══════════════ */
+function kcOptimizacion(wb, ws, P, REF, d, meta){
+  const o = d.opt || {}, PAR = kcParametros(o.par);
+  const SAL = new Map((o.salida || []).map(x => [x.pozo, x])), SUT = new Map((o.sut || []).map(x => [x.pozo, x]));
+  const PROP = new Map((d.propuestas || []).filter(p => p.estado && p.estado !== 'descartada').map(p => [p.pozo, p]));
+  const ambito = new Set(P.unidades);
+  const US = (o.unidades || []).filter(r => ambito.has(r.pozo)).sort((a, b) => kcNumPozo(a.pozo) - kcNumPozo(b.pozo)).map(r => {
+    const sal = SAL.get(r.pozo) || {}, sut = SUT.get(r.pozo) || {};
+    const u = { pozo: r.pozo, vsd: r.vsd, v_placa: kcN(r.v_placa_v), i_placa: kcN(r.i_placa_a), tap: kcN(r.tap_sut_v), v_nom: kcN(r.v_nom_variador_v) || 480,
+                awg: kcN(r.awg), long_ft: kcN(r.longitud_ft), temp_f: kcN(r.temp_pozo_f), filtro: !!r.filtro_seno, k_filtro: kcN(r.k_filtro),
+                cable_medido: kcN(r.caida_cable_v), fecha: r.lectura_fecha || null, f_op: kcN(r.f_op_hz),
+                f_max: kcN(r.f_max_hz) != null ? kcN(r.f_max_hz) : kcN(r.f_max_diseno_hz), i_vsd: kcN(r.i_vsd_a), i_mot: kcN(r.i_motor_a), v_sut: kcN(r.v_sut_v),
+                prop_f_max: kcN(r.propuesta_f_max), modo: sal.modo_inversor || null, z: kcN(sut.z_pct), kva: kcN(sut.kva) };
+    if (u.k_filtro != null){ u.k = u.k_filtro; u.kOrg = 'loaded in the unit design'; }
+    else if (kcN(sal.k_tension) != null && u.modo){ u.k = kcN(sal.k_tension); u.kOrg = 'inverter mode ' + u.modo; }
+    else if (u.filtro){ u.k = PAR.kFiltro; u.kOrg = 'sine filter'; }
+    else { u.k = 1; u.kOrg = 'no correction'; }
+    u.vmax = kcN(sal.v_max_salida_vsd_v) != null ? kcN(sal.v_max_salida_vsd_v) : u.v_nom;
+    const cb = kcCable(u, PAR); u.cable = cb.v; u.cableOrg = cb.org;
+    return u;
+  });
+  kcLink(ws, 2, 1, '◄ OVERVIEW', 'OVERVIEW'); kcLink(ws, 2, 3, 'CONSOLIDATED', 'CONSOLIDATED');
+  ws.getCell('A1').value = 'OPTIMIZATION · SUT TAP PROPOSAL BY OPERATING CONDITION'; ws.getCell('A1').font = { name: KC.AR, size: 12, bold: true };
+  const a3 = ws.getCell('A3'); a3.value = 'Yellow columns are editable: change the proposed F max and the TAP to request recalculates; enter the TAP actually available on the SUT in TAP SELECTED to verify F max, energy impact and setpoints.';
+  a3.font = { name: KC.AR, size: 10, bold: true, color: { argb: 'FF7F6000' } };
+  const T0 = 4, R1 = 6, RL = R1 + Math.max(US.length, 1) - 1, TR = RL + 2, NSUM = 8, P0 = TR + NSUM + 2;
+  const PARS = [['Power factor for energy impact', PAR.fp, '0.00', 'ΔkW = √3 · ΔA · V nominal · PF / 1000.'],
+                ['Minimum F max margin (Hz)', 2, '0.0', 'Field criterion: 2–3 Hz above the proposed F max.'],
+                ['Coherence tolerance (%)', 0.15, '0%', 'VFD current against TAP ratio × motor current. Above this, readings must be checked first.'],
+                ['Minimum TAP change to propose (V)', PAR.uTap, '0', 'Smaller changes are reported as "No change needed".'],
+                ['Load factor mode', PAR.modo, '@', 'interp = linear interpolation; banda = lower step of the table.'],
+                ['Cable drop scaled with frequency', PAR.escala ? 'YES' : 'NO', '@', 'YES: (V opt + cable) × F / 60. NO: V opt × F / 60 + cable.']];
+  kcHdr(ws, P0, 2, 'PARAMETERS'); kcHdr(ws, P0, 3, null); ws.mergeCells(P0, 2, P0, 3);
+  const PR = [];
+  PARS.forEach(([lab, v, fm, nota], i) => {
+    const r = P0 + 1 + i; const x = kcDat(ws, r, 2, lab); x.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true }; x.note = nota;
+    const y = kcDat(ws, r, 3, v, fm); y.font = { name: KC.AR, size: 10, bold: true, color: { argb: 'FF0000FF' } }; y.fill = kcRelleno(KC.NUEVA);
+    PR.push('$C$' + r);
+  });
+  const [PF_, MARG, COH, DTAP, LFMODE, ESCALA] = PR;
+  kcHdr(ws, P0, 5, 'MOTOR LOAD'); kcHdr(ws, P0, 6, 'LOAD FACTOR'); ws.getCell(P0, 5).note = 'Voltage factor by motor load (minimum-current criterion).';
+  PAR.tabla.forEach(([c_, f_], i) => {
+    [[5, c_, '0%'], [6, f_, '0.00']].forEach(([cc, v, fm]) => { const x = kcDat(ws, P0 + 1 + i, cc, v, fm); x.font = { name: KC.AR, size: 10, color: { argb: 'FF0000FF' } }; x.fill = kcRelleno(KC.NUEVA); });
+  });
+  const TC = '$E$' + (P0 + 1) + ':$E$' + (P0 + PAR.tabla.length), TF = '$F$' + (P0 + 1) + ':$F$' + (P0 + PAR.tabla.length);
+  const SECS = [['UNIT', ['WELL','STATUS','VFD MODEL','INVERTER MODE']],
+    ['CURRENT OPERATION', ['READING','F OPERATION (Hz)','F MAX CURRENT (Hz)','MOTOR A MEASURED','VFD OUTPUT A MEASURED','SUT OUTPUT V MEASURED','TAP CURRENT (V)','TAP RECOMMENDED AT SETUP (V)']],
+    ['PROPOSAL', ['F MAX PROPOSED (Hz)']],
+    ['MOTOR & LOSSES', ['MOTOR V NAMEPLATE','MOTOR A NAMEPLATE','MOTOR LOAD','LOAD FACTOR','CABLE DROP (V)','SUT Z (%)','SUT kVA']],
+    ['TAP CALCULATION', ['V OPT MOTOR @60 Hz','TAP BASE (V)','SUT LOAD (kVA)','Z EFFECTIVE (%)','SUT DROP (V)','V NOMINAL VFD (V)','VFD MAX OUTPUT (V)','MODE FACTOR','TAP TO REQUEST (V)','TAP SELECTED (V)','TAP CHANGE (V)']],
+    ['F MAX VERIFICATION', ['F MAX REACHABLE · CURRENT TAP (Hz)','F MAX REACHABLE · PROPOSED TAP (Hz)','MARGIN (Hz)']],
+    ['ENERGY IMPACT', ['RT CURRENT','RT NEW','COHERENCE RESIDUAL','ΔA VFD','ΔkW','ΔMWh / MONTH']],
+    ['SETPOINTS TO REPROGRAM', ['VOLTS @60 Hz (V)','VCLAMP (V)','OVERLOAD (A)','RUN ILIMIT (A)','SYNC ILIMIT (A)','HI SPEED CLAMP (Hz)']],
+    ['RESULT', ['ACTION','MARGIN CHECK','SUT LOSSES','PROPOSAL ON RECORD']]];
+  const C = {}; let c = 1;
+  SECS.forEach(([g, subs]) => {
+    kcHdr(ws, T0, c, g); for (let k = 1; k < subs.length; k++) kcHdr(ws, T0, c + k, null);
+    if (subs.length > 1) ws.mergeCells(T0, c, T0, c + subs.length - 1);
+    subs.forEach((s, j) => { kcHdr(ws, T0 + 1, c + j, s); C[s] = kcL(c + j); });
+    c += subs.length;
+  });
+  const LASTC = c - 1, ci = s => s.split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0);
+  ['F MAX PROPOSED (Hz)', 'TAP SELECTED (V)'].forEach(s => [T0, T0 + 1].forEach(r => { ws.getCell(C[s] + r).fill = kcRelleno(KC.ORO); }));
+  const FM = { 'READING':'dd-mmm-yy','F OPERATION (Hz)':'0.0','F MAX CURRENT (Hz)':'0.0','MOTOR A MEASURED':'0.0','VFD OUTPUT A MEASURED':'0.0','SUT OUTPUT V MEASURED':'#,##0',
+    'TAP CURRENT (V)':'#,##0','TAP RECOMMENDED AT SETUP (V)':'#,##0','F MAX PROPOSED (Hz)':'0.0','MOTOR V NAMEPLATE':'#,##0','MOTOR A NAMEPLATE':'0.0','MOTOR LOAD':'0.0%',
+    'LOAD FACTOR':'0.000','CABLE DROP (V)':'#,##0','SUT Z (%)':'0.00','SUT kVA':'#,##0','V OPT MOTOR @60 Hz':'#,##0','TAP BASE (V)':'#,##0','SUT LOAD (kVA)':'#,##0',
+    'Z EFFECTIVE (%)':'0.00','SUT DROP (V)':'#,##0','V NOMINAL VFD (V)':'0','VFD MAX OUTPUT (V)':'0','MODE FACTOR':'0.000','TAP TO REQUEST (V)':'#,##0','TAP SELECTED (V)':'#,##0',
+    'TAP CHANGE (V)':'+#,##0;[Red]-#,##0;0','F MAX REACHABLE · CURRENT TAP (Hz)':'0.0','F MAX REACHABLE · PROPOSED TAP (Hz)':'0.0','MARGIN (Hz)':'+0.0;[Red]-0.0;0.0',
+    'RT CURRENT':'0.000','RT NEW':'0.000','COHERENCE RESIDUAL':'0.0%','ΔA VFD':'0.0','ΔkW':'0.0','ΔMWh / MONTH':'0.0','VOLTS @60 Hz (V)':'0','VCLAMP (V)':'0',
+    'OVERLOAD (A)':'0','RUN ILIMIT (A)':'0','SYNC ILIMIT (A)':'0','HI SPEED CLAMP (Hz)':'0.0' };
+  US.forEach((u, i) => {
+    const r = R1 + i, cc = k => C[k] + r, est = P.estado(u.pozo), fuera = est.startsWith('Out');
+    const fP = u.prop_f_max != null ? u.prop_f_max : u.f_max;
+    const m = kcMotor(u, PAR, fP), ok = m.ok;
+    const st = P.ST.get(u.pozo) || {}, prop = PROP.get(u.pozo);
+    const H = cc('MOTOR V NAMEPLATE'), I = cc('MOTOR A NAMEPLATE'), J = cc('MOTOR A MEASURED'), Kv = cc('VFD OUTPUT A MEASURED'), M = cc('TAP CURRENT (V)'),
+          Fp = cc('F MAX PROPOSED (Hz)'), LD = cc('MOTOR LOAD'), LF = cc('LOAD FACTOR'), N = cc('CABLE DROP (V)'), Zp = cc('SUT Z (%)'), Pk = cc('SUT kVA'),
+          VO = cc('V OPT MOTOR @60 Hz'), Q = cc('TAP BASE (V)'), SL = cc('SUT LOAD (kVA)'), S = cc('Z EFFECTIVE (%)'), T = cc('SUT DROP (V)'), VN = cc('V NOMINAL VFD (V)'),
+          VX = cc('VFD MAX OUTPUT (V)'), U = cc('MODE FACTOR'), V0 = cc('TAP TO REQUEST (V)'), V = cc('TAP SELECTED (V)'), W = cc('TAP CHANGE (V)'),
+          Y = cc('F MAX REACHABLE · PROPOSED TAP (Hz)'), Z = cc('MARGIN (Hz)'), AA = cc('RT CURRENT'), AB = cc('RT NEW'), AC = cc('COHERENCE RESIDUAL'),
+          AD = cc('ΔA VFD'), AE = cc('ΔkW'), OV = cc('OVERLOAD (A)'), V6 = cc('VOLTS @60 Hz (V)'), St = cc('STATUS');
+    const mt = 'MATCH(' + LD + ',' + TC + ',1)';
+    const lfI = 'IF(' + LD + '<=MIN(' + TC + '),INDEX(' + TF + ',1),IF(' + LD + '>=MAX(' + TC + '),INDEX(' + TF + ',ROWS(' + TF + ')),INDEX(' + TF + ',' + mt + ')+(INDEX(' + TF + ',' + mt + '+1)-INDEX(' + TF + ',' + mt + '))*(' + LD + '-INDEX(' + TC + ',' + mt + '))/(INDEX(' + TC + ',' + mt + '+1)-INDEX(' + TC + ',' + mt + '))))';
+    const lfB = 'IF(' + LD + '<=MIN(' + TC + '),INDEX(' + TF + ',1),IF(' + LD + '>=MAX(' + TC + '),INDEX(' + TF + ',ROWS(' + TF + ')),INDEX(' + TF + ',' + mt + ')))';
+    const R = v => (ok && v != null && isFinite(v)) ? v : '';
+    const R0 = v => (v != null && isFinite(v)) ? v : '';
+    let accion;
+    if (fuera) accion = 'Out of monitoring';
+    else if (u.cable == null) accion = 'Missing cable drop';
+    else if (!ok) accion = 'Missing data';
+    else if (m.resid != null && Math.abs(m.resid) > 0.15) accion = 'Check readings first';
+    else if (m.dTap != null && Math.abs(m.dTap) < PAR.uTap) accion = 'No change needed';
+    else accion = (m.dTap != null && m.dTap < 0) ? 'Lower TAP · saves energy' : 'Raise TAP · corrective';
+    const mchk = (fuera || !ok) ? '' : (m.margen < 0 ? 'Does not reach F max' : (m.margen < 2 ? 'Select next TAP up' : 'OK'));
+    const sutl = fuera ? '' : (u.z == null ? 'Not included · Z missing' : (u.kva ? 'Included · load-scaled' : 'Included · conservative'));
+    const tieneHoja = P.conHoja.includes(u.pozo);
+    const V_ = {
+      'WELL': tieneHoja ? kcHV(kcHoja(u.pozo), kcHoja(u.pozo)) : kcHoja(u.pozo), 'STATUS': est, 'VFD MODEL': u.vsd || '—', 'INVERTER MODE': u.modo || '—',
+      'READING': kcFecha(u.fecha), 'F OPERATION (Hz)': u.f_op, 'F MAX CURRENT (Hz)': u.f_max, 'MOTOR A MEASURED': u.i_mot, 'VFD OUTPUT A MEASURED': u.i_vsd,
+      'SUT OUTPUT V MEASURED': u.v_sut, 'TAP CURRENT (V)': u.tap, 'TAP RECOMMENDED AT SETUP (V)': kcNumTexto(st.tap_recomendado),
+      'F MAX PROPOSED (Hz)': fP, 'MOTOR V NAMEPLATE': u.v_placa, 'MOTOR A NAMEPLATE': u.i_placa,
+      'MOTOR LOAD': kcF('=IF(OR(N(' + J + ')=0,N(' + I + ')=0),"",' + J + '/' + I + ')', m.carga != null ? m.carga : ''),
+      'LOAD FACTOR': kcF('=IF(' + LD + '="","",IF(' + LFMODE + '="banda",' + lfB + ',' + lfI + '))', m.carga != null ? kcFactor(m.carga, PAR) : ''),
+      'CABLE DROP (V)': u.cable, 'SUT Z (%)': u.z, 'SUT kVA': u.kva,
+      'V OPT MOTOR @60 Hz': kcF('=IF(OR(' + LF + '="",N(' + H + ')=0),"",' + H + '*' + LF + ')', R0(m.vOpt)),
+      'TAP BASE (V)': kcF('=IF(OR(' + VO + '="",N(' + Fp + ')=0,' + N + '=""),"",IF(' + ESCALA + '="YES",(' + VO + '+' + N + ')*' + Fp + '/60,' + VO + '*' + Fp + '/60+' + N + '))', R(m.tapBase)),
+      'SUT LOAD (kVA)': kcF('=IF(' + Q + '="","",' + Q + '*IF(N(' + J + ')>0,' + J + ',' + I + ')*SQRT(3)/1000)', ok ? m.tapBase * (u.i_mot || u.i_placa) * Math.sqrt(3) / 1000 : ''),
+      'Z EFFECTIVE (%)': kcF('=IF(OR(' + Zp + '="",' + Q + '=""),"",IF(N(' + Pk + ')>0,' + Zp + '*' + SL + '/' + Pk + ',' + Zp + '))', R(m.zE)),
+      'SUT DROP (V)': kcF('=IF(OR(' + Q + '="",' + S + '=""),0,' + S + '/100*' + Q + ')', ok ? m.pSut : 0),
+      'V NOMINAL VFD (V)': u.v_nom, 'VFD MAX OUTPUT (V)': u.vmax, 'MODE FACTOR': u.k,
+      'TAP TO REQUEST (V)': kcF('=IF(' + Q + '="","",(' + Q + '+' + T + ')*' + U + ')', R(m.tapNew)),
+      'TAP SELECTED (V)': kcF('=IF(' + V0 + '="","",ROUNDUP(' + V0 + ',0))', R(m.sel)),
+      'TAP CHANGE (V)': kcF('=IF(OR(' + V + '="",N(' + M + ')=0),"",' + V + '-' + M + ')', R(m.dTap)),
+      'F MAX REACHABLE · CURRENT TAP (Hz)': kcF('=IF(OR(N(' + M + ')=0,' + N + '="",N(' + H + ')=0),"",(' + M + '-(' + N + '+N(' + S + ')/100*' + M + '))*60/' + H + ')', R(m.fMaxAct)),
+      'F MAX REACHABLE · PROPOSED TAP (Hz)': kcF('=IF(' + V + '="","",(' + V + '-(' + N + '+N(' + S + ')/100*' + V + '))*60/' + H + ')', R(m.fMaxProp)),
+      'MARGIN (Hz)': kcF('=IF(' + Y + '="","",' + Y + '-' + Fp + ')', R(m.margen)),
+      'RT CURRENT': kcF('=IF(N(' + M + ')=0,"",' + M + '/' + VN + ')', R0(m.rtAct)),
+      'RT NEW': kcF('=IF(' + V + '="","",' + V + '/' + VN + ')', R(m.rtNew)),
+      'COHERENCE RESIDUAL': kcF('=IF(OR(' + AA + '="",N(' + J + ')=0,N(' + Kv + ')=0),"",(' + Kv + '-' + AA + '*' + J + ')/(' + AA + '*' + J + '))', R0(m.resid)),
+      'ΔA VFD': kcF('=IF(OR(' + AA + '="",' + AB + '="",N(' + J + ')=0),"",(' + AA + '-' + AB + ')*' + J + ')', R(m.dA)),
+      'ΔkW': kcF('=IF(' + AD + '="","",SQRT(3)*' + AD + '*' + VN + '*' + PF_ + '/1000)', R(m.dkW)),
+      'ΔMWh / MONTH': kcF('=IF(' + AE + '="","",' + AE + '*24*30/1000)', ok && m.dkW != null ? m.dkW * 0.72 : ''),
+      'VOLTS @60 Hz (V)': kcF('=IF(OR(' + AB + '="",' + VO + '=""),"",(' + VO + '+' + N + '+' + T + ')/' + AB + ')', R(m.v60)),
+      'VCLAMP (V)': kcF('=IF(' + V6 + '="","",MIN(' + V6 + '*' + Fp + '/60,' + VX + '))', R(m.vclamp)),
+      'OVERLOAD (A)': kcF('=IF(OR(' + AB + '="",N(' + I + ')=0),"",' + I + '*' + AB + ')', R(m.over)),
+      'RUN ILIMIT (A)': kcF('=IF(' + OV + '="","",' + OV + '*1.05)', ok && m.over != null ? m.over * 1.05 : ''),
+      'SYNC ILIMIT (A)': kcF('=IF(' + OV + '="","",' + OV + '*1.25)', ok && m.over != null ? m.over * 1.25 : ''),
+      'HI SPEED CLAMP (Hz)': kcF('=IF(' + Y + '="","",MIN(' + Y + ',' + Fp + '))', R(m.hsc)),
+      'ACTION': kcF('=IF(LEFT(' + St + ',3)="Out","Out of monitoring",IF(' + N + '="","Missing cable drop",IF(' + V + '="","Missing data",IF(AND(' + AC + '<>"",ABS(N(' + AC + '))>' + COH + '),"Check readings first",IF(ABS(N(' + W + '))<' + DTAP + ',"No change needed",IF(N(' + W + ')<0,"Lower TAP · saves energy","Raise TAP · corrective"))))))', accion),
+      'MARGIN CHECK': kcF('=IF(OR(LEFT(' + St + ',3)="Out",' + Z + '=""),"",IF(N(' + Z + ')<0,"Does not reach F max",IF(N(' + Z + ')<' + MARG + ',"Select next TAP up","OK")))', mchk),
+      'SUT LOSSES': kcF('=IF(LEFT(' + St + ',3)="Out","",IF(' + Zp + '="","Not included · Z missing",IF(N(' + Pk + ')>0,"Included · load-scaled","Included · conservative")))', sutl),
+      'PROPOSAL ON RECORD': prop ? 'Issued ' + String(prop.creado_en || '').slice(0, 10) + ' · F max ' + (prop.f_max_propuesta != null ? prop.f_max_propuesta : '—') + ' Hz · TAP ' + (prop.tap_previo_v != null ? prop.tap_previo_v : '—') + ' → ' + (prop.tap_solicitado_v != null ? prop.tap_solicitado_v : '—') + ' V' + (prop.estado ? ' · ' + prop.estado : '') : '—'
+    };
+    Object.entries(V_).forEach(([k, v]) => kcDat(ws, r, ci(C[k]), v, FM[k]));
+    (ws.__acc = ws.__acc || []).push({ a: accion, s: sutl, m: mchk, kw: ok ? m.dkW : null });
+    ['INVERTER MODE','TAP CURRENT (V)','MOTOR V NAMEPLATE','MOTOR A NAMEPLATE','CABLE DROP (V)','SUT Z (%)','SUT kVA','V NOMINAL VFD (V)','VFD MAX OUTPUT (V)','MODE FACTOR'].forEach(k => { ws.getCell(cc(k)).font = { name: KC.AR, size: 10, color: { argb: 'FF0000FF' } }; });
+    ['F MAX PROPOSED (Hz)', 'TAP SELECTED (V)'].forEach(k => { const x = ws.getCell(cc(k)); x.fill = kcRelleno(KC.NUEVA); x.font = { name: KC.AR, size: 10, bold: true, color: { argb: 'FF0000FF' } }; });
+    ['ΔkW', 'ACTION'].forEach(k => { ws.getCell(cc(k)).font = { name: KC.AR, size: 10, bold: true }; });
+    if (tieneHoja) ws.getCell(cc('WELL')).font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.LINK }, underline: true };
+    ws.getCell(St).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+    ['ACTION','MARGIN CHECK','SUT LOSSES','PROPOSAL ON RECORD','VFD MODEL'].forEach(k => { ws.getCell(cc(k)).alignment = { horizontal: 'left', vertical: 'middle' }; });
+    ws.getCell(N).note = u.cable != null ? 'Calculated: ' + u.cableOrg : 'Not available: ' + u.cableOrg;
+    ws.getCell(U).note = 'Mode factor origin: ' + u.kOrg + '.';
+    if (u.fecha) ws.getCell(cc('READING')).note = 'Last reading synchronized for optimization.';
+  });
+  const ac = C['ACTION'], rg = (k) => C[k] + R1 + ':' + C[k] + RL;
+  if (US.length){
+    kcCF(ws, 'A' + R1 + ':' + kcL(LASTC) + RL, 'LEFT($B' + R1 + ',3)="Out"', { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: KC.FUERA } }, font: { color: { argb: 'FF7F7F7F' } } });
+    [['Lower TAP', 'FFC6EFCE'], ['Raise TAP', 'FFFFEB84'], ['Check readings', 'FFF8CBAD'], ['Missing', KC.GRIS]].forEach(([t, col]) =>
+      kcCF(ws, rg('ACTION'), 'ISNUMBER(SEARCH("' + t + '",' + ac + R1 + '))', kcFill(col)));
+    const mc = C['MARGIN (Hz)'];
+    kcCF(ws, rg('MARGIN (Hz)'), 'AND(ISNUMBER(' + mc + R1 + '),' + mc + R1 + '<0)', kcFill(KC.ROJO));
+    kcCF(ws, rg('MARGIN (Hz)'), 'AND(ISNUMBER(' + mc + R1 + '),' + mc + R1 + '<' + MARG + ')', kcFill(KC.AMAR));
+    const mk = C['MARGIN CHECK'];
+    kcCF(ws, rg('MARGIN CHECK'), mk + R1 + '="Does not reach F max"', kcFill(KC.ROJO));
+    kcCF(ws, rg('MARGIN CHECK'), mk + R1 + '="Select next TAP up"', kcFill(KC.AMAR));
+    const sl = C['SUT LOSSES'];
+    kcCF(ws, rg('SUT LOSSES'), 'LEFT(' + sl + R1 + ',3)="Not"', { font: { color: { argb: 'FF9C5700' } } });
+    const co = C['COHERENCE RESIDUAL'];
+    kcCF(ws, rg('COHERENCE RESIDUAL'), 'AND(ISNUMBER(' + co + R1 + '),ABS(' + co + R1 + ')>' + COH + ')', kcFill('FFF8CBAD'));
+  }
+  /* resumen */
+  kcHdr(ws, TR, 2, 'SUMMARY'); kcHdr(ws, TR, 3, null); ws.mergeCells(TR, 2, TR, 3);
+  const cuenta = (col, pat) => 'COUNTIF(' + C[col] + R1 + ':' + C[col] + RL + ',"' + pat + '")';
+  const SUM = [['Units proposed to lower TAP', '=' + cuenta('ACTION', 'Lower TAP*'), '0'],
+    ['Estimated reduction (kW)', '=SUMIFS(' + C['ΔkW'] + R1 + ':' + C['ΔkW'] + RL + ',' + ac + R1 + ':' + ac + RL + ',"Lower TAP*")', '#,##0.0'],
+    ['Estimated reduction (MWh / month)', '=SUMIFS(' + C['ΔMWh / MONTH'] + R1 + ':' + C['ΔMWh / MONTH'] + RL + ',' + ac + R1 + ':' + ac + RL + ',"Lower TAP*")', '#,##0.0'],
+    ['Units needing a higher TAP (corrective, not counted as saving)', '=' + cuenta('ACTION', 'Raise TAP*'), '0'],
+    ['Units to check readings before proposing', '=' + cuenta('ACTION', 'Check readings*'), '0'],
+    ['Units with missing data', '=' + cuenta('ACTION', 'Missing*'), '0'],
+    ['Proposals without SUT losses (SUT Z not registered)', '=' + cuenta('SUT LOSSES', 'Not included*'), '0'],
+    ['Proposals needing the next TAP up (margin below minimum)', '=' + cuenta('MARGIN CHECK', 'Select next*'), '0']];
+  const acc = ws.__acc || [], cnt = p => acc.filter(x => x.a.startsWith(p)).length;
+  const baja = acc.filter(x => x.a.startsWith('Lower TAP')), kwB = baja.reduce((s, x) => s + (x.kw || 0), 0);
+  const RES = [cnt('Lower TAP'), kwB, kwB * 0.72, cnt('Raise TAP'), cnt('Check readings'), cnt('Missing'),
+               acc.filter(x => x.s.startsWith('Not included')).length, acc.filter(x => x.m.startsWith('Select next')).length];
+  SUM.forEach(([lab, f, fm], i) => {
+    const r = TR + 1 + i; const x = kcDat(ws, r, 2, lab); x.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+    const y = kcDat(ws, r, 3, kcF(f, RES[i]), fm); y.font = { name: KC.AR, size: 10, bold: true };
+  });
+  const MR = P0 + PARS.length + 2;
+  ws.getCell(MR, 2).value = 'METHOD'; ws.getCell(MR, 2).font = { name: KC.AR, size: 10, bold: true };
+  ['Motor load = measured motor current / nameplate current. Load factor from the table (interpolated or by step, per parameter). V opt motor @60 Hz = nameplate V × load factor.',
+   'TAP base = (V opt + cable drop) × F max proposed / 60 when the cable drop is scaled with frequency; otherwise V opt × F / 60 + cable drop. Cable drop = length × CVD (by gauge and nameplate current) / 1000 × TCF (well temperature), or the drop measured in the field.',
+   'SUT losses = Z effective × TAP base. Z effective = nameplate Z × (SUT load kVA / SUT kVA); without SUT kVA the full nameplate Z is used (conservative). Without Z the TAP is calculated without SUT losses.',
+   'TAP to request = (TAP base + SUT losses) × mode factor (inverter output mode). Enter in TAP SELECTED the available SUT TAP immediately above it; verification, impact and setpoints use TAP SELECTED.',
+   'F max reachable = (TAP − cable drop − SUT losses on that TAP) × 60 / motor nameplate V. The margin over the proposed F max should be 2 to 3 Hz; if not, select the next TAP up.',
+   'Coherence: VFD current should equal current RT × motor current. A residual above the tolerance means a reading or the registered TAP is wrong; the unit is not proposed until checked.',
+   'Energy impact: ΔA = (RT current − RT new) × motor current; ΔkW = √3 × ΔA × V nominal × PF / 1000. Motor current is held constant, so the estimate is optimistic. Units whose TAP must go up are corrective and are not counted as savings.',
+   'After any TAP change, reprogram Volts @60 Hz, VClamp, Overload, Run ILimit and Sync ILimit (× new ratio), Hi Speed Clamp and the TAP value in the drive.'
+  ].forEach((t, i) => { const r = MR + 1 + i, x = ws.getCell(r, 2); x.value = (i + 1) + '. ' + t; x.font = { name: KC.AR, size: 9 }; x.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }; ws.mergeCells(r, 2, r, 14); });
+  [['SUT LOAD (kVA)', 'MODE FACTOR'], ['RT CURRENT', 'ΔA VFD']].forEach(([a, b]) => { for (let k = ci(C[a]); k <= ci(C[b]); k++){ ws.getColumn(k).outlineLevel = 1; ws.getColumn(k).hidden = true; } });
+  ws.properties.outlineProperties = { summaryBelow: true, summaryRight: true };
+  ws.views = [{ state: 'frozen', xSplit: 1, ySplit: R1 - 1, showGridLines: false }];
+  if (US.length) ws.autoFilter = 'A' + (T0 + 1) + ':' + kcL(LASTC) + RL;
+  ws.__fijos = { 2: 28, [ci(C['ACTION'])]: 28, [ci(C['MARGIN CHECK'])]: 21, [ci(C['SUT LOSSES'])]: 25, [ci(C['PROPOSAL ON RECORD'])]: 56, [ci(C['VFD MODEL'])]: 27, 5: 11, 6: 11 };
+}
+
+/* ══════════════ DATA EQUIPMENT ══════════════ */
+function kcEquipos(ws, P, d){
+  ws.getCell('A1').value = 'DATA EQUIPMENT · INSTALLED EQUIPMENT'; ws.getCell('A1').font = { name: KC.AR, size: 12, bold: true };
+  kcLink(ws, 2, 1, '◄ OVERVIEW', 'OVERVIEW');
+  const SAL = new Map(((d.opt || {}).salida || []).map(x => [x.pozo, x]));
+  const SECS = [['', ['PAD', 'WELL', 'STATUS']],
+    ['PHASE SHIFT TRANSFORMER (PST)', ['BRAND', 'MODEL', 'SERIAL', 'POWER (kVA)', 'AMP IN', 'AMP OUT Δ / Y']],
+    ['VARIABLE FREQUENCY DRIVE (VFD)', ['BRAND', 'MODEL', 'SERIAL', 'AMP OUT', 'OPERATION MODE']],
+    ['STEP-UP TRANSFORMER (SUT)', ['BRAND', 'MODEL', 'SERIAL', 'POWER (kVA)', 'TAP CONFIGURED (V)', 'TAP RECOMMENDED (V)', 'SETUP DATE']],
+    ['ESP MOTOR', ['BRAND', 'MODEL', 'SERIAL', 'HP', 'VOLT', 'AMP', 'INSULATION', 'INSTALLED']],
+    ['POWER CABLE', ['LENGTH (ft)', 'GAUGE (AWG)']]];
+  let c = 1;
+  SECS.forEach(([g, subs]) => {
+    if (g){ kcHdr(ws, 3, c, g); for (let k = 1; k < subs.length; k++) kcHdr(ws, 3, c + k, null); ws.mergeCells(3, c, 3, c + subs.length - 1); }
+    else subs.forEach((s, j) => kcHdr(ws, 3, c + j, null));
+    subs.forEach((s, j) => kcHdr(ws, 4, c + j, s));
+    c += subs.length;
+  });
+  const ult = c - 1, S3 = Math.sqrt(3);
+  P.unidades.forEach((u, i) => {
+    const r = 5 + i, pl = P.PL.get(u) || {}, st = P.ST.get(u) || {}, op = P.OP.get(u) || {}, cap = P.capDe(u, '9999-12-31') || {}, sal = SAL.get(u) || {};
+    const pst = kcN(cap.pst_cap_kva);
+    const v = [op.pad || (P.FUERA.get(u) || {}).pad || '—', kcHoja(u), P.estado(u),
+      pl.pst_marca, pl.pst_modelo, pl.pst_serial, pst, pst ? Math.round(pst * 1000 / (S3 * 480)) : null, pst ? Math.round(pst * 1000 / 2 / (S3 * 480)) : null,
+      pl.vfd_marca, pl.vfd_modelo, pl.vfd_serial, kcN(cap.vfd_cap_a), sal.modo_inversor || null,
+      pl.sut_marca, pl.sut_modelo, pl.sut_serial, kcN(cap.sut_cap_kva), kcNumTexto(st.tap_configurado), kcNumTexto(st.tap_recomendado), st.ajustado_el ? kcFecha(String(st.ajustado_el).slice(0, 10)) : null,
+      pl.motor_marca, pl.motor_modelo, pl.motor_serial, kcN(pl.motor_hp), kcN(pl.motor_v), kcN(pl.motor_i), pl.motor_aislamiento || null, pl.motor_desde ? kcFecha(String(pl.motor_desde).slice(0, 10)) : null,
+      kcNumTexto(st.cable_longitud), st.cable_tipo || null];
+    v.forEach((x, j) => kcDat(ws, r, j + 1, x == null || x === '' ? null : x, x instanceof Date ? 'dd-mmm-yy' : (typeof x === 'number' && x !== Math.trunc(x) ? '0.00' : null)));
+    ws.getCell(r, 3).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+  });
+  const n = 4 + P.unidades.length;
+  kcCF(ws, 'A5:' + kcL(ult) + n, 'LEFT($C5,3)="Out"', { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: KC.FUERA } }, font: { color: { argb: 'FF7F7F7F' } } });
+  ws.autoFilter = 'A4:' + kcL(ult) + n;
+  ws.getCell(n + 2, 1).value = 'PST amps are derived from the PST kVA at 480 V (each output winding carries half the kVA).';
+  ws.getCell(n + 2, 1).font = { name: KC.AR, size: 9, color: { argb: KC.TXTG } };
+}
+
+/* ══════════════ OVERVIEW ══════════════ */
+function kcOverview(wb, ws, P, REF, meta, lienzo){
+  ws.getCell('A1').value = (meta.titulo || 'ESP PREDICTIVE DATA'); ws.getCell('A1').font = { name: KC.AR, size: 14, bold: true };
+  ws.getCell('A2').value = 'Issued ' + kcDiaTxt(kcFecha(meta.fecha)); ws.getCell('A2').font = { name: KC.AR, size: 10 };
+  ['WELL', 'PAD', 'STATUS', 'LAST READING', 'DAYS SINCE READING', 'RUN LIFE (days)', 'INSTALLED', 'SHEET'].forEach((h, j) => kcHdr(ws, 4, j + 1, h));
+  P.unidades.forEach((u, i) => {
+    const r = 5 + i, X = REF[u], op = P.OP.get(u) || {}, pl = P.PL.get(u) || {}, rl = P.RL.get(u) || {};
+    const ld = X ? X.filas[X.filas.length - 1]._fecha : null, est = P.estado(u);
+    const v = [kcHoja(u), op.pad || '—', est, ld ? kcFecha(ld) : 'No readings', ld ? kcDias(meta.fecha, ld) : '—', kcN(rl.run_dias) != null ? kcN(rl.run_dias) : '—',
+               pl.motor_desde ? kcFecha(String(pl.motor_desde).slice(0, 10)) : '—', X ? kcHV('Open ►', kcHoja(u)) : '—'];
+    v.forEach((x, j) => kcDat(ws, r, j + 1, x, x instanceof Date ? 'dd-mmm-yy' : null));
+    ws.getCell(r, 3).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
+    ws.getCell(r, 1).font = { name: KC.AR, size: 10, bold: true };
+    if (X) ws.getCell(r, 8).font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.LINK }, underline: true };
+    if (!est.startsWith('In')) for (let k = 1; k <= 7; k++) ws.getCell(r, k).font = { name: KC.AR, size: 10, bold: k === 1, color: { argb: 'FF808080' } };
+  });
+  let r = 6 + P.unidades.length;
+  const all = wb.getWorksheet('CONSOLIDATED').__all;
+  [['► CONSOLIDATED', 'CONSOLIDATED', 'A1'], ['► ALL VARIABLES (last reading per well)', 'CONSOLIDATED', 'A' + all.V0], ['► OPTIMIZATION (TAP proposals)', 'OPTIMIZATION', 'A1'], ['► DATA EQUIPMENT', 'DATA EQUIPMENT', 'A1']].forEach(([t, h, a]) => {
+    const x = ws.getCell(r, 1); x.value = kcHV(t, h, a); x.font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.LINK }, underline: true }; r += 1;
+  });
+  r += 1; ws.getCell(r, 1).value = 'Color bands'; ws.getCell(r, 1).font = { name: KC.AR, size: 10, bold: true }; r += 1;
+  [['Load % (VFD, PST, SUT, motor): attention ≥ 90 %, critical ≥ 100 % of nameplate (derated when applicable).', KC.AMAR],
+   ['Current unbalance (NEMA MG-1): attention ≥ 5 %, critical ≥ 10 %. Motor temperature: 250 / 270 °F. Vibration: 0.8 / 1.5 g.', KC.AMAR],
+   ['ND = no data (variable not available on the installed equipment or not recorded in that reading).', KC.GRIS],
+   ['Grey rows / grey sheet tabs = unit out of monitoring. CONSOLIDATED tables can be filtered by STATUS.', KC.FUERA],
+   ['Older rows are grouped: use [+] on the left margin (rows) or on top (columns) to expand the history.', null]].forEach(([t, col]) => {
+    if (col) ws.getCell(r, 1).fill = kcRelleno(col);
+    ws.getCell(r, 2).value = t; ws.getCell(r, 2).font = { name: KC.AR, size: 10 }; r += 1;
+  });
+  if (lienzo){ const g = kcEsquemaBes(lienzo); kcImagen(wb, ws, g.png, 10, 2, g.w, g.h); }
+  /* ── demanda energetica de las unidades en monitoreo ── */
+  const EC = 19, E0 = 6;
+  kcHdr(ws, 4, EC, 'ENERGY DEMAND · UNITS IN MONITORING'); for (let k = 1; k < 4; k++) kcHdr(ws, 4, EC + k, null); ws.mergeCells(4, EC, 4, EC + 3);
+  kcHdr(ws, 5, EC, 'INDICATOR'); kcHdr(ws, 5, EC + 1, null); ws.mergeCells(5, EC, 5, EC + 1); kcHdr(ws, 5, EC + 2, 'VALUE'); kcHdr(ws, 5, EC + 3, 'UNIT');
+  const stR = "CONSOLIDATED!$B$" + (all.V0 + 3) + ":$B$" + all.VL, kwR = "CONSOLIDATED!$" + all.kw + "$" + (all.V0 + 3) + ":$" + all.kw + "$" + all.VL,
+        kvR = "CONSOLIDATED!$" + all.kvar + "$" + (all.V0 + 3) + ":$" + all.kvar + "$" + all.VL;
+  const mon = P.conHoja.filter(u => P.estado(u).startsWith('In monitoring')).map(u => {
+    const f = REF[u].filas[REF[u].filas.length - 1]; return { u: kcHoja(u), kw: typeof f.pst_in_kw === 'number' ? f.pst_in_kw : null, kvar: typeof f.pst_in_kvar === 'number' ? f.pst_in_kvar : null, fp: typeof f.pst_in_fp === 'number' ? f.pst_in_fp : null };
+  }).filter(x => x.kw != null && x.kw > 0);
+  const kw = mon.reduce((a, x) => a + x.kw, 0), kv = mon.reduce((a, x) => a + (x.kvar || 0), 0), kva = Math.sqrt(kw * kw + kv * kv);
+  const cap = P.conHoja.filter(u => P.estado(u).startsWith('In monitoring') && mon.some(m => m.u === kcHoja(u))).reduce((a, u) => a + (kcN((P.capDe(u, '9999-12-31') || {}).pst_cap_kva) || 0), 0);
+  const L = (k) => kcL(EC + 2) + (E0 + k);
+  const FILAS = [['Units in monitoring with reading', kcF('=SUMPRODUCT((LEFT(' + stR + ',2)="In")*ISNUMBER(' + kwR + '))', mon.length), 'units', '0'],
+    ['Total active power', kcF('=SUMIFS(' + kwR + ',' + stR + ',"In monitoring")', kw), 'kW', '#,##0'],
+    ['Total reactive power', kcF('=SUMIFS(' + kvR + ',' + stR + ',"In monitoring")', kv), 'kVAr', '#,##0'],
+    ['Total apparent power', kcF('=SQRT(' + L(1) + '^2+' + L(2) + '^2)', kva), 'kVA', '#,##0'],
+    ['Fleet power factor', kcF('=IFERROR(' + L(1) + '/' + L(3) + ',"-")', kva ? kw / kva : '-'), '', '0.00'],
+    ['PST installed capacity', cap, 'kVA', '#,##0'],
+    ['Capacity utilization', kcF('=IFERROR(' + L(3) + '/' + L(5) + ',"-")', cap ? kva / cap : '-'), '', '0.0%'],
+    ['Average demand per unit', kcF('=IFERROR(' + L(1) + '/' + L(0) + ',"-")', mon.length ? kw / mon.length : '-'), 'kW', '#,##0'],
+    ['Daily energy (continuous operation)', kcF('=' + L(1) + '*24/1000', kw * 24 / 1000), 'MWh/day', '#,##0.0'],
+    ['Monthly energy (30 days)', kcF('=' + L(8) + '*30', kw * 24 / 1000 * 30), 'MWh/month', '#,##0']];
+  FILAS.forEach(([lab, f, un, fm], i) => {
+    const rr = E0 + i; const x = kcDat(ws, rr, EC, lab); x.alignment = { horizontal: 'left', vertical: 'middle' }; kcDat(ws, rr, EC + 1, null); ws.mergeCells(rr, EC, rr, EC + 1);
+    const y = kcDat(ws, rr, EC + 2, f, fm); y.font = { name: KC.AR, size: 10, bold: true }; kcDat(ws, rr, EC + 3, un);
+  });
+  ws.getCell(E0 + 3, EC).note = 'Recomposed as √(kW² + kVAr²). Adding the kVA of each unit overstates the total when power factors differ.';
+  ws.getCell(E0 + 5, EC).note = 'Sum of PST nameplate kVA for the units in monitoring.';
+  ws.getCell(E0 + 8, EC).note = 'Last reading × 24 h. Indicative only: assumes every unit runs continuously at the last measured load.';
+  ws.getCell(E0 + FILAS.length + 1, EC).value = 'Source: PST input of each unit, last reading. Updates with CONSOLIDATED.';
+  ws.getCell(E0 + FILAS.length + 1, EC).font = { name: KC.AR, size: 9, color: { argb: KC.TXTG } };
+  if (lienzo && mon.length){ const g = kcGraficaDemanda(lienzo, mon); kcImagen(wb, ws, g.png, EC, E0 + FILAS.length + 3, g.w, g.h); }
+  ws.__fijos = { 3: 40, [EC]: 18, [EC + 1]: 18, [EC + 2]: 12, [EC + 3]: 12 };
+}
+
+
+/* ── Boton "Formato cliente" ──────────────────────────────────────────
+   Pide los datos con las mismas funciones que la exportacion tecnica y
+   el modulo de optimizacion, y arma el libro. Lo opcional (ensayos,
+   bitacora, optimizacion) va con su propio try: si una funcion no
+   responde, el libro sale igual sin esa parte. */
+async function kcExportarCliente(){
+  let campos = [];
+  try {
+    const { data } = await kpCliente().rpc('dp_entrega_operacional');
+    campos = Array.from(new Set((data || []).map(x => x.campo).filter(Boolean))).sort();
+  } catch(e){}
+  const campo = prompt('Formato cliente · campo a exportar:\n\n' + campos.join('\n')
+    + '\n\nEscriba el nombre exacto, o deje vacio para todos.', campos.length === 1 ? campos[0] : '');
+  if (campo === null) return;
+  const sistema = prompt('Sistema (BES, HPUM o UBH). Deje vacio para todos.', 'BES');
+  if (sistema === null) return;
+  const c = campo.trim() || null, s = sistema.trim().toUpperCase() || null;
+  const btn = document.getElementById('kcExportar');
+  const previo = btn ? btn.textContent : '';
+  const aviso = t => { if (btn) btn.textContent = t; };
+  if (btn) btn.disabled = true;
+  aviso('Leyendo datos\u2026');
+  try {
+    const ExcelJS = await keExcelJS();
+    const sb = kpCliente();
+    const pedir = async (fn, args) => {
+      const { data, error } = await sb.rpc(fn, args);
+      if (error) throw new Error(fn + ': ' + error.message);
+      return data;
+    };
+    const opc = async (fn, args) => { try { return await pedir(fn, args); } catch(e){ console.warn('[Kronos-M] ' + e.message); return null; } };
+    const A = { p_campo: c, p_sistema: s };
+    const [op, placas, setup, hist] = await Promise.all([
+      pedir('dp_entrega_operacional', A), pedir('dp_entrega_placas', A),
+      pedir('dp_entrega_setup', A), pedir('dp_entrega_cliente_historico', A)
+    ]);
+    const [cap, runlife, fueraT, ou, par, sal, sut, prop] = await Promise.all([
+      opc('dp_entrega_historico', { p_campo: c, p_sistema: s, p_meses: 120 }), opc('dp_run_life', A),
+      opc('dp_entrega_fuera_monitoreo'), opc('opt_unidades'), opc('opt_parametros'),
+      opc('opt_salida_vsd'), opc('opt_sut'), opc('opt_propuestas')
+    ]);
+    if (!(op || []).length) throw new Error('No hay unidades en ese ambito. Revise el nombre del campo.');
+    const fuera = (fueraT || []).filter(x => (!c || x.campo === c) && (!s || !x.sistema || x.sistema === s));
+    const unidades = Array.from(new Set((op || []).map(x => x.unidad).concat(fuera.map(x => x.unidad))));
+    const ais = [], bit = [];
+    const res = await keEnPool(unidades, 5, async u => {
+      const id = await kpIdDe(u);
+      if (!id) return null;
+      const [ra, rc] = await Promise.all([
+        sb.rpc('dp_aislamiento_unidad', { p_pozo_id: id }),
+        sb.rpc('dp_contexto', { p_pozo_id: id })
+      ]);
+      return { u, ais: ra.error ? [] : (ra.data || []), bit: rc.error ? [] : ((rc.data && rc.data.bitacora) || []) };
+    }, (n, t) => aviso('Ensayos y bitacora ' + n + '/' + t + '\u2026'));
+    res.filter(Boolean).forEach(r => {
+      r.ais.forEach(a => ais.push({ ...a, unidad: r.u }));
+      r.bit.forEach(b => bit.push({ ...b, unidad: r.u }));
+    });
+    aviso('Armando el libro\u2026');
+    await new Promise(ok => setTimeout(ok, 30));
+    const hoy = new Date().toISOString().slice(0, 10);
+    const d = { op: op || [], fuera, placas: placas || [], setup: setup || [], cap: cap || [], runlife: runlife || [],
+                hist: Array.isArray(hist) ? hist : [], ais, bit,
+                opt: { unidades: ou || [], par: par || {}, salida: sal || [], sut: sut || [] }, propuestas: prop || [] };
+    const lienzo = (w, h) => { const cv = document.createElement('canvas'); cv.width = w; cv.height = h; return cv; };
+    const wb = kcLibroCliente(ExcelJS, d, {
+      fecha: hoy,
+      titulo: 'ESP PREDICTIVE DATA · ' + (c ? c.toUpperCase() : 'ALL FIELDS'),
+      avance: (n, t) => aviso('Hoja de pozo ' + n + '/' + t + '\u2026')
+    }, lienzo);
+    aviso('Escribiendo archivo\u2026');
+    const buf = await wb.xlsx.writeBuffer();
+    const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'PREDICTIVE_DATA_UNITS_ESP_' + (c || 'ALL').replace(/[^A-Za-z0-9]+/g, '_').toUpperCase()
+      + (s && s !== 'BES' ? '_' + s : '') + '_' + hoy + '.xlsx';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  } catch(e){
+    alert('No se pudo generar el formato cliente. ' + e.message);
+  } finally {
+    if (btn){ btn.disabled = false; btn.textContent = previo; }
   }
 }
 
