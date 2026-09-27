@@ -1499,22 +1499,55 @@ function slope(C,a,b){ const [i0,i1]=rangeOf(C,a,b);
 /* ── pirámide multi-resolución ── */
 function pyramid(C){
   if(C.pyr) return C.pyr;
-  const lv=[]; let src={t:C.t,mn:C.y,mx:C.y,n:C.n};
+  // av/cn: promedio y cantidad de muestras de cada cubeta. El trazo usa el
+  // promedio; min/max quedan para la envolvente.
+  const lv=[]; let src={t:C.t,mn:C.y,mx:C.y,av:C.y,cn:null,n:C.n};
   const steps=[60e3,600e3,3600e3];
   for(const st of steps){
     if(src.n<3000){ break; }
-    const T=[],MN=[],MX=[];
-    let b=Math.floor(src.t[0]/st), mn=Infinity, mx=-Infinity, cnt=0;
+    const T=[],MN=[],MX=[],AV=[],CN=[];
+    let b=Math.floor(src.t[0]/st), mn=Infinity, mx=-Infinity, cnt=0, sum=0, ns=0;
     for(let i=0;i<src.n;i++){
       const bb=Math.floor(src.t[i]/st);
-      if(bb!==b){ if(cnt){T.push(b*st+st/2);MN.push(mn);MX.push(mx);} b=bb; mn=Infinity; mx=-Infinity; cnt=0; }
+      if(bb!==b){ if(cnt){T.push(b*st+st/2);MN.push(mn);MX.push(mx);AV.push(sum/ns);CN.push(ns);}
+        b=bb; mn=Infinity; mx=-Infinity; cnt=0; sum=0; ns=0; }
       mn=Math.min(mn,src.mn[i]); mx=Math.max(mx,src.mx[i]); cnt++;
+      const k=src.cn?src.cn[i]:1; sum+=src.av[i]*k; ns+=k;
     }
-    if(cnt){T.push(b*st+st/2);MN.push(mn);MX.push(mx);}
-    src={t:Float64Array.from(T),mn:Float64Array.from(MN),mx:Float64Array.from(MX),n:T.length,step:st};
+    if(cnt){T.push(b*st+st/2);MN.push(mn);MX.push(mx);AV.push(sum/ns);CN.push(ns);}
+    src={t:Float64Array.from(T),mn:Float64Array.from(MN),mx:Float64Array.from(MX),
+         av:Float64Array.from(AV),cn:Float64Array.from(CN),n:T.length,step:st};
     lv.push(src);
   }
   return C.pyr=lv;
+}
+/* Paso de cuantización del canal: la menor diferencia entre valores
+   distintos que entrega el instrumento (1 A, 20 V, 0,01 Hz...). Un eje
+   cuyo alto total sean dos o tres de esos pasos convierte el ruido de un
+   conteo en una oscilación que llena el panel. */
+function cuanto(C){
+  if(C._q!==undefined) return C._q;
+  const n=C.n||0, st=Math.max(1,Math.floor(n/40000)), vs=new Set();
+  for(let i=0;i<n;i+=st){ const v=C.y[i]; if(Number.isFinite(v)) vs.add(Math.round(v*1e6)/1e6); if(vs.size>4000) break; }
+  const a=[...vs].sort((x,y)=>x-y); let q=0;
+  if(a.length>1 && a.length<=4000){
+    q=Infinity; for(let i=1;i<a.length;i++){ const d=a[i]-a[i-1]; if(d>1e-9&&d<q) q=d; }
+    if(!Number.isFinite(q)) q=0;
+  }
+  return C._q=q;
+}
+/* Canales que deben compartir eje en el modo multieje: las tres fases de una
+   misma magnitud, o la referencia y su valor real. Con un eje por fase cada
+   curva se estira a su propio rango y quedan todas encimadas; con eje común
+   se ve el desbalance tal cual es. */
+const FAM_EJE={ i_out_a:"i_out",i_out_b:"i_out",i_out_c:"i_out",
+  i_in_a:"i_in",i_in_b:"i_in",i_in_c:"i_in", v_ab:"v_in",v_bc:"v_in",v_ca:"v_in",
+  amp_max:"amp",amp_min:"amp",amp_avg:"amp", vib_1:"vib",vib_2:"vib",vib_3:"vib",
+  freq_out:"freq",freq_set:"freq" };
+function gruposDeEje(chs){
+  const m=new Map();
+  chs.forEach(C=>{ const k=(FAM_EJE[C.role]||C.role)+"|"+(C.unit||""); if(!m.has(k)) m.set(k,[]); m.get(k).push(C); });
+  return [...m.values()];
 }
 function levelFor(C,span,px){
   const want=span/Math.max(px,1);      // ms por píxel
@@ -2019,7 +2052,7 @@ function drawPanel(p){
   const u=U(),{g,w,h}=fit(p.cv,p.h);
   // Una columna de eje por canal con datos. El ancho se reparte entre ellos
   // y se acota para que las curvas nunca se queden sin espacio.
-  const ejes = p.multi ? p.chs.filter(C=>stat(C,view.a,view.b)) : [];
+  const ejes = p.multi ? gruposDeEje(p.chs.filter(C=>stat(C,view.a,view.b))) : [];
   const AXW = ejes.length ? Math.max(32, Math.min(54, Math.floor((w*0.44)/ejes.length))) : 0;
   const PADL = ejes.length ? Math.max(56, AXW*ejes.length + 6) : 56;
   const PADR=10,PADT=6,PADB=6, iw=w-PADL-PADR, ih=h-PADT-PADB;
@@ -2038,9 +2071,11 @@ function drawPanel(p){
   // la misma transformación: si difieren, la curva no cae donde dice el eje.
   if(p.multi){
     p._esc=new Map();
-    ejes.forEach(C=>{
-      const s=stat(C,view.a,view.b);
-      let a=s.min,b=s.max;
+    ejes.forEach(G=>{
+      const C=G[0];
+      let a=Infinity,b=-Infinity;
+      G.forEach(M=>{ const s=stat(M,view.a,view.b); if(s){ a=Math.min(a,s.min); b=Math.max(b,s.max); } });
+      const s={min:a,max:b};
       if(b===a){ const d=Math.max(1,Math.abs(a)*.05); b=a+d; a-=d; }
       /* Piso de escala: al menos un 2 % de la magnitud del canal. Con la
          frecuencia en 65 Hz eso son 1,3 Hz de eje, y una variacion real de
@@ -2049,15 +2084,18 @@ function drawPanel(p){
          ven afectados porque su rango ya supera ese piso. */
       const med=pctl(C,view.a,view.b,.5);
       const ref=Math.abs(med==null? (s.min+s.max)/2 : med);
-      const piso=ref*0.02;
+      /* Segundo piso: seis pasos de resolución del instrumento, para que un
+         conteo de ruido no ocupe más de una sexta parte del alto. */
+      const piso=Math.max(ref*0.02, 6*Math.max(...G.map(cuanto)));
       if(piso>0 && (b-a)<piso){ const c=(a+b)/2; a=c-piso/2; b=c+piso/2; }
       const m=(b-a)*.06; a-=m; b+=m;
       const tk=niceTicks(a,b,4);
-      p._esc.set(C.role,{
+      const esc={
         lo: tk.length? Math.min(a,tk[0]) : a,
         hi: tk.length? Math.max(b,tk[tk.length-1]) : b,
         ticks: tk
-      });
+      };
+      G.forEach(M=>p._esc.set(M.role,esc));
     });
   }
 
@@ -2085,9 +2123,12 @@ function drawPanel(p){
       g.beginPath(); g.moveTo(PADL,y); g.lineTo(w-PADR,y); g.stroke(); });
 
     g.font="9.5px "+cssFont("--f-mono");
-    ejes.forEach((C,k)=>{
+    ejes.forEach((G,k)=>{
+      const C=G[0];
       const es=p._esc.get(C.role); if(!es) return;
-      const xr=6+AXW*k+AXW-8, col=V(C.cvar);
+      // Eje compartido: marcas en gris y una muesca de color por canal arriba.
+      const xr=6+AXW*k+AXW-8, col= G.length>1? V("--cv-tick") : V(C.cvar);
+      if(G.length>1) G.forEach((M,j)=>{ g.fillStyle=V(M.cvar); g.fillRect(xr+2,PADT+j*9,3,7); });
       // La línea del eje va en el color del canal: es lo que lo empareja
       // con su curva sin necesidad de leyenda.
       g.strokeStyle=col; g.globalAlpha=.55; g.lineWidth=1.25;
@@ -2162,15 +2203,17 @@ function drawPanel(p){
       ? (v=>(v-es.lo)/(es.hi-es.lo)*100)
       : (v=>p.norm? (st&&st.max>st.min? (v-st.min)/(st.max-st.min)*100 : 50) : v);
     const L=levelFor(C,view.b-view.a,iw);
-    const T=L?L.t:C.t, MN=L?L.mn:C.y, MX=L?L.mx:C.y, N=L?L.n:C.n;
+    const T=L?L.t:C.t, MN=L?L.mn:C.y, MX=L?L.mx:C.y, AV=L?L.av:C.y, CN=L?L.cn:null, N=L?L.n:C.n;
     const cols=Math.ceil(iw)+2;
     const amn=new Float64Array(cols).fill(Infinity), amx=new Float64Array(cols).fill(-Infinity);
+    const asu=new Float64Array(cols), acn=new Float64Array(cols);
     let i0=Math.max(0,bs(T,view.a,N)-1), i1=Math.min(N-1,bs(T,view.b,N)+1), any=false;
     for(let i=i0;i<=i1;i++){
       const px=Math.floor((T[i]-view.a)/(view.b-view.a)*iw);
       if(px<0||px>iw) continue;
       const a=nv(MN[i]), b=nv(MX[i]);
       if(a<amn[px])amn[px]=a; if(b>amx[px])amx[px]=b; any=true;
+      const k=CN?CN[i]:1; asu[px]+=nv(AV[i])*k; acn[px]+=k;
     }
     if(!any) return;
     g.strokeStyle=V(C.cvar); g.lineWidth=1.35; g.lineJoin="round";
@@ -2181,8 +2224,11 @@ function drawPanel(p){
     const xs=[], ys=[], barras=[];
     for(let px=0;px<=iw;px++){
       if(amn[px]===Infinity) continue;
+      /* El trazo sigue el PROMEDIO de la columna, no el punto medio entre
+         min y max: una señal que salta entre dos conteos se dibuja como la
+         línea casi plana que es, en su valor real. */
       const x=PADL+px+.5, y1=Y(amx[px]), y2=Y(amn[px]);
-      xs.push(x); ys.push((y1+y2)/2);
+      xs.push(x); ys.push(Y(asu[px]/acn[px]));
       if(y2-y1>1.2) barras.push([x,y1,y2]);
     }
     if(!xs.length) return;
@@ -2197,10 +2243,13 @@ function drawPanel(p){
 
     // Envolvente: siempre recta, porque representa el rango real medido en
     // esa columna y no un camino entre puntos.
+    // Translúcida y detrás de la lectura: informa el rango sin tapar las
+    // demás curvas, que era lo que formaba la pared de color.
     if(barras.length){
+      g.save(); g.globalAlpha=.10; g.lineWidth=1;
       g.beginPath();
       barras.forEach(([x,y1,y2])=>{ g.moveTo(x,y1); g.lineTo(x,y2); });
-      g.stroke();
+      g.stroke(); g.restore();
     }
   });
   fijos.forEach((f,k)=>{
