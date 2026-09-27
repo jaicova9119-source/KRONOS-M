@@ -84,6 +84,8 @@
     --ubh:#b8790c; --ubh-bg:#fbf0d9;
     --ubo:#5b4db3; --ubo-bg:#ecebfa;
     --cargue:#8a4a2b; --cargue-bg:#f7ebe4;
+    --uta:#1f6fb2; --uta-bg:#e3eefa;
+    --compresor:#5d6b1e; --compresor-bg:#eef1dc;
     --danger:#BC2F2C; --danger-bg:#FDEDEA;
     --warn:#7A5320; --warn-bg:#FFF6E9; --warn-line:#F2DDBE;
     --warn-bg-2:#FFF7ED; --warn-line-2:#F0B27A; --warn-line-3:#FBE0C4;
@@ -116,6 +118,8 @@
     --ubh:#d19b31; --ubh-bg:#2a2314;
     --ubo:#9d92ec; --ubo-bg:#211e36;
     --cargue:#d4926c; --cargue-bg:#2c1f18;
+    --uta:#6fb2ee; --uta-bg:#14243a;
+    --compresor:#b9c86a; --compresor-bg:#23271a;
     --danger:#e26a6a; --danger-bg:#32201f;
     --warn:#d9ae6c; --warn-bg:#2a2318; --warn-line:#463920;
     --warn-bg-2:#2a2318; --warn-line-2:#6b5228; --warn-line-3:#463920;
@@ -445,6 +449,8 @@
   .sistema-card.ubh .badge{background:var(--ubh-bg); color:var(--ubh);}
   .sistema-card.ubo .badge{background:var(--ubo-bg); color:var(--ubo);}
   .sistema-card.cargue .badge{background:var(--cargue-bg); color:var(--cargue);}
+  .sistema-card.uta .badge{background:var(--uta-bg); color:var(--uta);}
+  .sistema-card.compresor .badge{background:var(--compresor-bg); color:var(--compresor);}
   .sistema-card .body{flex:1;min-width:0;}
   .sistema-card .name{font-family:'Barlow Condensed';font-weight:800;font-size:21px;color:var(--titulo);line-height:1.05;}
   .sistema-card .full{font-size:11.5px;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.06em;font-weight:600;margin-top:1px;}
@@ -629,6 +635,37 @@
           </div>
           <div class="go"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
+
+        <div class="sistema-card uta" onclick="seleccionarSistema('UTA')">
+          <div class="badge">
+            <svg viewBox="0 0 24 24" fill="none">
+              <path d="M12 3c3 4 5 6.5 5 9a5 5 0 0 1-10 0c0-2.5 2-5 5-9Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/>
+              <path d="M3 20h18M17 17l3 3-3 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="body">
+            <div class="name">UTA</div>
+            <div class="full">Transferencia de agua</div>
+            <div class="desc">Filtro Matrix, VFD, motor de superficie y bomba Durco</div>
+          </div>
+          <div class="go"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
+
+        <div class="sistema-card compresor" onclick="seleccionarSistema('COMPRESOR')">
+          <div class="badge">
+            <svg viewBox="0 0 24 24" fill="none">
+              <rect x="4" y="8" width="11" height="9" rx="1.5" stroke="currentColor" stroke-width="1.6"/>
+              <path d="M15 12.5h3M18 9v7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+              <path d="M7 8V5h5v3M6 17v2M13 17v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div class="body">
+            <div class="name">COMPRESOR</div>
+            <div class="full">Compresion de gas</div>
+            <div class="desc">Filtro Matrix, VFD, motor de superficie y compresor</div>
+          </div>
+          <div class="go"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        </div>
       </div>
     </section>
 
@@ -648,7 +685,7 @@
       <div>
         <div class="section-label"><span class="bar"></span>Unidad y equipos</div>
 
-        <div class="action-card card-nuevo" data-sistemas="BES,HPUM,UBH,UBO,CARGUE" onclick="abrirActualizarUnidad()">
+        <div class="action-card card-nuevo" data-sistemas="BES,HPUM,UBH,UBO,CARGUE,UTA,COMPRESOR" onclick="abrirActualizarUnidad()">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M4 7h16M4 12h16M4 17h10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="18" cy="17" r="3.2" stroke="currentColor" stroke-width="1.8"/></svg></div>
           <div class="body"><div class="ttl">Actualizar equipos de la unidad</div><div class="sub">Corregir placa o registrar cambio de equipo &middot; todos los sistemas</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -662,7 +699,7 @@
 
         <div class="section-label"><span class="bar"></span>Mediciones y pruebas</div>
 
-        <div class="action-card card-medicion" data-sistemas="BES,HPUM,UBH,UBO,CARGUE" onclick="ir('medicion-pozo'); medLocalPintarLista(); dpListarBorradores(); dpListarCompletables();">
+        <div class="action-card card-medicion" data-sistemas="BES,HPUM,UBH,UBO,CARGUE,UTA,COMPRESOR" onclick="ir('medicion-pozo'); medLocalPintarLista(); dpListarBorradores(); dpListarCompletables();">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M3 12h4l2-8 4 16 3-11 2 3h3" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Medicion predictiva</div><div class="sub">Lectura electrica completa segun el sistema del activo</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -677,7 +714,7 @@
              La tarjeta se queda como enlace en lugar de desaparecer: quien
              la buscaba tiene que encontrar a donde ir.
 
-             UBH, UBO y CARGUE quedan fuera: en esos equipos de superficie
+             UBH, UBO, CARGUE, UTA y COMPRESOR quedan fuera: en esos equipos de superficie
              la prueba se registra directamente desde el modulo de Ensayos
              Electricos, no desde campo. data-ocultar hace que desaparezca en vez de verse gris:
              una tarjeta deshabilitada invita a preguntar por que no sirve. -->
@@ -692,19 +729,19 @@
       <div>
         <div class="section-label"><span class="bar"></span>Operacion y novedades</div>
 
-        <div class="action-card card-setup" data-sistemas="BES,HPUM,UBH,UBO,CARGUE" onclick="ir('setup-pozo')">
+        <div class="action-card card-setup" data-sistemas="BES,HPUM,UBH,UBO,CARGUE,UTA,COMPRESOR" onclick="ir('setup-pozo')">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 13.5c.1-.5.1-1 0-1.5l1.6-1.2-1.5-2.6-1.9.6a5.6 5.6 0 0 0-1.3-.8L16 6h-3l-.3 2c-.5.2-.9.5-1.3.8l-1.9-.6-1.5 2.6L9.6 12c-.1.5-.1 1 0 1.5L8 14.7l1.5 2.6 1.9-.6c.4.3.8.6 1.3.8l.3 2h3l.3-2c.5-.2.9-.5 1.3-.8l1.9.6 1.5-2.6-1.6-1.2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Configuracion VFD (Setup)</div><div class="sub">Ver ajustes actuales, editar solo lo habitual</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
-        <div class="action-card card-nuevo" data-sistemas="BES,HPUM,UBH,UBO,CARGUE" onclick="dpAbrirOffline()">
+        <div class="action-card card-nuevo" data-sistemas="BES,HPUM,UBH,UBO,CARGUE,UTA,COMPRESOR" onclick="dpAbrirOffline()">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg></div>
           <div class="body"><div class="ttl">Trabajo sin senal</div><div class="sub"><span id="home-off-sub">Descargar datos para campo y ver pendientes</span></div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
-        <div class="action-card card-bitacora" data-sistemas="BES,HPUM,UBH,UBO,CARGUE" onclick="abrirBitacora()">
+        <div class="action-card card-bitacora" data-sistemas="BES,HPUM,UBH,UBO,CARGUE,UTA,COMPRESOR" onclick="abrirBitacora()">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M9 3h6l1 3H8l1-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M6 6h12v14a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V6Z" stroke="currentColor" stroke-width="1.8"/><path d="M9 11h6M9 15h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
           <div class="body"><div class="ttl">Evento / Bitacora</div><div class="sub">Novedades, mantenimiento, hallazgos</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -1294,8 +1331,8 @@
       </div>
     </section>
 
-    <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM, UBH, UBO y cargue
-      &middot; <span id="dp-build">v21</span>
+    <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM, UBH, UBO, cargue, transferencia de agua y compresion
+      &middot; <span id="dp-build">v23</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -1957,6 +1994,9 @@ var ICONO_TERMOMETRO = '<svg viewBox="0 0 24 24" fill="none"><path d="M12 14.5V5
 var ICONO_GAUGE = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 15a8 8 0 1 1 16 0" stroke="currentColor" stroke-width="1.6"/><path d="M12 15l3-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 
 var ICONO_PRESION = '<svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="13" r="7" stroke="currentColor" stroke-width="1.6"/><path d="M12 13l3.5-3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M12 3v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+/* Motor de superficie: carcasa con aletas y eje. Lo usa la etapa
+   MOTOR_BORNES de UBH, UBO y cargue. */
+var ICONO_MOTOR = '<svg viewBox="0 0 24 24" fill="none"><rect x="4" y="7" width="12" height="10" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M7 7v10M10 7v10M13 7v10" stroke="currentColor" stroke-width="1.2"/><path d="M16 12h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M6 17v2M14 17v2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
 var ICONO_VIBRACION = '<svg viewBox="0 0 24 24" fill="none"><path d="M3 12h2l2-5 2 10 2-13 2 16 2-10 2 5h2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 /* Estilo de cada seccion, indexado por NOMBRE LOGICO de icono. El
@@ -1975,6 +2015,7 @@ var ICONO_ESTILO = {
   TERMOMETRO:    {svg:ICONO_TERMOMETRO,    bg:'#FDEDEA', color:'var(--danger)'},
   PRESION:       {svg:ICONO_PRESION,       bg:'#E9F0F9', color:'var(--navy)'},
   VIBRACION:     {svg:ICONO_VIBRACION,     bg:'#F5EDE4', color:'var(--ubh)'},
+  MOTOR:         {svg:ICONO_MOTOR,         bg:'#E9F0F9', color:'var(--navy)'},
   GAUGE:         {svg:ICONO_GAUGE,         bg:'#EFF1F4', color:'var(--navy)'}
 };
 
@@ -2515,7 +2556,7 @@ function poblarSelects(){
 
   /* Orden de los grupos. Lo que no este aqui va despues, alfabetico,
      y los activos sin sistema conocido quedan de ultimo. */
-  var ORDEN_SISTEMA = ['BES','HPUM','UBH','UBO','CARGUE'];
+  var ORDEN_SISTEMA = ['BES','HPUM','UBH','UBO','CARGUE','UTA','COMPRESOR'];
 
   function agrupar(listaPozos){
     var grupos = {}, conSistema = 0;
@@ -4034,7 +4075,7 @@ function abrirBitacora(){
 /* Sistemas de superficie cuya prueba de aislamiento vive solo en Ensayos
    Electricos. La tarjeta del inicio se oculta por data-sistemas; esta
    lista cubre las entradas por otra via. */
-var SIN_AISLAMIENTO_EN_CAMPO = ['UBH','UBO','CARGUE'];
+var SIN_AISLAMIENTO_EN_CAMPO = ['UBH','UBO','CARGUE','UTA','COMPRESOR'];
 
 function abrirAislamiento(){
   /* UBH registra la prueba en Ensayos Electricos. La tarjeta ya no se
@@ -4906,7 +4947,9 @@ var SISTEMAS = {
   HPUM: { cod:'HPUM', full:'Bomba horizontal de inyeccion' },
   UBH:  { cod:'UBH',  full:'Bombeo hidraulico jet pump' },
   UBO:  { cod:'UBO',  full:'Bombeo oleoducto' },
-  CARGUE: { cod:'CARGUE', full:'Bombeo de cargue de crudo' }
+  CARGUE: { cod:'CARGUE', full:'Bombeo de cargue de crudo' },
+  UTA:  { cod:'UTA',  full:'Transferencia de agua' },
+  COMPRESOR: { cod:'COMPRESOR', full:'Compresion de gas' }
 };
 var sistemaActual = 'BES';
 
