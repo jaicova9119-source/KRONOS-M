@@ -3074,7 +3074,21 @@ const KC_EN_F = new Set(['sf_t_motor_c','sf_t_intake_c']);
 const kcN = v => (v == null || v === '' || !isFinite(Number(v))) ? null : Number(v);
 const kcL = n => { let s = ''; n = Math.floor(n); while (n > 0){ const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s; };
 /* Fecha como mediodia UTC: ExcelJS convierte con UTC y asi no se corre un dia. */
-const kcFecha = iso => { if (!iso) return null; const m = String(iso).match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], 12)) : null; };
+/* Fecha en texto ISO 'YYYY-MM-DD' desde lo que venga: ISO con o sin hora,
+   dd/mm/aaaa, dd-mm-aaaa, objeto Date o milisegundos. Null si no es fecha. */
+const kcISO = v => {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return isNaN(v) ? null : v.toISOString().slice(0, 10);
+  if (typeof v === 'number') return isFinite(v) ? new Date(v).toISOString().slice(0, 10) : null;
+  const t = String(v).trim();
+  let m = t.match(/^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})/);
+  if (m) return m[1] + '-' + m[2].padStart(2, '0') + '-' + m[3].padStart(2, '0');
+  m = t.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})/);
+  if (m) return m[3] + '-' + m[2].padStart(2, '0') + '-' + m[1].padStart(2, '0');
+  return null;
+};
+const kcFecha = v => { const i = kcISO(v); if (!i) return null; const m = i.split('-'); return new Date(Date.UTC(+m[0], +m[1] - 1, +m[2], 12)); };
+const kcT = v => { const d = kcFecha(v); return d ? d.getTime() : null; };
 const kcDias = (a, b) => Math.round((kcFecha(a) - kcFecha(b)) / 86400000);
 const kcAF = c => { if (c == null) return null; const f = c * 9 / 5 + 32; return f <= 0 ? null : Math.round(f * 10) / 10; };
 const kcTxt = v => String(v == null ? '' : v).split(/\r?\n/).map(l => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
@@ -3353,7 +3367,7 @@ function kcEjeX(g, box, x0, x1){
 function kcGraficaTendencia(lienzo, titulo, filas, nomPorFila, instalado){
   const W = 840, H = 740, L = kcLienzo(lienzo, W, H), g = L.g;
   kcFont(g, 13, true); g.fillStyle = '#000'; g.textAlign = 'left'; g.textBaseline = 'top'; g.fillText(titulo + ' · OPERATING TREND', 16, 12);
-  const ts = filas.map(r => kcFecha(r._fecha).getTime());
+  const ts = filas.map(r => kcT(r._fecha));
   let x0 = Math.min(...ts), x1 = Math.max(...ts);
   const marg = Math.max(8 * 86400000, (x1 - x0) * 0.04); x0 -= marg; x1 += marg;
   const box = (i, hh, yy) => ({ x: 62, y: yy, w: W - 90, h: hh });
@@ -3361,7 +3375,7 @@ function kcGraficaTendencia(lienzo, titulo, filas, nomPorFila, instalado){
   const xt = kcEjeX(g, null, x0, x1);
   const prom = (r, pre) => { const v = ['a','b','c'].map(p => kcN(r[pre + p])).filter(x => x != null && x > 0); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   const val = (r, k) => { const v = kcN(r[k]); return v != null && v > 0 ? v : null; };
-  const inst = instalado ? kcFecha(instalado).getTime() : null;
+  const inst = kcT(instalado);
   /* placa por corrida: cambia en la fecha de instalacion, no en la lectura siguiente */
   const seg = []; let cur = null;
   filas.forEach((r, i) => {
@@ -3415,7 +3429,7 @@ function kcGraficaAislamiento(lienzo, titulo, ensayos){
   const PISO = 0.1, cols = [KC_COL.azul, KC_COL.naranja, KC_COL.verde, KC_COL.morado];
   const series = []; ensayos.forEach(e => { if (!series.includes(e.serial || '')) series.push(e.serial || ''); });
   const col = e => cols[series.indexOf(e.serial || '') % 4];
-  const ts = ensayos.map(e => kcFecha(e.fecha).getTime());
+  const ts = ensayos.map(e => kcT(e.fecha));
   const span = Math.max(30, (Math.max(...ts) - Math.min(...ts)) / 86400000);
   const x0 = Math.min(...ts) - Math.max(20, span * .08) * 86400000, x1 = Math.max(...ts) + Math.max(20, span * .08) * 86400000;
   const A = { x: 60, y: 52, w: 480, h: 210 };
@@ -3431,12 +3445,12 @@ function kcGraficaAislamiento(lienzo, titulo, ensayos){
   for (let p = Math.ceil(lo); p <= Math.floor(hi); p++){ const yy = Y(Math.pow(10, p)); g.strokeStyle = KC_COL.rejilla; g.beginPath(); g.moveTo(A.x, yy); g.lineTo(A.x + A.w, yy); g.stroke(); g.fillText(p >= 0 ? String(Math.pow(10, p)) : Math.pow(10, p).toFixed(-p), A.x - 4, yy); }
   g.strokeStyle = '#000'; g.beginPath(); g.moveTo(A.x, A.y); g.lineTo(A.x, A.y + A.h); g.lineTo(A.x + A.w, A.y + A.h); g.stroke();
   series.forEach(sr => {
-    const pts = ensayos.filter(e => (e.serial || '') === sr && kcN(e.ir_1min) != null).map(e => [kcFecha(e.fecha).getTime(), kcN(e.ir_1min)]).sort((a, b) => a[0] - b[0]);
+    const pts = ensayos.filter(e => (e.serial || '') === sr && kcN(e.ir_1min) != null).map(e => [kcT(e.fecha), kcN(e.ir_1min)]).sort((a, b) => a[0] - b[0]);
     if (pts.length > 1){ g.strokeStyle = cols[series.indexOf(sr) % 4]; g.globalAlpha = .6; g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(X(p[0]), Y(p[1])) : g.moveTo(X(p[0]), Y(p[1]))); g.stroke(); g.globalAlpha = 1; }
   });
   const wIEEE = Math.max(6, span * .025) * 86400000;
   ensayos.forEach(e => {
-    const t = kcFecha(e.fecha).getTime(), c = col(e);
+    const t = kcT(e.fecha), c = col(e);
     const u = kcN(e.umbral);
     if (u != null){ g.strokeStyle = KC_COL.rojo; g.lineWidth = 1.5; g.beginPath(); g.moveTo(X(t - wIEEE), Y(u)); g.lineTo(X(t + wIEEE), Y(u)); g.stroke(); g.lineWidth = 1;
       kcFont(g, 6); g.fillStyle = KC_COL.rojo; g.textAlign = 'left'; g.textBaseline = 'middle'; g.fillText(String(u), X(t + wIEEE) + 2, Y(u)); }
@@ -3463,7 +3477,7 @@ function kcGraficaAislamiento(lienzo, titulo, ensayos){
   tk.t.forEach(v => { if (v < bl || v > bh) return; g.strokeStyle = KC_COL.rejilla; g.beginPath(); g.moveTo(B.x, YB(v)); g.lineTo(B.x + B.w, YB(v)); g.stroke(); g.fillStyle = KC_COL.texto; g.fillText(String(v), B.x - 4, YB(v)); });
   g.strokeStyle = '#000'; g.beginPath(); g.moveTo(B.x, B.y); g.lineTo(B.x, B.y + B.h); g.lineTo(B.x + B.w, B.y + B.h); g.stroke();
   ensayos.forEach(e => {
-    const t = kcFecha(e.fecha).getTime(), c = col(e);
+    const t = kcT(e.fecha), c = col(e);
     [['ip', 'o', -6], ['dar', 's', 6]].forEach(([k, mk, dy]) => {
       const v = kcN(e[k]); if (v == null) return;
       g.strokeStyle = c; g.fillStyle = mk === 'o' ? c : '#FFFFFF'; g.lineWidth = 1.5; g.beginPath();
@@ -3568,8 +3582,9 @@ function kcPreparar(d){
   const FUERA = mapa(d.fuera), PL = mapa(d.placas), ST = mapa(d.setup), RL = mapa(d.runlife), OP = mapa(d.op);
   const CAP = new Map();
   (d.cap || []).forEach(c => {
+    const fe = kcISO(c.fecha); if (!fe) return;
     if (!CAP.has(c.unidad)) CAP.set(c.unidad, []);
-    CAP.get(c.unidad).push({ f: String(c.fecha).slice(0, 10), c });
+    CAP.get(c.unidad).push({ f: fe, c });
   });
   CAP.forEach(a => a.sort((x, y) => x.f < y.f ? -1 : 1));
   const capDe = (u, f) => {
@@ -3580,7 +3595,8 @@ function kcPreparar(d){
   const H = new Map();
   (d.hist || []).forEach(r => {
     const u = r.unidad; if (!u) return;
-    const fila = { _fecha: String(r.fecha).slice(0, 10), _fop: kcN(r.f_op), _fmax: kcN(r.hsc), _mode: kcModo(r.modo),
+    const fe = kcISO(r.fecha); if (!fe) return;
+    const fila = { _fecha: fe, _fop: kcN(r.f_op), _fmax: kcN(r.hsc), _mode: kcModo(r.modo),
                    _origen: r.origen || null, _inval: r.invalidos || {} };
     Object.entries(r.valores || {}).forEach(([k, v]) => {
       const n = kcN(v); if (n == null) return;
@@ -3591,7 +3607,7 @@ function kcPreparar(d){
   });
   H.forEach((filas, u) => {
     filas.sort((a, b) => a._fecha < b._fecha ? -1 : 1);
-    const st = ST.get(u) || {}, fset = st.ajustado_el ? String(st.ajustado_el).slice(0, 10) : null;
+    const st = ST.get(u) || {}, fset = kcISO(st.ajustado_el);
     filas.forEach(f => { if (!f._mode && fset && f._fecha >= fset) f._mode = kcModo(st.modo_control); });
   });
   const todas = new Set([...OP.keys(), ...FUERA.keys(), ...H.keys()]);
@@ -3605,7 +3621,7 @@ function kcPreparar(d){
   };
   const bitPor = new Map(), aisPor = new Map();
   (d.bit || []).forEach(b => { if (!bitPor.has(b.unidad)) bitPor.set(b.unidad, []); bitPor.get(b.unidad).push(b); });
-  (d.ais || []).forEach(a => { if (!aisPor.has(a.unidad)) aisPor.set(a.unidad, []); aisPor.get(a.unidad).push(a); });
+  (d.ais || []).forEach(a => { const fe = kcISO(a.fecha); if (!fe) return; a = { ...a, fecha: fe }; if (!aisPor.has(a.unidad)) aisPor.set(a.unidad, []); aisPor.get(a.unidad).push(a); });
   return { FUERA, PL, ST, RL, OP, H, capDe, unidades, estado, bitPor, aisPor,
            conHoja: unidades.filter(u => (H.get(u) || []).length) };
 }
@@ -3614,7 +3630,7 @@ function kcPreparar(d){
 function kcHojaPozo(wb, ws, P, u, nav, lienzo){
   const hoja = kcHoja(u), filas = P.H.get(u), pl = P.PL.get(u) || {}, st = P.ST.get(u) || {};
   const est = P.estado(u);
-  const inst = pl.motor_desde ? String(pl.motor_desde).slice(0, 10) : ((P.RL.get(u) || {}).instalado_el || null);
+  const inst = kcISO(pl.motor_desde) || kcISO((P.RL.get(u) || {}).instalado_el);
   const serieAct = pl.motor_serial || null;
   const aplica = new Set();
   KC_G.forEach(([, it]) => it.forEach(([k]) => { if (KC_SIEMPRE.has(k) || filas.some(f => typeof f[k] === 'number')) aplica.add(k); }));
@@ -3789,10 +3805,10 @@ function kcHojaPozo(wb, ws, P, u, nav, lienzo){
   const thT = ['DATE', 'RUN', 'TESTED', 'EQUIPMENT SERIAL', 'PHASE RES. A–B (Ω)', 'PHASE RES. A–C (Ω)', 'PHASE RES. B–C (Ω)', 'IR 1 MIN (MΩ)', 'IR 10 MIN (MΩ)', 'IP', 'DAR', 'IEEE 43 MIN (MΩ)', 'RESULT'];
   const spT = [1, 2, 2, 2, 1, 1, 1, 1, 1, 1, 1, 1, 3], anchoT = spT.reduce((a, b) => a + b, 0);
   banner(T0, 'THOROUGH ELECTRICAL TESTS', anchoT); fila(T0 + 1, thT, spT, 'h');
-  const ens = (P.aisPor.get(u) || []).slice().sort((a, b) => String(a.fecha) < String(b.fecha) ? -1 : 1);
+  const ens = (P.aisPor.get(u) || []).slice().sort((a, b) => a.fecha < b.fecha ? -1 : 1);
   const COMP = { MOTOR: 'Motor (terminals)', MOTOR_CABLE: 'Motor + cable (surface)', CABLE: 'Cable only', SUT: 'Step-up transformer', GENERADOR: 'Generator' };
   ens.forEach((a, i) => {
-    const r = T0 + 2 + i, fe = String(a.fecha || '').slice(0, 10);
+    const r = T0 + 2 + i, fe = a.fecha;
     a._run = corrida(fe, a.serial, a.retirada);
     const v = [kcFecha(fe), a._run, COMP[a.componente] || a.componente || '—', a.serial || 'not recorded', kcN(a.bal_ab), kcN(a.bal_ac), kcN(a.bal_bc),
                kcN(a.ir_1min), kcN(a.ir_10min), kcN(a.ip), kcN(a.dar), kcN(a.umbral), a.dictamen || null];
@@ -3818,10 +3834,10 @@ function kcHojaPozo(wb, ws, P, u, nav, lienzo){
   banner(B0, 'LOGBOOK  ·  every equipment change, intervention and event is recorded here', anchoB); fila(B0 + 1, thB, spB, 'h');
   const bits = (P.bitPor.get(u) || []).slice().sort((a, b) => String(a.fecha || '9') < String(b.fecha || '9') ? -1 : 1);
   bits.forEach((b, i) => {
-    const r = B0 + 2 + i, fe = /^\d{4}-\d{2}-\d{2}/.test(String(b.fecha || '')) ? String(b.fecha).slice(0, 10) : null;
+    const r = B0 + 2 + i, fe = kcISO(b.fecha);
     const rl = corrida(fe, null, null), sev = kcTr(b.severidad);
     const v = [fe ? kcFecha(fe) : 'No date', rl, kcTr(b.categoria), sev, kcTr(b.estado), kcTxt(b.observaciones) || null, kcTxt(b.recomendaciones) || null,
-               b.realizado_por || null, b.cerrado_en ? kcFecha(String(b.cerrado_en).slice(0, 10)) : null];
+               b.realizado_por || null, kcFecha(b.cerrado_en)];
     const ini = fila(r, v, spB, 'd', ['dd-mmm-yy', null, null, null, null, null, null, null, 'dd-mmm-yy']);
     [5, 6].forEach(j => { const x = ws.getCell(r, ini[j]); x.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }; x.font = { name: KC.AR, size: 9 }; });
     if (rl === 'Previous run') [ini[0], ini[1]].forEach(cc => { ws.getCell(r, cc).fill = kcRelleno(KC.FPREV); });
@@ -3976,12 +3992,12 @@ function kcConsolidado(ws, P, REF, meta){
                 lk('busdc_v'), lk('busac_v'), ak(X.KC), ak(X.GC['AMP INPUT PST'] + 2), ak(X.GC['AMP OUT PST #1 HEX Δ'] + 2), ak(X.GC['AMP OUT PST #2 HEX Y'] + 2),
                 ak(X.GC['AMP OUT VSD'] + 2), ak(X.GC['AMP OUT SUT'] + 2), ak(X.MC + 2), kcN(rl.run_dias), lk('sf_pip_psi'), lk('sf_t_motor_c'),
                 lk('sf_vib_x_g'), lk('sf_vib_y_g'), kcHV(String(abiertos), h, 'A' + X.B0)]);
-    const fechadas = bits.filter(b => /^\d{4}-\d{2}-\d{2}/.test(String(b.fecha || '')));
+    const fechadas = bits.filter(b => kcISO(b.fecha)).map(b => ({ ...b, fecha: kcISO(b.fecha) }));
     if (fechadas.length){
       const b = fechadas.reduce((m, x) => String(x.fecha) > String(m.fecha) ? x : m);
       let cuerpo = kcTxt(b.observaciones).replace(/\n/g, ' '); if (cuerpo.length > 320) cuerpo = cuerpo.slice(0, 317).replace(/\s\S*$/, '') + '…';
       let rec = kcTxt(b.recomendaciones).replace(/\n/g, ' '); if (rec.length > 200) rec = rec.slice(0, 197).replace(/\s\S*$/, '') + '…';
-      notas.push({ t: kcDiaTxt(kcFecha(String(b.fecha).slice(0, 10))) + ' · ' + kcTr(b.categoria) + ' · ' + kcTr(b.severidad) + ' · ' + kcTr(b.estado) + '\n' + cuerpo + (rec ? '\n► ' + rec : ''),
+      notas.push({ t: kcDiaTxt(kcFecha(b.fecha)) + ' · ' + kcTr(b.categoria) + ' · ' + kcTr(b.severidad) + ' · ' + kcTr(b.estado) + '\n' + cuerpo + (rec ? '\n► ' + rec : ''),
                    sev: kcTr(b.severidad), abierto: ABIERTO.includes(kcTr(b.estado)), n: abiertos });
     } else notas.push({ t: 'No logbook entries', n: abiertos });
   });
@@ -4270,8 +4286,8 @@ function kcEquipos(ws, P, d){
     const v = [op.pad || (P.FUERA.get(u) || {}).pad || '—', kcHoja(u), P.estado(u),
       pl.pst_marca, pl.pst_modelo, pl.pst_serial, pst, pst ? Math.round(pst * 1000 / (S3 * 480)) : null, pst ? Math.round(pst * 1000 / 2 / (S3 * 480)) : null,
       pl.vfd_marca, pl.vfd_modelo, pl.vfd_serial, kcN(cap.vfd_cap_a), sal.modo_inversor || null,
-      pl.sut_marca, pl.sut_modelo, pl.sut_serial, kcN(cap.sut_cap_kva), kcNumTexto(st.tap_configurado), kcNumTexto(st.tap_recomendado), st.ajustado_el ? kcFecha(String(st.ajustado_el).slice(0, 10)) : null,
-      pl.motor_marca, pl.motor_modelo, pl.motor_serial, kcN(pl.motor_hp), kcN(pl.motor_v), kcN(pl.motor_i), pl.motor_aislamiento || null, pl.motor_desde ? kcFecha(String(pl.motor_desde).slice(0, 10)) : null,
+      pl.sut_marca, pl.sut_modelo, pl.sut_serial, kcN(cap.sut_cap_kva), kcNumTexto(st.tap_configurado), kcNumTexto(st.tap_recomendado), kcFecha(st.ajustado_el),
+      pl.motor_marca, pl.motor_modelo, pl.motor_serial, kcN(pl.motor_hp), kcN(pl.motor_v), kcN(pl.motor_i), pl.motor_aislamiento || null, kcFecha(pl.motor_desde),
       kcNumTexto(st.cable_longitud), st.cable_tipo || null];
     v.forEach((x, j) => kcDat(ws, r, j + 1, x == null || x === '' ? null : x, x instanceof Date ? 'dd-mmm-yy' : (typeof x === 'number' && x !== Math.trunc(x) ? '0.00' : null)));
     ws.getCell(r, 3).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
@@ -4292,7 +4308,7 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
     const r = 5 + i, X = REF[u], op = P.OP.get(u) || {}, pl = P.PL.get(u) || {}, rl = P.RL.get(u) || {};
     const ld = X ? X.filas[X.filas.length - 1]._fecha : null, est = P.estado(u);
     const v = [kcHoja(u), op.pad || '—', est, ld ? kcFecha(ld) : 'No readings', ld ? kcDias(meta.fecha, ld) : '—', kcN(rl.run_dias) != null ? kcN(rl.run_dias) : '—',
-               pl.motor_desde ? kcFecha(String(pl.motor_desde).slice(0, 10)) : '—', X ? kcHV('Open ►', kcHoja(u)) : '—'];
+               kcFecha(pl.motor_desde) || '—', X ? kcHV('Open ►', kcHoja(u)) : '—'];
     v.forEach((x, j) => kcDat(ws, r, j + 1, x, x instanceof Date ? 'dd-mmm-yy' : null));
     ws.getCell(r, 3).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
     ws.getCell(r, 1).font = { name: KC.AR, size: 10, bold: true };
