@@ -2768,10 +2768,48 @@ function keNavegacion(wb, cb, indice, filaIndice){
 }
 
 /* ---------- accion de pantalla ---------- */
+/* ── Consultas largas para las exportaciones ──────────────────────────
+   El cliente heredado de Kronos-M corta cada llamada a los 8 segundos y
+   cae a la copia local: es lo correcto para la captura en campo con mala
+   senal, pero una exportacion arma todo el ambito y puede tardar mas.
+   Estas consultas van directo a PostgREST con la misma sesion y un
+   limite propio de 2 minutos. Devuelven lo mismo que sb.rpc. */
+async function kcRpc(fn, args, ms){
+  const lim = ms || 120000;
+  const sb = kpCliente();
+  const url = String(kpCredencial('SUPABASE_URL') || sb.supabaseUrl || '').replace(/\/$/, '');
+  const key = kpCredencial('SUPABASE_ANON_KEY') || sb.supabaseKey;
+  if (!url || !key) return sb.rpc(fn, args);
+  let token = key;
+  try {
+    const { data } = await sb.auth.getSession();
+    if (data && data.session && data.session.access_token) token = data.session.access_token;
+  } catch(e){}
+  const ctl = new AbortController();
+  const t = setTimeout(() => ctl.abort(), lim);
+  try {
+    const r = await fetch(url + '/rest/v1/rpc/' + fn, {
+      method: 'POST', signal: ctl.signal,
+      headers: { apikey: key, Authorization: 'Bearer ' + token,
+                 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(args || {})
+    });
+    const txt = await r.text();
+    if (!r.ok){
+      let m = txt; try { const j = JSON.parse(txt); m = j.message || j.hint || txt; } catch(e){}
+      return { data: null, error: { message: m || ('HTTP ' + r.status) } };
+    }
+    return { data: txt ? JSON.parse(txt) : null, error: null };
+  } catch(e){
+    return { data: null, error: { message: e.name === 'AbortError'
+      ? 'la consulta paso de ' + Math.round(lim / 1000) + ' segundos' : e.message } };
+  } finally { clearTimeout(t); }
+}
+
 async function kpExportarEntrega(){
   let campos = [];
   try {
-    const { data } = await kpCliente().rpc('dp_entrega_operacional');
+    const { data } = await kcRpc('dp_entrega_operacional');
     campos = Array.from(new Set((data || []).map(x => x.campo).filter(Boolean))).sort();
   } catch(e){}
 
@@ -2795,7 +2833,7 @@ async function kpExportarEntrega(){
     const ExcelJS = await keExcelJS();
     const sb = kpCliente();
     const pedir = async (fn) => {
-      const { data, error } = await sb.rpc(fn, { p_campo: c, p_sistema: s });
+      const { data, error } = await kcRpc(fn, { p_campo: c, p_sistema: s });
       if (error) throw new Error(fn + ': ' + error.message);
       return data || [];
     };
@@ -2811,8 +2849,8 @@ async function kpExportarEntrega(){
     let runlife = [], umbrales = [];
     try {
       const [rl, um] = await Promise.all([
-        sb.rpc('dp_run_life',           { p_campo: c, p_sistema: s }),
-        sb.rpc('dp_umbrales_vigentes'),
+        kcRpc('dp_run_life',           { p_campo: c, p_sistema: s }),
+        kcRpc('dp_umbrales_vigentes'),
       ]);
       if (rl.error) throw new Error(rl.error.message);
       runlife  = rl.data || [];
@@ -2824,8 +2862,8 @@ async function kpExportarEntrega(){
     let detalle = [], puntos = [];
     try {
       const [dd, pp] = await Promise.all([
-        sb.rpc('dp_entrega_detalle',        { p_campo: c, p_sistema: s }),
-        sb.rpc('dp_entrega_detalle_puntos', { p_campo: c, p_sistema: s }),
+        kcRpc('dp_entrega_detalle',        { p_campo: c, p_sistema: s }),
+        kcRpc('dp_entrega_detalle_puntos', { p_campo: c, p_sistema: s }),
       ]);
       if (dd.error) throw new Error(dd.error.message);
       if (pp.error) throw new Error(pp.error.message);
@@ -2837,7 +2875,7 @@ async function kpExportarEntrega(){
 
     let historico = [];
     try {
-      const { data, error } = await sb.rpc('dp_entrega_historico',
+      const { data, error } = await kcRpc('dp_entrega_historico',
         { p_campo: c, p_sistema: s, p_meses: 24 });
       if (error) throw new Error(error.message);
       historico = data || [];
@@ -2862,7 +2900,7 @@ async function kpExportarEntrega(){
 
     let fuera = [];
     try {
-      const { data, error } = await sb.rpc('dp_entrega_fuera_monitoreo');
+      const { data, error } = await kcRpc('dp_entrega_fuera_monitoreo');
       if (error) throw new Error(error.message);
       /* La funcion ya trae campo y sistema de la unidad: se filtra con
          eso y no con la flota, que es solo BES. */
@@ -2883,8 +2921,8 @@ async function kpExportarEntrega(){
         const id = await kpIdDe(u);
         if (!id) return null;
         const [ra, rc] = await Promise.all([
-          sb.rpc('dp_aislamiento_unidad', { p_pozo_id: id }),
-          sb.rpc('dp_contexto',           { p_pozo_id: id }),
+          kcRpc('dp_aislamiento_unidad', { p_pozo_id: id }),
+          kcRpc('dp_contexto',           { p_pozo_id: id }),
         ]);
         return { u,
                  ais: ra.error ? [] : (ra.data || []),
@@ -2909,7 +2947,7 @@ async function kpExportarEntrega(){
        quedan con el resto de columnas vacias y la hoja las atenua. */
     let propuestas = operacional.map(x => ({ unidad: x.unidad, campo: x.campo }));
     try {
-      const { data } = await sb.rpc('opt_propuestas');
+      const { data } = await kcRpc('opt_propuestas');
       const conProp = new Map();
       (data || [])
         .filter(p => p.estado !== 'descartada')
@@ -4320,7 +4358,7 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
 async function kcExportarCliente(){
   let campos = [];
   try {
-    const { data } = await kpCliente().rpc('dp_entrega_operacional');
+    const { data } = await kcRpc('dp_entrega_operacional');
     campos = Array.from(new Set((data || []).map(x => x.campo).filter(Boolean))).sort();
   } catch(e){}
   const campo = prompt('Formato cliente · campo a exportar:\n\n' + campos.join('\n')
@@ -4338,7 +4376,7 @@ async function kcExportarCliente(){
     const ExcelJS = await keExcelJS();
     const sb = kpCliente();
     const pedir = async (fn, args) => {
-      const { data, error } = await sb.rpc(fn, args);
+      const { data, error } = await kcRpc(fn, args);
       if (error) throw new Error(fn + ': ' + error.message);
       return data;
     };
@@ -4361,8 +4399,8 @@ async function kcExportarCliente(){
       const id = await kpIdDe(u);
       if (!id) return null;
       const [ra, rc] = await Promise.all([
-        sb.rpc('dp_aislamiento_unidad', { p_pozo_id: id }),
-        sb.rpc('dp_contexto', { p_pozo_id: id })
+        kcRpc('dp_aislamiento_unidad', { p_pozo_id: id }),
+        kcRpc('dp_contexto', { p_pozo_id: id })
       ]);
       return { u, ais: ra.error ? [] : (ra.data || []), bit: rc.error ? [] : ((rc.data && rc.data.bitacora) || []) };
     }, (n, t) => aviso('Ensayos y bitacora ' + n + '/' + t + '\u2026'));
