@@ -2001,10 +2001,14 @@ function buildPanels(){
   const list=[...sel].map(r=>u.ch[r]).filter(C=>C&&C.n);
   /* Superpuesto con un eje por canal, al estilo de los visores de pozo.
      La normalización 0-100 alineaba las curvas pero el eje no correspondía
-     a nada y no se podía leer un valor. Con más de 8 canales las columnas
-     de eje se comen el ancho útil, así que ahí sí se cae a normalizado. */
+     a nada y no se podía leer un valor. Solo se cae a normalizado cuando las
+     columnas de eje se comerían el ancho útil. Se cuentan EJES, no canales:
+     las tres fases comparten uno, así que nueve canales pueden ser seis ejes.
+     El tope sale del ancho real del panel (columnas de 32 px en el 44 %). */
+  const wPlots=(document.getElementById("plots")||{}).clientWidth||1200;
+  const maxEjes=Math.max(6, Math.floor(wPlots*0.44/32));
   if(mode==="one") return list.length
-    ? [ list.length<=8
+    ? [ gruposDeEje(list).length<=maxEjes
         ? {title:"Superpuesto · multieje", chs:list, multi:true}
         : {title:"Superpuesto · normalizado ("+list.length+" canales)", chs:list, norm:true} ]
     : [];
