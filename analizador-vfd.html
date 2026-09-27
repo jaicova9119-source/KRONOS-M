@@ -310,6 +310,33 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
 
 @media (max-width:1250px){ .main{grid-template-columns:220px 1fr} .analysis{grid-column:1/-1;border-left:none;border-top:1px solid var(--rule);max-height:46vh} }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
+
+/* Selector de color y trazo por canal */
+.chan .sw{position:relative;cursor:pointer;transition:width .12s}
+.chan .sw::after{content:"";position:absolute;inset:-5px -8px}
+.chan .sw:hover{width:6px}
+.lg i{position:relative;cursor:pointer;height:3px}
+.lg i::after{content:"";position:absolute;inset:-7px -3px}
+.sec-h .secb.secc:hover{border-color:var(--acc-dim);color:var(--acc)}
+#cpop{position:fixed;z-index:90;background:var(--panel);border:1px solid var(--rule2);border-radius:4px;
+  padding:9px 10px 10px;box-shadow:0 8px 28px rgba(0,0,0,.45);width:232px;font-family:var(--f-ui);font-size:12.5px;color:var(--tx)}
+:root[data-theme="light"] #cpop{box-shadow:0 8px 28px rgba(30,60,80,.2)}
+#cpop .cp-h{display:flex;align-items:center;gap:8px;padding-bottom:7px;margin-bottom:8px;border-bottom:1px solid var(--rule)}
+#cpop .cp-h span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--f-mono);font-size:11.5px;color:var(--acc)}
+#cpop .cp-x{color:var(--tx3);font-size:15px;line-height:1;padding:0 3px}
+#cpop .cp-x:hover{color:var(--crit)}
+#cpop .cp-g{display:grid;grid-template-columns:repeat(8,1fr);gap:5px}
+#cpop .cp-s{aspect-ratio:1;border-radius:3px;border:2px solid transparent;outline:1px solid var(--rule)}
+#cpop .cp-s:hover{outline-color:var(--tx2)}
+#cpop .cp-s.on{border-color:var(--panel);outline:2px solid var(--tx)}
+#cpop .cp-f,#cpop .cp-t,#cpop .cp-gl{display:flex;gap:5px;margin-top:8px;align-items:center}
+#cpop .cp-gl{padding-top:8px;border-top:1px solid var(--rule)}
+#cpop .cp-b{flex:1;font-size:11.5px;padding:4px 5px;border:1px solid var(--rule2);border-radius:2px;color:var(--tx2);white-space:nowrap}
+#cpop .cp-b:hover:not(:disabled){border-color:var(--acc-dim);color:var(--acc)}
+#cpop .cp-b.on{border-color:var(--acc-dim);color:var(--acc);background:var(--acc-bg)}
+#cpop .cp-b:disabled{opacity:.4;cursor:default}
+#cpop .cp-o{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--tx2);cursor:pointer}
+#cpop .cp-o input{width:30px;height:22px;padding:0;border:1px solid var(--rule2);border-radius:2px;background:none;cursor:pointer}
 </style>
 
 <div id="app" hidden>
@@ -355,7 +382,7 @@ table.st td:first-child{color:var(--tx);max-width:120px;overflow:hidden;text-ove
            escoger un canal. -->
       <div class="sec" id="secGrupos"><h3 class="sec-h">Grupos</h3><div class="grp" id="grps"></div></div>
       <div class="sec" id="secCanales">
-        <h3 class="sec-h">Canales <em id="nSel"></em></h3>
+        <h3 class="sec-h">Canales <em id="nSel"></em><button class="secb secc" id="bContraste" title="Reasigna colores de los canales visibles que se confunden. Clic en la muestra de color de un canal para elegirlo a mano.">Contraste</button></h3>
         <div id="chans"></div>
       </div>
       <div class="sec" id="secModo"><h3 class="sec-h">Modo de panel</h3><div class="grp" id="modes"></div></div>
@@ -1253,7 +1280,7 @@ function addFileFromText(text,fname,forceUnit){
       const a=acc[role]; if(!a.t.length) continue;
       if(!R[role]) ensureRole(role,a.src||role,a.srcUnit||"");
       const C=U.ch[role]||(U.ch[role]={role,label:R[role][0],unit:R[role][1]||a.srcUnit||"",
-        cvar:R[role][2],lowres:!!prof.lowres,srcs:new Set(),T:[],Y:[],FI:[]});
+        cvar:cvarDe(role),lowres:!!prof.lowres,srcs:new Set(),T:[],Y:[],FI:[]});
       C.srcs.add(a.src);
       for(let i=0;i<a.t.length;i++){ C.T.push(a.t[i]); C.Y.push(a.y[i]); C.FI.push(f.id); }
       t0=Math.min(t0,a.t[0]); t1=Math.max(t1,a.t[a.t.length-1]); added++;
@@ -1318,7 +1345,7 @@ function finalizeUnit(U,f){
   computeSegments(U);
 }
 function pushCh(U,role,t,y){
-  const C=U.ch[role]||(U.ch[role]={role,label:R[role][0],unit:R[role][1],cvar:R[role][2],derived:true,srcs:new Set(["calc"])});
+  const C=U.ch[role]||(U.ch[role]={role,label:R[role][0],unit:R[role][1],cvar:cvarDe(role),derived:true,srcs:new Set(["calc"])});
   C.t=t; C.y=y; C.n=t.length; C.pyr=null; C.derived=true; C._y0=null; C._bad=undefined;
 }
 function alignedPairs(A,B){ // recorre dos canales y devuelve puntos donde ambos existen (vecino más cercano ≤ tol)
@@ -1626,7 +1653,8 @@ function buildChans(){
   const u=U(),box=$("#chans"); box.innerHTML="";
   Object.values(u.ch).filter(C=>C.n).sort((a,b)=>a.label.localeCompare(b.label)).forEach(C=>{
     const d=el("div","chan"+(sel.has(C.role)?" on":""));
-    const sw=el("i","sw"); sw.style.background=V(C.cvar); d.appendChild(sw);
+    const sw=el("i","sw"); sw.style.background=fondoMuestra(C,true); sw.title="Cambiar color o trazo";
+    sw.onclick=e=>abrirSelColor(C,e); d.appendChild(sw);
     d.appendChild(el("span","nm",C.label));
     d.appendChild(el("span","tg",C.unit||""));
     if(badCh(C)) d.classList.add("dead");
@@ -1670,11 +1698,209 @@ function buildEvents(){
    7 · RENDER
 ══════════════════════════════════════════════════════════════════ */
 let VCACHE={};
-function V(n,fb){ if(!(n in VCACHE)){ const v=getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function V(n,fb){ if(n&&n[0]==="#") return n; if(!(n in VCACHE)){ const v=getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   VCACHE[n]=v||fb||"#888"; } return VCACHE[n]; }
 function cssFont(v){ return V(v,"monospace"); }
+
+/* ══════════════════════════════════════════════════════════════════
+   7b · COLOR Y TRAZO POR CANAL
+   El catálogo R asigna un color por rol, pero con doce tonos para más de
+   sesenta roles hay repeticiones inevitables (Corriente salida A y Temp.
+   de devanado comparten rojo). Aquí el usuario puede cambiarlo.
+   · Se guarda por ROL, no por posición: el color sigue al canal en
+     cualquier pozo y formato (.dat, CSV, .JRN).
+   · Se guarda por TEMA: un tono elegido sobre fondo oscuro rara vez sirve
+     sobre blanco.
+   · El trazo (continua, discontinua, punteada) no depende del tema.
+   Todo vive en el navegador; no toca Supabase.
+══════════════════════════════════════════════════════════════════ */
+const PAL_USR={
+  dark:["#FF5257","#FF8A3D","#FFB020","#EFD64A","#A5D93F","#6BE36B","#2FD4B5","#35D6E3",
+        "#4DA3FF","#7C7CFF","#B98CFF","#E05CE0","#FF6FB5","#C68A5A","#8FA5B4","#F2F2F2"],
+  light:["#C7262C","#BE4E12","#9A6400","#8A7400","#5C7A0A","#1F8F2E","#067F6B","#0A7C8A",
+         "#1668C7","#3434B8","#6E3FBF","#A0189C","#B62E77","#7A4A24","#5B7383","#1B1B1B"]
+};
+const TRAZOS=[[],[7,4],[1.6,3.2]], TRAZO_TXT=["Continua","Discontinua","Punteada"];
+function leerLS(k){ try{ return JSON.parse(localStorage.getItem(k)||"{}")||{}; }catch(e){ return {}; } }
+let COLORES=leerLS("vfd_colores_v1");     // {dark:{rol:"#hex"}, light:{...}}
+let TRAZO_ROL=leerLS("vfd_trazos_v1");    // {rol:0|1|2}
+let AUTO_ROL=leerLS("vfd_auto_v1");       // {dark:{rol:1}} colores puestos por Auto contraste, no a mano
+function guardarEstilos(){
+  try{ localStorage.setItem("vfd_colores_v1",JSON.stringify(COLORES));
+       localStorage.setItem("vfd_trazos_v1",JSON.stringify(TRAZO_ROL));
+       localStorage.setItem("vfd_auto_v1",JSON.stringify(AUTO_ROL)); }catch(e){}
+}
+const temaKey=()=>document.documentElement.dataset.theme==="light"?"light":"dark";
+function cvarDe(role){
+  const o=(COLORES[temaKey()]||{})[role];
+  return o || (R[role]? R[role][2] : "--c-ste");
+}
+const trazoDe=role=>TRAZOS[TRAZO_ROL[role]|0]||[];
+/* Muestra de leyenda con el patrón del trazo, para que discontinua y
+   punteada también se distingan fuera del lienzo. vert = barra vertical. */
+function fondoMuestra(C,vert){
+  const col=V(C.cvar), t=TRAZO_ROL[C.role]|0, dir=vert?"180deg":"90deg";
+  if(t===1) return `repeating-linear-gradient(${dir},${col} 0 4px,transparent 4px 6px)`;
+  if(t===2) return `repeating-linear-gradient(${dir},${col} 0 1.5px,transparent 1.5px 3.5px)`;
+  return col;
+}
+function aplicarColores(){
+  if(typeof DB==="undefined"||!DB.units) return;
+  for(const k in DB.units){ const u=DB.units[k]; for(const r in u.ch) u.ch[r].cvar=cvarDe(r); }
+}
+function refrescarEstilos(){
+  aplicarColores();
+  if(!DB.active) return;
+  // Las lecturas fijadas guardan el color con que se tomaron; se recalculan
+  // para que no queden con el tono anterior.
+  try{ fijos.forEach(f=>{ if(f.unit===DB.active) f.filas=lecturaEn(f.t); }); }catch(e){}
+  buildChans(); renderAll();
+  try{ pintarFijo(); }catch(e){}
+}
+function setColorRol(role,hex){
+  const t=temaKey(); COLORES[t]=COLORES[t]||{};
+  if(hex) COLORES[t][role]=hex; else delete COLORES[t][role];
+  if(AUTO_ROL[t]) delete AUTO_ROL[t][role];     // elegido a mano: Auto contraste ya no lo toca
+  guardarEstilos(); refrescarEstilos();
+}
+function setTrazoRol(role,n){
+  if(n) TRAZO_ROL[role]=n; else delete TRAZO_ROL[role];
+  guardarEstilos(); refrescarEstilos();
+}
+
+/* Distancia perceptual CIEDE2000. La euclídea en Lab sobrestima el croma:
+   da por distintos un rojo y un rosa que sobre una línea de 1 px se
+   confunden. */
+function hexRgb(c){
+  c=String(c).trim();
+  if(c[0]!=="#"){ const m=c.match(/\d+(\.\d+)?/g); return m? m.slice(0,3).map(Number) : [128,128,128]; }
+  if(c.length===4) c="#"+c[1]+c[1]+c[2]+c[2]+c[3]+c[3];
+  return [1,3,5].map(i=>parseInt(c.substr(i,2),16));
+}
+function aLab(c){
+  const l=hexRgb(c).map(v=>v/255).map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4));
+  const X=(l[0]*.4124+l[1]*.3576+l[2]*.1805)/.95047, Y=l[0]*.2126+l[1]*.7152+l[2]*.0722,
+        Z=(l[0]*.0193+l[1]*.1192+l[2]*.9505)/1.08883;
+  const f=t=>t>.008856?Math.cbrt(t):7.787*t+16/116;
+  return [116*f(Y)-16, 500*(f(X)-f(Y)), 200*(f(Y)-f(Z))];
+}
+function dE00(c1,c2){
+  const [L1,a1,b1]=aLab(c1),[L2,a2,b2]=aLab(c2), rad=Math.PI/180;
+  const C1=Math.hypot(a1,b1),C2=Math.hypot(a2,b2),Cm=(C1+C2)/2,G=.5*(1-Math.sqrt(Cm**7/(Cm**7+25**7)));
+  const a1p=a1*(1+G),a2p=a2*(1+G),C1p=Math.hypot(a1p,b1),C2p=Math.hypot(a2p,b2);
+  const hp=(b,a)=>{ if(!b&&!a) return 0; const h=Math.atan2(b,a)/rad; return h<0?h+360:h; };
+  const h1p=hp(b1,a1p),h2p=hp(b2,a2p);
+  const dL=L2-L1,dC=C2p-C1p; let dh=0;
+  if(C1p*C2p){ dh=h2p-h1p; if(dh>180) dh-=360; else if(dh<-180) dh+=360; }
+  const dH=2*Math.sqrt(C1p*C2p)*Math.sin(dh*rad/2), Lm=(L1+L2)/2, Cmp=(C1p+C2p)/2;
+  let hm=h1p+h2p;
+  if(C1p*C2p){ hm=Math.abs(h1p-h2p)>180?(h1p+h2p+360)/2:(h1p+h2p)/2; if(hm>=360) hm-=360; }
+  const T=1-.17*Math.cos((hm-30)*rad)+.24*Math.cos(2*hm*rad)+.32*Math.cos((3*hm+6)*rad)-.2*Math.cos((4*hm-63)*rad);
+  const dT=30*Math.exp(-(((hm-275)/25)**2)), RC=2*Math.sqrt(Cmp**7/(Cmp**7+25**7));
+  const SL=1+.015*(Lm-50)**2/Math.sqrt(20+(Lm-50)**2), SC=1+.045*Cmp, SH=1+.015*Cmp*T, RT=-Math.sin(2*dT*rad)*RC;
+  return Math.sqrt((dL/SL)**2+(dC/SC)**2+(dH/SH)**2+RT*(dC/SC)*(dH/SH));
+}
+/* Auto contraste sobre los canales dibujados. Conserva el color de un canal
+   si ya se distingue de los anteriores; solo reasigna los que chocan.
+   Primero se fijan los colores que el usuario ya eligió, para no pisarlos.
+   Se reserva el tono de las acciones de operador (Setpoint change y
+   similares), que se pinta sobre la señal y es morado como la vibración. */
+const UMBRAL_DE=23;
+function autoContraste(){
+  if(!DB.active) return 0;
+  const vis=[], vistos=new Set();
+  panels.forEach(p=>p.chs.forEach(C=>{ if(!vistos.has(C.role)){ vistos.add(C.role); vis.push(C); } }));
+  if(vis.length<2) return 0;
+  const pal=PAL_USR[temaKey()], t=temaKey();
+  const usados=[V("--g-accion")];
+  let cambios=0; COLORES[t]=COLORES[t]||{};
+  AUTO_ROL[t]=AUTO_ROL[t]||{};
+  const aMano=C=>!!COLORES[t][C.role] && !AUTO_ROL[t][C.role];
+  // Los elegidos a mano se respetan siempre y entran primero como ocupados.
+  vis.filter(aMano).forEach(C=>usados.push(V(C.cvar)));
+  vis.filter(C=>!aMano(C)).forEach(C=>{
+    const actual=V(C.cvar);
+    const minD=c=>usados.reduce((m,u)=>Math.min(m,dE00(c,u)),Infinity);
+    if(minD(actual)>=UMBRAL_DE){ usados.push(actual); return; }
+    let mejor=actual, dm=-1;
+    pal.forEach(c=>{ const d=minD(c); if(d>dm){ dm=d; mejor=c; } });
+    COLORES[t][C.role]=mejor; AUTO_ROL[t][C.role]=1; usados.push(mejor); cambios++;
+  });
+  guardarEstilos(); refrescarEstilos();
+  return cambios;
+}
+function restablecerEstilos(){
+  COLORES[temaKey()]={}; AUTO_ROL[temaKey()]={}; TRAZO_ROL={};
+  guardarEstilos(); refrescarEstilos();
+}
+
+/* Selector flotante. Va colgado de <body>, fuera de #app, para que el zoom
+   de escala de interfaz no desplace su posición. */
+function cerrarSelColor(){
+  const p=document.getElementById("cpop"); if(p) p.remove();
+  document.removeEventListener("pointerdown",cerrarFueraSel,true);
+  document.removeEventListener("keydown",escSel,true);
+}
+function cerrarFueraSel(ev){ const p=document.getElementById("cpop"); if(p&&!p.contains(ev.target)) cerrarSelColor(); }
+function escSel(ev){ if(ev.key==="Escape") cerrarSelColor(); }
+function abrirSelColor(C,ev){
+  ev.stopPropagation(); ev.preventDefault();
+  cerrarSelColor();
+  const t=temaKey(), actual=V(C.cvar).toUpperCase(), propio=!!(COLORES[t]||{})[C.role];
+  const pop=document.createElement("div"); pop.id="cpop";
+  pop.dataset.theme=document.documentElement.dataset.theme||"dark";
+  const h=document.createElement("div"); h.className="cp-h";
+  const nm=document.createElement("span"); nm.textContent=C.label; h.appendChild(nm);
+  const x=document.createElement("button"); x.className="cp-x"; x.textContent="×"; x.title="Cerrar";
+  x.onclick=cerrarSelColor; h.appendChild(x); pop.appendChild(h);
+
+  const g=document.createElement("div"); g.className="cp-g";
+  PAL_USR[t].forEach(c=>{
+    const b=document.createElement("button"); b.className="cp-s"+(c.toUpperCase()===actual?" on":"");
+    b.style.background=c; b.title=c;
+    b.onclick=()=>{ setColorRol(C.role,c); abrirSelColor(C,ev); };
+    g.appendChild(b);
+  });
+  pop.appendChild(g);
+
+  const f=document.createElement("div"); f.className="cp-f";
+  const lab=document.createElement("label"); lab.className="cp-o"; lab.textContent="Otro";
+  const inp=document.createElement("input"); inp.type="color";
+  inp.value=/^#[0-9a-f]{6}$/i.test(actual)? actual.toLowerCase() : "#888888";
+  inp.onchange=()=>setColorRol(C.role,inp.value.toUpperCase());
+  lab.appendChild(inp); f.appendChild(lab);
+  const rs=document.createElement("button"); rs.className="cp-b"; rs.textContent="Color original";
+  rs.disabled=!propio; rs.onclick=()=>{ setColorRol(C.role,null); abrirSelColor(C,ev); };
+  f.appendChild(rs); pop.appendChild(f);
+
+  const tr=document.createElement("div"); tr.className="cp-t";
+  TRAZO_TXT.forEach((txt,n)=>{
+    const b=document.createElement("button"); b.className="cp-b"+(((TRAZO_ROL[C.role]|0)===n)?" on":"");
+    b.textContent=txt; b.onclick=()=>{ setTrazoRol(C.role,n); abrirSelColor(C,ev); };
+    tr.appendChild(b);
+  });
+  pop.appendChild(tr);
+
+  const gl=document.createElement("div"); gl.className="cp-gl";
+  const ac=document.createElement("button"); ac.className="cp-b"; ac.textContent="Auto contraste";
+  ac.title="Reasigna solo los canales visibles que se confunden entre sí";
+  ac.onclick=()=>{ autoContraste(); abrirSelColor(C,ev); };
+  const ra=document.createElement("button"); ra.className="cp-b"; ra.textContent="Restablecer todo";
+  ra.title="Vuelve a los colores y trazos originales (tema actual)";
+  ra.onclick=()=>{ restablecerEstilos(); abrirSelColor(C,ev); };
+  gl.appendChild(ac); gl.appendChild(ra); pop.appendChild(gl);
+
+  document.body.appendChild(pop);
+  const r=pop.getBoundingClientRect(), vw=innerWidth, vh=innerHeight;
+  let px=(ev.clientX||0)+10, py=(ev.clientY||0)+10;
+  if(px+r.width>vw-8) px=Math.max(8,vw-r.width-8);
+  if(py+r.height>vh-8) py=Math.max(8,(ev.clientY||0)-r.height-10);
+  pop.style.left=px+"px"; pop.style.top=py+"px";
+  setTimeout(()=>{ document.addEventListener("pointerdown",cerrarFueraSel,true);
+                   document.addEventListener("keydown",escSel,true); },0);
+}
 function setTheme(t){
-  document.documentElement.dataset.theme=t; VCACHE={};
+  document.documentElement.dataset.theme=t; VCACHE={}; aplicarColores(); cerrarSelColor();
   const b=document.querySelector("#bTheme"); if(b) b.textContent=t==="light"?"Oscuro":"Claro";
   if(DB.active){ buildChans(); renderAll(); }
 }
@@ -1768,7 +1994,8 @@ function renderPlots(){
     hd.appendChild(el("span","pnl-t",p.title));
     const lg=el("div","leg");
     p.chs.forEach(C=>{
-      const s=el("span","lg"); const i=el("i"); i.style.background=V(C.cvar); s.appendChild(i);
+      const s=el("span","lg"); const i=el("i"); i.style.background=fondoMuestra(C,false);
+      i.title="Cambiar color o trazo"; i.onclick=e=>abrirSelColor(C,e); s.appendChild(i);
       s.appendChild(el("span",null,C.label));
       const b=el("b",null,"—"); s.appendChild(b); C._ro=b; lg.appendChild(s);
     });
@@ -1960,13 +2187,13 @@ function drawPanel(p){
     }
     if(!xs.length) return;
 
-    g.beginPath();
+    g.beginPath(); g.setLineDash(trazoDe(C.role));
     // La curva solo aporta cuando hay pocos puntos para muchos píxeles. Con
     // la serie más densa que la pantalla, cada píxel ya tiene su muestra y
     // una recta entre píxeles contiguos es indistinguible de una curva.
     if(SUAVE && xs.length>2 && xs.length < iw*0.6) trazoSuave(g,xs,ys);
     else { g.moveTo(xs[0],ys[0]); for(let i=1;i<xs.length;i++) g.lineTo(xs[i],ys[i]); }
-    g.stroke();
+    g.stroke(); g.setLineDash([]);
 
     // Envolvente: siempre recta, porque representa el rango real medido en
     // esa columna y no un camino entre puntos.
@@ -3757,6 +3984,11 @@ $("#bRen").onclick=()=>{
   if(SRV) fetch(`/api/renombrar?de=${encodeURIComponent(cur)}&a=${encodeURIComponent(nn)}`,{method:"POST"})
             .then(()=>pintarHistorial()).catch(()=>{});
   rebuildAll(nn);
+};
+$("#bContraste").onclick=e=>{ e.stopPropagation();
+  const n=autoContraste(), b=e.currentTarget, t0=b.textContent;
+  b.textContent= n? `${n} ajustado${n>1?"s":""}` : "Sin conflictos";
+  setTimeout(()=>{ b.textContent=t0; },1600);
 };
 $("#bTheme").onclick=()=>setTheme(document.documentElement.dataset.theme==="light"?"dark":"light");
 $("#bCopy").onclick=async e=>{ try{ await navigator.clipboard.writeText(analysisText());
