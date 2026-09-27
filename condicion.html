@@ -971,7 +971,7 @@ body.kp-oscuro{background:var(--bg)}
   <button class="kp-chip" id="kpExportar" onclick="kpExportarEntrega()"
           title="Libro de datos operacionales por campo">Exportar datos</button>
   <button class="kp-chip" id="kcExportar" onclick="kcExportarCliente()"
-          title="Libro en el formato que se entrega al cliente">Formato cliente</button>
+          title="Libro en el formato que se entrega al cliente · version 2026-09-27 d">Formato cliente</button>
 </div>
 
 <div class="kp-panel" id="kpPanel">
@@ -4400,6 +4400,10 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
    el modulo de optimizacion, y arma el libro. Lo opcional (ensayos,
    bitacora, optimizacion) va con su propio try: si una funcion no
    responde, el libro sale igual sin esa parte. */
+/* Version del formato cliente: sale en el aviso de error y en la ayuda del
+   boton, para confirmar que el navegador tiene el archivo nuevo y no una
+   copia guardada por el service worker. */
+const KC_VERSION = '2026-09-27 d';
 async function kcExportarCliente(){
   let campos = [];
   try {
@@ -4475,7 +4479,7 @@ async function kcExportarCliente(){
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   } catch(e){
-    alert('No se pudo generar el formato cliente. ' + e.message);
+    alert('No se pudo generar el formato cliente (version ' + KC_VERSION + '). ' + e.message);
   } finally {
     if (btn){ btn.disabled = false; btn.textContent = previo; }
   }
