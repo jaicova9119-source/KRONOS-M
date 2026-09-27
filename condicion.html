@@ -5003,6 +5003,9 @@ function kpUbicarControles(){
      desaparecia con ella. Se reubica igual que el buscador. */
   const x = document.getElementById('kpExportar');
   if (x && x.parentNode !== destino) destino.appendChild(x);
+  /* El de formato cliente va junto al de exportar, en la misma barra. */
+  const y = document.getElementById('kcExportar');
+  if (y && y.parentNode !== destino) destino.appendChild(y);
 }
 
 /* Deja los dos juegos de controles diciendo lo mismo. */
