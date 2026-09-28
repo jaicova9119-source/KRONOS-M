@@ -714,11 +714,11 @@
              La tarjeta se queda como enlace en lugar de desaparecer: quien
              la buscaba tiene que encontrar a donde ir.
 
-             UBH, UBO, CARGUE, UTA y COMPRESOR quedan fuera: en esos equipos de superficie
-             la prueba se registra directamente desde el modulo de Ensayos
-             Electricos, no desde campo. data-ocultar hace que desaparezca en vez de verse gris:
+             Solo BES. HPUM, UBH, UBO, CARGUE, UTA y COMPRESOR tienen motor
+             de superficie y la prueba se registra directamente desde el
+             modulo de Ensayos Electricos, no desde campo. data-ocultar hace que desaparezca en vez de verse gris:
              una tarjeta deshabilitada invita a preguntar por que no sirve. -->
-        <div class="action-card card-aislamiento" data-sistemas="BES,HPUM" data-ocultar="1"
+        <div class="action-card card-aislamiento" data-sistemas="BES" data-ocultar="1"
              onclick="abrirAislamiento()">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           <div class="body"><div class="ttl">Prueba de aislamiento</div><div class="sub" id="home-ais-sub">Queda pendiente de firma en Ensayos Electricos</div></div>
@@ -1332,7 +1332,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM, UBH, UBO, cargue, transferencia de agua y compresion
-      &middot; <span id="dp-build">v24</span>
+      &middot; <span id="dp-build">v25</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -4114,7 +4114,7 @@ function abrirBitacora(){
 /* Sistemas de superficie cuya prueba de aislamiento vive solo en Ensayos
    Electricos. La tarjeta del inicio se oculta por data-sistemas; esta
    lista cubre las entradas por otra via. */
-var SIN_AISLAMIENTO_EN_CAMPO = ['UBH','UBO','CARGUE','UTA','COMPRESOR'];
+var SIN_AISLAMIENTO_EN_CAMPO = ['HPUM','UBH','UBO','CARGUE','UTA','COMPRESOR'];
 
 function abrirAislamiento(){
   /* UBH registra la prueba en Ensayos Electricos. La tarjeta ya no se
