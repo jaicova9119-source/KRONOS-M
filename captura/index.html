@@ -384,6 +384,11 @@
      llegar al final, y en el movil se quita cuando el teclado esta
      abierto, que es cuando mas estorba. */
   html{scroll-padding-bottom:90px;}
+  /* Frecuencia <-> RPM bomba */
+  .vel-nota{font-size:12px; color:var(--ink-soft); margin:-2px 0 10px; line-height:1.4;}
+  .vel-nota b{font-family:'IBM Plex Mono',monospace; color:var(--titulo); font-weight:600;}
+  .vel-nota.alerta{color:var(--danger);}
+  input.calc-auto{font-style:italic; color:var(--ink-soft);}
   .barra-med{position:sticky; bottom:calc(8px + env(safe-area-inset-bottom, 0px)); z-index:20;
     display:flex; align-items:center; gap:10px; margin-top:6px; padding:8px 8px 8px 12px;
     background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:var(--shadow);
@@ -1332,7 +1337,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM, UBH, UBO, cargue, transferencia de agua y compresion
-      &middot; <span id="dp-build">v25</span>
+      &middot; <span id="dp-build">v26</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -2758,6 +2763,9 @@ function iniciarMedicion(){
     '<div class="grid-fields g3">' +
     '<div class="field"><label>Frecuencia de operacion</label>' +
       '<div class="unit-input"><input class="mono-input" type="number" step="0.1" min="0" max="120" id="med-frecop"><span class="unit">Hz</span></div></div>' +
+    /* Aqui entra "RPM bomba" cuando la topologia trae vfd_rpm (unidades
+       de superficie con reductor). Se reemplaza al tener el catalogo. */
+    '<!--MED_RPM_SLOT-->' +
     '<div class="field"><label>Setpoint de frecuencia</label>' +
       '<div class="unit-input"><input class="mono-input" type="number" step="0.1" min="0" max="120" id="med-frecset"><span class="unit">Hz</span></div></div>' +
     '<div class="field"><label>HSC &middot; frecuencia maxima</label>' +
@@ -2765,6 +2773,7 @@ function iniciarMedicion(){
     '<div class="field"><label>LSC &middot; frecuencia minima</label>' +
       '<div class="unit-input"><input class="mono-input" type="number" step="0.1" min="0" max="120" id="med-lsc"><span class="unit">Hz</span></div></div>' +
     '</div>' +
+    '<!--MED_RPM_NOTA-->' +
     '<div class="field"><label>Control mode</label><select id="med-modo"><option>Freq Set</option><option>PID</option><option>Gas Control</option></select></div>' +
     /* Condicion de la unidad al momento de medir. Es obligatoria en la
        base y cambia el sentido de los numeros: una medicion con el
@@ -2812,7 +2821,23 @@ function iniciarMedicion(){
     MED_CATALOGO  = res.puntos;
     MED_PLANTILLA = res.plantilla || '';
 
-    var grupos = medGruposDesdeCatalogo(MED_CATALOGO);
+    /* RPM de la bomba junto a la frecuencia: en las unidades con reductor
+       muchos teclados muestran RPM de bomba en lugar de Hz, y el tecnico
+       anota lo que ve. Sale de su seccion y sube a la cabecera. */
+    var ptRpm = null;
+    MED_CATALOGO.forEach(function(p){ if (p.codigo === MED_COD_RPM) ptRpm = p; });
+    var cab = cabecera;
+    if (ptRpm){
+      var sisU = MED_SISTEMA_POR_ACTIVO[pozo] || '';
+      cab = cab.replace('<!--MED_RPM_SLOT-->',
+              campoNumero(medIdCampo(MED_COD_RPM), sisU === 'COMPRESOR' ? 'RPM compresor' : 'RPM bomba',
+                          'RPM', { decimales: ptRpm.decimales, rango_min: ptRpm.rango_min,
+                                   rango_max: ptRpm.rango_max, nombre: ptRpm.nombre,
+                                   obligatorio: !!ptRpm.obligatorio }))
+               .replace('<!--MED_RPM_NOTA-->',
+                        '<div id="med-vel-nota" class="vel-nota"></div>');
+    }
+    var grupos = medGruposDesdeCatalogo(MED_CATALOGO.filter(function(p){ return p.codigo !== MED_COD_RPM; }));
     var html = grupos.map(function(g){
       return renderGrupo(g.titulo, g.campos, g.cols, g.info);
     }).join('');
@@ -2824,11 +2849,12 @@ function iniciarMedicion(){
       ' &middot; ' + MED_CATALOGO.length + ' puntos, ' + nObl + ' obligatorios. ' +
       'Los marcados con <span style="color:var(--danger);font-weight:700;">*</span> se piden para dar la ronda por completa.' +
       '</div>';
-    caja.innerHTML = cabecera + resumen +
+    caja.innerHTML = cab + resumen +
       '<div class="group-card" id="ref-fecha-ronda" style="margin-bottom:14px;'
       + 'font-size:12px;color:var(--ink-soft);"></div>' + html;
     var etq = document.querySelector('#screen-medicion-form .s');
     if (etq) etq.textContent = MED_CATALOGO.length + ' puntos de medida';
+    if (ptRpm) medVelEnlazar(pozo);
     /* Despues del innerHTML: antes los nodos no existen. */
     return promRef.then(function(){
       medPintarReferencias();
@@ -3850,6 +3876,94 @@ function medBarraEvaluarScroll(){
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', enganchar);
   else enganchar();
 })();
+
+
+/* ============================================================
+   FRECUENCIA <-> RPM DE LA BOMBA
+   ============================================================
+   Las unidades de superficie mueven la bomba a traves de un reductor.
+   Algunos teclados se configuran para mostrar RPM de bomba en lugar de
+   la frecuencia de salida. Ese numero no lo mide el variador: lo
+   escala desde la frecuencia, asi que la relacion es lineal y fija:
+
+       RPM bomba = (120 x f / polos) / ratio
+
+   Con polos del motor y ratio del reductor configurados, el tecnico
+   escribe cualquiera de los dos y el otro se completa. El valor
+   calculado se ve en cursiva y se reemplaza si luego se escribe
+   encima. Si el tecnico llena los dos a mano, no se pisa ninguno: se
+   compara y se avisa si no cuadran, porque eso es un ratio mal
+   configurado o una lectura equivocada.
+
+   De donde salen polos y ratio: MED_VEL_CFG_POR_ACTIVO, que llenara la
+   configuracion de la unidad (Setup). Mientras no exista, los dos
+   campos funcionan sueltos y la nota lo dice.                    */
+
+var MED_COD_RPM = 'vfd_rpm';
+var MED_VEL_CFG_POR_ACTIVO = {};
+try { MED_VEL_CFG_POR_ACTIVO = JSON.parse(dpAlmacen.getItem('dp_velocidad_cache') || '{}') || {}; } catch(e){}
+
+/* RPM de bomba por Hz. null si falta configuracion o es absurda. */
+function medVelFactor(pozo){
+  var c = MED_VEL_CFG_POR_ACTIVO[pozo];
+  if (!c) return null;
+  var polos = Number(c.polos), ratio = Number(c.ratio);
+  if (!(polos >= 2 && polos % 2 === 0 && ratio > 0)) return null;
+  return 120 / polos / ratio;
+}
+
+function medVelEnlazar(pozo){
+  var f = document.getElementById('med-frecop');
+  var r = document.getElementById(medIdCampo(MED_COD_RPM));
+  var nota = document.getElementById('med-vel-nota');
+  if (!f || !r) return;
+  var k = medVelFactor(pozo);
+  var cfg = MED_VEL_CFG_POR_ACTIVO[pozo] || {};
+
+  function num(el){ return el.value === '' ? null : Number(el.value); }
+  function poner(el, v, dec){
+    el.value = (v === null) ? '' : v.toFixed(dec);
+    el.classList.toggle('calc-auto', v !== null);
+    el.dataset.auto = (v === null) ? '' : '1';
+  }
+  function pintarNota(){
+    if (!nota) return;
+    if (!k){
+      nota.className = 'vel-nota';
+      nota.innerHTML = 'Anota lo que muestre el teclado: frecuencia, RPM de bomba o ambos. '
+        + 'Sin polos del motor ni ratio del reductor configurados no se calcula el otro.';
+      return;
+    }
+    var base = 'Polos <b>' + cfg.polos + '</b> &middot; ratio <b>' + cfg.ratio + '</b> &middot; '
+             + '1 Hz = <b>' + k.toFixed(2) + '</b> RPM bomba.';
+    var vf = num(f), vr = num(r);
+    var manual = f.dataset.auto !== '1' && r.dataset.auto !== '1';
+    if (manual && vf && vr){
+      var esperado = vf * k, dif = (vr - esperado) / esperado * 100;
+      if (Math.abs(dif) > 2){
+        nota.className = 'vel-nota alerta';
+        nota.innerHTML = base + ' Con ' + vf + ' Hz se esperan <b>' + esperado.toFixed(0)
+          + '</b> RPM y se anotaron ' + vr + ' (' + (dif > 0 ? '+' : '') + dif.toFixed(1)
+          + ' %). Revisa la lectura o el ratio configurado.';
+        return;
+      }
+    }
+    nota.className = 'vel-nota';
+    nota.innerHTML = base + ' Escribe cualquiera de los dos; el otro se calcula.';
+  }
+
+  f.addEventListener('input', function(){
+    f.classList.remove('calc-auto'); f.dataset.auto = '';
+    if (k && (r.value === '' || r.dataset.auto === '1')) poner(r, num(f) === null ? null : num(f) * k, 0);
+    pintarNota();
+  });
+  r.addEventListener('input', function(){
+    r.classList.remove('calc-auto'); r.dataset.auto = '';
+    if (k && (f.value === '' || f.dataset.auto === '1')) poner(f, num(r) === null ? null : num(r) / k, 1);
+    pintarNota();
+  });
+  pintarNota();
+}
 
 function medSalirModoCompletar(){
   medCompletarId = null;
