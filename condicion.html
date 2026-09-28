@@ -968,10 +968,8 @@ body.kp-oscuro{background:var(--bg)}
     </select>
   </div>
   <div class="kp-fbus" id="kpFBus"></div>
-  <button class="kp-chip" id="kpExportar" onclick="kpExportarEntrega()"
-          title="Libro de datos operacionales por campo">Exportar datos</button>
   <button class="kp-chip" id="kcExportar" onclick="kcExportarCliente()"
-          title="Libro en el formato que se entrega al cliente · version 2026-09-27 f">Formato cliente</button>
+          title="Libro de datos operacionales por campo · version 2026-09-28 a">Exportación de datos</button>
 </div>
 
 <div class="kp-panel" id="kpPanel">
@@ -4406,7 +4404,7 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
 /* Version del formato cliente: sale en el aviso de error y en la ayuda del
    boton, para confirmar que el navegador tiene el archivo nuevo y no una
    copia guardada por el service worker. */
-const KC_VERSION = '2026-09-27 f';
+const KC_VERSION = '2026-09-28 a';
 
 /* ExcelJS propio de este modulo. keExcelJS reutiliza el de la ventana
    principal, pero ese vive en otro contexto de JavaScript: las fechas que
@@ -4430,7 +4428,7 @@ async function kcExportarCliente(){
     const { data } = await kcRpc('dp_entrega_operacional');
     campos = Array.from(new Set((data || []).map(x => x.campo).filter(Boolean))).sort();
   } catch(e){}
-  const campo = prompt('Formato cliente · campo a exportar:\n\n' + campos.join('\n')
+  const campo = prompt('Exportación de datos · campo a exportar:\n\n' + campos.join('\n')
     + '\n\nEscriba el nombre exacto, o deje vacio para todos.', campos.length === 1 ? campos[0] : '');
   if (campo === null) return;
   const sistema = prompt('Sistema (BES, HPUM o UBH). Deje vacio para todos.', 'BES');
@@ -4479,7 +4477,10 @@ async function kcExportarCliente(){
     });
     aviso('Armando el libro\u2026');
     await new Promise(ok => setTimeout(ok, 30));
-    const hoy = new Date().toISOString().slice(0, 10);
+    /* Fecha local del equipo, no UTC: desde las 7 p. m. en Colombia UTC ya
+       va en el dia siguiente y el archivo saldria con fecha de manana. */
+    const ah = new Date();
+    const hoy = ah.getFullYear() + '-' + String(ah.getMonth() + 1).padStart(2, '0') + '-' + String(ah.getDate()).padStart(2, '0');
     const d = { op: op || [], fuera, placas: placas || [], setup: setup || [], cap: cap || [], runlife: runlife || [],
                 hist: Array.isArray(hist) ? hist : [], ais, bit,
                 opt: { unidades: ou || [], par: par || {}, salida: sal || [], sut: sut || [] }, propuestas: prop || [] };
@@ -4495,12 +4496,12 @@ async function kcExportarCliente(){
     const url = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'PREDICTIVE_DATA_UNITS_ESP_' + (c || 'ALL').replace(/[^A-Za-z0-9]+/g, '_').toUpperCase()
-      + (s && s !== 'BES' ? '_' + s : '') + '_' + hoy + '.xlsx';
+    /* Datos operacionales unidades <sistema>, en ingles, con la fecha. */
+    a.download = 'OPERATIONAL_DATA_' + (s || 'ALL') + '_UNITS_' + hoy + '.xlsx';
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 4000);
   } catch(e){
-    alert('No se pudo generar el formato cliente (version ' + KC_VERSION + '). ' + e.message);
+    alert('No se pudo generar la exportación (version ' + KC_VERSION + '). ' + e.message);
   } finally {
     if (btn){ btn.disabled = false; btn.textContent = previo; }
   }
