@@ -971,7 +971,7 @@ body.kp-oscuro{background:var(--bg)}
   <button class="kp-chip" id="kpExportar" onclick="kpExportarEntrega()"
           title="Libro de datos operacionales por campo">Exportar datos</button>
   <button class="kp-chip" id="kcExportar" onclick="kcExportarCliente()"
-          title="Libro en el formato que se entrega al cliente · version 2026-09-27 e">Formato cliente</button>
+          title="Libro en el formato que se entrega al cliente · version 2026-09-27 f">Formato cliente</button>
 </div>
 
 <div class="kp-panel" id="kpPanel">
@@ -3160,11 +3160,14 @@ function kcMostrar(c){
   if (typeof v === 'object' && v.formula != null){
     const r = v.result;
     if (r == null) return f.indexOf('%') >= 0 ? '100.0%' : '0000.0';
+    /* una formula que devuelve fecha se mide como fecha corta, no como el
+       texto largo del objeto ("Fri Jan 30 2026 07:00 GMT-0500 …") */
+    if (Object.prototype.toString.call(r) === '[object Date]') return '27-Aug-26';
     if (typeof r === 'number') return f.indexOf('%') >= 0 ? (r * 100).toFixed(1) + '%' : String(Math.round(r * 1000) / 1000);
     return String(r);
   }
   if (typeof v === 'object' && v.text != null) return String(v.text);
-  if (v instanceof Date) return '27-Aug-26';
+  if (Object.prototype.toString.call(v) === '[object Date]') return '27-Aug-26';
   if (typeof v === 'number'){
     if (f.indexOf('%') >= 0) return (v * 100).toFixed(1) + '%';
     return String(Math.round(v * 1000) / 1000);
@@ -4403,7 +4406,7 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
 /* Version del formato cliente: sale en el aviso de error y en la ayuda del
    boton, para confirmar que el navegador tiene el archivo nuevo y no una
    copia guardada por el service worker. */
-const KC_VERSION = '2026-09-27 e';
+const KC_VERSION = '2026-09-27 f';
 
 /* ExcelJS propio de este modulo. keExcelJS reutiliza el de la ventana
    principal, pero ese vive en otro contexto de JavaScript: las fechas que
