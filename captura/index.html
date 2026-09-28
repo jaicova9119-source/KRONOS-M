@@ -1332,7 +1332,7 @@
     </section>
 
     <div class="foot">Captura de datos de campo &middot; unidades BES, HPUM, UBH, UBO, cargue, transferencia de agua y compresion
-      &middot; <span id="dp-build">v23</span>
+      &middot; <span id="dp-build">v24</span>
       <span id="dp-almacen"></span><span id="dp-offline"></span></div>
     <div id="dp-actualizar" style="display:none;position:fixed;left:12px;right:12px;bottom:12px;
       background:var(--navy);color:#fff;border-radius:12px;padding:12px 14px;z-index:99;
@@ -1776,6 +1776,7 @@ function dpPrepararCampo(){
     });
     if (!dpGuardar('dp_pozos_cache', JSON.stringify(nombres))) sinEspacio = true;
     dpGuardar('dp_sistemas_cache', JSON.stringify(MED_SISTEMA_POR_ACTIVO));
+    medGuardarAplicaciones(filas);
 
     var total = nombres.length * 3;
 
@@ -2075,6 +2076,21 @@ var MED_SISTEMA_POR_ACTIVO = {};
    distintas, asi que el catalogo se resuelve por aqui y no por el
    sistema. Viene de dp_pozos_lista. */
 var MED_PLANTILLA_POR_ACTIVO = {};
+
+/* Aplicacion de cada activo: {codigo, nombre}. Una UBH puede levantar
+   crudo o inyectar agua y se mide igual; la aplicacion solo sirve para
+   que el tecnico distinga en el selector cual es cual. Viene de
+   dp_pozos_lista (076). Sin ella el selector agrupa solo por sistema,
+   como antes. */
+var MED_APLICACION_POR_ACTIVO = {};
+
+function medGuardarAplicaciones(filas){
+  (filas || []).forEach(function(x){
+    if (x && x.nombre && x.aplicacion)
+      MED_APLICACION_POR_ACTIVO[x.nombre] = { c: x.aplicacion, n: x.aplicacion_nombre || x.aplicacion };
+  });
+  try { dpAlmacen.setItem('dp_aplicaciones_cache', JSON.stringify(MED_APLICACION_POR_ACTIVO)); } catch(e){}
+}
 
 /* El id del campo se deriva del codigo del punto. Los guiones bajos
    pasan a guiones para no romper la convencion de ids del resto del
@@ -2559,11 +2575,22 @@ function poblarSelects(){
   var ORDEN_SISTEMA = ['BES','HPUM','UBH','UBO','CARGUE','UTA','COMPRESOR'];
 
   function agrupar(listaPozos){
-    var grupos = {}, conSistema = 0;
+    var grupos = {}, conSistema = 0, aplPorSis = {};
+    listaPozos.forEach(function(p){
+      var s = MED_SISTEMA_POR_ACTIVO[p] || '';
+      var a = MED_APLICACION_POR_ACTIVO[p];
+      if (s && a){ (aplPorSis[s] = aplPorSis[s] || {})[a.c] = a.n; }
+    });
     listaPozos.forEach(function(p){
       var s = MED_SISTEMA_POR_ACTIVO[p] || '';
       if (s) conSistema++;
       var k = s || '__SIN__';
+      /* Solo se parte por aplicacion cuando el sistema tiene unidades en
+         mas de una: "UBH · Inyeccion de agua" aparte de "UBH ·
+         Levantamiento". Si todas prestan el mismo servicio, el rotulo
+         queda como siempre. */
+      var a = MED_APLICACION_POR_ACTIVO[p];
+      if (s && a && aplPorSis[s] && Object.keys(aplPorSis[s]).length > 1) k = s + '|' + a.c;
       (grupos[k] = grupos[k] || []).push(p);
     });
     /* Sin ningun sistema conocido no tiene sentido agrupar: pasa con la
@@ -2573,13 +2600,20 @@ function poblarSelects(){
     var claves = Object.keys(grupos).sort(function(a,b){
       if (a === '__SIN__') return 1;
       if (b === '__SIN__') return -1;
-      var ia = ORDEN_SISTEMA.indexOf(a), ib = ORDEN_SISTEMA.indexOf(b);
+      var sa = a.split('|')[0], sb2 = b.split('|')[0];
+      var ia = ORDEN_SISTEMA.indexOf(sa), ib = ORDEN_SISTEMA.indexOf(sb2);
       if (ia < 0) ia = 99; if (ib < 0) ib = 99;
-      return ia !== ib ? ia - ib : a.localeCompare(b);
+      if (ia !== ib) return ia - ib;
+      if (sa !== sb2) return sa.localeCompare(sb2);
+      /* Dentro del sistema, levantamiento primero. */
+      var la = /\|LEVANTAMIENTO$/.test(a) ? 0 : 1, lb = /\|LEVANTAMIENTO$/.test(b) ? 0 : 1;
+      return la !== lb ? la - lb : a.localeCompare(b);
     });
     return claves.map(function(k){
-      return { titulo: k === '__SIN__' ? 'Sin sistema definido' : k,
-               pozos:  grupos[k].slice().sort() };
+      var partes = k.split('|');
+      var titulo = k === '__SIN__' ? 'Sin sistema definido' : partes[0];
+      if (partes[1]) titulo += ' \u00b7 ' + ((aplPorSis[partes[0]] || {})[partes[1]] || partes[1]);
+      return { titulo: titulo, pozos: grupos[k].slice().sort() };
     });
   }
 
@@ -2665,12 +2699,17 @@ function poblarSelects(){
     var pc = dpLeerJSON('dp_plantillas_cache', null);
     if (pc) MED_PLANTILLA_POR_ACTIVO = pc;
   } catch(e){}
+  try {
+    var ac = dpLeerJSON('dp_aplicaciones_cache', null);
+    if (ac) MED_APLICACION_POR_ACTIVO = ac;
+  } catch(e){}
 
   llenar(POZOS); // respaldo inmediato mientras llega el real
   sb.rpc('dp_pozos_lista').then(function(r){
     if (r.error || !r.data || !r.data.length) return;
     var nombres = r.data.map(function(x){ return x.nombre; });
     guardarSistemas(r.data);   /* primero el sistema, o se pinta sin agrupar */
+    medGuardarAplicaciones(r.data);
     llenar(nombres);
     dpAlmacen.setItem('dp_pozos_cache', JSON.stringify(nombres));
   }).catch(function(){});

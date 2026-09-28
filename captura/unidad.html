@@ -699,7 +699,11 @@ function abrirUnidad(u){
   $('paso-buscar').classList.add('oculto');
   $('paso-unidad').classList.remove('oculto');
   $('u-nombre').textContent  = u.nombre;
-  $('u-meta').textContent    = (u.campo||'—') + ' · ' + (u.pad||'—');
+  /* La aplicacion (076) distingue, por ejemplo, una UBH de inyeccion de
+     una de levantamiento. Si el espejo es anterior y no la trae, la
+     linea queda como antes. */
+  $('u-meta').textContent    = (u.campo||'—') + ' · ' + (u.pad||'—')
+                            + (u.aplicacion_nombre ? ' · ' + u.aplicacion_nombre : '');
   /* Se muestra la topologia, no el sistema: al tecnico frente al equipo
      le sirve mas saber que esta ante una MV1000 que ante "HPUM". Once
      unidades de inyeccion son HPUM y responden a tres topologias. */
