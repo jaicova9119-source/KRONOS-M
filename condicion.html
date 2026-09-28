@@ -969,7 +969,7 @@ body.kp-oscuro{background:var(--bg)}
   </div>
   <div class="kp-fbus" id="kpFBus"></div>
   <button class="kp-chip" id="kcExportar" onclick="kcExportarCliente()"
-          title="Libro de datos operacionales por campo · version 2026-09-28 a">Exportación de datos</button>
+          title="Libro de datos operacionales por campo · version 2026-09-28 b">Exportación de datos</button>
 </div>
 
 <div class="kp-panel" id="kpPanel">
@@ -3856,17 +3856,17 @@ function kcHojaPozo(wb, ws, P, u, nav, lienzo){
     B0 = Math.max(B0, T0 + Math.ceil(g.h / 20) + 2);
   }
   /* ── bitacora ── */
-  const thB = ['DATE', 'RUN', 'CATEGORY', 'SEVERITY', 'STATUS', 'OBSERVATIONS', 'RECOMMENDATIONS', 'BY', 'CLOSED'];
-  const spB = [1, 2, 1, 1, 1, 12, 12, 2, 1], anchoB = spB.reduce((a, b) => a + b, 0);
+  const thB = ['DATE', 'RUN', 'CATEGORY', 'SEVERITY', 'STATUS', 'OBSERVATIONS', 'RECOMMENDATIONS', 'BY', 'CLOSED', 'CLOSED BY', 'CLOSURE NOTE'];
+  const spB = [1, 2, 1, 1, 1, 11, 9, 2, 1, 2, 5], anchoB = spB.reduce((a, b) => a + b, 0);
   banner(B0, 'LOGBOOK  ·  every equipment change, intervention and event is recorded here', anchoB); fila(B0 + 1, thB, spB, 'h');
   const bits = (P.bitPor.get(u) || []).slice().sort((a, b) => String(a.fecha || '9') < String(b.fecha || '9') ? -1 : 1);
   bits.forEach((b, i) => {
     const r = B0 + 2 + i, fe = kcISO(b.fecha);
     const rl = corrida(fe, null, null), sev = kcTr(b.severidad);
     const v = [fe ? kcFecha(fe) : 'No date', rl, kcTr(b.categoria), sev, kcTr(b.estado), kcTxt(b.observaciones) || null, kcTxt(b.recomendaciones) || null,
-               b.realizado_por || null, kcFecha(b.cerrado_en)];
-    const ini = fila(r, v, spB, 'd', ['dd-mmm-yy', null, null, null, null, null, null, null, 'dd-mmm-yy']);
-    [5, 6].forEach(j => { const x = ws.getCell(r, ini[j]); x.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }; x.font = { name: KC.AR, size: 9 }; });
+               b.realizado_por || null, kcFecha(b.cerrado_en), b.cerrado_por || null, kcTxt(b.nota_cierre) || null];
+    const ini = fila(r, v, spB, 'd', ['dd-mmm-yy', null, null, null, null, null, null, null, 'dd-mmm-yy', null, null]);
+    [5, 6, 10].forEach(j => { const x = ws.getCell(r, ini[j]); x.alignment = { horizontal: 'left', vertical: 'top', wrapText: true }; x.font = { name: KC.AR, size: 9 }; });
     if (rl === 'Previous run') [ini[0], ini[1]].forEach(cc => { ws.getCell(r, cc).fill = kcRelleno(KC.FPREV); });
     if (sev === 'Attention') ws.getCell(r, ini[3]).fill = kcRelleno(KC.AMAR);
     if (sev === 'Critical') ws.getCell(r, ini[3]).fill = kcRelleno(KC.ROJO);
@@ -4359,9 +4359,8 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
     if (col) ws.getCell(r, 1).fill = kcRelleno(col);
     ws.getCell(r, 2).value = t; ws.getCell(r, 2).font = { name: KC.AR, size: 10 }; r += 1;
   });
-  if (lienzo){ const g = kcEsquemaBes(lienzo); kcImagen(wb, ws, g.png, 10, 2, g.w, g.h); }
   /* ── demanda energetica de las unidades en monitoreo ── */
-  const EC = 19, E0 = 6;
+  const EC = 10, E0 = 6;
   kcHdr(ws, 4, EC, 'ENERGY DEMAND · UNITS IN MONITORING'); for (let k = 1; k < 4; k++) kcHdr(ws, 4, EC + k, null); ws.mergeCells(4, EC, 4, EC + 3);
   kcHdr(ws, 5, EC, 'INDICATOR'); kcHdr(ws, 5, EC + 1, null); ws.mergeCells(5, EC, 5, EC + 1); kcHdr(ws, 5, EC + 2, 'VALUE'); kcHdr(ws, 5, EC + 3, 'UNIT');
   const stR = "CONSOLIDATED!$B$" + (all.V0 + 3) + ":$B$" + all.VL, kwR = "CONSOLIDATED!$" + all.kw + "$" + (all.V0 + 3) + ":$" + all.kw + "$" + all.VL,
@@ -4391,7 +4390,12 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
   ws.getCell(E0 + 8, EC).note = 'Last reading × 24 h. Indicative only: assumes every unit runs continuously at the last measured load.';
   ws.getCell(E0 + FILAS.length + 1, EC).value = 'Source: PST input of each unit, last reading. Updates with CONSOLIDATED.';
   ws.getCell(E0 + FILAS.length + 1, EC).font = { name: KC.AR, size: 9, color: { argb: KC.TXTG } };
-  if (lienzo && mon.length){ const g = kcGraficaDemanda(lienzo, mon); kcImagen(wb, ws, g.png, EC, E0 + FILAS.length + 3, g.w, g.h); }
+  let anchoDem = 440;
+  if (lienzo && mon.length){ const g = kcGraficaDemanda(lienzo, mon); kcImagen(wb, ws, g.png, EC, E0 + FILAS.length + 3, g.w, g.h); anchoDem = Math.max(anchoDem, g.w); }
+  /* Esquema BES a la derecha de la demanda: las cuatro columnas de la tabla
+     miden ~440 px y lo que la grafica pase de eso se cubre con columnas de
+     ancho normal (~64 px) mas una de separacion. */
+  if (lienzo){ const g = kcEsquemaBes(lienzo); kcImagen(wb, ws, g.png, EC + 4 + Math.ceil(Math.max(0, anchoDem - 440) / 64) + 1, 2, g.w, g.h); }
   ws.__fijos = { 3: 40, [EC]: 18, [EC + 1]: 18, [EC + 2]: 12, [EC + 3]: 12 };
 }
 
@@ -4404,7 +4408,7 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
 /* Version del formato cliente: sale en el aviso de error y en la ayuda del
    boton, para confirmar que el navegador tiene el archivo nuevo y no una
    copia guardada por el service worker. */
-const KC_VERSION = '2026-09-28 a';
+const KC_VERSION = '2026-09-28 b';
 
 /* ExcelJS propio de este modulo. keExcelJS reutiliza el de la ventana
    principal, pero ese vive en otro contexto de JavaScript: las fechas que
@@ -4473,7 +4477,8 @@ async function kcExportarCliente(){
     }, (n, t) => aviso('Ensayos y bitacora ' + n + '/' + t + '\u2026'));
     res.filter(Boolean).forEach(r => {
       r.ais.forEach(a => ais.push({ ...a, unidad: r.u }));
-      r.bit.forEach(b => bit.push({ ...b, unidad: r.u }));
+      /* dp_contexto entrega la fecha del evento como ocurrido_en */
+      r.bit.forEach(b => bit.push({ ...b, fecha: b.fecha || b.ocurrido_en || null, unidad: r.u }));
     });
     aviso('Armando el libro\u2026');
     await new Promise(ok => setTimeout(ok, 30));
