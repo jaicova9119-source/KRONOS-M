@@ -138,6 +138,57 @@ details.guia .cond{margin:0 14px 10px;font-size:14px;color:var(--ink-soft)}
 .modal-caja{background:var(--card);border-radius:16px;padding:18px;width:min(520px,100%);margin-bottom:env(safe-area-inset-bottom,0px)}
 .modal-caja h3{margin:0 0 8px;color:var(--texto);font-size:18px}.modal-caja p{margin:0 0 14px;color:var(--ink-soft)}
 .modal-caja textarea{margin-bottom:12px}.modal-acc{display:flex;gap:10px}.modal-acc .btn{flex:1}
+
+.zona{flex:1;display:flex;min-height:0}
+.col{flex:1;display:flex;flex-direction:column;min-width:0}
+.lado{display:none}
+.lista{display:block}
+.form2 .campo.ancho,.form2 .ancho{grid-column:1/-1}
+.p-split,.c-split{display:block}
+/* ---------- tableta: más ancho útil, formularios en dos columnas ---------- */
+@media (min-width:760px){
+  :root{--maxw:980px}
+  .cuerpo{padding:18px 22px 26px}
+  .form2{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
+  .lista{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
+  .celdas{grid-template-columns:repeat(6,1fr)}
+  .fila{flex-wrap:nowrap}
+  .fila .encontrado{width:auto}
+  .accion{justify-content:flex-end;padding:12px 22px}
+  .accion .btn.pri{flex:0 1 420px}
+  .modal{align-items:center}
+  .c-split{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
+  .c-split h2:first-child{margin-top:4px}
+  .btn.grande{max-width:420px}
+}
+/* ---------- computador: recorrido fijo a la izquierda, guía junto a la captura ---------- */
+@media (min-width:1180px){
+  :root{--maxw:1560px}
+  body{font-size:16px}
+  .con-lado .lado{display:block;flex:0 0 300px;overflow-y:auto;border-right:1.5px solid var(--line);background:var(--card);padding:10px 8px 18px}
+  .lado-cab{padding:6px 8px 10px;border-bottom:1.5px solid var(--line);margin-bottom:6px}
+  .lado-cab b{display:block;font-size:17px;color:var(--ink)}.lado-cab small{color:var(--ink-soft);font-size:13px}
+  .lado-eq{display:flex;justify-content:space-between;align-items:center;gap:6px;padding:12px 8px 4px;font-size:12.5px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.03em}
+  .lado-eq .est{text-transform:none;letter-spacing:0;font-size:11px;padding:2px 7px}
+  .lado-p{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:transparent;border:0;border-radius:8px;padding:8px;min-height:40px;font-size:14px;color:var(--texto)}
+  .lado-p:hover{background:var(--surface-2)}
+  .lado-p.act{background:var(--navy);color:#fff}
+  html[data-tema="oscuro"] .lado-p.act{background:var(--acento);color:#0b1a22}
+  .lado-p .n{width:20px;font-size:12px;color:inherit;opacity:.7}.lado-p .t{flex:1;min-width:0;line-height:1.25}
+  .lado-p .dot{width:12px;height:12px}
+  .lado-p.inf{margin-top:10px;border-top:1.5px solid var(--line);border-radius:0;font-weight:700}
+  .p-split{display:grid;grid-template-columns:minmax(300px,400px) minmax(0,1fr);gap:22px;align-items:start}
+  .p-guia{position:sticky;top:0;max-height:calc(100vh - 190px);overflow-y:auto;border-radius:var(--radius)}
+  .p-guia details.guia{margin-bottom:0}
+  .lista{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .form2{grid-template-columns:repeat(3,1fr)}
+  .form2 .campo.ancho{grid-column:1/-1}
+  .form2 .campo.dos{grid-column:span 2}
+  .form2{max-width:1180px}
+  .cuerpo{padding:20px 28px 30px}
+  .accion{padding:12px 28px}
+  .inp input{width:120px}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -148,8 +199,13 @@ details.guia .cond{margin:0 14px 10px;font-size:14px;color:var(--ink-soft)}
     <div class="t"><b id="encT">Comisionamiento</b><span id="encS">Equipos de superficie BES</span></div>
     <div class="red" id="red"></div>
   </header>
-  <main class="cuerpo" id="cuerpo"></main>
-  <footer class="accion" id="accion"></footer>
+  <div class="zona">
+    <aside class="lado" id="lado" aria-label="Recorrido"></aside>
+    <div class="col">
+      <main class="cuerpo" id="cuerpo"></main>
+      <footer class="accion" id="accion"></footer>
+    </div>
+  </div>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="modal" id="modal"></div>
@@ -417,7 +473,28 @@ function ir(p, o){ S.pila.push({ pantalla: S.pantalla, paso: S.paso }); S.pantal
 function volver(){ var x = S.pila.pop(); if (!x) { location.href = 'index.html'; return; } S.pantalla = x.pantalla; S.paso = x.paso; render(); $('cuerpo').scrollTop = 0; }
 function enc(t, s){ $('encT').textContent = t; $('encS').textContent = s; }
 function accion(h){ $('accion').innerHTML = h || ''; }
-function render(){ ({ inicio: vInicio, nuevo: vNuevo, ruta: vRuta, paso: vPaso, cierre: vCierre, sesion: vSesion })[S.pantalla](); pintarRed(); }
+function render(){ ({ inicio: vInicio, nuevo: vNuevo, ruta: vRuta, paso: vPaso, cierre: vCierre, sesion: vSesion })[S.pantalla](); pintarLado(); pintarRed(); }
+/* En computador y tableta horizontal el recorrido queda fijo a la izquierda:
+   se salta de un paso a otro sin volver a la lista. En el celular no se ve. */
+function pintarLado(){
+  var L = $('lado'); if (!L) return;
+  var ver = S.com && ['ruta','paso','cierre'].indexOf(S.pantalla) >= 0;
+  document.body.classList.toggle('con-lado', !!ver);
+  if (!ver) { L.innerHTML = ''; return; }
+  var h = '<div class="lado-cab"><b>' + esc(S.com.pozo_nombre) + '</b><small>' + esc((S.com.codigo || 'Sin código aún') + ' · ' + (EST_COM[S.com.estado] || S.com.estado)) + '</small></div>', n = 0;
+  EQUIPOS.forEach(function(eq){
+    h += '<div class="lado-eq"><span>' + esc(eq.t) + '</span>' + chipH(estadoEq(eq.id)) + '</div>';
+    PASOS.filter(function(p){ return p.eq === eq.id; }).forEach(function(p){ n++; var s = estadoPaso(p);
+      h += '<button class="lado-p' + (S.pantalla === 'paso' && S.paso === p.id ? ' act' : '') + '" data-lp="' + p.id + '"><span class="n">' + n + '</span><span class="t">' + esc(p.t) + '</span><span class="dot' + (s.ok ? ' e' + s.e : '') + '"></span></button>'; });
+  });
+  h += '<button class="lado-p inf' + (S.pantalla === 'cierre' ? ' act' : '') + '" data-lp="__cierre"><span class="n"></span><span class="t">Informe y revisión</span></button>';
+  L.innerHTML = h;
+  [].forEach.call(L.querySelectorAll('[data-lp]'), function(b){ b.onclick = function(){ var id = b.getAttribute('data-lp');
+    if (id === '__cierre') { S.pantalla = 'cierre'; } else { S.pantalla = 'paso'; S.paso = id; }
+    if (!S.pila.length || S.pila[S.pila.length - 1].pantalla !== 'ruta') S.pila = [{ pantalla: 'inicio' }, { pantalla: 'ruta' }];
+    render(); $('cuerpo').scrollTop = 0; }; });
+  var act = L.querySelector('.act'); if (act && act.scrollIntoView) act.scrollIntoView({ block: 'nearest' });
+}
 function chipH(e){ if (!e) return '<span class="est vacio">Sin datos</span>'; return '<span class="est e' + e + '">' + EST[e] + '</span>'; }
 var EST_COM = { borrador: 'Borrador', en_campo: 'En campo', en_revision: 'En revisión', aprobado: 'Aprobado', anulado: 'Anulado' };
 
@@ -440,12 +517,13 @@ function vInicio(){
       remotos.forEach(function(r){ (mapa[r.id] = mapa[r.id] || {}).remoto = r; });
       var ids = Object.keys(mapa).sort(function(a, b){ var x = mapa[a], y = mapa[b]; return String((y.local && y.local.actualizado) || (y.remoto && y.remoto.actualizado_en) || '').localeCompare(String((x.local && x.local.actualizado) || (x.remoto && x.remoto.actualizado_en) || '')); });
       var h = '<button class="btn pri ancho grande" id="nuevo">+ Nuevo comisionamiento</button>';
-      h += '<h3>Comisionamientos</h3>';
+      h += '<h3>Comisionamientos</h3><div class="lista">';
       if (!ids.length) h += '<p class="nota">Aún no hay comisionamientos en este dispositivo ni en tus cuencas.</p>';
       ids.forEach(function(id){ var m = mapa[id], c = m.local || {}, r = m.remoto || {};
         var est = (r.estado || c.estado), cola = colaDe(id).length;
         h += '<button class="pasoItem" data-id="' + id + '"><span class="x"><b>' + esc(c.pozo_nombre || r.pozo_nombre) + (c.es_prueba || r.es_prueba ? ' <small class="prueba">PRUEBA</small>' : '') + '</b><small>' + esc((c.codigo || r.codigo || 'Sin código aún') + ' · orden ' + (c.orden || r.orden || '—')) + '</small><small>' + (m.local ? 'En este dispositivo' : 'Solo en el servidor') + (cola ? ' · ' + cola + ' envíos en cola' : '') + '</small></span><span class="est e' + ({ aprobado: 'C', en_revision: 'P', anulado: 'X' }[est] || 'R') + '">' + (EST_COM[est] || est) + '</span></button>';
       });
+      h += '</div>';
       $('cuerpo').innerHTML = h;
       $('nuevo').onclick = function(){ ir('nuevo'); };
       [].forEach.call($('cuerpo').querySelectorAll('.pasoItem'), function(b){ b.onclick = function(){ abrirCom(b.getAttribute('data-id'), mapa[b.getAttribute('data-id')]); }; });
@@ -501,19 +579,20 @@ function vNuevo(){
   }).then(function(x){ S.pozos = x[0]; pintarNuevo(x[1]); });
 }
 function pintarNuevo(tpls){
-  var N = NUEVO, admin = S.perfil && S.perfil.rol === 'admin';
+  var N = NUEVO, rol = S.perfil && S.perfil.rol, admin = rol === 'admin';
   if (!N.tpl && tpls.length) N.tpl = tpls[0].id + '@' + tpls[0].version;
   var sel = tpls.filter(function(t){ return t.id + '@' + t.version === N.tpl; })[0];
   var borr = sel && sel.estado !== 'vigente';
   if (borr) N.prueba = true;
-  var h = '<div class="panel">' +
+  var h = '<div class="panel form2">' +
     '<label class="campo"><span>Pozo</span><select id="pozo"><option value="">Elige el pozo</option>' + S.pozos.map(function(p){ return '<option value="' + p.id + '"' + (N.pozo === p.id ? ' selected' : '') + '>' + esc(p.nombre) + (p.campo ? ' · ' + esc(p.campo) : '') + '</option>'; }).join('') + '</select></label>' +
-    (S.pozos.length ? '' : '<p class="aviso">No hay pozos en el dispositivo. Abre esta pantalla una vez con señal.</p>') +
-    '<label class="campo"><span>Recorrido</span><select id="tpl">' + tpls.map(function(t){ var k = t.id + '@' + t.version; return '<option value="' + k + '"' + (N.tpl === k ? ' selected' : '') + '>' + esc(t.titulo) + ' (v' + t.version + (t.estado !== 'vigente' ? ', borrador' : '') + ')</option>'; }).join('') + '</select></label>' +
-    (borr ? '<p class="aviso">Esta plantilla está en borrador' + (sel.pendientes && sel.pendientes.length ? ' (pendiente: ' + esc(sel.pendientes.join('; ')) + ')' : '') + '. ' + (admin ? 'Solo se puede usar como comisionamiento de prueba, que no se aprueba.' : 'Solo el administrador puede usarla, en modo de prueba.') + '</p>' : '') +
+    (S.pozos.length ? '' : '<p class="aviso ancho">No hay pozos en el dispositivo. Abre esta pantalla una vez con señal.</p>') +
+    '<label class="campo dos"><span>Recorrido</span><select id="tpl">' + tpls.map(function(t){ var k = t.id + '@' + t.version; return '<option value="' + k + '"' + (N.tpl === k ? ' selected' : '') + '>' + esc(t.titulo) + ' (v' + t.version + (t.estado !== 'vigente' ? ', borrador' : '') + ')</option>'; }).join('') + '</select></label>' +
+    (borr ? '<p class="aviso ancho">Esta plantilla está en borrador' + (sel.pendientes && sel.pendientes.length ? ' (pendiente: ' + esc(sel.pendientes.join('; ')) + ')' : '') + '. ' + (admin ? 'Se usará como comisionamiento de prueba: sirve para ensayar el recorrido y no se aprueba.' : 'Solo el administrador puede usarla, en modo de prueba' + (rol ? ' (tu rol en la base: ' + esc(rol) + ')' : '') + '. Para usarla en un comisionamiento real hay que publicarla.') + '</p>' : '') +
     '<label class="campo"><span>Orden de trabajo</span><input id="orden" inputmode="numeric" value="' + esc(N.orden) + '" placeholder="Número de la orden"></label>' +
-    '<div class="campo"><span>Ejecutan</span>' + N.ejec.map(function(n, i){ return '<div class="ejec"><input data-ej="' + i + '" value="' + esc(n) + '" placeholder="' + (i ? 'Nombre del ejecutante' : 'Responsable de la ejecución') + '" aria-label="Ejecutante ' + (i + 1) + '">' + (N.ejec.length > 1 ? '<button class="quitar" data-qj="' + i + '" aria-label="Quitar ejecutante ' + (i + 1) + '">×</button>' : '') + '</div>'; }).join('') + '<button class="btn sec2 ancho" id="addej">+ Agregar ejecutante</button></div>' +
-    '<label class="campo" style="margin:0"><span>Revisa</span><input id="revisa" value="' + esc(N.revisa) + '" placeholder="Supervisor"></label></div>';
+    '<label class="campo"><span>Revisa</span><input id="revisa" value="' + esc(N.revisa) + '" placeholder="Supervisor"></label>' +
+    '<div class="campo ancho"><span>Ejecutan</span>' + N.ejec.map(function(n, i){ return '<div class="ejec"><input data-ej="' + i + '" value="' + esc(n) + '" placeholder="' + (i ? 'Nombre del ejecutante' : 'Responsable de la ejecución') + '" aria-label="Ejecutante ' + (i + 1) + '">' + (N.ejec.length > 1 ? '<button class="quitar" data-qj="' + i + '" aria-label="Quitar ejecutante ' + (i + 1) + '">×</button>' : '') + '</div>'; }).join('') + '<button class="btn sec2 ancho" id="addej">+ Agregar ejecutante</button></div>' +
+    '</div>';
   $('cuerpo').innerHTML = h;
   $('pozo').onchange = function(){ N.pozo = this.value; chk(); };
   $('tpl').onchange = function(){ N.tpl = this.value; N.prueba = false; pintarNuevo(tpls); };
@@ -585,14 +664,14 @@ function guiaH(p){
 function vPaso(){
   var p = paso(S.paso), d = D(p.id), eq = EQUIPOS.filter(function(e){ return e.id === p.eq; })[0], idx = PASOS.indexOf(p);
   enc(S.com.pozo_nombre, eq.t);
-  var h = '<div class="prog"><span>' + esc(eq.t) + '</span><span>Paso ' + (idx + 1) + ' de ' + PASOS.length + '</span></div><h2>' + esc(p.t) + '</h2>' + guiaH(p);
+  var h = '<div class="prog"><span>' + esc(eq.t) + '</span><span>Paso ' + (idx + 1) + ' de ' + PASOS.length + '</span></div><h2>' + esc(p.t) + '</h2><div class="p-split"><div class="p-guia">' + guiaH(p) + '</div><div class="p-cap">';
   h += '<div class="captura">' + ({ med: capMed, check: capCheck, kv: capKV, tabla: capTabla, ipdar: capIP, calc: capCalc, giro: capGiro })[p.tipo](p, d) + '</div>';
   var rojo = estadoPaso(p).e === 'N';
   h += preH(p, d);
   var faltaObs = (rojo && !preSel(p, d, 'o').length && !d.obs.trim()) || (d.na && !d.obs.trim());
   h += '<div class="obs' + (faltaObs ? ' req' : '') + '"><label for="obs">' + (rojo ? 'Complemento u observación (obligatoria si no eliges una: hay lecturas fuera de criterio)' : d.na ? 'Indica por qué no aplica' : 'Complemento (opcional)') + '</label><textarea id="obs" placeholder="Agrega lo que no esté en los textos">' + esc(d.obs) + '</textarea></div>';
   if (p.fotos) h += '<div class="fotos"><label class="btn ancho" for="fin">' + (d.fotos.length ? 'Agregar otra foto' : 'Tomar foto de evidencia') + '</label><input id="fin" type="file" accept="image/*" capture="environment"><div class="miniaturas" id="minis"></div></div>';
-  h += '<label class="na"><input type="checkbox" id="na"' + (d.na ? ' checked' : '') + '> Este paso no aplica en esta instalación</label>';
+  h += '<label class="na"><input type="checkbox" id="na"' + (d.na ? ' checked' : '') + '> Este paso no aplica en esta instalación</label></div></div>';
   $('cuerpo').innerHTML = h;
   $('cuerpo').classList.toggle('ro', !editable());
   $('cuerpo').querySelector('details').ontoggle = function(){ S.guia = this.open; };
@@ -606,7 +685,7 @@ function vPaso(){
   $('na').onchange = function(){ d.na = this.checked; toque(d); refila(); };
   pie(p);
 }
-function refila(){ var y = $('cuerpo').scrollTop; vPaso(); $('cuerpo').scrollTop = y; }
+function refila(){ var y = $('cuerpo').scrollTop; vPaso(); pintarLado(); $('cuerpo').scrollTop = y; }
 function pintarMinis(d){ var c = $('minis'); if (!c) return; d.fotos.forEach(function(id, i){ fotoURL(id).then(function(u){ if (!u) return; var im = document.createElement('img'); im.src = u; im.alt = 'Evidencia ' + (i + 1); c.appendChild(im); }); }); }
 function fotoURL(id){ return idbGet('fotos', id).then(function(f){ if (!f) return null; if (f.url) return f.url;
   if (!f.ruta || !navigator.onLine) return null;
@@ -627,8 +706,8 @@ function pie(p){
   var d = D(p.id), s = estadoPaso(p), falta = null, idx = PASOS.indexOf(p), sig = PASOS[idx + 1];
   if (!editable()) {
     accion('<button class="btn sec" id="ant" aria-label="Paso anterior">‹</button><button class="btn pri" id="sigp">' + (sig ? 'Siguiente paso' : 'Ver informe') + '</button>');
-    $('ant').disabled = idx === 0; $('ant').onclick = function(){ S.paso = PASOS[idx - 1].id; vPaso(); $('cuerpo').scrollTop = 0; };
-    $('sigp').onclick = function(){ if (sig) { S.paso = sig.id; vPaso(); $('cuerpo').scrollTop = 0; } else { S.pantalla = 'cierre'; render(); } };
+    $('ant').disabled = idx === 0; $('ant').onclick = function(){ S.paso = PASOS[idx - 1].id; vPaso(); pintarLado(); $('cuerpo').scrollTop = 0; };
+    $('sigp').onclick = function(){ if (sig) { S.paso = sig.id; vPaso(); pintarLado(); $('cuerpo').scrollTop = 0; } else { S.pantalla = 'cierre'; render(); } };
     return;
   }
   if (d.na && !d.obs.trim()) falta = 'Indica por qué no aplica';
@@ -637,8 +716,8 @@ function pie(p){
   else if (p.tens && p.tens.length > 1 && s.ok && !d.tens && !d.na) falta = 'Elige la tensión de prueba';
   else if (p.fotos && !d.fotos.length && s.ok && !d.na) falta = 'Toma la foto de evidencia';
   accion('<button class="btn sec" id="ant" aria-label="Paso anterior">‹</button><button class="btn pri" id="guardar"' + (falta ? ' disabled' : '') + '>' + esc(falta || (sig ? 'Guardar y seguir' : 'Guardar y ver informe')) + '</button>');
-  $('ant').disabled = idx === 0; $('ant').onclick = function(){ S.paso = PASOS[idx - 1].id; vPaso(); $('cuerpo').scrollTop = 0; };
-  $('guardar').onclick = function(){ guardarPaso(p).then(function(ok){ if (!ok) return; if (sig) { S.paso = sig.id; vPaso(); $('cuerpo').scrollTop = 0; } else { S.pantalla = 'cierre'; render(); } }); };
+  $('ant').disabled = idx === 0; $('ant').onclick = function(){ S.paso = PASOS[idx - 1].id; vPaso(); pintarLado(); $('cuerpo').scrollTop = 0; };
+  $('guardar').onclick = function(){ guardarPaso(p).then(function(ok){ if (!ok) return; if (sig) { S.paso = sig.id; vPaso(); pintarLado(); $('cuerpo').scrollTop = 0; } else { S.pantalla = 'cierre'; render(); } }); };
 }
 function datosPaso(p, d){
   var s = estadoPaso(p), unitFija = p.unidades && p.unidades.length === 1 ? p.unidades[0] : null;
@@ -747,17 +826,19 @@ function hallazgos(){
 function conclusion(H){
   var n = H.filter(function(h){ return h.sev === 'Alta'; }).length;
   var ok = EQUIPOS.filter(function(e){ return e.id !== 'prep' && estadoEq(e.id) === 'C'; }).map(function(e){ return e.t.toLowerCase(); });
-  return (ok.length ? 'Los equipos ' + ok.join(', ') + ' quedaron probados con resultados dentro de criterio. ' : '') + (n ? 'La unidad queda pendiente de liberación para arranque con carga hasta cerrar ' + n + ' hallazgos de prioridad alta.' : 'La unidad queda liberada para arranque con carga.');
+  return (ok.length ? 'Los equipos ' + ok.join(', ') + ' quedaron probados con resultados dentro de criterio. ' : '') + (n ? 'La unidad queda pendiente de liberación para arranque con carga hasta cerrar ' + (n === 1 ? 'el hallazgo de prioridad alta.' : 'los ' + n + ' hallazgos de prioridad alta.') : 'La unidad queda liberada para arranque con carga.');
 }
 function vCierre(){
   var c = S.com; enc(c.pozo_nombre, 'Informe · ' + (EST_COM[c.estado] || c.estado));
   var H = hallazgos(), cola = colaDe(c.id).filter(function(x){ return !x.error; }).length, err = colaDe(c.id).filter(function(x){ return x.error; });
   var h = '<div class="flujo">' + ['borrador','en_campo','en_revision','aprobado'].map(function(k, i, a){ return '<span class="' + (a.indexOf(c.estado) >= i ? 'hecho' : '') + '">' + EST_COM[k] + '</span>'; }).join('') + '</div>';
   if (err.length) h += '<div class="aviso"><b>' + err.length + ' envíos rechazados por la base.</b> ' + esc(err[0].error || '') + ' Revísalos en Captura, «Trabajo sin señal».</div>';
+  h += '<div class="c-split"><div>';
   h += '<h2>Resumen por equipo</h2>' + EQUIPOS.filter(function(e){ return e.id !== 'prep'; }).map(function(e){ return '<div class="resrow"><span>' + esc(e.t) + '</span>' + chipH(estadoEq(e.id)) + '</div>'; }).join('');
   h += '<h2>Hallazgos</h2>' + (H.length ? H.map(function(x){ return '<div class="hall s' + x.sev + '"><b>' + esc(x.eq) + (x.p ? ': ' + esc(x.p) : '') + '</b><div>' + esc(x.txt) + '</div><small>' + esc(x.acc) + '</small></div>'; }).join('') : '<p class="nota">Sin hallazgos.</p>');
+  h += '</div><div>';
   h += '<h2>Conclusión</h2><textarea id="concl" style="min-height:120px"' + (editable() ? '' : ' readonly') + '>' + esc(c.conclusion != null ? c.conclusion : conclusion(H)) + '</textarea>';
-  h += '<div class="panel suave"><b>Informe PDF</b><p class="nota">Encabezado con logos, secciones numeradas, resultados por equipo con criterio y referencia, hallazgos y anexo fotográfico.' + (c.estado !== 'aprobado' ? ' Mientras no esté aprobado sale marcado como borrador.' : '') + '</p><button class="btn ancho" id="pdf">Generar informe PDF</button><p class="nota" id="msg"></p></div>';
+  h += '<div class="panel suave"><b>Informe PDF</b><p class="nota">Encabezado con logos, secciones numeradas, resultados por equipo con criterio y referencia, hallazgos y anexo fotográfico.' + (c.estado !== 'aprobado' ? ' Mientras no esté aprobado sale marcado como borrador.' : '') + '</p><button class="btn ancho" id="pdf">Generar informe PDF</button><p class="nota" id="msg"></p></div></div></div>';
   $('cuerpo').innerHTML = h;
   $('cuerpo').classList.remove('ro');
   if (editable()) $('concl').onchange = function(){ c.conclusion = this.value; guardarLocal(); enviar('dp_cm_q_conclusion', { comisionamiento_id: c.id, texto: c.conclusion }, 'Comisionamiento ' + c.pozo_nombre + ': conclusión', 'cm-concl-' + c.id, c.id); };
@@ -890,9 +971,16 @@ function iniciar(){
     var ses = r && r.data && r.data.session;
     if (!ses) { S.pantalla = 'sesion'; render(); return; }
     var uid = ses.user.id;
-    var perf = navigator.onLine ? sb.from('usuarios').select('id,nombre,rol').eq('auth_user_id', uid).maybeSingle().then(function(x){ if (!x.error && x.data) { idbPut('cache', { clave: 'perfil', v: x.data }); return x.data; } return null; }).catch(function(){ return null; }) : Promise.resolve(null);
+    /* Mismo origen del perfil que usa Captura (dp_perfil) y el rol tal como
+       lo ve la base (mi_rol), que es lo que deciden las RPC. */
+    var perf = navigator.onLine ? Promise.all([
+        sb.rpc('dp_perfil').then(function(x){ return x.error ? null : x.data; }).catch(function(){ return null; }),
+        sb.rpc('mi_rol').then(function(x){ return x.error ? null : x.data; }).catch(function(){ return null; })
+      ]).then(function(x){ var p = x[0] || null; if (!p && !x[1]) return null; p = Object.assign({}, p || {}); if (x[1]) p.rol = x[1];
+        idbPut('cache', { clave: 'perfil', v: p }); return p; }) : Promise.resolve(null);
+    var guardadoCaptura = null; try { guardadoCaptura = JSON.parse(dpAlmacen.getItem('dp_perfil_cache') || 'null'); } catch(e){}
     var apr = navigator.onLine ? sb.rpc('puedo_aprobar_comisionamiento').then(function(x){ return !x.error && x.data === true; }).catch(function(){ return false; }) : Promise.resolve(false);
-    return Promise.all([perf.then(function(p){ return p || idbGet('cache', 'perfil').then(function(c){ return c ? c.v : null; }); }), apr]).then(function(x){
+    return Promise.all([perf.then(function(p){ return p || idbGet('cache', 'perfil').then(function(c){ return c ? c.v : guardadoCaptura; }); }), apr]).then(function(x){
       S.perfil = x[0]; S.aprueba = x[1]; S.pantalla = 'inicio'; render(); sincronizar();
     });
   }).catch(function(){ S.pantalla = 'sesion'; render(); });
