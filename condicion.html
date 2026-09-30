@@ -489,6 +489,19 @@ body{background:var(--kp-page);color:var(--kp-ink);
   margin-top:18px;flex-wrap:wrap}
 .kp-cmp-msg{flex:1;font-size:12px;color:var(--t2);min-width:180px}
 .kp-cmp-msg.err{color:var(--kp-crit,#C62828)}
+.kp-cor-btn{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:12px}
+.kp-cor-t{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
+.kp-cor-t th{text-align:left;font-size:10.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--t3);padding:4px 6px;border-bottom:1px solid var(--kp-line,#dfe5ea)}
+.kp-cor-t td{padding:5px 6px;border-bottom:1px solid var(--kp-line,#dfe5ea);vertical-align:middle}
+.kp-cor-t td.act{font-family:'IBM Plex Mono',monospace;white-space:nowrap}
+.kp-cor-t td.act small{display:block;color:var(--t3);font-size:10.5px}
+.kp-cor-t input,.kp-cor-t select{font:13px/1.4 inherit;padding:4px 6px;
+  border:1px solid var(--kp-line,#dfe5ea);border-radius:6px;background:var(--panel,#fff);color:inherit}
+.kp-cor-t input{width:92px}
+.kp-cor-t tr.cambia td{background:rgba(178,106,0,.07)}
+.kp-cor-mot{width:100%;box-sizing:border-box;margin-top:12px;font:13px/1.4 inherit;padding:7px 9px;
+  border:1px solid var(--kp-line,#dfe5ea);border-radius:8px;background:var(--panel,#fff);color:inherit;min-height:56px}
 .kp-ser{position:relative}
 .kp-ser svg{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
 .kp-ser-chips{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px}
@@ -4786,6 +4799,11 @@ function kpCalcularCadena(val, placa){
       kva: (vp != null) ? RT3 * vp * ip / 1000 : null,
       desbal_i: ii ? kpDesbal(ii) : null,
       desbal_v: kpDesbal(vv),
+      /* Codigos de origen, para que un aviso pueda abrir la correccion
+         directo sobre los puntos que lo producen. */
+      cod_i: e.i ? e.i.slice() : e.i_suma.flat(),
+      cod_v: e.v.slice(),
+      cod_vg: e.vg ? e.vg.slice() : null,
       faltan_i: ii ? kpFaltan(ii) : null,
       faltan_v: kpFaltan(vv),
       vg: (vg && faltanVg === 0) ? vg : null,
@@ -6245,26 +6263,26 @@ function kpRenderResumen(med, bal, ctx){
      cifras siempre, aunque esten bien, muestra las que piden atencion
      y calla cuando no hay ninguna.                                  */
   const av = [];
-  const nota = (nivel, que, detalle) => av.push({nivel, que, detalle});
+  const nota = (nivel, que, detalle, codigos) => av.push({nivel, que, detalle, codigos: codigos || null});
 
   cad.forEach(n => {
     if (n.carga_pct != null){
       const e = kpEstadoCarga(n.carga_pct);
       if (e !== 'ok') nota(e, n.nodo + ': carga ' + kpPct(n.carga_pct) + ' %',
-        kpNum(n.medido) + ' A de ' + kpNum(n.nominal) + ' A nominal');
+        kpNum(n.medido) + ' A de ' + kpNum(n.nominal) + ' A nominal', n.cod_i);
     }
     if (n.desbal_i != null){
       const e = kpEstadoDesbalI(n.desbal_i);
       if (e !== 'ok' && e !== 'none')
         nota(e, n.nodo + ': desbalance de corriente ' + kpPct(n.desbal_i) + ' %',
-             'Se revisa desde 5 %, se act\u00faa sobre 10 %');
+             'Se revisa desde 5 %, se act\u00faa sobre 10 %', n.cod_i);
     }
     if (n.desbal_v != null){
       const e = kpEstadoDesbal(n.desbal_v);
       /* La salida del variador no lleva criterio NEMA: la onda es PWM. */
       if (e !== 'ok' && e !== 'none' && n.nodo.indexOf('VFD salida') < 0)
         nota(e, n.nodo + ': desbalance de tensi\u00f3n ' + kpPct(n.desbal_v) + ' %',
-             'NEMA MG-1 marca derateo del motor desde 1 %');
+             'NEMA MG-1 marca derateo del motor desde 1 %', n.cod_v);
     }
     /* Fases incompletas: no se reporta desbalance, pero tampoco se calla.
        Un hueco en la ronda no es lo mismo que una unidad balanceada, y sin
@@ -6290,12 +6308,12 @@ function kpRenderResumen(med, bal, ctx){
   const fp = val.pst_in_fp;
   if (fp != null && fp <= 0.85)
     nota(fp <= 0.80 ? 'crit' : 'warn', 'Factor de potencia ' + Number(fp).toFixed(2),
-         'Medido en la acometida');
+         'Medido en la acometida', ['pst_in_fp']);
 
   const thdv = val.pst_in_thdv;
   if (thdv != null && thdv > 8)
     nota('warn', 'Distorsi\u00f3n de tensi\u00f3n ' + kpNum(thdv) + ' % en la red',
-         'IEEE 519 sugiere 8 % para sistemas de este nivel');
+         'IEEE 519 sugiere 8 % para sistemas de este nivel', ['pst_in_thdv', 'pst_in_thd']);
 
   const tmax = placa.motor_temp_max_c;
   const tmot = kpTempF(val.sf_t_motor_c) == null ? null : Number(val.sf_t_motor_c);
@@ -6305,9 +6323,11 @@ function kpRenderResumen(med, bal, ctx){
     const pct = 100 * tmot / tmax;
     if (pct >= 90) nota(pct >= 100 ? 'crit' : 'warn',
       'Temperatura de motor al ' + pct.toFixed(0) + ' % del l\u00edmite',
-      kpNumF(tmot) + ' \u00b0F de ' + kpNumF(tmax) + ' \u00b0F de placa');
+      kpNumF(tmot) + ' \u00b0F de ' + kpNumF(tmax) + ' \u00b0F de placa', ['sf_t_motor_c']);
   }
 
+  const COD_TIE = ['sutout_v_ab','sutout_v_ac','sutout_v_bc','sutout_v_ag','sutout_v_bg','sutout_v_cg'];
+  const nAntes = av.length;
   /* Referencia a tierra. El desbalance fase-fase no detecta degradacion
      de aislamiento; el fase-tierra si. */
   if (tie.estado === 'medida' && tie.causa === 'fase_tierra'){
@@ -6341,6 +6361,8 @@ function kpRenderResumen(med, bal, ctx){
     nota('warn', 'Referencia a tierra no evaluable en secundario SUT',
       'Faltan ' + tie.faltan + ' de 3 tensiones fase-tierra en esta ronda.');
   }
+  /* Los avisos de tierra se corrigen sobre las seis tensiones del SUT. */
+  for (let k = nAntes; k < av.length; k++) av[k].codigos = COD_TIE;
 
   /* Cruce con el sensor de fondo. La via habitual de comunicacion de un
      sensor ESP es el punto estrella del motor contra tierra, sobre el
@@ -6403,11 +6425,23 @@ function kpRenderResumen(med, bal, ctx){
       +  '</div>';
   } else {
     h += '<div class="kp-avisos">';
+    /* Corregir sale solo a quien tiene el permiso de validador. La
+       restriccion de verdad la aplica dp_ronda_corregir. */
+    const puedeCorr = !!(KP_CMP && KP_CMP.puede_corregir && KP_CMP.medicion_id);
     av.forEach(a => {
-      h += '<div class="kp-aviso ' + a.nivel + '">'
+      const cor = puedeCorr && a.codigos && a.codigos.length;
+      h += '<div class="kp-aviso ' + a.nivel + '"' + (cor ? ' style="position:relative;padding-right:92px"' : '') + '>'
         +  '<div class="q">' + a.que + '</div>'
-        +  '<div class="d">' + a.detalle + '</div></div>';
+        +  '<div class="d">' + a.detalle + '</div>'
+        +  (cor ? '<button class="kp-chip kp-cor-btn" data-kp-cor="'
+                  + kpEsc(a.codigos.join(',')) + '">Revisar datos</button>' : '')
+        +  '</div>';
     });
+    setTimeout(() => {
+      document.querySelectorAll('[data-kp-cor]').forEach(b => {
+        b.onclick = () => kpCorAbrir(b.dataset.kpCor.split(','), b.closest('.kp-aviso'));
+      });
+    }, 0);
     h += '</div>';
   }
 
@@ -8094,6 +8128,130 @@ function kpCmpAbrir(){
   document.getElementById('kpCmpOk').onclick = () => kpCmpGuardar(d, f);
 }
 
+/* ── Corregir valores ya capturados ─────────────────────────────────────
+   Se abre desde el aviso que los puso en duda, con solo los puntos que lo
+   producen. Muestra lo ingresado Y su unidad: el error puede ser de
+   cualquiera de los dos (CYC-52: una fase mal digitada, un THD importado
+   como fraccion). Solo viaja lo que cambio. */
+async function kpCorAbrir(codigos, aviso){
+  if (!KP_CMP || !KP_CMP.medicion_id) return;
+  let d;
+  try {
+    const { data, error } = await kpCliente().rpc('dp_ronda_valores', {
+      p_medicion_id: KP_CMP.medicion_id, p_codigos: codigos });
+    if (error) throw error;
+    if (!data || data.ok === false) throw new Error((data && data.error) || 'sin datos');
+    d = data;
+  } catch(e){
+    kpCorAviso('No se pudieron leer los valores: ' + e.message);
+    return;
+  }
+
+  let f = document.getElementById('kpCmpFondo');
+  if (f) f.remove();
+  f = document.createElement('div');
+  f.id = 'kpCmpFondo'; f.className = 'kp-cmp-fondo';
+
+  const qe = aviso ? aviso.querySelector('.q') : null;
+  let h = '<div class="kp-cmp"><h3>Revisar datos de la ronda</h3>'
+    + '<div class="sub">' + kpEsc(d.pozo || '') + (d.medido_en ? ' &middot; ' + kpFechaCorta(d.medido_en) : '')
+    + (qe ? '<br>Aviso: <b>' + qe.textContent + '</b>' : '')
+    + '<br>Compara con la planilla de campo o el archivo de origen. Si el dato es correcto, '
+    + 'cierra sin cambiar nada: el aviso es real.</div>'
+    + '<table class="kp-cor-t"><thead><tr><th>Punto</th><th>Capturado</th><th>Valor</th><th>Unidad</th></tr></thead><tbody>';
+
+  (d.puntos || []).forEach((p, k) => {
+    const tiene = p.valor_ingresado != null;
+    const uds = (p.unidades || []).slice();
+    if (p.unidad_ingresada && uds.indexOf(p.unidad_ingresada) < 0) uds.push(p.unidad_ingresada);
+    const norm = (p.valor != null && p.unidad_canonica && p.unidad_ingresada !== p.unidad_canonica)
+      ? '<small>= ' + kpNum(p.valor) + ' ' + kpEsc(p.unidad_canonica) + '</small>' : '';
+    h += '<tr data-k="' + k + '"><td title="' + kpEsc(p.nombre || p.codigo) + '">' + kpEsc(p.corto || p.codigo) + '</td>'
+      + '<td class="act">' + (tiene ? kpEsc(String(Number(p.valor_ingresado))) + ' ' + kpEsc(p.unidad_ingresada || '') + norm
+                                   : '<span style="color:var(--t3)">sin dato</span>') + '</td>'
+      + '<td>' + (tiene ? '<input type="text" inputmode="decimal" id="cor_v_' + k + '" value="'
+                          + kpEsc(String(Number(p.valor_ingresado))) + '">' : '&mdash;') + '</td>'
+      + '<td>' + (tiene && uds.length > 1
+          ? '<select id="cor_u_' + k + '">' + uds.map(u => '<option' + (u === p.unidad_ingresada ? ' selected' : '')
+              + '>' + kpEsc(u) + '</option>').join('') + '</select>'
+          : kpEsc(p.unidad_ingresada || p.unidad_canonica || '')) + '</td></tr>';
+  });
+  h += '</tbody></table>'
+    + '<textarea class="kp-cor-mot" id="kpCorMot" placeholder="Motivo de la correcci\u00f3n (obligatorio). '
+    + 'Ej.: V BC digitada 2510 en vez de 3510 seg\u00fan planilla de campo."></textarea>'
+    + '<div class="kp-cmp-pie">'
+    + '<span class="kp-cmp-msg" id="kpCorMsg">Lo vac\u00edo se llena con Completar datos. '
+    + 'Cada correcci\u00f3n queda registrada con el valor anterior y el motivo.</span>'
+    + '<button class="kp-chip" id="kpCorCancel">Cerrar</button>'
+    + '<button class="kp-chip" id="kpCorOk" style="font-weight:600">Guardar correcci\u00f3n</button>'
+    + '</div></div>';
+
+  f.innerHTML = h;
+  document.body.appendChild(f);
+  f.onclick = ev => { if (ev.target === f) f.remove(); };
+  document.getElementById('kpCorCancel').onclick = () => f.remove();
+
+  /* Marca la fila que cambia: con seis tensiones es facil tocar una de mas. */
+  const cambios = () => {
+    const out = {};
+    (d.puntos || []).forEach((p, k) => {
+      const iv = document.getElementById('cor_v_' + k);
+      if (!iv) return;
+      const iu = document.getElementById('cor_u_' + k);
+      const v = iv.value.trim().replace(',', '.');
+      const u = iu ? iu.value : p.unidad_ingresada;
+      const c = {};
+      if (v !== '' && Number(v) !== Number(p.valor_ingresado)) c.valor = v;
+      if (u && u !== p.unidad_ingresada) c.unidad = u;
+      f.querySelector('tr[data-k="' + k + '"]').classList.toggle('cambia', Object.keys(c).length > 0);
+      if (Object.keys(c).length) out[p.codigo] = c;
+    });
+    return out;
+  };
+  f.querySelectorAll('input,select').forEach(x => { x.oninput = cambios; x.onchange = cambios; });
+
+  document.getElementById('kpCorOk').onclick = async () => {
+    const msg = document.getElementById('kpCorMsg');
+    const btn = document.getElementById('kpCorOk');
+    const c = cambios();
+    const mot = document.getElementById('kpCorMot').value.trim();
+    if (!Object.keys(c).length){
+      msg.textContent = 'No cambiaste ning\u00fan valor.'; msg.className = 'kp-cmp-msg err'; return;
+    }
+    const malo = Object.entries(c).find(([, x]) => x.valor != null && !Number.isFinite(Number(x.valor)));
+    if (malo){
+      msg.textContent = 'Valor no num\u00e9rico en ' + malo[0] + '.'; msg.className = 'kp-cmp-msg err'; return;
+    }
+    if (mot.length < 5){
+      msg.textContent = 'Escribe el motivo: sin \u00e9l, una correcci\u00f3n no se distingue de un error.';
+      msg.className = 'kp-cmp-msg err'; return;
+    }
+    btn.disabled = true; btn.textContent = 'Guardando\u2026'; msg.className = 'kp-cmp-msg';
+    try {
+      const { data, error } = await kpCliente().rpc('dp_ronda_corregir', {
+        p_medicion_id: KP_CMP.medicion_id, p_cambios: c, p_motivo: mot });
+      if (error) throw error;
+      if (!data || data.ok === false) throw new Error((data && data.error) || 'no se guard\u00f3');
+      f.remove();
+      kpVerPozo(KP_POZO_ACTUAL);
+    } catch(e){
+      btn.disabled = false; btn.textContent = 'Guardar correcci\u00f3n';
+      msg.textContent = e.message; msg.className = 'kp-cmp-msg err';
+    }
+  };
+}
+
+/* Aviso en pantalla sin alert(): en la PWA instalada los dialogos nativos
+   pueden quedar suprimidos y el error no se veria. */
+function kpCorAviso(t){
+  const d = document.createElement('div');
+  d.className = 'kp-cmp-fondo';
+  d.innerHTML = '<div class="kp-cmp" style="max-width:420px"><div class="sub" style="margin:0">'
+    + kpEsc(t) + '</div><div class="kp-cmp-pie"><button class="kp-chip">Aceptar</button></div></div>';
+  d.onclick = ev => { if (ev.target === d || ev.target.tagName === 'BUTTON') d.remove(); };
+  document.body.appendChild(d);
+}
+
 async function kpCmpGuardar(d, f){
   const msg = document.getElementById('kpCmpMsg');
   const btn = document.getElementById('kpCmpOk');
@@ -8134,7 +8292,9 @@ async function kpCmpGuardar(d, f){
     f.remove();
     /* Se recarga la unidad entera: al completar el sensor de fondo cambian
        la cadena de potencia, los avisos y el estado, no solo esta lista. */
-    kpAbrir(d.pozo);
+    /* Antes llamaba a kpAbrir, que no existe: la ronda SI se guardaba, pero
+       el ReferenceError caia en el catch y la pantalla decia "No se guardo". */
+    kpVerPozo(KP_POZO_ACTUAL);
   } catch(e){
     btn.disabled = false; btn.textContent = 'Guardar';
     msg.textContent = 'No se guardó: ' + e.message;
