@@ -21,7 +21,7 @@
 :root{color-scheme:light;--navy:#134B70;--navy-2:#1a5c85;--acento:#1B8E9E;--bg:#f7f9fa;--card:#ffffff;--line:#D1D8DE;--ink:#134B70;--ink-soft:#4d7089;--texto:#16222c;
 --surface-2:#EFF1F4;--campo:#ffffff;--ok:#1C6B3A;--ok-bg:#DDEFE3;--warn:#7A5A00;--warn-bg:#FBEFC9;--danger:#BC2F2C;--danger-bg:#FDEDEA;--info:#1F4E79;--info-bg:#DCE6F1;--gris:#6B7680;
 --radius:14px;--maxw:560px;--f:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',Roboto,Arial,sans-serif;box-sizing:border-box;
-padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+}
 html[data-tema="oscuro"]{color-scheme:dark;--navy:#0d2d43;--navy-2:#123f5b;--acento:#35b8c9;--bg:#14181c;--card:#1c2126;--line:#39434B;--ink:#8ecbe4;--ink-soft:#93a3ad;--texto:#dfe6ea;
 --surface-2:#232a30;--campo:#232a31;--ok:#5fbf75;--ok-bg:#16281c;--warn:#d9ae6c;--warn-bg:#2a2318;--danger:#e26a6a;--danger-bg:#32201f;--info:#8fb8e6;--info-bg:#18263a;--gris:#8b979f}
 *,*::before,*::after{box-sizing:inherit;-webkit-tap-highlight-color:transparent}
@@ -31,15 +31,19 @@ body{background:var(--bg);color:var(--texto);font-family:var(--f);font-size:17px
 button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:3px solid var(--acento);outline-offset:2px}
-.app{max-width:var(--maxw);margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--bg)}
+/* La app ocupa exactamente la parte visible de la pantalla. Con 100vh (o
+   con el relleno de zona segura sumado encima) en Android la barra de
+   acción quedaba por debajo del borde. position:fixed con inset 0 se ajusta
+   al área visible real, también con la barra del navegador o el teclado. */
+.app{position:fixed;top:0;right:0;bottom:0;left:0;margin:0 auto;max-width:var(--maxw);display:flex;flex-direction:column;background:var(--bg)}
 html,body{overflow:hidden}
-.enc{background:var(--navy);color:#fff;padding:10px 12px;display:flex;align-items:center;gap:10px;flex:0 0 auto}
+.enc{background:var(--navy);color:#fff;padding:calc(10px + env(safe-area-inset-top,0px)) 12px 10px;display:flex;align-items:center;gap:10px;flex:0 0 auto}
 .enc .volver{width:48px;height:48px;border-radius:12px;border:2px solid rgba(255,255,255,.5);background:transparent;color:#fff;font-size:26px;flex:0 0 auto}
 .enc .t{flex:1;min-width:0}.enc .t b{display:block;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.enc .t span{font-size:13.5px;opacity:.88;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .red{font-size:12.5px;font-weight:600;border:1.5px solid rgba(255,255,255,.5);border-radius:999px;padding:4px 9px;white-space:nowrap;flex:0 0 auto}
 .red i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:#a6ecc6;vertical-align:1px}.red.off i{background:#FFB37A}
 .cuerpo{flex:1;overflow-y:auto;padding:14px 14px 22px}
-.accion{flex:0 0 auto;background:var(--card);border-top:1.5px solid var(--line);padding:12px 14px;display:flex;gap:10px}
+.accion{flex:0 0 auto;background:var(--card);border-top:1.5px solid var(--line);padding:12px 14px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:10px}
 .accion:empty{display:none}
 .btn{min-height:56px;border-radius:12px;border:2px solid var(--ink-soft);background:var(--card);font-weight:700;font-size:16.5px;padding:0 14px;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;color:var(--texto)}
 .btn.pri{background:var(--navy);border-color:var(--navy);color:#fff;flex:1 1 auto;min-width:0}
@@ -169,7 +173,7 @@ html[data-tema="oscuro"] .fotos-btns .pri-f{border-color:var(--acento);color:var
   .celdas{grid-template-columns:repeat(6,1fr)}
   .fila{flex-wrap:nowrap}
   .fila .encontrado{width:auto}
-  .accion{justify-content:flex-end;padding:12px 22px}
+  .accion{justify-content:flex-end;padding:12px 22px calc(12px + env(safe-area-inset-bottom,0px))}
   .accion .btn.pri{flex:0 1 420px}
   .modal{align-items:center}
   .c-split{display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:start}
@@ -201,7 +205,7 @@ html[data-tema="oscuro"] .fotos-btns .pri-f{border-color:var(--acento);color:var
   .form2 .campo.dos{grid-column:span 2}
   .form2{max-width:1180px}
   .cuerpo{padding:20px 28px 30px}
-  .accion{padding:12px 28px}
+  .accion{padding:12px 28px calc(12px + env(safe-area-inset-bottom,0px))}
   .inp input{width:120px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
