@@ -481,7 +481,7 @@ function pintarLado(){
   var ver = S.com && ['ruta','paso','cierre'].indexOf(S.pantalla) >= 0;
   document.body.classList.toggle('con-lado', !!ver);
   if (!ver) { L.innerHTML = ''; return; }
-  var h = '<div class="lado-cab"><b>' + esc(S.com.pozo_nombre) + '</b><small>' + esc((S.com.codigo || 'Sin código aún') + ' · ' + (EST_COM[S.com.estado] || S.com.estado)) + '</small></div>', n = 0;
+  var h = '<div class="lado-cab"><b>' + esc(S.com.pozo_nombre) + '</b><small>' + esc((S.com.codigo || 'Código al sincronizar') + ' · ' + (EST_COM[S.com.estado] || S.com.estado)) + '</small></div>', n = 0;
   EQUIPOS.forEach(function(eq){
     h += '<div class="lado-eq"><span>' + esc(eq.t) + '</span>' + chipH(estadoEq(eq.id)) + '</div>';
     PASOS.filter(function(p){ return p.eq === eq.id; }).forEach(function(p){ n++; var s = estadoPaso(p);
@@ -514,14 +514,16 @@ function vInicio(){
     var pr = navigator.onLine ? sb.rpc('dp_cm_lista').then(function(r){ if (!r.error) remotos = r.data || []; }).catch(function(){}) : Promise.resolve();
     return pr.then(function(){
       var mapa = {}; loc.forEach(function(c){ mapa[c.id] = { local: c }; });
-      remotos.forEach(function(r){ (mapa[r.id] = mapa[r.id] || {}).remoto = r; });
+      remotos.forEach(function(r){ var m = (mapa[r.id] = mapa[r.id] || {}); m.remoto = r;
+        /* Creado sin señal: el código lo pone la base al sincronizar y aquí se trae. */
+        if (m.local && r.codigo && m.local.codigo !== r.codigo) { m.local.codigo = r.codigo; idbPut('cms', m.local); } });
       var ids = Object.keys(mapa).sort(function(a, b){ var x = mapa[a], y = mapa[b]; return String((y.local && y.local.actualizado) || (y.remoto && y.remoto.actualizado_en) || '').localeCompare(String((x.local && x.local.actualizado) || (x.remoto && x.remoto.actualizado_en) || '')); });
       var h = '<button class="btn pri ancho grande" id="nuevo">+ Nuevo comisionamiento</button>';
       h += '<h3>Comisionamientos</h3><div class="lista">';
       if (!ids.length) h += '<p class="nota">Aún no hay comisionamientos en este dispositivo ni en tus cuencas.</p>';
       ids.forEach(function(id){ var m = mapa[id], c = m.local || {}, r = m.remoto || {};
         var est = (r.estado || c.estado), cola = colaDe(id).length;
-        h += '<button class="pasoItem" data-id="' + id + '"><span class="x"><b>' + esc(c.pozo_nombre || r.pozo_nombre) + (c.es_prueba || r.es_prueba ? ' <small class="prueba">PRUEBA</small>' : '') + '</b><small>' + esc((c.codigo || r.codigo || 'Sin código aún') + ' · orden ' + (c.orden || r.orden || '—')) + '</small><small>' + (m.local ? 'En este dispositivo' : 'Solo en el servidor') + (cola ? ' · ' + cola + ' envíos en cola' : '') + '</small></span><span class="est e' + ({ aprobado: 'C', en_revision: 'P', anulado: 'X' }[est] || 'R') + '">' + (EST_COM[est] || est) + '</span></button>';
+        h += '<button class="pasoItem" data-id="' + id + '"><span class="x"><b>' + esc(c.pozo_nombre || r.pozo_nombre) + (c.es_prueba || r.es_prueba ? ' <small class="prueba">PRUEBA</small>' : '') + '</b><small>' + esc((c.codigo || r.codigo || 'Código al sincronizar') + ' · orden ' + (c.orden || r.orden || '—')) + '</small><small>' + (m.local ? 'En este dispositivo' : 'Solo en el servidor') + (cola ? ' · ' + cola + ' envíos en cola' : '') + '</small></span><span class="est e' + ({ aprobado: 'C', en_revision: 'P', anulado: 'X' }[est] || 'R') + '">' + (EST_COM[est] || est) + '</span></button>';
       });
       h += '</div>';
       $('cuerpo').innerHTML = h;
@@ -630,7 +632,7 @@ function crear(sel){
 /* ---------------- recorrido ---------------- */
 function vRuta(){
   var c = S.com;
-  enc(c.pozo_nombre, (c.codigo || 'Sin código aún') + ' · ' + (EST_COM[c.estado] || c.estado) + (c.es_prueba ? ' · prueba' : ''));
+  enc(c.pozo_nombre, (c.codigo || 'Código al sincronizar') + ' · ' + (EST_COM[c.estado] || c.estado) + (c.es_prueba ? ' · prueba' : ''));
   var h = editable() ? '' : '<p class="aviso">Este comisionamiento está ' + esc((EST_COM[c.estado] || c.estado).toLowerCase()) + ': solo lectura.</p>', n = 0;
   EQUIPOS.forEach(function(eq){
     var ps = PASOS.filter(function(p){ return p.eq === eq.id; });
@@ -880,7 +882,8 @@ function armarPdf(FOTOS){
   var A = window.CM_RECURSOS || {}, J = window.jspdf.jsPDF, doc = new J({ unit: 'mm', format: 'letter' });
   if (A.font) { doc.addFileToVFS('LS.ttf', A.font); doc.addFont('LS.ttf', 'LS', 'normal'); doc.addFileToVFS('LSB.ttf', A.fontb); doc.addFont('LSB.ttf', 'LS', 'bold'); }
   var F = A.font ? 'LS' : 'helvetica', W = 215.9, Hh = 279.4, M = 18, CW = W - 2 * M, y = 0, foto = [], c = S.com, em = hoy();
-  var codigo = (S.tpl.informe && S.tpl.informe.codigo) || 'Por asignar', borrador = c.estado !== 'aprobado';
+  /* El código es el del comisionamiento (COMISIONAMIENTO-<POZO>-<NNN>), lo asigna la base al crearlo. */
+  var codigo = c.codigo || 'Pendiente de sincronizar', borrador = c.estado !== 'aprobado';
   function T(sz, b){ doc.setFont(F, b ? 'bold' : 'normal'); doc.setFontSize(sz); doc.setTextColor(34, 34, 34); }
   function logo(k, x, yy, w, h){ try { if (A[k]) doc.addImage('data:image/png;base64,' + A[k], 'PNG', x, yy, w, h); } catch(e){} }
   function header(){ var top = 10, hh = 17, wl = 38, wr = 38, wc = CW - wl - wr; doc.setDrawColor(58, 58, 58); doc.setLineWidth(0.25); doc.rect(M, top, CW, hh); doc.line(M + wl, top, M + wl, top + hh); doc.line(M + wl + wc, top, M + wl + wc, top + hh);
@@ -906,7 +909,7 @@ function armarPdf(FOTOS){
   T(20, true); doc.text('INFORME DE COMISIONAMIENTO', W / 2, 95, { align: 'center' }); T(12); doc.setTextColor(85, 85, 85); doc.text('Equipos de superficie del sistema de bombeo electrosumergible', W / 2, 103, { align: 'center' });
   T(13, true); doc.text('POZO ' + c.pozo_nombre, W / 2, 122, { align: 'center' }); if (c.campo) { T(12); doc.setTextColor(85, 85, 85); doc.text('Campo ' + c.campo, W / 2, 129, { align: 'center' }); }
   var fechas = PASOS.map(function(p){ return c.d[p.id] && c.d[p.id].fecha; }).filter(Boolean).sort(function(a, b){ var k = function(x){ return x.split('/').reverse().join(''); }; return k(a) < k(b) ? -1 : 1; });
-  y = 150; kv([['Cliente','Gran Tierra Energy'],['Ejecutor','Confipetrol'],['Pozo',c.pozo_nombre],['Campo',c.campo || '—'],['Sistema','Bombeo electrosumergible (BES)'],['Periodo de ejecución', fechas.length ? fechas[0] + ' al ' + fechas[fechas.length - 1] : '—'],['Orden de trabajo',c.orden],['Registro',c.codigo || '—'],['Ejecutado por',c.ejecutantes.join(', ')],['Revisado por',c.revisa || '—'],['Código',codigo],['Fecha de emisión',em],['Estado',EST_COM[c.estado] + (c.es_prueba ? ' (prueba)' : '')]]);
+  y = 150; kv([['Cliente','Gran Tierra Energy'],['Ejecutor','Confipetrol'],['Pozo',c.pozo_nombre],['Campo',c.campo || '—'],['Sistema','Bombeo electrosumergible (BES)'],['Periodo de ejecución', fechas.length ? fechas[0] + ' al ' + fechas[fechas.length - 1] : '—'],['Orden de trabajo',c.orden],['Ejecutado por',c.ejecutantes.join(', ')],['Revisado por',c.revisa || '—'],['Código',codigo],['Fecha de emisión',em],['Estado',EST_COM[c.estado] + (c.es_prueba ? ' (prueba)' : '')]]);
   y += 4; T(9.6, true); doc.text('Control de versiones', M, y + 3); y += 6;
   tabla(['Versión','Fecha','Descripción','Elaboró','Revisó','Aprobó'], [['0', em, borrador ? 'Emisión para revisión' : 'Emisión aprobada', c.ejecutantes[0] || '', c.revisa || '', '']], [16,22,CW-16-22-84,28,28,28]);
   doc.setFontSize(7); doc.setTextColor(85, 85, 85); doc.text('Equipos instalados en sistemas y procesos operados por Gran Tierra Energy.', M, Hh - 16);
