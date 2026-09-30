@@ -79,7 +79,9 @@ html[data-tema="oscuro"] .seg button[aria-pressed="true"]{background:var(--acent
 .barra{display:block;height:6px;background:var(--surface-2);border-radius:9px;overflow:hidden;margin-top:6px}.barra i{display:block;height:100%;background:var(--acento)}
 .dot{width:18px;height:18px;border-radius:50%;border:2px solid var(--line);flex:0 0 auto}
 .dot.eC{background:var(--ok);border-color:var(--ok)}.dot.eA{background:#E3A300;border-color:#E3A300}.dot.eN{background:var(--danger);border-color:var(--danger)}.dot.eP{background:var(--info);border-color:var(--info)}.dot.eX,.dot.eI{background:var(--gris);border-color:var(--gris)}
-.prog{display:flex;justify-content:space-between;font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:4px}
+.prog{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;color:var(--ink-soft);font-weight:700;margin-bottom:4px}
+.estg{font-weight:600;font-size:12.5px}.estg::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:1px;background:transparent}
+.estg.local::before{background:#E3A300}.estg.nube::before{background:var(--ok)}.estg.cola::before{background:var(--info)}.estg.guardando::before{background:var(--line)}
 details.guia{background:var(--card);border:2px solid var(--navy);border-radius:var(--radius);margin-bottom:14px;overflow:hidden}
 html[data-tema="oscuro"] details.guia{border-color:var(--acento)}
 details.guia summary{list-style:none;cursor:pointer;background:var(--navy);color:#fff;font-weight:700;padding:12px 14px;font-size:16px;min-height:48px}
@@ -482,7 +484,9 @@ function ir(p, o){ S.pila.push({ pantalla: S.pantalla, paso: S.paso }); S.pantal
 function volver(){ var x = S.pila.pop(); if (!x) { location.href = 'index.html'; return; } S.pantalla = x.pantalla; S.paso = x.paso; render(); $('cuerpo').scrollTop = 0; }
 function enc(t, s){ $('encT').textContent = t; $('encS').textContent = s; }
 function accion(h){ $('accion').innerHTML = h || ''; }
-function render(){ ({ inicio: vInicio, nuevo: vNuevo, ruta: vRuta, paso: vPaso, cierre: vCierre, sesion: vSesion })[S.pantalla](); pintarLado(); pintarRed(); }
+function render(){
+  if (AG.pasoAbierto && (S.pantalla !== 'paso' || S.paso !== AG.pasoAbierto)) { vaciarGuardado(AG.pasoAbierto); AG.pasoAbierto = null; }
+  ({ inicio: vInicio, nuevo: vNuevo, ruta: vRuta, paso: vPaso, cierre: vCierre, sesion: vSesion })[S.pantalla](); pintarLado(); pintarRed(); }
 /* En computador y tableta horizontal el recorrido queda fijo a la izquierda:
    se salta de un paso a otro sin volver a la lista. En el celular no se ve. */
 function pintarLado(){
@@ -658,8 +662,9 @@ function vRuta(){
   });
   $('cuerpo').innerHTML = h;
   [].forEach.call($('cuerpo').querySelectorAll('.pasoItem'), function(b){ b.onclick = function(){ ir('paso', { paso: b.getAttribute('data-id') }); }; });
-  var sig = editable() ? PASOS.filter(function(p){ return !estadoPaso(p).ok; })[0] : null;
-  accion('<button class="btn sec" id="atras" aria-label="Volver a la bandeja">‹</button>' + (sig ? '<button class="btn sec2" id="sig">Siguiente: ' + esc(sig.t) + '</button>' : '') + '<button class="btn pri" id="cierre">Informe</button>');
+  var ult = S.com.ultimo_paso && paso(S.com.ultimo_paso);
+  var sig = editable() ? ((ult && (function(s){ return s.ok < s.tot && !(S.com.d[ult.id] || {}).na; })(estadoPaso(ult))) ? ult : PASOS.filter(function(p){ return !estadoPaso(p).ok; })[0]) : null;
+  accion('<button class="btn sec" id="atras" aria-label="Volver a la bandeja">‹</button>' + (sig ? '<button class="btn sec2" id="sig">' + (ult && sig === ult ? 'Continuar' : 'Siguiente') + ': ' + esc(sig.t) + '</button>' : '') + '<button class="btn pri" id="cierre">Informe</button>');
   $('atras').onclick = function(){ S.pila = []; S.pantalla = 'inicio'; S.com = null; render(); };
   if (sig) $('sig').onclick = function(){ ir('paso', { paso: sig.id }); };
   $('cierre').onclick = function(){ ir('cierre'); };
@@ -680,7 +685,10 @@ function guiaH(p){
 function vPaso(){
   var p = paso(S.paso), d = D(p.id), eq = EQUIPOS.filter(function(e){ return e.id === p.eq; })[0], idx = PASOS.indexOf(p);
   enc(S.com.pozo_nombre, eq.t);
-  var h = '<div class="prog"><span>' + esc(eq.t) + '</span><span>Paso ' + (idx + 1) + ' de ' + PASOS.length + '</span></div><h2>' + esc(p.t) + '</h2><div class="p-split"><div class="p-guia">' + guiaH(p) + '</div><div class="p-cap">';
+  if (AG.pasoAbierto && AG.pasoAbierto !== p.id) { vaciarGuardado(AG.pasoAbierto); AG.estado = ''; }
+  if (AG.pasoAbierto !== p.id && editable() && S.com.ultimo_paso !== p.id) { S.com.ultimo_paso = p.id; guardarLocal(); }
+  AG.pasoAbierto = p.id;
+  var h = '<div class="prog"><span>' + esc(eq.t) + ' · Paso ' + (idx + 1) + ' de ' + PASOS.length + '</span><span class="estg" id="estg" aria-live="polite"></span></div><h2>' + esc(p.t) + '</h2><div class="p-split"><div class="p-guia">' + guiaH(p) + '</div><div class="p-cap">';
   h += '<div class="captura">' + ({ med: capMed, check: capCheck, kv: capKV, tabla: capTabla, ipdar: capIP, calc: capCalc, giro: capGiro })[p.tipo](p, d) + '</div>';
   var rojo = estadoPaso(p).e === 'N';
   h += preH(p, d);
@@ -705,8 +713,9 @@ function vPaso(){
   $('cuerpo').querySelector('details').ontoggle = function(){ S.guia = this.open; };
   pintarMinis(d);
   bindCaptura(p, d);
-  $('obs').oninput = function(){ d.obs = this.value; pie(p); };
-  $('obs').onchange = function(){ refila(); };
+  $('obs').oninput = function(){ d.obs = this.value; pie(p); autoguardar(p); };
+  pintarEstG();
+  $('obs').onchange = function(){ refilaDiferido(); };
   [].forEach.call($('cuerpo').querySelectorAll('[data-pre]'), function(b){ b.onclick = function(){ var k = b.getAttribute('data-pre'); d.pre[k] = !d.pre[k]; toque(d); refila(); }; });
   function agregarFotos(lista){
     var fs = [].filter.call(lista || [], function(f){ return /^image\//.test(f.type); });
@@ -727,7 +736,12 @@ function vPaso(){
   $('na').onchange = function(){ d.na = this.checked; toque(d); refila(); };
   pie(p);
 }
-function refila(){ var y = $('cuerpo').scrollTop; vPaso(); pintarLado(); $('cuerpo').scrollTop = y; }
+function refila(){ var y = $('cuerpo').scrollTop; vPaso(); pintarLado(); $('cuerpo').scrollTop = y; if (S.pantalla === 'paso') autoguardar(paso(S.paso)); }
+/* Al salir de un campo con un toque en otro botón, el navegador dispara el
+   change antes del click. Si se repinta de inmediato, el botón tocado
+   desaparece y el toque se pierde. Se repinta un instante después y solo
+   si se sigue en el mismo paso. */
+function refilaDiferido(){ var pid = S.paso; setTimeout(function(){ if (S.pantalla === 'paso' && S.paso === pid) refila(); }, 180); }
 function pintarMinis(d){
   var c = $('minis'); if (!c) return;
   d.fotos.forEach(function(id, i){
@@ -782,7 +796,53 @@ function datosPaso(p, d){
   return { cliente_ts: new Date().toISOString(), fecha: aISO(d.fecha), no_aplica: !!d.na, unidad: d.unit || unitFija, tension_v: d.tens, campos: d.campos, checks: d.checks,
     tabla: d.tabla, encontrado: d.enc, textos: tx, observacion: d.obs || '', estado: s.ok ? s.e : null, valores: valores };
 }
+/* ---------------- autoguardado ----------------
+   Cada cambio se guarda en el dispositivo (IndexedDB) al medio segundo.
+   A los 15 s sin tocar nada, o al salir del paso, o cuando la app pasa a
+   segundo plano, el paso se envía también al servidor (o a la cola si no
+   hay señal). Así un cierre inesperado, una llamada o la batería no se
+   llevan el avance. */
+var AG = { tLocal: null, tNube: null, pasoAbierto: null, firmas: {}, estado: '', hora: '' };
+function horaCorta(){ var d = new Date(); return dos(d.getHours()) + ':' + dos(d.getMinutes()); }
+var EST_G = { local: 'Guardado en el dispositivo', nube: 'Guardado en la nube', cola: 'En cola, se enviará con señal', guardando: 'Guardando…' };
+function pintarEstG(){ var e = $('estg'); if (!e) return;
+  e.className = 'estg ' + AG.estado;
+  e.textContent = EST_G[AG.estado] ? EST_G[AG.estado] + (AG.estado !== 'guardando' && AG.hora ? ' · ' + AG.hora : '') : ''; }
+function autoguardar(p){
+  if (!S.com || !editable() || !p) return;
+  S.com.actualizado = new Date().toISOString();
+  AG.estado = 'guardando'; pintarEstG();
+  clearTimeout(AG.tLocal); AG.tLocal = setTimeout(function(){ guardarLocal().then(function(){ if (AG.estado === 'guardando') { AG.estado = 'local'; AG.hora = horaCorta(); pintarEstG(); } }); }, 500);
+  clearTimeout(AG.tNube); AG.tNube = setTimeout(function(){ subirPaso(p); }, 15000);
+}
+function subirPaso(p){
+  clearTimeout(AG.tNube); AG.tNube = null;
+  if (!S.com || !editable() || !p) return Promise.resolve();
+  var d = S.com.d[p.id]; if (!d) return Promise.resolve();
+  if (d.na && !(d.obs || '').trim()) return guardarLocal();         // la base lo rechazaría: queda local
+  var datos = datosPaso(p, d), firma = JSON.stringify(Object.assign({}, datos, { cliente_ts: null }));
+  var clave = S.com.id + '/' + p.id;
+  if (AG.firmas[clave] === firma) return guardarLocal();             // nada nuevo que enviar
+  AG.firmas[clave] = firma;
+  return guardarLocal().then(function(){
+    return enviar('dp_cm_q_paso', { comisionamiento_id: S.com.id, paso_id: p.id, datos: datos }, 'Comisionamiento ' + S.com.pozo_nombre + ': ' + p.t, 'cm-paso-' + S.com.id + '-' + p.id, S.com.id);
+  }).then(function(r){
+    if (r && r.rechazo) { AG.firmas[clave] = null; AG.estado = 'local'; }
+    else { AG.estado = r && r.cola ? 'cola' : 'nube'; if (S.com.estado === 'borrador') S.com.estado = 'en_campo'; }
+    AG.hora = horaCorta(); pintarEstG(); pintarRed();
+  });
+}
+/* Guarda ya lo pendiente del paso que se deja. */
+function vaciarGuardado(pid){
+  clearTimeout(AG.tLocal); var p = pid && paso(pid);
+  if (!S.com) return Promise.resolve();
+  return p && S.com.d[pid] ? subirPaso(p) : guardarLocal();
+}
+document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden' && S.pantalla === 'paso') vaciarGuardado(S.paso); });
+window.addEventListener('pagehide', function(){ if (S.pantalla === 'paso') vaciarGuardado(S.paso); });
+
 function guardarPaso(p){
+  clearTimeout(AG.tNube); clearTimeout(AG.tLocal);
   var d = D(p.id);
   if (p.tipo === 'kv' && !d.na) p.campos.forEach(function(c){ if (d.campos[c[0]] == null && c[3]) d.campos[c[0]] = c[3]; });
   toque(d); S.com.actualizado = new Date().toISOString();
@@ -791,7 +851,9 @@ function guardarPaso(p){
   }).then(function(r){
     if (r.rechazo) { avisar('La base rechazó el paso', r.rechazo + ' El dato sigue guardado en el dispositivo.'); return true; }
     if (S.com.estado === 'borrador') { S.com.estado = 'en_campo'; guardarLocal(); }
-    toast(r.cola ? 'Guardado en el dispositivo' : 'Guardado');
+    AG.firmas[S.com.id + '/' + p.id] = JSON.stringify(Object.assign({}, datosPaso(p, D(p.id)), { cliente_ts: null }));
+    AG.estado = r.cola ? 'cola' : 'nube'; AG.hora = horaCorta();
+    toast(r.cola ? 'Guardado en el dispositivo; se enviará con señal' : 'Guardado');
     return true;
   });
 }
@@ -849,13 +911,13 @@ function bindCaptura(p, d){
   if ($('unit')) on('#unit button', function(b){ b.onclick = function(){ d.unit = b.getAttribute('data-v'); Object.keys(d.vals).forEach(function(k){ if (d.vals[k].v != null) d.vals[k].u = null; }); toque(d); refila(); }; });
   if ($('tens')) on('#tens button', function(b){ b.onclick = function(){ d.tens = +b.getAttribute('data-v'); refila(); }; });
   if ($('bulk')) $('bulk').onclick = function(){ p.pts.forEach(function(pt){ if (pt.c.t === 'enum' && pt.c.e === 'OL' && !d.vals[pt.id]) d.vals[pt.id] = { e: 'OL' }; }); toque(d); refila(); };
-  on('input[data-v]', function(i){ i.onchange = function(){ d.vals[i.getAttribute('data-v')] = { v: i.value, u: null }; toque(d); refila(); }; });
+  on('input[data-v]', function(i){ i.oninput = function(){ var k = i.getAttribute('data-v'), r = d.vals[k]; d.vals[k] = { v: i.value, u: r && r.u || null }; toque(d); autoguardar(p); }; i.onchange = function(){ d.vals[i.getAttribute('data-v')] = { v: i.value, u: (d.vals[i.getAttribute('data-v')] || {}).u || null }; toque(d); refilaDiferido(); }; });
   on('[data-ol]', function(b){ b.onclick = function(){ var id = b.getAttribute('data-ol'), r = d.vals[id]; d.vals[id] = r && r.e === 'OL' ? {} : { e: 'OL' }; toque(d); refila(); }; });
   on('[data-e]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ d.vals[g.getAttribute('data-e')] = { e: b.getAttribute('data-v') }; toque(d); refila(); }; }); });
   on('[data-enc]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ d.enc[g.getAttribute('data-enc')] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
   on('[data-ck]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ d.checks[g.getAttribute('data-ck')] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
-  on('input[data-kv]', function(i){ i.onchange = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); refila(); }; });
-  on('input[data-t]', function(i){ i.onchange = function(){ var k = i.getAttribute('data-t').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = i.value; toque(d); refila(); }; });
+  on('input[data-kv]', function(i){ i.oninput = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); refilaDiferido(); }; });
+  on('input[data-t]', function(i){ i.oninput = function(){ var k = i.getAttribute('data-t').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ var k = i.getAttribute('data-t').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = i.value; toque(d); refilaDiferido(); }; });
 }
 function comprimir(file, cb){ var img = new Image(), r = new FileReader(); r.onload = function(){ img.onload = function(){ var m = 1280, k = Math.min(1, m / Math.max(img.width, img.height)); var c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); cb(c.toDataURL('image/jpeg', 0.72)); }; img.src = r.result; }; r.readAsDataURL(file); }
 
