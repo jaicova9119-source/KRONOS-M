@@ -32,7 +32,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:3px solid var(--acento);outline-offset:2px}
 .app{max-width:var(--maxw);margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--bg)}
-body{overflow:hidden}
+html,body{overflow:hidden}
 .enc{background:var(--navy);color:#fff;padding:10px 12px;display:flex;align-items:center;gap:10px;flex:0 0 auto}
 .enc .volver{width:48px;height:48px;border-radius:12px;border:2px solid rgba(255,255,255,.5);background:transparent;color:#fff;font-size:26px;flex:0 0 auto}
 .enc .t{flex:1;min-width:0}.enc .t b{display:block;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.enc .t span{font-size:13.5px;opacity:.88;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -129,7 +129,11 @@ details.guia .cond{margin:0 14px 10px;font-size:14px;color:var(--ink-soft)}
 .obs{margin:12px 0}.obs label{display:block;font-weight:700;margin-bottom:6px}.obs.req label{color:var(--danger)}
 .fotos{margin-bottom:12px;border:2px dashed transparent;border-radius:var(--radius);transition:border-color .15s,background .15s}
 .fotos.encima{border-color:var(--acento);background:var(--surface-2)}
-.fotos input{position:absolute;opacity:0;width:1px;height:1px}
+.fotos{position:relative}
+/* El input queda dentro de su recuadro: si queda suelto, al recibir el foco
+   después del explorador de archivos el navegador desplaza la ventana
+   completa para mostrarlo y la pantalla queda en blanco. */
+.fotos input{position:absolute;top:0;left:0;opacity:0;width:1px;height:1px;pointer-events:none}
 .fotos-btns{display:flex;gap:8px}.fotos-btns .btn{flex:1 1 0;min-width:0}
 .fotos-btns .pri-f{border-color:var(--navy);color:var(--navy)}
 html[data-tema="oscuro"] .fotos-btns .pri-f{border-color:var(--acento);color:var(--acento)}
@@ -718,13 +722,19 @@ function vPaso(){
   $('obs').onchange = function(){ refilaDiferido(); };
   [].forEach.call($('cuerpo').querySelectorAll('[data-pre]'), function(b){ b.onclick = function(){ var k = b.getAttribute('data-pre'); d.pre[k] = !d.pre[k]; toque(d); refila(); }; });
   function agregarFotos(lista){
-    var fs = [].filter.call(lista || [], function(f){ return /^image\//.test(f.type); });
+    var fs = [].filter.call(lista || [], function(f){ return /^image\//.test(f.type) || /\.(heic|heif)$/i.test(f.name); });
     if (!fs.length) return;
+    var bien = 0, malas = [];
+    toast(fs.length === 1 ? 'Procesando la foto…' : 'Procesando ' + fs.length + ' fotos…');
     fs.reduce(function(pr, f){ return pr.then(function(){ return new Promise(function(ok){ comprimir(f, function(u){
       var fid = nuevoId();
       idbPut('fotos', { id: fid, com: S.com.id, paso: p.id, url: u, estado: 'local', orden: d.fotos.length, tomada_en: new Date(f.lastModified || Date.now()).toISOString() })
-        .then(function(){ d.fotos.push(fid); ok(); }); }); }); }); }, Promise.resolve())
-      .then(function(){ toque(d); guardarLocal(); refila(); toast(fs.length === 1 ? 'Foto agregada' : fs.length + ' fotos agregadas'); sincronizar(); });
+        .then(function(){ d.fotos.push(fid); bien++; ok(); }, function(){ malas.push(f.name); ok(); }); },
+      function(){ malas.push(f.name); ok(); }); }); }); }, Promise.resolve())
+      .then(function(){ toque(d); guardarLocal(); refila(); window.scrollTo(0, 0);
+        if (bien) toast(bien === 1 ? 'Foto agregada' : bien + ' fotos agregadas');
+        if (malas.length) avisar('No se pudo leer ' + (malas.length === 1 ? 'la foto' : malas.length + ' fotos'), malas.join(', ') + '. El navegador no abre ese formato (por ejemplo HEIC de iPhone). Guárdala como JPG o PNG e inténtalo de nuevo.');
+        sincronizar(); });
   }
   ['fcam','fgal'].forEach(function(k){ if ($(k)) $(k).onchange = function(){ agregarFotos(this.files); this.value = ''; }; });
   var zona = $('zona-fotos');
@@ -838,6 +848,7 @@ function vaciarGuardado(pid){
   if (!S.com) return Promise.resolve();
   return p && S.com.d[pid] ? subirPaso(p) : guardarLocal();
 }
+window.addEventListener('scroll', function(){ if (window.scrollY || document.scrollingElement.scrollTop) { window.scrollTo(0, 0); } }, { passive: true });
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'hidden' && S.pantalla === 'paso') vaciarGuardado(S.paso); });
 window.addEventListener('pagehide', function(){ if (S.pantalla === 'paso') vaciarGuardado(S.paso); });
 
@@ -919,7 +930,16 @@ function bindCaptura(p, d){
   on('input[data-kv]', function(i){ i.oninput = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); refilaDiferido(); }; });
   on('input[data-t]', function(i){ i.oninput = function(){ var k = i.getAttribute('data-t').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ var k = i.getAttribute('data-t').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = i.value; toque(d); refilaDiferido(); }; });
 }
-function comprimir(file, cb){ var img = new Image(), r = new FileReader(); r.onload = function(){ img.onload = function(){ var m = 1280, k = Math.min(1, m / Math.max(img.width, img.height)); var c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); cb(c.toDataURL('image/jpeg', 0.72)); }; img.src = r.result; }; r.readAsDataURL(file); }
+function comprimir(file, cb, fallo){
+  var img = new Image(), url = URL.createObjectURL(file);
+  img.onload = function(){ try {
+      var m = 1280, k = Math.min(1, m / Math.max(img.width, img.height)); var c = document.createElement('canvas');
+      c.width = Math.round(img.width * k); c.height = Math.round(img.height * k); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url); cb(c.toDataURL('image/jpeg', 0.72));
+    } catch(e){ URL.revokeObjectURL(url); if (fallo) fallo(e); } };
+  img.onerror = function(){ URL.revokeObjectURL(url); if (fallo) fallo(new Error('formato')); };
+  img.src = url;
+}
 
 /* ---------------- cierre ---------------- */
 function hallazgos(){
