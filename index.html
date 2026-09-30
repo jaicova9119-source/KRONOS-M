@@ -12722,6 +12722,8 @@ async function cargarPanelPerfil() {
                "Valida los campos propuestos frente a lo que dice SAP."],
               ["monitoreo",   u.gestiona_monitoreo,  "Gestionar estado de monitoreo",
                "Saca o reactiva unidades del monitoreo desde Captura, con motivo. Fuera de monitoreo no se descarga data ni se calcula condición."],
+              ["rondas",      u.completa_rondas,     "Completar rondas de monitoreo",
+               "Llena los campos que quedaron vacíos en una ronda ya capturada, con la lectura de campo. No sobrescribe valores medidos; cada dato queda registrado con quién lo completó."],
               ["repuestos",   u.alimenta_repuestos,  "Alimentar el catálogo de repuestos",
                "Crea piezas, agrega códigos y aplicaciones, y sube fotografías. Identificar una parte es criterio técnico, no rango: se delega a quien lo tiene."],
             ].map(([k, val, titulo, ayuda]) => `
@@ -13044,7 +13046,9 @@ async function cargarPanelPerfil() {
         const que = { validador: "validar mediciones", altas: "aprobar altas",
                       movimientos: "aprobar movimientos", datos: "aprobar datos técnicos",
                       monitoreo: "cambiar el estado de monitoreo",
-                      repuestos: "alimentar el catálogo de repuestos" }[chk.dataset.permiso];
+                      repuestos: "alimentar el catálogo de repuestos",
+                      ensayos: "firmar ensayos eléctricos",
+                      rondas: "completar rondas de monitoreo" }[chk.dataset.permiso];
         toast((data.nombre || "El usuario") + (chk.checked ? " ya puede " : " ya no puede ") + que);
       };
     });
@@ -13052,7 +13056,18 @@ async function cargarPanelPerfil() {
     cont.querySelectorAll("select[data-usuario-id]").forEach(sel => {
       sel.onchange = async () => {
         const { error } = await sb.from("usuarios").update({ rol: sel.value }).eq("id", sel.dataset.usuarioId);
-        toast(error ? "No se pudo actualizar el rol" : "Rol actualizado");
+        /* La base impide dejar la plataforma sin admin activo; ese caso
+           vuelve como error y se muestra tal cual, con el select restituido. */
+        if (error) {
+          toast(/ultimo administrador/i.test(error.message || "")
+            ? "No se puede: es el último admin activo. Asigna otro admin primero."
+            : "No se pudo actualizar el rol");
+          const { data: fila } = await sb.from("usuarios").select("rol")
+            .eq("id", sel.dataset.usuarioId).maybeSingle();
+          if (fila) sel.value = fila.rol;
+          return;
+        }
+        toast("Rol actualizado");
       };
     });
   } else {

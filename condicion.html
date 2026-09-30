@@ -5948,7 +5948,7 @@ async function kpVerPozo(codigo){
         + '.<br><span style="color:var(--t3)">'
         + (KP_CMP.puede_editar
             ? 'Puede completarlos si tiene la lectura de campo.'
-            : 'Solo un supervisor o administrador puede completarlos.')
+            : 'Completarlos requiere el permiso de completar rondas, que asigna el admin en Perfil.')
         + '</span></div>'
         + (KP_CMP.puede_editar
             ? '<button class="kp-chip" id="kpCmpBtn" style="font-weight:600">Completar datos</button>'
@@ -7951,8 +7951,9 @@ let KP_SER_SEP  = true;
    operacion y no se mezcla aqui: un formulario de relleno que pueda pisar
    una medicion real es una via silenciosa de perder dato.
 
-   El boton solo aparece para supervisor y admin, pero eso es cortesia: la
-   restriccion de verdad la aplica dp_completar_ronda con mi_rol(). */
+   El boton solo aparece a quien tiene el permiso, pero eso es cortesia: la
+   restriccion de verdad la aplica dp_completar_ronda con
+   puedo_completar_rondas(): es un permiso delegado, no un rol. */
 
 let KP_CMP = null;   // resultado de dp_ronda_faltantes
 let KP_DER = null;   // derrateos por columna de placa
