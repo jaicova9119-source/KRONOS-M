@@ -4549,25 +4549,37 @@ const DP_CANALES = [
 /* El analizador nombra sus canales por `role`. Se mapea al nombre estable
    que guarda la plataforma: si manana el analizador renombra un role, se
    corrige aqui y no en la base ni en la grafica. */
+/* Los valores son los roles REALES del catalogo R (seccion 1). Antes
+   apuntaban a nombres que el catalogo no tiene (freq, ia, pip, tmotor...),
+   asi que ningun canal se encontraba por role y todo dependia del respaldo
+   por etiqueta: los del variador pasaban por casualidad del texto y los del
+   sensor de fondo se perdian siempre, en .dat y en CSV. */
 const DP_ROLE = {
-  f_out:'freq', i_out_a:'ia', i_out_b:'ib', i_out_c:'ic',
-  v_out:'vout', v_motor:'vmotor', i_motor:'imotor',
-  pip:'pip', t_motor:'tmotor', t_intake:'tintake',
-  vib_x:'vibx', vib_y:'viby',
-  /* Baker Hughes reporta el segundo eje como Z y Triol como Y. Se
-     guarda bajo un solo canal: son el mismo eje transversal y tenerlos
-     separados partiria la serie al cambiar de marca de variador. */
+  f_out:'freq_out', i_out_a:'i_out_a', i_out_b:'i_out_b', i_out_c:'i_out_c',
+  v_out:'v_out', v_motor:'v_motor', i_motor:'i_motor',
+  pip:'p_intake', t_motor:'t_wind', t_intake:'t_intake',
+  vib_x:'vib_1', vib_y:'vib_2',
+  /* El segundo eje transversal llega como vib_2 en todos los lectores
+     (Baker lo llama Z, Triol y otros Y). vib_3 queda como alias: es el eje
+     Y del bloque DH de Baker, que en campo suele venir plano. */
 };
+
+/* El analizador guarda las temperaturas de fondo en °C (los lectores
+   aplican F2C). En Kronos-M se manejan en °F, igual que el sensor, asi
+   que se devuelven a °F al armar la serie. */
+const DP_A_F = new Set(['t_motor','t_intake']);
 
 function dpBuscarCanal(u, clave){
   const r = DP_ROLE[clave];
   if (r && u.ch[r] && u.ch[r].n) return u.ch[r];
   /* Alias de role para el eje transversal, que cambia de nombre segun la
      marca del variador. */
-  if (clave === 'vib_y' && u.ch.vibz && u.ch.vibz.n) return u.ch.vibz;
+  if (clave === 'vib_y' && u.ch.vib_3 && u.ch.vib_3.n) return u.ch.vib_3;
   /* Respaldo por etiqueta: los formatos no siempre traen el mismo role y
      un canal ausente se veria como una unidad sin datos. */
   const pats = {
+    /* Las etiquetas son las del catalogo R, en espanol; se dejan tambien
+       las inglesas por si un canal llega con el nombre del archivo. */
     f_out:/frecuenc.*salida|output freq/i,
     i_out_a:/corriente.*salida.*\bA\b|output current.*\bA\b/i,
     i_out_b:/corriente.*salida.*\bB\b|output current.*\bB\b/i,
@@ -4575,9 +4587,9 @@ function dpBuscarCanal(u, clave){
     v_out:/tensi.n.*salida|output volt/i,
     v_motor:/tensi.n.*motor|motor volt/i,
     i_motor:/downhole current|corriente.*fondo|motor current/i,
-    pip:/intake pres|pip\b/i,
-    t_motor:/motor temp|temp.*motor/i,
-    t_intake:/intake temp|temp.*intake/i,
+    pip:/presi.n de admisi.n|intake pres|\bpip\b/i,
+    t_motor:/temp.*devanado|motor temp|temp.*motor/i,
+    t_intake:/temp.*admisi.n|intake temp|temp.*intake/i,
     /* El eje va tras un separador que puede ser espacio, guion o guion
        bajo. Con \\b no basta: el guion bajo cuenta como caracter de
        palabra y "VIB_Y" no encontraba limite. */
@@ -4621,8 +4633,14 @@ function dpSeriesMonitoreo(u){
       hay = true;
     }
     if (!hay) return;
+    let ud = C.unit || unidad;
+    if (DP_A_F.has(clave) && /°?C$/.test(ud)){
+      const aF = x => x === null ? null : x * 1.8 + 32;
+      for (let k = 0; k < n; k++){ mn[k] = aF(mn[k]); mx[k] = aF(mx[k]); }
+      ud = '°F';
+    }
     const red = x => x === null ? null : Math.round(x * 1000) / 1000;
-    out.push({ canal: clave, unidad: C.unit || unidad,
+    out.push({ canal: clave, unidad: ud,
                desde: new Date(ini0 + paso / 2).toISOString(),
                paso_seg: DP_PASO_SEG,
                min: mn.map(red), max: mx.map(red) });
