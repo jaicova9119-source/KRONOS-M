@@ -17,7 +17,7 @@
 
 /* Al subir este numero, el navegador descarta el cache anterior y
    vuelve a bajar todo. Es la palanca para forzar actualizacion. */
-const CACHE_NAME = "captura-v4";
+const CACHE_NAME = "captura-v5";
 
 /* Sin estos archivos la app no abre sin señal. Van con addAll, que
    es todo o nada: solo deben ir rutas que existan con certeza. Una
@@ -26,6 +26,8 @@ const CACHE_NAME = "captura-v4";
 const ARCHIVOS_PROPIOS = [
   "./index.html",
   "./unidad.html",
+  "./comisionamiento.html",
+  "./cm-recursos.js",
   "./manifest.json",
   "./icons/captura-192.png",
   "./icons/captura-512.png",
@@ -39,6 +41,10 @@ const ARCHIVOS_PROPIOS = [
    el cache entero sin escribir. */
 const LIBRERIAS = [
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2",
+  /* Generacion del informe de comisionamiento en el celular. Con estas
+     dos en cache el PDF sale sin señal. */
+  "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
+  "https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js",
 ];
 
 self.addEventListener("install", (event) => {
@@ -95,7 +101,9 @@ self.addEventListener("fetch", (event) => {
           return respuesta;
         })
         .catch(() =>
-          caches.match(req).then((g) => g || caches.match("./index.html"))
+          /* ignoreSearch: el modulo de comisionamiento puede abrirse con
+             parametros en la URL y sin esto no encontraria su copia. */
+          caches.match(req, { ignoreSearch: true }).then((g) => g || caches.match("./index.html"))
         )
     );
     return;
