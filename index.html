@@ -3983,6 +3983,7 @@ const HUB_ICONOS = {
   optimizacion: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
   instalacion:  '<rect x="3" y="8" width="18" height="9" rx="1.6"/><path d="M7 8V5M17 8V5M3 12.5h18"/>',
   repuestos:    '<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18"/><path d="M7 13h4"/><circle cx="16.5" cy="13.5" r="1.6"/>',
+  comisionamiento: '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>',
   proximo:      '<path d="M12 5v14M5 12h14"/>',
 };
 
@@ -4266,6 +4267,8 @@ async function hubPintar(c) {
       e: "Descargas de variador" },
     { k: "repuestos",    t: "Catálogo de repuestos",
       e: "Partes de variador con fotografía" },
+    { k: "comisionamiento", t: "Comisionamiento BES",
+      e: "Captura guiada e informe · se abre en Captura" },
   ];
 
   document.getElementById("hub-modulos").innerHTML =
@@ -4304,7 +4307,21 @@ function sincronizarSelectorModulos() {
   });
 }
 
+/* El comisionamiento corre en Captura, que es otro dominio con su propia
+   sesión y su cola offline. No se incrusta en iframe: la sesión de Captura
+   no llegaría y, en el celular, la protección de rastreo bloquearía el
+   almacenamiento del marco. Se abre en su propia pestaña. */
+const CAPTURA_URL = "https://kronos-captura.onrender.com";
+function abrirComisionamiento() {
+  window.open(CAPTURA_URL.replace(/\/$/, "") + "/comisionamiento.html", "_blank", "noopener");
+}
+
 function aplicarModulo(modulo, irVistaDefault = true) {
+  if (modulo === "comisionamiento") {
+    abrirComisionamiento();
+    if (moduloActivo && moduloActivo !== "comisionamiento") return;
+    modulo = "hub";
+  }
   /* Guarda: el modulo puede venir de localStorage de una sesion anterior,
      de un enlace, o de un permiso que se acaba de retirar. Sin esto la
      pantalla queda en blanco sin explicacion. */
@@ -12162,6 +12179,7 @@ const MODULOS_CAT = [
   ["documental",   "Gestión documental"],
   ["vfd",          "Analizador de data"],
   ["repuestos",    "Catálogo de repuestos"],
+  ["comisionamiento", "Comisionamiento BES"],
 ];
 
 function puedoModulo(k) {
@@ -12724,6 +12742,8 @@ async function cargarPanelPerfil() {
                "Saca o reactiva unidades del monitoreo desde Captura, con motivo. Fuera de monitoreo no se descarga data ni se calcula condición."],
               ["rondas",      u.completa_rondas,     "Completar rondas de monitoreo",
                "Llena los campos que quedaron vacíos en una ronda ya capturada, con la lectura de campo. No sobrescribe valores medidos; cada dato queda registrado con quién lo completó."],
+              ["comisionamiento", u.aprueba_comisionamiento, "Aprobar comisionamientos",
+               "Aprueba o devuelve comisionamientos de equipos de superficie en revisión. No puede aprobar los que creó. Ni supervisor ni admin lo tienen por su rol."],
               ["repuestos",   u.alimenta_repuestos,  "Alimentar el catálogo de repuestos",
                "Crea piezas, agrega códigos y aplicaciones, y sube fotografías. Identificar una parte es criterio técnico, no rango: se delega a quien lo tiene."],
             ].map(([k, val, titulo, ayuda]) => `
