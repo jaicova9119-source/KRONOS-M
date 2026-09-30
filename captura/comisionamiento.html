@@ -31,7 +31,8 @@ body{background:var(--bg);color:var(--texto);font-family:var(--f);font-size:17px
 button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer}
 :focus-visible{outline:3px solid var(--acento);outline-offset:2px}
-.app{max-width:var(--maxw);margin:0 auto;height:100%;display:flex;flex-direction:column;background:var(--bg)}
+.app{max-width:var(--maxw);margin:0 auto;height:100vh;height:100dvh;display:flex;flex-direction:column;background:var(--bg)}
+body{overflow:hidden}
 .enc{background:var(--navy);color:#fff;padding:10px 12px;display:flex;align-items:center;gap:10px;flex:0 0 auto}
 .enc .volver{width:48px;height:48px;border-radius:12px;border:2px solid rgba(255,255,255,.5);background:transparent;color:#fff;font-size:26px;flex:0 0 auto}
 .enc .t{flex:1;min-width:0}.enc .t b{display:block;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.enc .t span{font-size:13.5px;opacity:.88;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -124,10 +125,18 @@ details.guia .cond{margin:0 14px 10px;font-size:14px;color:var(--ink-soft)}
 .prechip[aria-pressed="true"] i::after{content:"";position:absolute;left:6px;top:2px;width:6px;height:11px;border:solid #fff;border-width:0 3px 3px 0;transform:rotate(45deg)}
 .preview{background:var(--surface-2);border-left:5px solid var(--acento);border-radius:8px;padding:10px 12px;margin:10px 0 4px;font-size:14px}.preview p{margin:6px 0 0}
 .obs{margin:12px 0}.obs label{display:block;font-weight:700;margin-bottom:6px}.obs.req label{color:var(--danger)}
-.fotos{margin-bottom:12px}.fotos input{position:absolute;opacity:0;width:1px;height:1px}
-.miniaturas{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}.miniaturas img{width:72px;height:72px;object-fit:cover;border-radius:8px;border:2px solid var(--line)}
+.fotos{margin-bottom:12px;border:2px dashed transparent;border-radius:var(--radius);transition:border-color .15s,background .15s}
+.fotos.encima{border-color:var(--acento);background:var(--surface-2)}
+.fotos input{position:absolute;opacity:0;width:1px;height:1px}
+.fotos-btns{display:flex;gap:8px}.fotos-btns .btn{flex:1 1 0;min-width:0}
+.fotos-btns .pri-f{border-color:var(--navy);color:var(--navy)}
+html[data-tema="oscuro"] .fotos-btns .pri-f{border-color:var(--acento);color:var(--acento)}
+.fotos .solta{margin:6px 2px 0}
+.miniaturas{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.mini{width:76px;height:76px;padding:0;border-radius:8px;border:2px solid var(--line);background:var(--surface-2);overflow:hidden}
+.mini img{width:100%;height:100%;object-fit:cover;display:block}
 .na{display:flex;gap:10px;align-items:center;font-size:15px;color:var(--ink-soft);min-height:44px}.na input{width:24px;height:24px}
-.ro .captura,.ro .pre,.ro .obs,.ro .fotos label,.ro .na,.ro .bulk{pointer-events:none}.ro .fotos label,.ro .na{display:none}
+.ro .captura,.ro .pre,.ro .obs,.ro .na,.ro .bulk{pointer-events:none}.ro .fotos-btns,.ro .fotos .solta,.ro .na{display:none}
 .flujo{display:flex;gap:4px;margin-bottom:14px}.flujo span{flex:1;text-align:center;font-size:12.5px;font-weight:700;padding:8px 2px;border-radius:6px;background:var(--card);border:1.5px solid var(--line);color:var(--ink-soft)}.flujo span.hecho{background:var(--navy);border-color:var(--navy);color:#fff}
 .resrow{display:flex;justify-content:space-between;align-items:center;gap:8px;background:var(--card);border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:8px;font-weight:700;font-size:15px}
 .hall{background:var(--card);border-left:6px solid #E3A300;border-radius:8px;padding:10px 12px;margin-bottom:8px;font-size:14px}.hall.sAlta{border-left-color:var(--danger)}.hall b{display:block;font-size:15px}.hall small{color:var(--ink-soft)}
@@ -493,7 +502,12 @@ function pintarLado(){
     if (id === '__cierre') { S.pantalla = 'cierre'; } else { S.pantalla = 'paso'; S.paso = id; }
     if (!S.pila.length || S.pila[S.pila.length - 1].pantalla !== 'ruta') S.pila = [{ pantalla: 'inicio' }, { pantalla: 'ruta' }];
     render(); $('cuerpo').scrollTop = 0; }; });
-  var act = L.querySelector('.act'); if (act && act.scrollIntoView) act.scrollIntoView({ block: 'nearest' });
+  /* Se mueve solo el panel lateral: scrollIntoView desplazaba también la
+     ventana y dejaba una franja vacía abajo. */
+  var act = L.querySelector('.act');
+  if (act) { var top = act.offsetTop, alto = act.offsetHeight;
+    if (top < L.scrollTop) L.scrollTop = top - 40;
+    else if (top + alto > L.scrollTop + L.clientHeight) L.scrollTop = top + alto - L.clientHeight + 40; }
 }
 function chipH(e){ if (!e) return '<span class="est vacio">Sin datos</span>'; return '<span class="est e' + e + '">' + EST[e] + '</span>'; }
 var EST_COM = { borrador: 'Borrador', en_campo: 'En campo', en_revision: 'En revisión', aprobado: 'Aprobado', anulado: 'Anulado' };
@@ -573,7 +587,7 @@ var NUEVO = null;
 function vNuevo(){
   enc('Nuevo comisionamiento', 'Equipos de superficie BES');
   NUEVO = NUEVO || { pozo: '', orden: '', ejec: [(S.perfil && S.perfil.nombre) || ''], revisa: '', tpl: null, prueba: false };
-  $('cuerpo').innerHTML = '<p class="nota">Cargando pozos y plantillas…</p>'; accion('');
+  $('cuerpo').innerHTML = '<p class="nota">Cargando unidades y plantillas…</p>'; accion('');
   var pz = navigator.onLine ? sb.rpc('dp_cm_pozos').then(function(r){ if (!r.error && r.data) { idbPut('cache', { clave: 'pozos', v: r.data }); return r.data; } return null; }).catch(function(){ return null; }) : Promise.resolve(null);
   var tp = navigator.onLine ? sb.from('cm_plantillas').select('id,version,titulo,estado,pendientes').neq('estado', 'retirada').then(function(r){ if (!r.error && r.data) { idbPut('cache', { clave: 'plantillas', v: r.data }); return r.data; } return null; }).catch(function(){ return null; }) : Promise.resolve(null);
   Promise.all([pz, tp]).then(function(x){
@@ -587,8 +601,8 @@ function pintarNuevo(tpls){
   var borr = sel && sel.estado !== 'vigente';
   if (borr) N.prueba = true;
   var h = '<div class="panel form2">' +
-    '<label class="campo"><span>Pozo</span><select id="pozo"><option value="">Elige el pozo</option>' + S.pozos.map(function(p){ return '<option value="' + p.id + '"' + (N.pozo === p.id ? ' selected' : '') + '>' + esc(p.nombre) + (p.campo ? ' · ' + esc(p.campo) : '') + '</option>'; }).join('') + '</select></label>' +
-    (S.pozos.length ? '' : '<p class="aviso ancho">No hay pozos en el dispositivo. Abre esta pantalla una vez con señal.</p>') +
+    '<label class="campo"><span>Unidad</span><select id="pozo"><option value="">Elige la unidad</option>' + S.pozos.map(function(p){ return '<option value="' + p.id + '"' + (N.pozo === p.id ? ' selected' : '') + '>' + esc(p.nombre) + (p.campo ? ' · ' + esc(p.campo) : '') + '</option>'; }).join('') + '</select></label>' +
+    (S.pozos.length ? '' : '<p class="aviso ancho">No hay unidades en el dispositivo. Abre esta pantalla una vez con señal.</p>') +
     '<label class="campo dos"><span>Recorrido</span><select id="tpl">' + tpls.map(function(t){ var k = t.id + '@' + t.version; return '<option value="' + k + '"' + (N.tpl === k ? ' selected' : '') + '>' + esc(t.titulo) + ' (v' + t.version + (t.estado !== 'vigente' ? ', borrador' : '') + ')</option>'; }).join('') + '</select></label>' +
     (borr ? '<p class="aviso ancho">Esta plantilla está en borrador' + (sel.pendientes && sel.pendientes.length ? ' (pendiente: ' + esc(sel.pendientes.join('; ')) + ')' : '') + '. ' + (admin ? 'Se usará como comisionamiento de prueba: sirve para ensayar el recorrido y no se aprueba.' : 'Solo el administrador puede usarla, en modo de prueba' + (rol ? ' (tu rol en la base: ' + esc(rol) + ')' : '') + '. Para usarla en un comisionamiento real hay que publicarla.') + '</p>' : '') +
     '<label class="campo"><span>Orden de trabajo</span><input id="orden" inputmode="numeric" value="' + esc(N.orden) + '" placeholder="Número de la orden"></label>' +
@@ -604,7 +618,7 @@ function pintarNuevo(tpls){
   [].forEach.call(document.querySelectorAll('[data-qj]'), function(b){ b.onclick = function(){ N.ejec.splice(+b.getAttribute('data-qj'), 1); pintarNuevo(tpls); }; });
   $('addej').onclick = function(){ N.ejec.push(''); pintarNuevo(tpls); var l = document.querySelectorAll('[data-ej]'); l[l.length - 1].focus(); };
   accion('<button class="btn pri" id="crear">Crear e iniciar</button>');
-  function chk(){ var b = $('crear'); var f = !N.pozo ? 'Elige el pozo' : !sel ? 'No hay plantilla disponible' : (borr && !admin) ? 'Plantilla no disponible' : !N.orden.trim() ? 'Falta la orden de trabajo' : !N.ejec.some(function(x){ return x.trim(); }) ? 'Falta quién ejecuta' : null; b.disabled = !!f; b.textContent = f || 'Crear e iniciar'; }
+  function chk(){ var b = $('crear'); var f = !N.pozo ? 'Elige la unidad' : !sel ? 'No hay plantilla disponible' : (borr && !admin) ? 'Plantilla no disponible' : !N.orden.trim() ? 'Falta la orden de trabajo' : !N.ejec.some(function(x){ return x.trim(); }) ? 'Falta quién ejecuta' : null; b.disabled = !!f; b.textContent = f || 'Crear e iniciar'; }
   chk();
   $('crear').onclick = function(){ crear(sel); };
 }
@@ -672,7 +686,19 @@ function vPaso(){
   h += preH(p, d);
   var faltaObs = (rojo && !preSel(p, d, 'o').length && !d.obs.trim()) || (d.na && !d.obs.trim());
   h += '<div class="obs' + (faltaObs ? ' req' : '') + '"><label for="obs">' + (rojo ? 'Complemento u observación (obligatoria si no eliges una: hay lecturas fuera de criterio)' : d.na ? 'Indica por qué no aplica' : 'Complemento (opcional)') + '</label><textarea id="obs" placeholder="Agrega lo que no esté en los textos">' + esc(d.obs) + '</textarea></div>';
-  if (p.fotos) h += '<div class="fotos"><label class="btn ancho" for="fin">' + (d.fotos.length ? 'Agregar otra foto' : 'Tomar foto de evidencia') + '</label><input id="fin" type="file" accept="image/*" capture="environment"><div class="miniaturas" id="minis"></div></div>';
+  if (p.fotos) {
+    /* En celular y tableta la cámara va primero; en el computador no hay
+       cámara útil, así que el botón principal abre el explorador de archivos. */
+    var tactil = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+    var otra = d.fotos.length ? ' otra' : '';
+    h += '<div class="fotos" id="zona-fotos"><div class="fotos-btns">' +
+      (tactil
+        ? '<label class="btn pri-f" for="fcam">Tomar' + otra + ' foto</label><label class="btn" for="fgal">Desde la galería</label>'
+        : '<label class="btn pri-f" for="fgal">Cargar' + otra + ' foto' + (d.fotos.length ? '' : 's') + '</label>') +
+      '</div><input id="fcam" type="file" accept="image/*" capture="environment"><input id="fgal" type="file" accept="image/*" multiple>' +
+      (tactil ? '' : '<p class="nota solta">También puedes arrastrar las fotos hasta aquí.</p>') +
+      '<div class="miniaturas" id="minis"></div></div>';
+  }
   h += '<label class="na"><input type="checkbox" id="na"' + (d.na ? ' checked' : '') + '> Este paso no aplica en esta instalación</label></div></div>';
   $('cuerpo').innerHTML = h;
   $('cuerpo').classList.toggle('ro', !editable());
@@ -682,13 +708,39 @@ function vPaso(){
   $('obs').oninput = function(){ d.obs = this.value; pie(p); };
   $('obs').onchange = function(){ refila(); };
   [].forEach.call($('cuerpo').querySelectorAll('[data-pre]'), function(b){ b.onclick = function(){ var k = b.getAttribute('data-pre'); d.pre[k] = !d.pre[k]; toque(d); refila(); }; });
-  if ($('fin')) $('fin').onchange = function(){ var f = this.files && this.files[0]; if (!f) return; comprimir(f, function(u){
-    var fid = nuevoId(); idbPut('fotos', { id: fid, com: S.com.id, paso: p.id, url: u, estado: 'local', orden: d.fotos.length, tomada_en: new Date().toISOString() }).then(function(){ d.fotos.push(fid); toque(d); guardarLocal(); refila(); sincronizar(); }); }); };
+  function agregarFotos(lista){
+    var fs = [].filter.call(lista || [], function(f){ return /^image\//.test(f.type); });
+    if (!fs.length) return;
+    fs.reduce(function(pr, f){ return pr.then(function(){ return new Promise(function(ok){ comprimir(f, function(u){
+      var fid = nuevoId();
+      idbPut('fotos', { id: fid, com: S.com.id, paso: p.id, url: u, estado: 'local', orden: d.fotos.length, tomada_en: new Date(f.lastModified || Date.now()).toISOString() })
+        .then(function(){ d.fotos.push(fid); ok(); }); }); }); }); }, Promise.resolve())
+      .then(function(){ toque(d); guardarLocal(); refila(); toast(fs.length === 1 ? 'Foto agregada' : fs.length + ' fotos agregadas'); sincronizar(); });
+  }
+  ['fcam','fgal'].forEach(function(k){ if ($(k)) $(k).onchange = function(){ agregarFotos(this.files); this.value = ''; }; });
+  var zona = $('zona-fotos');
+  if (zona && editable()) {
+    zona.ondragover = function(e){ e.preventDefault(); zona.classList.add('encima'); };
+    zona.ondragleave = function(){ zona.classList.remove('encima'); };
+    zona.ondrop = function(e){ e.preventDefault(); zona.classList.remove('encima'); agregarFotos(e.dataTransfer && e.dataTransfer.files); };
+  }
   $('na').onchange = function(){ d.na = this.checked; toque(d); refila(); };
   pie(p);
 }
 function refila(){ var y = $('cuerpo').scrollTop; vPaso(); pintarLado(); $('cuerpo').scrollTop = y; }
-function pintarMinis(d){ var c = $('minis'); if (!c) return; d.fotos.forEach(function(id, i){ fotoURL(id).then(function(u){ if (!u) return; var im = document.createElement('img'); im.src = u; im.alt = 'Evidencia ' + (i + 1); c.appendChild(im); }); }); }
+function pintarMinis(d){
+  var c = $('minis'); if (!c) return;
+  d.fotos.forEach(function(id, i){
+    var caja = document.createElement('button'); caja.className = 'mini'; caja.type = 'button'; caja.setAttribute('aria-label', 'Foto ' + (i + 1)); c.appendChild(caja);
+    fotoURL(id).then(function(u){ if (u) { var im = document.createElement('img'); im.src = u; im.alt = ''; caja.appendChild(im); } });
+    caja.onclick = function(){ idbGet('fotos', id).then(function(f){
+      var enviada = f && f.estado !== 'local';
+      if (!editable() || enviada) { if (editable()) avisar('Foto ya enviada', 'Esta foto ya está en el servidor y hace parte de la evidencia del paso.'); return; }
+      dialogo('Quitar foto', 'La foto aún no se ha enviado; se elimina de este dispositivo.', { lista: [{ t: 'Conservar' }, { t: 'Quitar', pri: true }] }).then(function(r){
+        if (r.i !== 1) return; d.fotos.splice(d.fotos.indexOf(id), 1); idbDel('fotos', id).then(function(){ guardarLocal(); refila(); }); });
+    }); };
+  });
+}
 function fotoURL(id){ return idbGet('fotos', id).then(function(f){ if (!f) return null; if (f.url) return f.url;
   if (!f.ruta || !navigator.onLine) return null;
   return sb.storage.from(BUCKET).download(f.ruta).then(function(r){ if (r.error) return null; return new Promise(function(ok){ var fr = new FileReader(); fr.onload = function(){ f.url = fr.result; idbPut('fotos', f); ok(f.url); }; fr.readAsDataURL(r.data); }); }); }); }
