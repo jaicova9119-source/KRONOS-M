@@ -165,6 +165,7 @@ html[data-tema="oscuro"] .fotos-btns .pri-f{border-color:var(--acento);color:var
 .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:30;padding:14px}
 .modal.on{display:flex}
 .modal-caja{background:var(--card);border-radius:16px;padding:18px;width:min(520px,100%);margin-bottom:env(safe-area-inset-bottom,0px)}
+.modal-img{display:block;width:100%;max-height:60vh;object-fit:contain;border-radius:10px;background:var(--surface-2);margin:0 0 12px}
 .modal-caja h3{margin:0 0 8px;color:var(--texto);font-size:18px}.modal-caja p{margin:0 0 14px;color:var(--ink-soft)}
 .modal-caja textarea{margin-bottom:12px}.modal-acc{display:flex;gap:10px}.modal-acc .btn{flex:1}
 
@@ -291,6 +292,7 @@ function dialogo(titulo, texto, botones){
   return new Promise(function(ok){
     var m = $('modal');
     m.innerHTML = '<div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="modal-t"><h3 id="modal-t">' + esc(titulo) + '</h3>' +
+      (botones.img ? '<img class="modal-img" alt="" src="' + botones.img + '">' : '') +
       (texto ? '<p>' + esc(texto) + '</p>' : '') + (botones.campo ? '<textarea id="modal-campo" placeholder="' + esc(botones.campo) + '"></textarea>' : '') +
       '<div class="modal-acc">' + botones.lista.map(function(b, i){ return '<button class="btn ' + (b.pri ? 'pri' : '') + '" data-i="' + i + '">' + esc(b.t) + '</button>'; }).join('') + '</div></div>';
     m.classList.add('on');
@@ -395,8 +397,20 @@ function sincronizar(){
   }
   return paso(0, []).then(subirFotos).then(function(){ sincronizando = false; pintarRed(); }, function(){ sincronizando = false; });
 }
+function quitarFotoServidor(f){
+  return sb.rpc('dp_cm_q_quitar_foto', { p: { id: f.id, comisionamiento_id: f.com } }).then(function(r){
+    var b = r && r.data;
+    if (r.error || !b) return;                         // sin respuesta: se reintenta luego
+    if (!b.ok) { f.error = b.error; return idbPut('fotos', f); }
+    var ruta = b.storage_path || f.ruta;
+    return (ruta ? sb.storage.from(BUCKET).remove([ruta]).catch(function(){}) : Promise.resolve()).then(function(){ return idbDel('fotos', f.id); });
+  }).catch(function(){});
+}
 function subirFotos(){
   return idbAll('fotos').then(function(fs){
+    var borrar = fs.filter(function(f){ return f.estado === 'borrar' && !f.error; });
+    return borrar.reduce(function(pr, f){ return pr.then(function(){ return quitarFotoServidor(f); }); }, Promise.resolve()).then(function(){ return fs; });
+  }).then(function(fs){
     var pend = fs.filter(function(f){ return f.estado === 'local' && !colaDe(f.com).some(function(x){ return x.rpc === 'dp_cm_q_crear' && !x.error; }); });
     return pend.reduce(function(pr, f){ return pr.then(function(){ return subirFoto(f); }); }, Promise.resolve());
   });
@@ -598,7 +612,8 @@ function vInicio(){
    aún no ha enviado no se pierde. */
 function combinar(L, Rm){
   if (!L) return Rm;
-  var c = JSON.parse(JSON.stringify(L));
+  var c = JSON.parse(JSON.stringify(L)), quitadas = L.fotos_quitadas || [];
+  Object.keys(Rm.d).forEach(function(pid){ Rm.d[pid].fotos = Rm.d[pid].fotos.filter(function(f){ return quitadas.indexOf(f) < 0; }); });
   ['codigo','estado','es_prueba','aprobado_en'].forEach(function(k){ if (Rm[k] != null) c[k] = Rm[k]; });
   if (Rm.conclusion != null && L.conclusion == null) c.conclusion = Rm.conclusion;
   Object.keys(Rm.d).forEach(function(pid){
@@ -623,7 +638,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v1.8 · 01/10/2026';
+var VERSION = 'v1.9 · 01/10/2026';
 
 function abrirCom(id, m){
   toast('Abriendo…');
@@ -833,11 +848,19 @@ function pintarMinis(d){
   d.fotos.forEach(function(id, i){
     var caja = document.createElement('button'); caja.className = 'miniatura'; caja.type = 'button'; caja.setAttribute('aria-label', 'Foto ' + (i + 1)); c.appendChild(caja);
     fotoURL(id).then(function(u){ if (u) { var im = document.createElement('img'); im.src = u; im.alt = ''; caja.appendChild(im); } });
-    caja.onclick = function(){ idbGet('fotos', id).then(function(f){
+    caja.onclick = function(){ Promise.all([idbGet('fotos', id), fotoURL(id)]).then(function(x){
+      var f = x[0], url = x[1], n = d.fotos.indexOf(id) + 1;
+      if (!editable()) { dialogo('Foto ' + n, '', { img: url, lista: [{ t: 'Cerrar', pri: true }] }); return; }
       var enviada = f && f.estado !== 'local';
-      if (!editable() || enviada) { if (editable()) avisar('Foto ya enviada', 'Esta foto ya está en el servidor y hace parte de la evidencia del paso.'); return; }
-      dialogo('Quitar foto', 'La foto aún no se ha enviado; se elimina de este dispositivo.', { lista: [{ t: 'Conservar' }, { t: 'Quitar', pri: true }] }).then(function(r){
-        if (r.i !== 1) return; d.fotos.splice(d.fotos.indexOf(id), 1); idbDel('fotos', id).then(function(){ guardarLocal(); refila(); }); });
+      dialogo('Foto ' + n + ' de ' + d.fotos.length, enviada ? 'Si la quitas, se elimina del paso y del servidor.' : 'Aún no se ha enviado; si la quitas, se elimina de este dispositivo.',
+        { img: url, lista: [{ t: 'Conservar' }, { t: 'Quitar foto', pri: true }] }).then(function(r){
+        if (r.i !== 1) return;
+        d.fotos.splice(d.fotos.indexOf(id), 1); toque(d);
+        var listo;
+        if (!enviada) listo = idbDel('fotos', id);
+        else { f.estado = 'borrar'; S.com.fotos_quitadas = (S.com.fotos_quitadas || []).concat([id]); listo = idbPut('fotos', f); }
+        listo.then(function(){ guardarLocal(); refila(); toast('Foto quitada'); sincronizar(); });
+      });
     }); };
   });
 }
