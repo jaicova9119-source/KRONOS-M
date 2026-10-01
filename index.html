@@ -17235,6 +17235,62 @@ function otToggleNA() {
    El nombre se convierte en imagen porque la columna de firma del formato solo
    admite imagen. Dibujarlo aqui evita tocar fo016.js y deja el control del
    tamaño y el recorte de este lado. */
+/* ---------- Firmas compactas ----------
+   Una firma solo necesita trazo oscuro sobre fondo transparente. Guardada
+   a todo color y a 700 px, cada una pesaba hasta 200 KB y se copiaba en cada
+   orden y en cada ensayo. A 420 px de ancho y con solo tres niveles de
+   transparencia queda alrededor de 8 KB, unas 14 veces menos, y se ve igual
+   en el impreso (la casilla de firma mide poco más de 4 cm). */
+function firmaCompactarCanvas(src, maxAncho) {
+  maxAncho = maxAncho || 420;
+  const esc = Math.min(1, maxAncho / src.width);
+  const out = document.createElement("canvas");
+  out.width = Math.max(1, Math.round(src.width * esc));
+  out.height = Math.max(1, Math.round(src.height * esc));
+  const g = out.getContext("2d");
+  g.imageSmoothingQuality = "high";
+  g.drawImage(src, 0, 0, out.width, out.height);
+  const d = g.getImageData(0, 0, out.width, out.height), p = d.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const a = p[i + 3], lum = p[i] * 0.299 + p[i + 1] * 0.587 + p[i + 2] * 0.114;
+    const v = (a < 40 || lum > 200) ? 0 : (a > 150 ? 255 : 140);
+    p[i] = 17; p[i + 1] = 24; p[i + 2] = 39; p[i + 3] = v;
+  }
+  g.putImageData(d, 0, 0);
+  return out.toDataURL("image/png");
+}
+/* Para imágenes que ya vienen como dato (firma recordada o de otro origen). */
+function firmaCompactar(url) {
+  return new Promise(resolve => {
+    if (!url || url.length < 30000 || url.indexOf("data:image") !== 0) { resolve(url); return; }
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const cv = document.createElement("canvas");
+        cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+        cv.getContext("2d").drawImage(img, 0, 0);
+        const nueva = firmaCompactarCanvas(cv);
+        resolve(nueva.length < url.length ? nueva : url);
+      } catch (e) { resolve(url); }
+    };
+    img.onerror = () => resolve(url);
+    img.src = url;
+  });
+}
+/* Las firmas que el dispositivo ya recordaba se compactan una vez al abrir. */
+(function compactarFirmasRecordadas() {
+  try {
+    const claves = [];
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && /firma/i.test(k)) claves.push(k); }
+    claves.forEach(k => {
+      const v = localStorage.getItem(k);
+      if (v && v.length > 30000 && v.indexOf("data:image") === 0) {
+        firmaCompactar(v).then(n => { if (n && n.length < v.length) { try { localStorage.setItem(k, n); } catch (e) { /* nada */ } } });
+      }
+    });
+  } catch (e) { /* sin almacenamiento */ }
+})();
+
 function otFirmaDeNombre(nombre) {
   const txt = String(nombre || "").trim();
   if (!txt) return "";
@@ -17250,7 +17306,7 @@ function otFirmaDeNombre(nombre) {
   do { c.font = px + "px Georgia, 'Times New Roman', serif"; px -= 2; }
   while (px > 22 && c.measureText(txt).width > cv.width - 40);
   c.fillText(txt, cv.width / 2, cv.height / 2);
-  return cv.toDataURL("image/png");
+  return firmaCompactarCanvas(cv);
 }
 
 /* ---------- Firmas del bloque de firmas (ejecutor y supervisor) --------
@@ -17331,7 +17387,7 @@ function otFirmaNormalizar(src) {
         out.width = Math.max(1, Math.round(rw * escala));
         out.height = Math.max(1, Math.round(rh * escala));
         out.getContext("2d").drawImage(cv, rx, ry, rw, rh, 0, 0, out.width, out.height);
-        resolve(out.toDataURL("image/png"));
+        resolve(firmaCompactarCanvas(out));
       } catch (e) { reject(e); }
     };
     img.src = src;
@@ -19851,13 +19907,19 @@ function firmaAceptar() {
   out.height = Math.round(h * escala);
   out.getContext("2d").drawImage(cv, x, y, w, h, 0, 0, out.width, out.height);
 
-  firmaEntregar(out.toDataURL("image/png"));
+  firmaEntregar(firmaCompactarCanvas(out));
 }
 
 /* Punto único de salida del lienzo, venga la firma trazada, cargada o
    recordada. La primera firma propia se recuerda sola en el dispositivo,
    como la del ejecutor en las órdenes. */
 function firmaEntregar(imagen) {
+  /* Una firma recordada de antes de la compactación llega grande: se compacta
+     aquí, que es el único punto por donde sale cualquier firma del lienzo. */
+  if (imagen && imagen.length > 30000) { firmaCompactar(imagen).then(firmaEntregarFinal); return; }
+  firmaEntregarFinal(imagen);
+}
+function firmaEntregarFinal(imagen) {
   if (firmaClaveRecordada) {
     try { if (!localStorage.getItem(firmaClaveRecordada)) localStorage.setItem(firmaClaveRecordada, imagen); }
     catch (e) { /* almacenamiento lleno: la firma se usa igual */ }
