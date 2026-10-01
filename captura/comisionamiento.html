@@ -72,6 +72,17 @@ textarea{min-height:90px;resize:vertical}
 .obs+.pend-nota,.na+.pend-nota{border-radius:10px;margin:2px 0 8px}
 .modal-ops{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:34vh;overflow-y:auto}
 .modal-ops .prechip{margin:0;min-height:44px}
+.resumen-ip{background:var(--card);border:1.5px solid var(--line);border-radius:var(--radius);padding:12px;margin:10px 0}
+.resumen-ip table{width:100%;border-collapse:collapse;margin-top:8px;font-size:14px}
+.resumen-ip th,.resumen-ip td{text-align:left;padding:7px 8px;border-top:1px solid var(--surface-2)}
+.resumen-ip th{color:var(--ink-soft);font-size:12.5px}
+.resumen-ip td.eC{color:var(--ok);font-weight:700}.resumen-ip td.eN{color:var(--danger);font-weight:700}.resumen-ip td.eA{color:var(--warn);font-weight:700}
+.giro .giro-par{display:grid;grid-template-columns:1.2fr 1fr 1fr auto;gap:8px;align-items:end;margin-top:8px}
+.giro .giro-par label{font-size:12px;color:var(--ink-soft);font-weight:700}
+.giro .giro-par input{width:100%;min-height:48px;border:1.5px solid var(--ink-soft);border-radius:8px;padding:6px 8px;font-size:18px;background:var(--campo)}
+.giro .gp-l{font-weight:700;font-size:14px;align-self:center}
+.giro .gp-t{margin:12px 0 4px;font-size:13px;font-weight:700;color:var(--ink-soft)}
+@media (max-width:520px){.giro .giro-par{grid-template-columns:1fr 1fr}.giro .gp-l{grid-column:1/-1}.giro .giro-par .mini-chip{grid-column:1/-1;justify-self:start}}
 .errores{border-color:var(--danger);background:var(--danger-bg)}.errores b{color:var(--danger)}.errores ul{margin:6px 0 12px;padding-left:18px;font-size:14px}.errores li{margin-bottom:4px}.errores li b{color:var(--texto)}
 .aviso{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14.5px;margin:0 0 12px}
 .prueba{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;vertical-align:2px}
@@ -534,13 +545,93 @@ function calculos(p, campos){
 }
 function camposCalc(p){ if (p.id === 'arr_calc') return (S.com.d.arr_placa || {}).campos || {}; return D(p.id).campos; }
 function desb(r){ if (!r) return null; var a = [num(r.vab), num(r.vac), num(r.vcb)]; if (a.some(function(x){ return x == null; })) return null; var pr = (a[0] + a[1] + a[2]) / 3; return pr ? 100 * Math.max.apply(null, a.map(function(x){ return Math.abs(x - pr); })) / pr : null; }
-function ipRes(){ var d = D('arr_ip'), t = d.tabla, u = d.unit, out = { f: {}, e: null }, es = [];
+/* Aislamiento hacia fondo: IP (IEEE 43-2013, ≥ 2,0), DAR (criterio de campo
+   del formato de arranque, ≥ 1,25) y balance de resistencia fase-fase del
+   conjunto cable + motor (criterio de campo, desbalance ≤ CRIT_FF %). */
+var CRIT_DAR = 1.25, CRIT_FF = 5;
+function desbalanceFF(t){
+  var ff = t.ff || {}, x = [num(ff.ab), num(ff.bc), num(ff.ca)];
+  if (x.some(function(v){ return v == null; })) return null;
+  var pr = (x[0] + x[1] + x[2]) / 3; if (!pr) return null;
+  var d = 100 * Math.max.apply(null, x.map(function(v){ return Math.abs(v - pr); })) / pr;
+  return { prom: pr, desb: d, e: d <= CRIT_FF ? 'C' : 'N' };
+}
+function ipRes(){ var d = D('arr_ip'), t = d.tabla, u = d.unit, out = { f: {}, e: null, ff: null }, es = [];
   ['A','B','C'].forEach(function(f){ var r = t[f] || {}, r30 = num(r.r30), r1 = num(r.r1), r10 = num(r.r10), o = {};
-    if (r1 && r30) o.dar = r1 / r30; if (r1 && r10) o.ip = r10 / r1;
+    if (r1 && r30) { o.dar = r1 / r30; o.eDar = o.dar >= CRIT_DAR ? 'C' : 'N'; es.push(o.eDar); }
+    if (r1 && r10) o.ip = r10 / r1;
     var r1o = r1 && u ? r1 * FACT[u] : null; o.ipValido = !(r1o && r1o > 5e9);
-    if (o.ip != null) { o.e = !o.ipValido ? 'C' : (o.ip >= 2 ? 'C' : 'N'); es.push(o.e); } out.f[f] = o; });
+    if (o.ip != null) { o.eIp = !o.ipValido ? 'C' : (o.ip >= 2 ? 'C' : 'N'); es.push(o.eIp); }
+    o.e = agg([o.eIp, o.eDar]); out.f[f] = o; });
+  out.ff = desbalanceFF(t); if (out.ff) es.push(out.ff.e);
   out.e = agg(es); return out; }
-function tot(p){ return p.tipo === 'med' ? p.pts.length : p.tipo === 'check' ? p.items.length : p.tipo === 'kv' ? p.campos.length : p.tipo === 'tabla' ? p.hz.length * p.cols.length : p.tipo === 'ipdar' ? 9 : p.tipo === 'giro' ? 16 : p.tipo === 'calc' ? (p.calculos || []).length : 0; }
+
+/* ---------- prueba de giro ----------
+   Se registra cada sentido como en el reporte de arranque (WhatsApp) y se
+   compara: el sentido correcto es el que desarrolla más presión de descarga;
+   lo confirman una caída mayor de PIP, subida de THP, aporte en superficie
+   y, como apoyo, mayor corriente. */
+var GIRO_CAMPOS = [['hz','Frecuencia','Hz'],['hora','Hora de arranque',''],['dur','Duración de la prueba','min'],
+  ['pip_i','PIP inicial','psi'],['pip_f','PIP final','psi'],['pd_i','PD inicial','psi'],['pd_f','PD final','psi'],
+  ['tm_i','Tm inicial','°F'],['tm_f','Tm final','°F'],['thp_i','THP inicial','psi'],['thp_f','THP final','psi'],
+  ['chp_i','CHP inicial','psi'],['chp_f','CHP final','psi'],
+  ['ia','VFD Amp A','A'],['ib','VFD Amp B','A'],['ic','VFD Amp C','A'],['vab','VFD Volt A-B','V'],['vbc','VFD Volt B-C','V'],['vac','VFD Volt A-C','V']];
+var CAMPO_POR_PREFIJO = { CYC: 'Costayaco', CHB: 'Cohembí', QND: 'Quinde', MQT: 'Moqueta', 'PÑÑ': 'Piñuña' };
+function giroSentido(t){
+  if (!t) return null;
+  function dlt(a, b){ var x = num(t[a]), y = num(t[b]); return x != null && y != null ? y - x : null; }
+  function prom(ks){ var v = ks.map(function(k){ return num(t[k]); }); return v.some(function(x){ return x == null; }) ? null : (v[0] + v[1] + v[2]) / 3; }
+  var i = prom(['ia','ib','ic']), vi = [num(t.ia), num(t.ib), num(t.ic)], des = null;
+  if (i) des = 100 * Math.max.apply(null, vi.map(function(v){ return Math.abs(v - i); })) / i;
+  return { dPip: dlt('pip_i','pip_f'), dPd: dlt('pd_i','pd_f'), dTm: dlt('tm_i','tm_f'), dThp: dlt('thp_i','thp_f'), dChp: dlt('chp_i','chp_f'),
+    iProm: i, iDesb: des, vProm: prom(['vab','vbc','vac']), aporte: t.aporte || null };
+}
+function giroRes(){
+  var t = D('arr_giro').tabla, R_ = giroSentido(t.rev), F_ = giroSentido(t.fwd);
+  if (!R_ || !F_) return { r: R_, f: F_, ind: [], sugerido: null };
+  var ind = [];
+  function cmp(n, a, b, mayorGana, txt){ if (a == null || b == null || a === b) return; ind.push({ n: n, gana: (mayorGana ? b > a : b < a) ? 'fwd' : 'rev', txt: txt }); }
+  cmp('Presión de descarga', R_.dPd, F_.dPd, true, 'mayor aumento de PD');
+  cmp('Presión de admisión', R_.dPip, F_.dPip, false, 'mayor caída de PIP');
+  cmp('Presión en cabeza', R_.dThp, F_.dThp, true, 'mayor aumento de THP');
+  if (R_.aporte && F_.aporte && R_.aporte !== F_.aporte) ind.push({ n: 'Aporte en superficie', gana: F_.aporte === 'SI' ? 'fwd' : 'rev', txt: 'con aporte en superficie' });
+  cmp('Corriente', R_.iProm, F_.iProm, true, 'mayor corriente (la bomba toma carga)');
+  var pd = ind.filter(function(x){ return x.n === 'Presión de descarga'; })[0];
+  var votos = { fwd: 0, rev: 0 }; ind.forEach(function(x){ votos[x.gana]++; });
+  var sug = pd ? pd.gana : (votos.fwd > votos.rev ? 'fwd' : votos.rev > votos.fwd ? 'rev' : null);
+  var contra = sug ? ind.filter(function(x){ return x.gana !== sug && x.n !== 'Corriente'; }) : [];
+  return { r: R_, f: F_, ind: ind, sugerido: sug, contradicciones: contra };
+}
+function giroWhatsApp(){
+  var d = D('arr_giro'), t = d.tabla, g = t.gen || {}, c = S.com, res = giroRes();
+  var MES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var f = (d.fecha || hoy()).split('/'), fecha = MES[+f[1] - 1] + ' ' + (+f[0]) + ' ' + f[2];
+  var campo = g.campo || CAMPO_POR_PREFIJO[(c.pozo_nombre || '').split('-')[0]] || c.campo || '';
+  function n(v){ return v == null || v === '' ? '—' : String(v); }
+  function flecha(a, b){ var x = num(a), y = num(b); if (x == null || y == null) return ''; var dd = Math.round((y - x) * 10) / 10; return dd === 0 ? ' (=)' : ' (' + Math.abs(dd) + (dd > 0 ? '↑' : '↓') + ')'; }
+  function bloque(k, nombre){
+    var s = t[k] || {}, L = [];
+    L.push('*' + nombre + ' @ ' + n(s.hz) + ' Hz.');
+    L.push('*' + n(s.hora) + ' Arranque de pozo. Prueba durante ' + n(s.dur) + ' min.');
+    L.push('');
+    L.push('*PIP: ' + n(s.pip_i) + ' Psi -> ' + n(s.pip_f) + ' Psi' + flecha(s.pip_i, s.pip_f) + '.');
+    L.push('*PD: ' + n(s.pd_i) + ' Psi -> ' + n(s.pd_f) + ' Psi' + flecha(s.pd_i, s.pd_f) + '.');
+    L.push('*Tm: ' + n(s.tm_i) + ' °F -> ' + n(s.tm_f) + ' °F' + flecha(s.tm_i, s.tm_f) + '.');
+    L.push('*VFD Amp: A=' + n(s.ia) + 'A, B=' + n(s.ib) + 'A, C=' + n(s.ic) + 'A');
+    L.push('*VFD Volt: A-B=' + n(s.vab) + 'V, B-C=' + n(s.vbc) + 'V, A-C=' + n(s.vac) + 'V');
+    L.push('*THP: ' + n(s.thp_i) + ' Psi -> ' + n(s.thp_f) + ' Psi.');
+    L.push('*CHP: ' + n(s.chp_i) + ' Psi -> ' + n(s.chp_f) + ' Psi.');
+    var queda = g.sentido_final || res.sugerido;
+    if (queda === k) L.push('*Sentido de giro correcto');
+    if (s.aporte) L.push(s.aporte === 'SI' ? '*Con aporte en superficie' : '*Sin aporte en superficie');
+    return L.join('\n');
+  }
+  var out = [fecha, '', '*Field ' + campo, '*' + c.pozo_nombre, '*Current Conditions: ' + n(g.condicion), '', '*START-UP / ESP', '*Prueba sentido de giro.',
+    bloque('rev', 'Rev'), '', '*Tiempo de Backspin y descenso de Tm: ' + n(g.backspin) + ' min.', '', bloque('fwd', 'Fwd')];
+  if (g.cierre) out.push('', g.cierre);
+  return out.join('\n');
+}
+function tot(p){ return p.tipo === 'med' ? p.pts.length : p.tipo === 'check' ? p.items.length : p.tipo === 'kv' ? p.campos.length : p.tipo === 'tabla' ? p.hz.length * p.cols.length : p.tipo === 'ipdar' ? 12 : p.tipo === 'giro' ? (GIRO_CAMPOS.length + 1) * 2 + 1 : p.tipo === 'calc' ? (p.calculos || []).length : 0; }
 function estadoPaso(p){
   var d = S.com.d[p.id]; if (!d) return { e: null, ok: 0, tot: tot(p) };
   if (d.na) return { e: 'X', ok: tot(p), tot: tot(p) };
@@ -559,8 +650,11 @@ function estadoPaso(p){
     if (p.checks) p.checks.forEach(function(it){ var v = d.checks[it[0]]; if (v) es.push(v === 'SI' ? 'C' : 'A'); }); }
   else if (p.tipo === 'tabla') { p.hz.forEach(function(h){ p.cols.forEach(function(c){ if (num((d.tabla[h] || {})[c[0]]) != null) ok++; }); });
     if (ok) es.push(p.hz.every(function(h){ var dv = desb(d.tabla[h]); return dv == null || dv <= 2; }) ? 'C' : 'A'); }
-  else if (p.tipo === 'ipdar') { ['A','B','C'].forEach(function(f){ ['r30','r1','r10'].forEach(function(k){ if (num((d.tabla[f] || {})[k]) != null) ok++; }); }); var ip = ipRes(); if (ip.e) es.push(ip.e); }
-  else if (p.tipo === 'giro') { Object.keys(d.tabla).forEach(function(k){ Object.keys(d.tabla[k]).forEach(function(j){ if (num(d.tabla[k][j]) != null) ok++; }); }); if (ok) es.push('C'); }
+  else if (p.tipo === 'ipdar') { ['A','B','C'].forEach(function(f){ ['r30','r1','r10'].forEach(function(k){ if (num((d.tabla[f] || {})[k]) != null) ok++; }); });
+    ['ab','bc','ca'].forEach(function(k){ if (num((d.tabla.ff || {})[k]) != null) ok++; }); var ip = ipRes(); if (ip.e) es.push(ip.e); }
+  else if (p.tipo === 'giro') { ['rev','fwd'].forEach(function(k){ var s = d.tabla[k] || {}; GIRO_CAMPOS.forEach(function(c){ if (s[c[0]] != null && String(s[c[0]]).trim() !== '') ok++; }); if (s.aporte) ok++; });
+    if ((d.tabla.gen || {}).sentido_final) ok++;
+    if (ok) { var gr = giroRes(), fin = (d.tabla.gen || {}).sentido_final; es.push(!gr.sugerido ? 'C' : (fin && fin !== gr.sugerido) || (gr.contradicciones && gr.contradicciones.length) ? 'A' : 'C'); } }
   else if (p.tipo === 'calc') { var cc = calculos(p, camposCalc(p)); ok = cc.filter(function(x){ return x.v != null; }).length; if (ok) es.push(cc.some(function(x){ return x.v == null; }) ? 'A' : 'C'); }
   return { e: agg(es), ok: ok, tot: tot(p) };
 }
@@ -687,7 +781,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v2.1 · 01/10/2026';
+var VERSION = 'v2.2 · 01/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -1109,16 +1203,68 @@ function capTabla(p, d){
   return h;
 }
 function capIP(p, d){ var res = ipRes();
-  var h = '<div class="campo"><span>Unidad que muestra el instrumento</span><div class="seg" id="unit">' + ['MΩ','GΩ'].map(function(u){ return '<button data-v="' + u + '" aria-pressed="' + (d.unit === u) + '">' + u + '</button>'; }).join('') + '</div></div>';
+  function chip(lbl, v, e, extra){ return '<span class="mini-chip e' + (e || '') + '">' + lbl + ' ' + v + (extra || '') + '</span>'; }
+  var h = '<div class="campo"><span>Unidad que muestra el megóhmetro</span><div class="seg" id="unit">' + ['MΩ','GΩ'].map(function(u){ return '<button data-v="' + u + '" aria-pressed="' + (d.unit === u) + '">' + u + '</button>'; }).join('') + '</div></div>';
+  h += '<h3>Resistencia de aislamiento fase a tierra</h3>';
   h += ['A','B','C'].map(function(f){ var r = d.tabla[f] || {}, o = res.f[f] || {};
-    return '<div class="fila-hz"><div class="hz"><span>Fase ' + f + ' a tierra</span>' + (o.ip != null ? '<span class="mini-chip e' + o.e + '">IP ' + fmt(o.ip, 2) + (o.ipValido ? '' : ' (R1 > 5 GΩ)') + '</span>' : '') + (o.dar != null ? '<span class="mini-chip">DAR ' + fmt(o.dar, 2) + '</span>' : '') + '</div><div class="celdas">' + [['r30','30 s'],['r1','1 min'],['r10','10 min']].map(function(c){ return '<label>' + c[1] + '<input inputmode="decimal" data-t="' + f + '|' + c[0] + '" value="' + esc(r[c[0]] || '') + '"></label>'; }).join('') + '</div></div>'; }).join('');
-  return h + '<p class="nota">Criterio: IP ≥ 2,0 (IEEE 43-2013, clases B, F y H). Si R1 supera 5 GΩ el IP no es representativo y se evalúa la lectura absoluta.</p>'; }
+    return '<div class="fila-hz"><div class="hz"><span>Fase ' + f + ' a tierra</span>' +
+      (o.dar != null ? chip('DAR', fmt(o.dar, 2), o.eDar) : '') + (o.ip != null ? chip('IP', fmt(o.ip, 2), o.eIp, o.ipValido ? '' : ' (R1 > 5 GΩ: no representativo)') : '') +
+      '</div><div class="celdas">' + [['r30','30 s'],['r1','1 min'],['r10','10 min']].map(function(c){ return '<label>' + c[1] + '<input inputmode="decimal" data-t="' + f + '|' + c[0] + '" value="' + esc(r[c[0]] || '') + '"></label>'; }).join('') + '</div></div>'; }).join('');
+  h += '<h3>Balance de resistencia fase-fase (cable + motor)</h3>';
+  var ff = d.tabla.ff || {}, b = res.ff;
+  h += '<div class="fila-hz"><div class="hz"><span>Resistencia en Ω</span>' + (b ? chip('Promedio', fmt(b.prom, 3) + ' Ω', '') + chip('Desbalance', fmt(b.desb, 2) + ' %', b.e) : '') + '</div><div class="celdas">' +
+    [['ab','A-B'],['bc','B-C'],['ca','C-A']].map(function(c){ return '<label>' + c[1] + '<input inputmode="decimal" data-t="ff|' + c[0] + '" value="' + esc(ff[c[0]] || '') + '"></label>'; }).join('') + '</div></div>';
+  h += '<div class="resumen-ip"><b>Resultados</b><table><tr><th></th><th>DAR</th><th>IP</th></tr>' + ['A','B','C'].map(function(f){ var o = res.f[f] || {};
+    return '<tr><td>Fase ' + f + '</td><td class="e' + (o.eDar || '') + '">' + (o.dar != null ? fmt(o.dar, 2) : '—') + '</td><td class="e' + (o.eIp || '') + '">' + (o.ip != null ? fmt(o.ip, 2) : '—') + '</td></tr>'; }).join('') +
+    '<tr><td>Balance fase-fase</td><td colspan="2" class="e' + (b ? b.e : '') + '">' + (b ? fmt(b.desb, 2) + ' % de desbalance' : '—') + '</td></tr></table></div>';
+  return h + '<p class="nota">Criterios: IP ≥ 2,0 (IEEE 43-2013, clases B, F y H; si R1 supera 5 GΩ el IP no es representativo y se evalúa la lectura absoluta). DAR = R1 min / R30 s ≥ ' + fmt(CRIT_DAR, 2) + ' y desbalance fase-fase ≤ ' + CRIT_FF + ' % (criterio de campo).</p>'; }
 function capCalc(p){ return '<div class="calcbox big">' + calculos(p, camposCalc(p)).map(function(c){ return '<div><span>' + esc(c.n) + '<small>' + esc(c.f) + '</small></span><b class="' + (c.v == null ? 'falta' : '') + '">' + (c.v != null ? fmt(c.v, 2) + ' ' + esc(c.u) : 'Falta: ' + esc(c.falta)) + '</b></div>'; }).join('') + '</div><p class="nota">Los datos se toman del paso «Datos del equipo de fondo».</p>'; }
-function capGiro(p, d){ var rows = [['rev_i','Reversa, inicio'],['rev_f','Reversa, final'],['fwd_i','Directo, inicio'],['fwd_f','Directo, final']];
-  var h = rows.map(function(r){ var t = d.tabla[r[0]] || {}; return '<div class="fila-hz"><div class="hz"><span>' + r[1] + '</span></div><div class="celdas">' + [['hz','Hz'],['i','I VDF (A)'],['pip','PIP (psi)'],['thp','THP (psi)']].map(function(c){ return '<label>' + c[1] + '<input inputmode="decimal" data-t="' + r[0] + '|' + c[0] + '" value="' + esc(t[c[0]] || '') + '"></label>'; }).join('') + '</div></div>'; }).join('');
-  var a = d.tabla.rev_f || {}, b = d.tabla.fwd_f || {}, dt = num(b.thp) != null && num(a.thp) != null ? num(b.thp) - num(a.thp) : null;
-  if (dt != null) h += '<p class="regla eC">Diferencia de THP (directo − reversa): ' + fmt(dt, 0) + ' psi. ' + (dt > 0 ? 'El sentido directo desarrolla mayor presión.' : 'El sentido reverso desarrolla mayor presión: revisa la secuencia de fases.') + '</p>';
-  return h; }
+function capGiro(p, d){
+  var t = d.tabla, g = t.gen || {}, res = giroRes();
+  var campoDef = CAMPO_POR_PREFIJO[(S.com.pozo_nombre || '').split('-')[0]] || '';
+  var h = '<div class="panel"><label class="campo"><span>Campo</span><input data-t="gen|campo" value="' + esc(g.campo != null ? g.campo : campoDef) + '"></label>' +
+    '<label class="campo" style="margin:0"><span>Condición actual</span><input data-t="gen|condicion" value="' + esc(g.condicion || '') + '" placeholder="Ej.: Prueba sentido de giro, arranque post Work over"></label></div>';
+  function sentido(k, nombre){
+    var s = t[k] || {}, r = k === 'rev' ? res.r : res.f;
+    function inp(c){ return '<label>' + c[1] + (c[2] ? ' (' + c[2] + ')' : '') + '<input ' + (c[0] === 'hora' ? 'type="time"' : 'inputmode="decimal"') + ' data-t="' + k + '|' + c[0] + '" value="' + esc(s[c[0]] || '') + '"></label>'; }
+    function par(a, b, lbl, dl, u){ return '<div class="giro-par"><span class="gp-l">' + lbl + '</span>' + inp(GIRO_CAMPOS.filter(function(c){ return c[0] === a; })[0]) + inp(GIRO_CAMPOS.filter(function(c){ return c[0] === b; })[0]) +
+      '<span class="mini-chip">' + (dl == null ? 'Δ —' : 'Δ ' + (dl > 0 ? '+' : '') + fmt(dl, 1) + ' ' + u) + '</span></div>'; }
+    var c3 = function(ks){ return ks.map(function(x){ return inp(GIRO_CAMPOS.filter(function(c){ return c[0] === x; })[0]); }).join(''); };
+    return '<div class="fila-hz giro"><div class="hz"><span>' + nombre + '</span>' + (res.sugerido === k ? '<span class="mini-chip eC">Sentido sugerido</span>' : '') + '</div>' +
+      '<div class="celdas">' + c3(['hz','hora','dur']) + '</div>' +
+      par('pip_i','pip_f','PIP', r && r.dPip, 'psi') + par('pd_i','pd_f','Presión de descarga (PD)', r && r.dPd, 'psi') + par('tm_i','tm_f','Temperatura de motor (Tm)', r && r.dTm, '°F') +
+      par('thp_i','thp_f','THP', r && r.dThp, 'psi') + par('chp_i','chp_f','CHP', r && r.dChp, 'psi') +
+      '<p class="gp-t">Corriente del VDF' + (r && r.iProm ? ' · promedio ' + fmt(r.iProm, 0) + ' A · desbalance ' + fmt(r.iDesb, 1) + ' %' : '') + '</p><div class="celdas">' + c3(['ia','ib','ic']) + '</div>' +
+      '<p class="gp-t">Tensión del VDF' + (r && r.vProm ? ' · promedio ' + fmt(r.vProm, 0) + ' V' : '') + '</p><div class="celdas">' + c3(['vab','vbc','vac']) + '</div>' +
+      '<div class="campo" style="margin:10px 0 0"><span>Aporte en superficie</span><div class="seg" data-tsel="' + k + '|aporte">' + [['SI','Con aporte'],['NO','Sin aporte']].map(function(o){ return '<button data-v="' + o[0] + '" aria-pressed="' + (s.aporte === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div></div>';
+  }
+  h += sentido('rev', 'Reversa (Rev)');
+  h += '<div class="panel"><label class="campo" style="margin:0"><span>Tiempo de backspin y descenso de Tm (min)</span><input inputmode="decimal" data-t="gen|backspin" value="' + esc(g.backspin || '') + '"></label></div>';
+  h += sentido('fwd', 'Directo (Fwd)');
+  /* resultado */
+  var NOM = { rev: 'Reversa', fwd: 'Directo' };
+  h += '<div class="resumen-ip"><b>Resultado de la prueba</b>';
+  if (!res.ind.length) h += '<p class="nota">Registra los dos sentidos para comparar.</p>';
+  else {
+    h += '<table><tr><th>Indicador</th><th>Reversa</th><th>Directo</th><th>Favorece</th></tr>' + res.ind.map(function(x){
+      var a = '', b = '';
+      if (x.n === 'Presión de descarga') { a = fmt(res.r.dPd, 0); b = fmt(res.f.dPd, 0); }
+      else if (x.n === 'Presión de admisión') { a = fmt(res.r.dPip, 0); b = fmt(res.f.dPip, 0); }
+      else if (x.n === 'Presión en cabeza') { a = fmt(res.r.dThp, 0); b = fmt(res.f.dThp, 0); }
+      else if (x.n === 'Aporte en superficie') { a = res.r.aporte === 'SI' ? 'Sí' : 'No'; b = res.f.aporte === 'SI' ? 'Sí' : 'No'; }
+      else if (x.n === 'Corriente') { a = fmt(res.r.iProm, 0) + ' A'; b = fmt(res.f.iProm, 0) + ' A'; }
+      return '<tr><td>' + x.n + '</td><td>' + a + '</td><td>' + b + '</td><td>' + NOM[x.gana] + '</td></tr>'; }).join('') + '</table>';
+    h += res.sugerido ? '<p class="regla e' + (res.contradicciones.length ? 'A' : 'C') + '">Sentido correcto sugerido: <b>' + NOM[res.sugerido] + '</b>' +
+      (res.contradicciones.length ? '. Ojo: ' + res.contradicciones.map(function(x){ return x.n.toLowerCase(); }).join(', ') + ' indica lo contrario; revisa las lecturas.' : ', con ' + res.ind.filter(function(x){ return x.gana === res.sugerido; }).map(function(x){ return x.txt; }).join(', ') + '.') + '</p>'
+      : '<p class="regla eA">Los indicadores no permiten decidir el sentido. Revisa las lecturas.</p>';
+  }
+  h += '<div class="campo" style="margin:10px 0 0"><span>Sentido que queda en operación</span><div class="seg" data-tsel="gen|sentido_final">' + [['fwd','Directo'],['rev','Reversa']].map(function(o){ return '<button data-v="' + o[0] + '" aria-pressed="' + (g.sentido_final === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>';
+  if (g.sentido_final && res.sugerido && g.sentido_final !== res.sugerido) h += '<p class="regla eA">El sentido elegido no coincide con el que indican las lecturas; explica el motivo en el complemento.</p>';
+  h += '</div>';
+  h += '<div class="panel"><label class="campo"><span>Cierre del reporte (opcional)</span><textarea data-ta="gen|cierre" placeholder="Ej.: Se procede a realizar incrementos de frecuencia de 35 Hz a 40 Hz según el plan.">' + esc(g.cierre || '') + '</textarea></label>' +
+    '<button class="btn ancho" id="wa">Copiar reporte para WhatsApp</button></div>';
+  return h;
+}
 function bindCaptura(p, d){
   var root = $('cuerpo');
   function on(sel, fn){ [].forEach.call(root.querySelectorAll(sel), fn); }
@@ -1136,6 +1282,13 @@ function bindCaptura(p, d){
   on('[data-enc]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ d.enc[g.getAttribute('data-enc')] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
   on('[data-ck]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ d.checks[g.getAttribute('data-ck')] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
   on('input[data-kv]', function(i){ i.oninput = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); refilaDiferido(); }; });
+  on('[data-tsel]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ var k = g.getAttribute('data-tsel').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
+  on('textarea[data-ta]', function(i){ i.oninput = function(){ var k = i.getAttribute('data-ta').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = i.value; toque(d); autoguardar(p); }; });
+  if ($('wa')) $('wa').onclick = function(){ var txt = giroWhatsApp();
+    var listo = function(){ toast('Reporte copiado: pégalo en WhatsApp'); };
+    if (navigator.share && window.matchMedia && matchMedia('(pointer: coarse)').matches) navigator.share({ text: txt }).catch(function(){});
+    else if (navigator.clipboard) navigator.clipboard.writeText(txt).then(listo, function(){ dialogo('Reporte', '', { campo: '', valor: txt, lista: [{ t: 'Cerrar', pri: true }] }); });
+    else dialogo('Reporte', '', { campo: '', valor: txt, lista: [{ t: 'Cerrar', pri: true }] }); };
   on('input[data-t]', function(i){ i.oninput = function(){ var k = i.getAttribute('data-t').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ var k = i.getAttribute('data-t').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = i.value; toque(d); refilaDiferido(); }; });
 }
 function comprimir(file, cb, fallo){
@@ -1161,6 +1314,13 @@ function hallazgos(){
       if (p.encontrado && p.encontrado.some(function(k){ return d.enc[k] === 'ABIERTO'; })) H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Fusibles encontrados abiertos.', acc: textoObs(p, d) || 'Instalar fusibles nuevos.' });
       if (p.tens && d.tens && p.tens.indexOf(d.tens) < 0) H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Tensión de prueba ' + d.tens + ' VDC distinta de la indicada (' + p.tens.join(' o ') + ' VDC).', acc: 'Repetir a la tensión indicada.' });
     }
+    if (p.tipo === 'ipdar' && s.e === 'N') { var ir2 = ipRes(), mal = [];
+      ['A','B','C'].forEach(function(f){ var o = ir2.f[f] || {}; if (o.eIp === 'N') mal.push('IP fase ' + f + ' ' + fmt(o.ip, 2)); if (o.eDar === 'N') mal.push('DAR fase ' + f + ' ' + fmt(o.dar, 2)); });
+      if (ir2.ff && ir2.ff.e === 'N') mal.push('desbalance fase-fase ' + fmt(ir2.ff.desb, 2) + ' %');
+      H.push({ eq: eqT, p: p.t, sev: 'Alta', txt: mal.join('; ') + ' (criterios: IP ≥ 2,0; DAR ≥ ' + fmt(CRIT_DAR, 2) + '; desbalance ≤ ' + CRIT_FF + ' %).', acc: textoObs(p, d) || 'Evaluar el conjunto cable–motor antes de energizar.' }); }
+    if (p.tipo === 'giro') { var gr3 = giroRes(), fin3 = (d.tabla.gen || {}).sentido_final;
+      if (gr3.sugerido && fin3 && fin3 !== gr3.sugerido) H.push({ eq: eqT, p: p.t, sev: 'Alta', txt: 'El sentido que quedó en operación no coincide con el que indican las lecturas.', acc: textoObs(p, d) || 'Verificar la secuencia de fases y repetir la prueba.' });
+      else if (gr3.contradicciones && gr3.contradicciones.length) H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Indicadores contradictorios en la prueba de giro: ' + gr3.contradicciones.map(function(x){ return x.n.toLowerCase(); }).join(', ') + '.', acc: 'Revisar las lecturas registradas.' }); }
     if (p.id === 'vent' && d.checks.existe === 'NO') H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Sin caja de venteo entre cabezal y tablero.', acc: 'Evaluar el venteo indicado en API RP 11S3 §4.3.3.' });
   });
   PASOS.forEach(function(p){ var d = S.com.d[p.id]; if (!d || d.na) return; var eqT = EQUIPOS.filter(function(e){ return e.id === p.eq; })[0].t;
@@ -1293,9 +1453,30 @@ function armarPdf(FOTOS){
       else if (p.tipo === 'kv') { kv(p.campos.map(function(cc){ return [cc[1], (d.campos[cc[0]] || '—') + (cc[2] && d.campos[cc[0]] ? ' ' + cc[2] : '')]; })); if (p.calculos) kv(calculos(p, d.campos).map(function(x){ return [x.n, x.v != null ? fmt(x.v, 2) + ' ' + x.u : 'Falta: ' + x.falta]; })); if (p.checks) tabla(['Verificación','Resultado'], p.checks.map(function(it){ return [it[1], ENUMTXT[d.checks[it[0]]] || '—']; }), [CW - 40, 40]); }
       else if (p.tipo === 'tabla') { tabla(['Hz'].concat(p.cols.map(function(cc){ return cc[1]; })).concat(['Desbal. V (%)','V/Hz']), p.hz.map(function(hz){ var r = d.tabla[hz] || {}, dv = desb(r); return [String(hz)].concat(p.cols.map(function(cc){ return r[cc[0]] != null ? String(r[cc[0]]) : ''; })).concat([dv != null ? fmt(dv, 1) : '—', r.vab ? fmt(num(r.vab) / hz, 2) : '—']); }), null);
         if (p.checks) tabla(['Protección','Resultado'], p.checks.map(function(it){ return [it[1], ENUMTXT[d.checks[it[0]]] || '—']; }), [CW - 40, 40]); }
-      else if (p.tipo === 'ipdar') { var ir_ = ipRes(); tabla(['Fase','30 s','1 min','10 min','DAR','IP','Estado'], ['A','B','C'].map(function(f){ var r = d.tabla[f] || {}, o = ir_.f[f] || {}; return ['Fase ' + f + ' a tierra', r.r30 || '', r.r1 || '', r.r10 || '', o.dar != null ? fmt(o.dar, 2) : '—', o.ip != null ? fmt(o.ip, 2) : '—', [o.e || 'R']]; }), [34, 22, 22, 22, 20, 20, CW - 140], 6); }
+      else if (p.tipo === 'ipdar') { var ir_ = ipRes(), uu = d.unit ? ' (' + d.unit + ')' : '';
+        tabla(['Fase','30 s' + uu,'1 min' + uu,'10 min' + uu,'DAR','IP','Estado'], ['A','B','C'].map(function(f){ var r = d.tabla[f] || {}, o = ir_.f[f] || {}; return ['Fase ' + f + ' a tierra', r.r30 || '', r.r1 || '', r.r10 || '', o.dar != null ? fmt(o.dar, 2) : '—', o.ip != null ? fmt(o.ip, 2) + (o.ipValido ? '' : '*') : '—', [o.e || 'R']]; }), [34, 22, 22, 22, 20, 20, CW - 140], 6);
+        var ffp = d.tabla.ff || {}, bb = ir_.ff;
+        tabla(['Resistencia fase-fase (Ω)','A-B','B-C','C-A','Promedio','Desbalance','Estado'], [['Cable + motor', ffp.ab || '—', ffp.bc || '—', ffp.ca || '—', bb ? fmt(bb.prom, 3) : '—', bb ? fmt(bb.desb, 2) + ' %' : '—', [bb ? bb.e : 'R']]], [40, 20, 20, 20, 22, 22, CW - 144], 6);
+        par('Criterios: IP ≥ 2,0 (IEEE 43-2013); DAR ≥ ' + fmt(CRIT_DAR, 2) + ' y desbalance fase-fase ≤ ' + CRIT_FF + ' % (criterio de campo).' + (['A','B','C'].some(function(f){ return ir_.f[f] && ir_.f[f].ipValido === false; }) ? ' * IP no representativo: R1 mayor a 5 GΩ.' : ''), 7.4); }
       else if (p.tipo === 'calc') tabla(['Parámetro','Base de cálculo','Resultado'], calculos(p, camposCalc(p)).map(function(x){ return [x.n, x.f, x.v != null ? fmt(x.v, 2) + ' ' + x.u : 'Falta: ' + x.falta]; }), [50, 60, CW - 110]);
-      else if (p.tipo === 'giro') tabla(['Condición','Hz','I VDF (A)','PIP (psi)','THP (psi)'], [['rev_i','Reversa, inicio'],['rev_f','Reversa, final'],['fwd_i','Directo, inicio'],['fwd_f','Directo, final']].map(function(r){ var t = d.tabla[r[0]] || {}; return [r[1], t.hz || '', t.i || '', t.pip || '', t.thp || '']; }), null);
+      else if (p.tipo === 'giro') { var gt = d.tabla, gr_ = giroRes(), rv = gt.rev || {}, fw = gt.fwd || {}, gg = gt.gen || {};
+        function pr2(a, b){ return (a || '—') + ' → ' + (b || '—'); }
+        function dl(v, u){ return v == null ? '' : ' (' + (v > 0 ? '+' : '') + fmt(v, 0) + ' ' + u + ')'; }
+        tabla(['Parámetro','Reversa (Rev)','Directo (Fwd)'], [
+          ['Frecuencia · hora · duración', (rv.hz || '—') + ' Hz · ' + (rv.hora || '—') + ' · ' + (rv.dur || '—') + ' min', (fw.hz || '—') + ' Hz · ' + (fw.hora || '—') + ' · ' + (fw.dur || '—') + ' min'],
+          ['PIP (psi)', pr2(rv.pip_i, rv.pip_f) + dl(gr_.r && gr_.r.dPip, 'psi'), pr2(fw.pip_i, fw.pip_f) + dl(gr_.f && gr_.f.dPip, 'psi')],
+          ['Presión de descarga PD (psi)', pr2(rv.pd_i, rv.pd_f) + dl(gr_.r && gr_.r.dPd, 'psi'), pr2(fw.pd_i, fw.pd_f) + dl(gr_.f && gr_.f.dPd, 'psi')],
+          ['Temperatura de motor Tm (°F)', pr2(rv.tm_i, rv.tm_f) + dl(gr_.r && gr_.r.dTm, '°F'), pr2(fw.tm_i, fw.tm_f) + dl(gr_.f && gr_.f.dTm, '°F')],
+          ['THP (psi)', pr2(rv.thp_i, rv.thp_f), pr2(fw.thp_i, fw.thp_f)],
+          ['CHP (psi)', pr2(rv.chp_i, rv.chp_f), pr2(fw.chp_i, fw.chp_f)],
+          ['Corriente VDF A / B / C (A)', [rv.ia, rv.ib, rv.ic].map(function(x){ return x || '—'; }).join(' / '), [fw.ia, fw.ib, fw.ic].map(function(x){ return x || '—'; }).join(' / ')],
+          ['Tensión VDF A-B / B-C / A-C (V)', [rv.vab, rv.vbc, rv.vac].map(function(x){ return x || '—'; }).join(' / '), [fw.vab, fw.vbc, fw.vac].map(function(x){ return x || '—'; }).join(' / ')],
+          ['Aporte en superficie', rv.aporte ? (rv.aporte === 'SI' ? 'Con aporte' : 'Sin aporte') : '—', fw.aporte ? (fw.aporte === 'SI' ? 'Con aporte' : 'Sin aporte') : '—']
+        ], [56, (CW - 56) / 2, (CW - 56) / 2]);
+        var NOMS = { rev: 'reversa', fwd: 'directo' }, fin = gg.sentido_final || gr_.sugerido;
+        par((gg.backspin ? 'Tiempo de backspin y descenso de Tm: ' + gg.backspin + ' min. ' : '') +
+          (gr_.sugerido ? 'Resultado: el sentido ' + NOMS[gr_.sugerido] + ' presenta ' + gr_.ind.filter(function(x){ return x.gana === gr_.sugerido; }).map(function(x){ return x.txt; }).join(', ') + '.' : '') +
+          (fin ? ' Sentido que queda en operación: ' + NOMS[fin] + '.' : '') + (gg.cierre ? ' ' + gg.cierre : ''), 8); }
       var ob = textoObs(p, d); if (ob) par('Observaciones: ' + ob, 7.8);
       refFotos(d, eq.t + ': ' + p.t);
     });
