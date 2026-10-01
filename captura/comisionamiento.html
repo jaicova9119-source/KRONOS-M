@@ -72,7 +72,13 @@ textarea{min-height:90px;resize:vertical}
 .seg button{flex:1 1 auto;min-width:64px;min-height:52px;border-radius:10px;border:1.5px solid var(--ink-soft);background:var(--card);font-weight:700;font-size:15.5px;padding:0 10px}
 .seg button[aria-pressed="true"]{background:var(--navy);color:#fff;border-color:var(--navy)}
 html[data-tema="oscuro"] .seg button[aria-pressed="true"]{background:var(--acento);border-color:var(--acento);color:#0b1a22}
-.seg.mini button{min-height:46px;font-size:14px;min-width:0;padding:0 8px}
+.seg.mini button{min-height:46px;font-size:14px;min-width:0;padding:0 10px}
+/* Los grupos de opciones dentro de una fila no se parten en columna ni se
+   recortan: en pantalla angosta pasan completos a la línea de abajo. */
+.fila .seg.mini{flex-wrap:nowrap;flex:0 0 auto}
+.fila .seg.mini button{flex:0 0 auto;white-space:nowrap}
+.fila .encontrado{flex:1 1 100%}
+.fila .encontrado .seg.mini{flex:0 0 auto}
 .seg.chk button[data-v="SI"][aria-pressed="true"],.seg.chk button[data-v="B"][aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:#fff}
 .seg.chk button[data-v="NO"][aria-pressed="true"],.seg.chk button[data-v="M"][aria-pressed="true"]{background:var(--danger);border-color:var(--danger);color:#fff}
 .seg.chk button[data-v="R"][aria-pressed="true"]{background:#E3A300;border-color:#E3A300;color:#141C24}
@@ -147,8 +153,8 @@ details.guia .cond{margin:0 14px 10px;font-size:14px;color:var(--ink-soft)}
 html[data-tema="oscuro"] .fotos-btns .pri-f{border-color:var(--acento);color:var(--acento)}
 .fotos .solta{margin:6px 2px 0}
 .miniaturas{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
-.mini{width:76px;height:76px;padding:0;border-radius:8px;border:2px solid var(--line);background:var(--surface-2);overflow:hidden}
-.mini img{width:100%;height:100%;object-fit:cover;display:block}
+.miniatura{width:76px;height:76px;padding:0;border-radius:8px;border:2px solid var(--line);background:var(--surface-2);overflow:hidden}
+.miniatura img{width:100%;height:100%;object-fit:cover;display:block}
 .na{display:flex;gap:10px;align-items:center;font-size:15px;color:var(--ink-soft);min-height:44px}.na input{width:24px;height:24px}
 .ro .captura,.ro .pre,.ro .obs,.ro .na,.ro .bulk{pointer-events:none}.ro .fotos-btns,.ro .fotos .solta,.ro .na{display:none}
 .flujo{display:flex;gap:4px;margin-bottom:14px}.flujo span{flex:1;text-align:center;font-size:12.5px;font-weight:700;padding:8px 2px;border-radius:6px;background:var(--card);border:1.5px solid var(--line);color:var(--ink-soft)}.flujo span.hecho{background:var(--navy);border-color:var(--navy);color:#fff}
@@ -175,7 +181,8 @@ html[data-tema="oscuro"] .fotos-btns .pri-f{border-color:var(--acento);color:var
   .form2{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
   .lista{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 12px}
   .celdas{grid-template-columns:repeat(6,1fr)}
-  .fila{flex-wrap:nowrap}
+  .fila{flex-wrap:wrap}
+  .fila .encontrado{flex:0 0 auto;width:auto}
   .fila .encontrado{width:auto}
   .accion{justify-content:flex-end;padding:12px 22px calc(12px + env(safe-area-inset-bottom,0px))}
   .accion .btn.pri{flex:0 1 420px}
@@ -616,7 +623,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v1.7 · 30/09/2026';
+var VERSION = 'v1.8 · 01/10/2026';
 
 function abrirCom(id, m){
   toast('Abriendo…');
@@ -824,7 +831,7 @@ function refilaDiferido(){ var pid = S.paso; setTimeout(function(){ if (S.pantal
 function pintarMinis(d){
   var c = $('minis'); if (!c) return;
   d.fotos.forEach(function(id, i){
-    var caja = document.createElement('button'); caja.className = 'mini'; caja.type = 'button'; caja.setAttribute('aria-label', 'Foto ' + (i + 1)); c.appendChild(caja);
+    var caja = document.createElement('button'); caja.className = 'miniatura'; caja.type = 'button'; caja.setAttribute('aria-label', 'Foto ' + (i + 1)); c.appendChild(caja);
     fotoURL(id).then(function(u){ if (u) { var im = document.createElement('img'); im.src = u; im.alt = ''; caja.appendChild(im); } });
     caja.onclick = function(){ idbGet('fotos', id).then(function(f){
       var enviada = f && f.estado !== 'local';
@@ -954,7 +961,7 @@ function capMed(p, d){
     var ptsG2 = p.pts.filter(function(x){ return x.g === pt.g; }), difCrit = ptsG2.some(function(x){ return x.c.txt !== ptsG2[0].c.txt; });
     h += '<div class="fila"><div class="fl"><b>' + esc(pt.l) + '</b>' + (pt.r ? '<small><i class="pr"></i>' + esc(pt.r) + ' <i class="pn"></i>' + esc(pt.n) + '</small>' : '') + (difCrit ? '<small>' + esc(pt.c.txt) + '</small>' : '') + '</div>';
     if (p.encontrado && p.encontrado.indexOf(pt.id) >= 0) h += '<div class="encontrado"><span>Encontrado</span><div class="seg mini" data-enc="' + pt.id + '">' + ['OK','ABIERTO'].map(function(o){ return '<button data-v="' + o + '" aria-pressed="' + (d.enc[pt.id] === o) + '">' + (o === 'OK' ? 'Bien' : 'Abierto') + '</button>'; }).join('') + '</div></div>';
-    if (pt.c.t === 'enum' && pt.c.e === 'EC') h += '<div class="seg mini" data-e="' + pt.id + '">' + ['EC','CORTO','ABIERTO'].map(function(o){ return '<button data-v="' + o + '" aria-pressed="' + (r.e === o) + '">' + (o === 'EC' ? 'Ef. capacitivo' : ENUMTXT[o]) + '</button>'; }).join('') + '</div>';
+    if (pt.c.t === 'enum' && pt.c.e === 'EC') h += '<div class="seg mini" data-e="' + pt.id + '">' + ['EC','CORTO','ABIERTO'].map(function(o){ return '<button data-v="' + o + '" aria-pressed="' + (r.e === o) + '">' + (o === 'EC' ? 'Capacitivo' : ENUMTXT[o]) + '</button>'; }).join('') + '</div>';
     else h += '<div class="inp"><input inputmode="decimal" data-v="' + pt.id + '" value="' + esc(r.e === 'OL' ? '' : (r.v || '')) + '"' + (r.e === 'OL' ? ' placeholder="OL" disabled' : '') + ' aria-label="' + esc(pt.g + ' ' + pt.l) + '"><span class="u">' + esc(unitTxt) + '</span>' + (p.permiteOL || pt.c.t === 'enum' ? '<button class="olb" data-ol="' + pt.id + '" aria-pressed="' + (r.e === 'OL') + '">OL</button>' : '') + '</div>';
     h += '<span class="dot e' + (e || '') + '" title="' + (e ? EST[e] : '') + '"></span></div>';
   });
@@ -1094,7 +1101,7 @@ function armarPdf(FOTOS){
   function header(){ var top = 10, hh = 17, wl = 38, wr = 38, wc = CW - wl - wr; doc.setDrawColor(58, 58, 58); doc.setLineWidth(0.25); doc.rect(M, top, CW, hh); doc.line(M + wl, top, M + wl, top + hh); doc.line(M + wl + wc, top, M + wl + wc, top + hh);
     logo('gte', M + 4, top + 3.2, 30, 9.7); logo('cfp', M + wl + wc + 5, top + 3.5, 28, 8.7);
     T(9.2, true); doc.text('INFORME DE COMISIONAMIENTO' + (borrador ? '  (BORRADOR)' : ''), M + wl + wc / 2, top + 6.2, { align: 'center' }); T(8); doc.text('Equipos de superficie sistema BES  |  Pozo ' + c.pozo_nombre, M + wl + wc / 2, top + 10.2, { align: 'center' });
-    doc.setFontSize(6.8); doc.setTextColor(85, 85, 85); doc.text('Documento controlado. La copia impresa no controlada debe verificarse contra la versión vigente.', M, Hh - 9); }
+  }
   function nueva(){ doc.addPage(); header(); y = 33; }
   function cabe(h){ if (y + h > Hh - 16) nueva(); }
   function h1(t){ cabe(14); T(11.5, true); doc.text(t, M, y + 4); y += 8; }
@@ -1117,7 +1124,7 @@ function armarPdf(FOTOS){
   y = 150; kv([['Cliente','Gran Tierra Energy'],['Ejecutor','Confipetrol'],['Pozo',c.pozo_nombre],['Campo',c.campo || '—'],['Sistema','Bombeo electrosumergible (BES)'],['Periodo de ejecución', fechas.length ? fechas[0] + ' al ' + fechas[fechas.length - 1] : '—'],['Orden de trabajo',c.orden],['Ejecutado por',c.ejecutantes.join(', ')],['Revisado por',c.revisa || '—'],['Código',codigo],['Fecha de emisión',em],['Estado',EST_COM[c.estado] + (c.es_prueba ? ' (prueba)' : '')]]);
   y += 4; T(9.6, true); doc.text('Control de versiones', M, y + 3); y += 6;
   tabla(['Versión','Fecha','Descripción','Elaboró','Revisó','Aprobó'], [['0', em, borrador ? 'Emisión para revisión' : 'Emisión aprobada', c.ejecutantes[0] || '', c.revisa || '', '']], [16,22,CW-16-22-84,28,28,28]);
-  doc.setFontSize(7); doc.setTextColor(85, 85, 85); doc.text('Equipos instalados en sistemas y procesos operados por Gran Tierra Energy.', M, Hh - 16);
+  doc.setFontSize(7); doc.setTextColor(85, 85, 85); doc.text('Equipos instalados en sistemas y procesos operados por Gran Tierra Energy.', M, Hh - 9);
   /* cuerpo */
   nueva();
   h1('1. Objeto'); par('Documentar el comisionamiento de los equipos de superficie de la unidad de bombeo electrosumergible del pozo ' + c.pozo_nombre + ', instalados en sistemas y procesos operados por Gran Tierra Energy: inspección, pruebas eléctricas, configuración y pruebas funcionales previas al arranque, con los criterios de aceptación aplicados.');
@@ -1165,8 +1172,16 @@ function armarPdf(FOTOS){
       doc.setDrawColor(189, 189, 189); doc.rect(x, y, w, hh + 8); doc.addImage(f[0], 'JPEG', x + (w - iw) / 2, y + 1 + (hh - ih) / 2, iw, ih); T(7.4); doc.setTextColor(85, 85, 85); doc.text(doc.splitTextToSize('Foto ' + (i + 1) + '. ' + f[1], w - 4), x + w / 2, y + hh + 4.5, { align: 'center' });
       if (col === 1) { y += hh + 11; col = 0; } else col = 1; }); }
   var n = doc.internal.getNumberOfPages();
-  for (var pg = 2; pg <= n; pg++) { doc.setPage(pg); T(7.2); doc.setTextColor(85, 85, 85); doc.text('Código: ' + codigo + '    Versión: 0    Emisión: ' + em + '    Página ' + pg + ' de ' + n, M + 38 + (CW - 76) / 2, 24.2, { align: 'center' }); }
-  doc.setPage(1); T(7); doc.setTextColor(85, 85, 85); doc.text('Página 1 de ' + n, W - M, Hh - 16, { align: 'right' });
+  /* Encabezado: código, versión y emisión, ajustado al ancho de la celda
+     central para que no pise los logos. La página va solo al pie. */
+  var lineaCod = 'Código: ' + codigo + '   ·   Versión: 0   ·   Emisión: ' + em, anchoCelda = CW - 76 - 6;
+  for (var pg = 1; pg <= n; pg++) {
+    doc.setPage(pg);
+    if (pg > 1) { var fs = 7.2; T(fs); while (fs > 5.6 && doc.getTextWidth(lineaCod) > anchoCelda) { fs -= 0.2; doc.setFontSize(fs); }
+      doc.setTextColor(85, 85, 85); doc.text(lineaCod, M + 38 + (CW - 76) / 2, 24.2, { align: 'center' }); }
+    T(7.2); doc.setTextColor(85, 85, 85); doc.text('Página ' + pg + ' de ' + n, W - M, Hh - 9, { align: 'right' });
+    if (pg > 1) doc.text(c.codigo || '', M, Hh - 9);
+  }
   return doc.output('blob');
 }
 
