@@ -60,6 +60,10 @@ h3{font-size:15.5px;margin:16px 0 8px;color:var(--ink-soft)}
 .campo input,.campo select,textarea{width:100%;min-height:54px;border:1.5px solid var(--ink-soft);border-radius:10px;background:var(--campo);padding:10px 12px;font-size:17px}
 textarea{min-height:90px;resize:vertical}
 .nota{font-size:14px;color:var(--ink-soft)}
+.sincro{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;color:var(--ink-soft)}
+.sincro .btn{flex:0 0 auto;min-height:46px;font-size:14px}
+.version{text-align:center;font-size:12px;color:var(--ink-soft);margin-top:18px}
+.errores{border-color:var(--danger);background:var(--danger-bg)}.errores b{color:var(--danger)}.errores ul{margin:6px 0 12px;padding-left:18px;font-size:14px}.errores li{margin-bottom:4px}.errores li b{color:var(--texto)}
 .aviso{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14.5px;margin:0 0 12px}
 .prueba{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;vertical-align:2px}
 .ejec{display:flex;gap:8px;margin-bottom:8px}.ejec input{flex:1;min-width:0}
@@ -326,7 +330,7 @@ function colaDe(comId){ return leerCola().filter(function(x){ return x.rpc && x.
 /* Un paso se guarda muchas veces: en la cola solo queda la versión más reciente. */
 function encolar(rpc, payload, etiqueta, clave){
   var c = leerCola();
-  if (clave) c = c.filter(function(x){ return x.clave !== clave || x.error; });
+  if (clave) c = c.filter(function(x){ return x.clave !== clave; });
   c.push({ rpc: rpc, payload: payload, etiqueta: etiqueta, ts: new Date().toISOString(), clave: clave || null });
   guardarCola(c);
 }
@@ -340,10 +344,32 @@ function enviar(rpc, payload, etiqueta, clave, comId){
   return sb.rpc(rpc, { p: payload }).then(function(r){
     if (r.error) { encolar(rpc, payload, etiqueta, clave); return { cola: true }; }
     var b = r.data || {};
-    if (!b.ok) return { rechazo: b.error || 'Rechazado por la base' };
+    if (!b.ok) {
+      /* El rechazo queda en la cola con su motivo, visible y reintentable,
+         en lugar de perderse en silencio (pasaba con el autoguardado). */
+      encolar(rpc, payload, etiqueta, clave);
+      var c = leerCola(); c[c.length - 1].error = b.error || 'Rechazado por la base'; guardarCola(c);
+      return { rechazo: b.error || 'Rechazado por la base' };
+    }
+    if (clave) { var q = leerCola(), q2 = q.filter(function(x){ return x.clave !== clave; }); if (q2.length !== q.length) guardarCola(q2); }
     return { ok: true, data: b };
   }).catch(function(){ encolar(rpc, payload, etiqueta, clave); return { cola: true }; });
 }
+function erroresCm(comId){ return leerCola().filter(function(x){ return x.error && x.rpc && x.rpc.indexOf('dp_cm_') === 0 && (!comId || (x.payload && (x.payload.comisionamiento_id === comId || x.payload.id === comId))); }); }
+/* Los rechazos quedan guardados con su motivo; al reintentar se vuelven a
+   enviar en el mismo orden (primero la creación, luego los pasos). */
+function reintentarErrores(){
+  var c = leerCola(); c.forEach(function(x){ if (x.error && x.rpc && x.rpc.indexOf('dp_cm_') === 0) { x.error_anterior = x.error; delete x.error; } });
+  guardarCola(c); return sincronizar();
+}
+function erroresH(lista){
+  if (!lista.length) return '';
+  return '<div class="panel errores"><b>' + lista.length + (lista.length === 1 ? ' envío rechazado' : ' envíos rechazados') + ' por la base</b>' +
+    '<p class="nota">Los datos siguen guardados en este dispositivo. Este es el motivo que devolvió la base:</p><ul>' +
+    lista.slice(0, 6).map(function(x){ return '<li><b>' + esc(x.etiqueta || x.rpc) + ':</b> ' + esc(x.error) + '</li>'; }).join('') + (lista.length > 6 ? '<li>…y ' + (lista.length - 6) + ' más</li>' : '') +
+    '</ul><button class="btn ancho" id="reint">Reintentar envío</button></div>';
+}
+function enlazarReintento(){ if ($('reint')) $('reint').onclick = function(){ if (!navigator.onLine) { avisar('Sin señal', 'Conéctate para reintentar.'); return; } toast('Reintentando…'); reintentarErrores().then(function(){ var q = erroresCm(S.com && S.com.id); toast(q.length ? 'Siguen ' + q.length + ' con error' : 'Envíos completados'); render(); }); }; }
 var sincronizando = false;
 function sincronizar(){
   if (sincronizando || !sb || !navigator.onLine) return Promise.resolve();
@@ -544,32 +570,69 @@ function vInicio(){
         /* Creado sin señal: el código lo pone la base al sincronizar y aquí se trae. */
         if (m.local && r.codigo && m.local.codigo !== r.codigo) { m.local.codigo = r.codigo; idbPut('cms', m.local); } });
       var ids = Object.keys(mapa).sort(function(a, b){ var x = mapa[a], y = mapa[b]; return String((y.local && y.local.actualizado) || (y.remoto && y.remoto.actualizado_en) || '').localeCompare(String((x.local && x.local.actualizado) || (x.remoto && x.remoto.actualizado_en) || '')); });
-      var h = '<button class="btn pri ancho grande" id="nuevo">+ Nuevo comisionamiento</button>';
+      var h = erroresH(erroresCm()) + '<button class="btn pri ancho grande" id="nuevo">+ Nuevo comisionamiento</button>';
       h += '<h3>Comisionamientos</h3><div class="lista">';
       if (!ids.length) h += '<p class="nota">Aún no hay comisionamientos en este dispositivo ni en tus cuencas.</p>';
       ids.forEach(function(id){ var m = mapa[id], c = m.local || {}, r = m.remoto || {};
         var est = (r.estado || c.estado), cola = colaDe(id).length;
         h += '<button class="pasoItem" data-id="' + id + '"><span class="x"><b>' + esc(c.pozo_nombre || r.pozo_nombre) + (c.es_prueba || r.es_prueba ? ' <small class="prueba">PRUEBA</small>' : '') + '</b><small>' + esc((c.codigo || r.codigo || 'Código al sincronizar') + ' · orden ' + (c.orden || r.orden || '—')) + '</small><small>' + (m.local ? 'En este dispositivo' : 'Solo en el servidor') + (cola ? ' · ' + cola + ' envíos en cola' : '') + '</small></span><span class="est e' + ({ aprobado: 'C', en_revision: 'P', anulado: 'X' }[est] || 'R') + '">' + (EST_COM[est] || est) + '</span></button>';
       });
-      h += '</div>';
+      h += '</div><p class="version">Comisionamiento ' + VERSION + '</p>';
       $('cuerpo').innerHTML = h;
       $('nuevo').onclick = function(){ ir('nuevo'); };
+      enlazarReintento();
       [].forEach.call($('cuerpo').querySelectorAll('.pasoItem'), function(b){ b.onclick = function(){ abrirCom(b.getAttribute('data-id'), mapa[b.getAttribute('data-id')]); }; });
     });
   });
 }
+/* Al abrir con señal se trae la versión del servidor y se combina paso por
+   paso con la del dispositivo: gana el cambio más reciente. Así, lo que se
+   capturó en el celular aparece en el PC y viceversa, y lo que este equipo
+   aún no ha enviado no se pierde. */
+function combinar(L, Rm){
+  if (!L) return Rm;
+  var c = JSON.parse(JSON.stringify(L));
+  ['codigo','estado','es_prueba','aprobado_en'].forEach(function(k){ if (Rm[k] != null) c[k] = Rm[k]; });
+  if (Rm.conclusion != null && L.conclusion == null) c.conclusion = Rm.conclusion;
+  Object.keys(Rm.d).forEach(function(pid){
+    var l = c.d[pid], r = Rm.d[pid];
+    if (!l || !l.ts || (r.ts && r.ts >= l.ts)) {
+      var fotosLocales = l ? l.fotos.filter(function(f){ return r.fotos.indexOf(f) < 0; }) : [];
+      r.fotos = r.fotos.concat(fotosLocales); c.d[pid] = r;
+    } else {
+      r.fotos.forEach(function(f){ if (l.fotos.indexOf(f) < 0) l.fotos.push(f); });
+    }
+  });
+  return c;
+}
+/* Trae lo del servidor sobre el comisionamiento abierto (lo hecho en otro
+   equipo) sin perder lo que este equipo aún no ha enviado. */
+function refrescar(silencioso){
+  if (!S.com || !navigator.onLine) { if (!silencioso) avisar('Sin señal', 'Conéctate para traer lo capturado en otros equipos.'); return Promise.resolve(); }
+  if (S.pantalla === 'paso') vaciarGuardado(S.paso);
+  return leerRemoto(S.com.id).then(function(Rm){
+    var c = combinar(S.com, Rm); c.revisado = new Date().toISOString(); S.com = c;
+    return idbPut('cms', c).then(function(){ if (!silencioso) toast('Actualizado desde el servidor'); if (S.pantalla !== 'paso') render(); else pintarLado(); });
+  }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
+}
+document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
+var VERSION = 'v1.7 · 30/09/2026';
+
 function abrirCom(id, m){
-  var pr = m && m.local ? Promise.resolve(m.local) : traerRemoto(id);
-  pr.then(function(c){ if (!c) return;
-    // si el servidor tiene un estado posterior, manda el servidor
-    if (m && m.remoto && m.local && m.remoto.estado !== m.local.estado) { c.estado = m.remoto.estado; guardarLocal(); }
+  toast('Abriendo…');
+  var local = m && m.local;
+  var pr = (navigator.onLine && !(m && !m.remoto && local && local.creado_local && colaDe(id).some(function(x){ return x.rpc === 'dp_cm_q_crear'; })))
+    ? leerRemoto(id).then(function(Rm){ var c = combinar(local, Rm); c.revisado = new Date().toISOString(); return idbPut('cms', c).then(function(){ return c; }); }, function(){ if (local) return local; throw new Error('No se pudo leer el comisionamiento del servidor.'); })
+    : Promise.resolve(local || null);
+  pr.then(function(c){ if (!c) { avisar('Sin datos', 'Este comisionamiento no está en el dispositivo y no hay señal para traerlo.'); return; }
     return cargarPlantilla(c.plantilla_id, c.plantilla_version).then(function(def){
       if (!def) { avisar('Sin plantilla', 'La plantilla de este comisionamiento no está en el dispositivo. Ábrelo con señal una vez.'); return; }
       usarPlantilla(def); S.com = c; ir('ruta');
     });
   }).catch(function(e){ avisar('No se pudo abrir', e.message || String(e)); });
 }
-function traerRemoto(id){
+function traerRemoto(id){ return leerRemoto(id).then(function(com){ return idbPut('cms', com).then(function(){ return com; }); }); }
+function leerRemoto(id){
   return sb.rpc('dp_cm_obtener', { p_com: id }).then(function(r){
     if (r.error || !r.data) throw new Error('No se pudo leer el comisionamiento del servidor.');
     var x = r.data, c = x.comisionamiento;
@@ -579,12 +642,12 @@ function traerRemoto(id){
     (x.pasos || []).forEach(function(p){
       var pre = {}; ['a','o'].forEach(function(t){ ((p.textos || {})[t] || []).forEach(function(k){ pre[t + '.' + k] = true; }); });
       com.d[p.paso_id] = { vals: {}, enc: p.encontrado || {}, campos: p.campos || {}, checks: p.checks || {}, tabla: p.tabla || {}, obs: p.observacion || '',
-        fotos: [], unit: p.unidad, tens: p.tension_v != null ? +p.tension_v : null, na: p.no_aplica, fecha: deISO(p.fecha), pre: pre };
+        fotos: [], unit: p.unidad, tens: p.tension_v != null ? +p.tension_v : null, na: p.no_aplica, fecha: deISO(p.fecha), pre: pre, ts: p.cliente_ts };
     });
     (x.valores || []).forEach(function(v){ var d = com.d[v.paso_id]; if (!d || v.momento !== 'final') return;
       d.vals[v.punto_id] = v.valor_enum ? { e: v.valor_enum } : { v: v.valor_ingresado, u: v.unidad && v.unidad !== d.unit ? v.unidad : null }; });
     (x.fotos || []).forEach(function(f){ var d = com.d[f.paso_id]; if (d) d.fotos.push(f.id); idbGet('fotos', f.id).then(function(l){ if (!l) idbPut('fotos', { id: f.id, com: com.id, paso: f.paso_id, ruta: f.storage_path, estado: 'remota', tomada_en: f.tomada_en }); }); });
-    return idbPut('cms', com).then(function(){ return com; });
+    return com;
   });
 }
 function cargarPlantilla(id, ver){
@@ -647,7 +710,7 @@ function crear(sel){
         ejecutantes: com.ejecutantes.map(function(n){ return { nombre: n }; }), revisa: com.revisa, prueba: com.es_prueba },
         'Comisionamiento ' + com.pozo_nombre + ': creación', 'cm-crear-' + com.id, com.id);
     }).then(function(r){
-      if (r.rechazo) { idbDel('cms', com.id); avisar('No se pudo crear', r.rechazo); return; }
+      if (r.rechazo) { idbDel('cms', com.id); guardarCola(leerCola().filter(function(x){ return x.clave !== 'cm-crear-' + com.id; })); avisar('No se pudo crear', r.rechazo); return; }
       if (r.ok && r.data.codigo) { com.codigo = r.data.codigo; guardarLocal(); }
       NUEVO = null; S.pila = [{ pantalla: 'inicio' }]; S.pantalla = 'ruta'; render();
       toast(r.cola ? 'Creado en el dispositivo; se enviará con señal' : 'Comisionamiento creado');
@@ -659,7 +722,7 @@ function crear(sel){
 function vRuta(){
   var c = S.com;
   enc(c.pozo_nombre, (c.codigo || 'Código al sincronizar') + ' · ' + (EST_COM[c.estado] || c.estado) + (c.es_prueba ? ' · prueba' : ''));
-  var h = editable() ? '' : '<p class="aviso">Este comisionamiento está ' + esc((EST_COM[c.estado] || c.estado).toLowerCase()) + ': solo lectura.</p>', n = 0;
+  var h = erroresH(erroresCm(c.id)) + '<div class="sincro"><span>' + (c.revisado ? (function(t){ return 'Actualizado desde el servidor el ' + dos(t.getDate()) + '/' + dos(t.getMonth() + 1) + ' a las ' + dos(t.getHours()) + ':' + dos(t.getMinutes()); })(new Date(c.revisado)) : 'Sin actualizar desde el servidor') + '</span><button class="btn sec2" id="refr">Actualizar desde el servidor</button></div>' + (editable() ? '' : '<p class="aviso">Este comisionamiento está ' + esc((EST_COM[c.estado] || c.estado).toLowerCase()) + ': solo lectura.</p>'), n = 0;
   EQUIPOS.forEach(function(eq){
     var ps = PASOS.filter(function(p){ return p.eq === eq.id; });
     h += '<div class="eqblk"><div class="eqh"><b>' + esc(eq.t) + '</b>' + chipH(estadoEq(eq.id)) + '</div>';
@@ -669,6 +732,8 @@ function vRuta(){
     h += '</div>';
   });
   $('cuerpo').innerHTML = h;
+  enlazarReintento();
+  $('refr').onclick = function(){ refrescar(false); };
   [].forEach.call($('cuerpo').querySelectorAll('.pasoItem'), function(b){ b.onclick = function(){ ir('paso', { paso: b.getAttribute('data-id') }); }; });
   var ult = S.com.ultimo_paso && paso(S.com.ultimo_paso);
   var sig = editable() ? ((ult && (function(s){ return s.ok < s.tot && !(S.com.d[ult.id] || {}).na; })(estadoPaso(ult))) ? ult : PASOS.filter(function(p){ return !estadoPaso(p).ok; })[0]) : null;
@@ -772,7 +837,7 @@ function pintarMinis(d){
 function fotoURL(id){ return idbGet('fotos', id).then(function(f){ if (!f) return null; if (f.url) return f.url;
   if (!f.ruta || !navigator.onLine) return null;
   return sb.storage.from(BUCKET).download(f.ruta).then(function(r){ if (r.error) return null; return new Promise(function(ok){ var fr = new FileReader(); fr.onload = function(){ f.url = fr.result; idbPut('fotos', f); ok(f.url); }; fr.readAsDataURL(r.data); }); }); }); }
-function toque(d){ if (!d.fecha) d.fecha = hoy(); }
+function toque(d){ if (!d.fecha) d.fecha = hoy(); d.ts = new Date().toISOString(); }
 function preH(p, d){
   var T = p.textos; if (!T || (!T.a.length && !T.o.length)) return '';
   var rojo = estadoPaso(p).e === 'N';
@@ -806,8 +871,10 @@ function datosPaso(p, d){
   var tx = { a: [], o: [] }; Object.keys(d.pre || {}).forEach(function(k){ if (d.pre[k]) { var q = k.split('.'); tx[q[0]].push(q.slice(1).join('.')); } });
   var valores = [];
   if (p.tipo === 'med') p.pts.forEach(function(pt){ var r = d.vals[pt.id]; if (!r || (!r.e && (r.v == null || r.v === ''))) return;
-    valores.push({ punto_id: pt.id, momento: 'final', valor: r.e ? null : String(r.v), unidad: r.e ? null : (r.u || d.unit || unitFija), enum: r.e || null, resultado: evalPt(p, pt, r, d.unit), criterio: pt.c }); });
-  return { cliente_ts: new Date().toISOString(), fecha: aISO(d.fecha), no_aplica: !!d.na, unidad: d.unit || unitFija, tension_v: d.tens, campos: d.campos, checks: d.checks,
+    valores.push({ punto_id: pt.id, momento: 'final', valor: r.e ? null : String(r.v), unidad: r.e ? null : (r.u || d.unit || unitFija), enum: r.e || null,
+      /* sin unidad elegida el resultado no se puede afirmar todavía */
+      resultado: (!r.e && !(r.u || d.unit || unitFija)) ? 'P' : evalPt(p, pt, r, d.unit), criterio: pt.c }); });
+  return { cliente_ts: d.ts || new Date().toISOString(), fecha: aISO(d.fecha), no_aplica: !!d.na, unidad: d.unit || unitFija, tension_v: d.tens, campos: d.campos, checks: d.checks,
     tabla: d.tabla, encontrado: d.enc, textos: tx, observacion: d.obs || '', estado: s.ok ? s.e : null, valores: valores };
 }
 /* ---------------- autoguardado ----------------
@@ -841,7 +908,7 @@ function subirPaso(p){
   return guardarLocal().then(function(){
     return enviar('dp_cm_q_paso', { comisionamiento_id: S.com.id, paso_id: p.id, datos: datos }, 'Comisionamiento ' + S.com.pozo_nombre + ': ' + p.t, 'cm-paso-' + S.com.id + '-' + p.id, S.com.id);
   }).then(function(r){
-    if (r && r.rechazo) { AG.firmas[clave] = null; AG.estado = 'local'; }
+    if (r && r.rechazo) { AG.firmas[clave] = null; AG.estado = 'local'; if (S.pantalla === 'ruta' || S.pantalla === 'inicio') render(); else toast('La base rechazó el envío de «' + p.t + '». Revisa el aviso en el recorrido.'); }
     else { AG.estado = r && r.cola ? 'cola' : 'nube'; if (S.com.estado === 'borrador') S.com.estado = 'en_campo'; }
     AG.hora = horaCorta(); pintarEstG(); pintarRed();
   });
