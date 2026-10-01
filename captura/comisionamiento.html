@@ -16,7 +16,8 @@
 <title>Comisionamiento BES · Captura</title>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!-- La fuente no bloquea la carga: con señal débil la app abre con la fuente del sistema y cambia cuando llega. -->
+<link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
 <style>
 :root{color-scheme:light;--navy:#134B70;--navy-2:#1a5c85;--acento:#1B8E9E;--bg:#f7f9fa;--card:#ffffff;--line:#D1D8DE;--ink:#134B70;--ink-soft:#4d7089;--texto:#16222c;
 --surface-2:#EFF1F4;--campo:#ffffff;--ok:#1C6B3A;--ok-bg:#DDEFE3;--warn:#7A5A00;--warn-bg:#FBEFC9;--danger:#BC2F2C;--danger-bg:#FDEDEA;--info:#1F4E79;--info-bg:#DCE6F1;--gris:#6B7680;
@@ -41,7 +42,7 @@ html,body{overflow:hidden}
 .enc .volver{width:48px;height:48px;border-radius:12px;border:2px solid rgba(255,255,255,.5);background:transparent;color:#fff;font-size:26px;flex:0 0 auto}
 .enc .t{flex:1;min-width:0}.enc .t b{display:block;font-size:19px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.enc .t span{font-size:13.5px;opacity:.88;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .red{font-size:12.5px;font-weight:600;border:1.5px solid rgba(255,255,255,.5);border-radius:999px;padding:4px 9px;white-space:nowrap;flex:0 0 auto}
-.red i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:#a6ecc6;vertical-align:1px}.red.off i{background:#FFB37A}
+.red i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;background:#a6ecc6;vertical-align:1px}.red.off i{background:#FFB37A}.red.lenta i{background:#F2D16B}
 .cuerpo{flex:1;overflow-y:auto;padding:14px 14px 22px}
 .accion{flex:0 0 auto;background:var(--card);border-top:1.5px solid var(--line);padding:12px 14px calc(12px + env(safe-area-inset-bottom,0px));display:flex;gap:10px}
 .accion:empty{display:none}
@@ -63,6 +64,14 @@ textarea{min-height:90px;resize:vertical}
 .sincro{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;color:var(--ink-soft)}
 .sincro .btn{flex:0 0 auto;min-height:46px;font-size:14px}
 .version{text-align:center;font-size:12px;color:var(--ink-soft);margin-top:18px}
+.dot.ePe{background:var(--info-bg);border-color:var(--info);border-style:dashed}
+.pend-b{margin-left:10px;min-height:38px;padding:0 12px;border-radius:8px;border:1.5px solid var(--ink-soft);background:var(--card);font-weight:700;font-size:13px;flex:0 0 auto}
+.grp-pend .pend-b{border-color:var(--info);color:var(--info)}
+.grph{align-items:center}.grph span{flex:1}
+.pend-nota{background:var(--info-bg);color:var(--info);padding:10px 12px;font-size:14px;border-radius:0 0 10px 10px}
+.obs+.pend-nota,.na+.pend-nota{border-radius:10px;margin:2px 0 8px}
+.modal-ops{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:34vh;overflow-y:auto}
+.modal-ops .prechip{margin:0;min-height:44px}
 .errores{border-color:var(--danger);background:var(--danger-bg)}.errores b{color:var(--danger)}.errores ul{margin:6px 0 12px;padding-left:18px;font-size:14px}.errores li{margin-bottom:4px}.errores li b{color:var(--texto)}
 .aviso{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14.5px;margin:0 0 12px}
 .prueba{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;vertical-align:2px}
@@ -293,9 +302,11 @@ function dialogo(titulo, texto, botones){
     var m = $('modal');
     m.innerHTML = '<div class="modal-caja" role="dialog" aria-modal="true" aria-labelledby="modal-t"><h3 id="modal-t">' + esc(titulo) + '</h3>' +
       (botones.img ? '<img class="modal-img" alt="" src="' + botones.img + '">' : '') +
-      (texto ? '<p>' + esc(texto) + '</p>' : '') + (botones.campo ? '<textarea id="modal-campo" placeholder="' + esc(botones.campo) + '"></textarea>' : '') +
+      (texto ? '<p>' + esc(texto) + '</p>' : '') + (botones.opciones ? '<div class="modal-ops">' + botones.opciones.map(function(o, i){ return '<button class="prechip" data-op="' + i + '"><span>' + esc(o) + '</span></button>'; }).join('') + '</div>' : '') +
+      (botones.campo ? '<textarea id="modal-campo" placeholder="' + esc(botones.campo) + '">' + esc(botones.valor || '') + '</textarea>' : '') +
       '<div class="modal-acc">' + botones.lista.map(function(b, i){ return '<button class="btn ' + (b.pri ? 'pri' : '') + '" data-i="' + i + '">' + esc(b.t) + '</button>'; }).join('') + '</div></div>';
     m.classList.add('on');
+    [].forEach.call(m.querySelectorAll('[data-op]'), function(b){ b.onclick = function(){ var t = $('modal-campo'); if (t) { t.value = botones.opciones[+b.getAttribute('data-op')]; t.focus(); } }; });
     [].forEach.call(m.querySelectorAll('[data-i]'), function(b){
       b.onclick = function(){ var v = $('modal-campo') ? $('modal-campo').value : null; m.classList.remove('on'); m.innerHTML = ''; ok({ i: +b.getAttribute('data-i'), texto: v }); };
     });
@@ -343,26 +354,38 @@ function encolar(rpc, payload, etiqueta, clave){
   c.push({ rpc: rpc, payload: payload, etiqueta: etiqueta, ts: new Date().toISOString(), clave: clave || null });
   guardarCola(c);
 }
-/* Envía directo si se puede y no hay nada anterior en cola para ese
-   comisionamiento (el orden importa: el paso no existe sin el crear). */
+/* ---------------- red débil ----------------
+   Con poca cobertura el navegador sigue diciendo "en línea", pero cada
+   petición puede tardar minutos. Ninguna pantalla espera a la red: todo se
+   guarda primero en el dispositivo y se envía por detrás. Las lecturas del
+   servidor tienen un tiempo máximo; si no llega, se trabaja con lo guardado. */
+var RED = { lenta: false, ultimoOk: 0 };
+var T_LECTURA = 6000, T_ENVIO = 25000, T_FOTO = 60000;
+function conTiempo(pr, ms){
+  var t; return Promise.race([pr, new Promise(function(ok){ t = setTimeout(function(){ ok({ __tiempo: true }); }, ms); })])
+    .then(function(r){ clearTimeout(t); if (r && r.__tiempo) { RED.lenta = true; pintarRed(); } else { RED.lenta = false; RED.ultimoOk = Date.now(); } return r; },
+          function(e){ clearTimeout(t); throw e; });
+}
+function agotado(r){ return r && r.__tiempo; }
+/* Todo envío entra a la cola y se sincroniza en segundo plano: guardar un
+   paso nunca queda esperando a la red. */
 function enviar(rpc, payload, etiqueta, clave, comId){
-  if (!sb || !navigator.onLine || colaDe(comId).some(function(x){ return !x.error; })) {
-    encolar(rpc, payload, etiqueta, clave);
-    return Promise.resolve({ cola: true });
-  }
-  return sb.rpc(rpc, { p: payload }).then(function(r){
-    if (r.error) { encolar(rpc, payload, etiqueta, clave); return { cola: true }; }
+  encolar(rpc, payload, etiqueta, clave);
+  setTimeout(sincronizar, 0);
+  return Promise.resolve({ cola: true });
+}
+/* La creación sí se intenta directa unos segundos, para mostrar el código de
+   inmediato cuando hay buena señal. Si no responde, queda en la cola. */
+function enviarDirecto(rpc, payload, etiqueta, clave, comId, ms){
+  if (!sb || !navigator.onLine) { encolar(rpc, payload, etiqueta, clave); return Promise.resolve({ cola: true }); }
+  encolar(rpc, payload, etiqueta, clave);
+  return conTiempo(sb.rpc(rpc, { p: payload }), ms || 8000).then(function(r){
+    if (agotado(r) || r.error) return { cola: true };
     var b = r.data || {};
-    if (!b.ok) {
-      /* El rechazo queda en la cola con su motivo, visible y reintentable,
-         en lugar de perderse en silencio (pasaba con el autoguardado). */
-      encolar(rpc, payload, etiqueta, clave);
-      var c = leerCola(); c[c.length - 1].error = b.error || 'Rechazado por la base'; guardarCola(c);
-      return { rechazo: b.error || 'Rechazado por la base' };
-    }
-    if (clave) { var q = leerCola(), q2 = q.filter(function(x){ return x.clave !== clave; }); if (q2.length !== q.length) guardarCola(q2); }
-    return { ok: true, data: b };
-  }).catch(function(){ encolar(rpc, payload, etiqueta, clave); return { cola: true }; });
+    var q = leerCola().filter(function(x){ return x.clave !== clave; });
+    if (!b.ok) { guardarCola(q); return { rechazo: b.error || 'Rechazado por la base' }; }
+    guardarCola(q); return { ok: true, data: b };
+  }).catch(function(){ return { cola: true }; });
 }
 function erroresCm(comId){ return leerCola().filter(function(x){ return x.error && x.rpc && x.rpc.indexOf('dp_cm_') === 0 && (!comId || (x.payload && (x.payload.comisionamiento_id === comId || x.payload.id === comId))); }); }
 /* Los rechazos quedan guardados con su motivo; al reintentar se vuelven a
@@ -379,28 +402,36 @@ function erroresH(lista){
     '</ul><button class="btn ancho" id="reint">Reintentar envío</button></div>';
 }
 function enlazarReintento(){ if ($('reint')) $('reint').onclick = function(){ if (!navigator.onLine) { avisar('Sin señal', 'Conéctate para reintentar.'); return; } toast('Reintentando…'); reintentarErrores().then(function(){ var q = erroresCm(S.com && S.com.id); toast(q.length ? 'Siguen ' + q.length + ' con error' : 'Envíos completados'); render(); }); }; }
-var sincronizando = false;
+var sincronizando = false, sincroPend = false;
 function sincronizar(){
-  if (sincronizando || !sb || !navigator.onLine) return Promise.resolve();
+  if (sincronizando) { sincroPend = true; return Promise.resolve(); }
+  if (!sb || !navigator.onLine) return Promise.resolve();
   sincronizando = true;
-  var cola = leerCola();
-  function paso(i, fallidos){
-    if (i >= cola.length){ guardarCola(fallidos); return Promise.resolve(); }
-    var it = cola[i];
-    if (it.error) { fallidos.push(it); return paso(i+1, fallidos); }
-    return sb.rpc(it.rpc, { p: it.payload }).then(function(r){
-      if (r.error) { guardarCola(fallidos.concat(cola.slice(i))); return; }
-      var b = r.data || {};
-      if (!b.ok) { it.error = b.error; fallidos.push(it); }
-      return paso(i+1, fallidos);
-    }).catch(function(){ guardarCola(fallidos.concat(cola.slice(i))); });
+  var errAntes = erroresCm().length;
+  /* Se trabaja ítem por ítem sobre la cola guardada, para no pisar lo que se
+     encole mientras tanto. Un tiempo agotado detiene la pasada sin perder nada. */
+  function siguiente(){
+    var cola = leerCola(), it = cola.filter(function(x){ return !x.error; })[0];
+    if (!it) return Promise.resolve();
+    return conTiempo(sb.rpc(it.rpc, { p: it.payload }), T_ENVIO).then(function(r){
+      if (agotado(r) || r.error) return 'parar';
+      var b = r.data || {}, c = leerCola(), k = c.findIndex(function(x){ return x.ts === it.ts && x.rpc === it.rpc && (x.clave || '') === (it.clave || ''); });
+      if (k < 0) return siguiente();                                // ya lo reemplazó una versión más nueva
+      if (!b.ok) c[k].error = b.error || 'Rechazado por la base'; else c.splice(k, 1);
+      guardarCola(c); return siguiente();
+    }).catch(function(){ return 'parar'; });
   }
-  return paso(0, []).then(subirFotos).then(function(){ sincronizando = false; pintarRed(); }, function(){ sincronizando = false; });
+  return siguiente().then(function(r){ return r === 'parar' ? null : subirFotos(); })
+    .then(function(){ sincronizando = false; pintarRed(); actualizarEstadoGuardado();
+      var errNuevos = erroresCm().length - errAntes;
+      if (errNuevos > 0) { if (S.pantalla === 'ruta' || S.pantalla === 'inicio') render(); else toast('La base rechazó ' + (errNuevos === 1 ? 'un envío' : errNuevos + ' envíos') + '. Revisa el aviso en el recorrido.'); }
+      if (sincroPend) { sincroPend = false; setTimeout(sincronizar, 500); } },
+          function(){ sincronizando = false; pintarRed(); });
 }
 function quitarFotoServidor(f){
-  return sb.rpc('dp_cm_q_quitar_foto', { p: { id: f.id, comisionamiento_id: f.com } }).then(function(r){
+  return conTiempo(sb.rpc('dp_cm_q_quitar_foto', { p: { id: f.id, comisionamiento_id: f.com } }), T_ENVIO).then(function(r){
     var b = r && r.data;
-    if (r.error || !b) return;                         // sin respuesta: se reintenta luego
+    if (agotado(r) || r.error || !b) return;                         // sin respuesta: se reintenta luego
     if (!b.ok) { f.error = b.error; return idbPut('fotos', f); }
     var ruta = b.storage_path || f.ruta;
     return (ruta ? sb.storage.from(BUCKET).remove([ruta]).catch(function(){}) : Promise.resolve()).then(function(){ return idbDel('fotos', f.id); });
@@ -418,12 +449,13 @@ function subirFotos(){
 function subirFoto(f){
   var ruta = f.com + '/' + f.paso + '/' + f.id + '.jpg';
   return fetch(f.url).then(function(r){ return r.blob(); }).then(function(b){
-    return sb.storage.from(BUCKET).upload(ruta, b, { contentType: 'image/jpeg', upsert: false });
+    return conTiempo(sb.storage.from(BUCKET).upload(ruta, b, { contentType: 'image/jpeg', upsert: false }), T_FOTO);
   }).then(function(r){
+    if (agotado(r)) throw new Error('tiempo');
     if (r.error && !/exist|duplicate/i.test(r.error.message || '')) throw r.error;
-    return sb.rpc('dp_cm_q_foto', { p: { id: f.id, comisionamiento_id: f.com, paso_id: f.paso, storage_path: ruta, orden: f.orden || 0, tomada_en: f.tomada_en } });
+    return conTiempo(sb.rpc('dp_cm_q_foto', { p: { id: f.id, comisionamiento_id: f.com, paso_id: f.paso, storage_path: ruta, orden: f.orden || 0, tomada_en: f.tomada_en } }), T_ENVIO);
   }).then(function(r){
-    if (r && !r.error && r.data && r.data.ok) { f.estado = 'subida'; f.ruta = ruta; return idbPut('fotos', f); }
+    if (r && !agotado(r) && !r.error && r.data && r.data.ok) { f.estado = 'subida'; f.ruta = ruta; return idbPut('fotos', f); }
   }).catch(function(){ /* se reintenta en la próxima pasada */ });
 }
 window.addEventListener('online', function(){ pintarRed(); sincronizar(); });
@@ -432,8 +464,9 @@ setInterval(sincronizar, 30000);
 function pintarRed(){
   var n = leerCola().filter(function(x){ return x.rpc && x.rpc.indexOf('dp_cm_') === 0; }), err = n.filter(function(x){ return x.error; }).length;
   var el = $('red'); if (!el) return;
-  el.className = 'red ' + (navigator.onLine ? 'on' : 'off');
-  el.innerHTML = '<i></i>' + (navigator.onLine ? 'En línea' : 'Sin señal') + (n.length ? ' · ' + n.length + ' en cola' + (err ? ' (' + err + ' con error)' : '') : '');
+  var lenta = navigator.onLine && RED.lenta;
+  el.className = 'red ' + (!navigator.onLine ? 'off' : lenta ? 'lenta' : 'on');
+  el.innerHTML = '<i></i>' + (!navigator.onLine ? 'Sin señal' : lenta ? 'Señal débil' : 'En línea') + (n.length ? ' · ' + n.length + ' en cola' + (err ? ' (' + err + ' con error)' : '') : '');
 }
 
 /* ---------------- estado ---------------- */
@@ -468,7 +501,7 @@ function agg(es){
   es = es.filter(Boolean); if (!es.length) return null;
   if (es.every(function(x){ return x === 'X'; })) return 'X';
   es = es.filter(function(x){ return x !== 'X'; });
-  if (es.indexOf('N') >= 0) return 'N'; if (es.indexOf('P') >= 0) return 'P'; if (es.indexOf('A') >= 0) return 'A'; if (es.indexOf('I') >= 0) return 'I'; return 'C';
+  if (es.indexOf('N') >= 0) return 'N'; if (es.indexOf('P') >= 0) return 'P'; if (es.indexOf('A') >= 0) return 'A'; if (es.indexOf('Pe') >= 0) return 'Pe'; if (es.indexOf('I') >= 0) return 'I'; return 'C';
 }
 function regla(p, vals){
   var r = p.regla; if (!r) return null;
@@ -511,8 +544,14 @@ function tot(p){ return p.tipo === 'med' ? p.pts.length : p.tipo === 'check' ? p
 function estadoPaso(p){
   var d = S.com.d[p.id]; if (!d) return { e: null, ok: 0, tot: tot(p) };
   if (d.na) return { e: 'X', ok: tot(p), tot: tot(p) };
+  /* Pendiente con motivo (p. ej. "se ejecuta al retirar el equipo de WO"):
+     el paso queda resuelto para el recorrido y el informe dice por qué falta. */
+  if (d.pendiente) return { e: 'Pe', ok: tot(p), tot: tot(p) };
   var es = [], ok = 0;
-  if (p.tipo === 'med') { p.pts.forEach(function(pt){ var e = evalPt(p, pt, d.vals[pt.id], d.unit); if (e) { ok++; es.push(e); } });
+  if (p.tipo === 'med') { var pg = d.pend || {}, vistos = {};
+    p.pts.forEach(function(pt){
+      if (pg[pt.g]) { ok++; if (!vistos[pt.g]) { vistos[pt.g] = 1; es.push('Pe'); } return; }
+      var e = evalPt(p, pt, d.vals[pt.id], d.unit); if (e) { ok++; es.push(e); } });
     var rr = regla(p, d.vals); if (rr) es.push(rr.e);
     if (p.encontrado && p.encontrado.some(function(k){ return d.enc[k] === 'ABIERTO'; })) es.push('A'); }
   else if (p.tipo === 'check') { p.items.forEach(function(it){ var v = d.checks[it[0]]; if (v) { ok++; es.push(p.id === 'vent' && v === 'NO' ? 'X' : (v === 'SI' || v === 'B' || v === 'NA') ? 'C' : v === 'M' ? 'N' : 'A'); } }); }
@@ -583,9 +622,18 @@ function vInicio(){
   enc('Comisionamiento', 'Equipos de superficie BES');
   $('cuerpo').innerHTML = '<p class="nota">Cargando…</p>'; accion('');
   idbAll('cms').then(function(loc){
-    var remotos = [];
-    var pr = navigator.onLine ? sb.rpc('dp_cm_lista').then(function(r){ if (!r.error) remotos = r.data || []; }).catch(function(){}) : Promise.resolve();
-    return pr.then(function(){
+    var remotos = S.listaRemota || [];
+    pintarBandeja(loc, remotos);
+    if (!navigator.onLine) return;
+    return conTiempo(sb.rpc('dp_cm_lista'), T_LECTURA).then(function(r){
+      if (agotado(r) || r.error) return;
+      S.listaRemota = r.data || [];
+      if (S.pantalla === 'inicio') return idbAll('cms').then(function(l2){ pintarBandeja(l2, S.listaRemota); });
+    }).catch(function(){});
+  });
+}
+function pintarBandeja(loc, remotos){
+    (function(){
       var mapa = {}; loc.forEach(function(c){ mapa[c.id] = { local: c }; });
       remotos.forEach(function(r){ var m = (mapa[r.id] = mapa[r.id] || {}); m.remoto = r;
         /* Creado sin señal: el código lo pone la base al sincronizar y aquí se trae. */
@@ -603,8 +651,7 @@ function vInicio(){
       $('nuevo').onclick = function(){ ir('nuevo'); };
       enlazarReintento();
       [].forEach.call($('cuerpo').querySelectorAll('.pasoItem'), function(b){ b.onclick = function(){ abrirCom(b.getAttribute('data-id'), mapa[b.getAttribute('data-id')]); }; });
-    });
-  });
+    })();
 }
 /* Al abrir con señal se trae la versión del servidor y se combina paso por
    paso con la del dispositivo: gana el cambio más reciente. Así, lo que se
@@ -632,21 +679,26 @@ function combinar(L, Rm){
 function refrescar(silencioso){
   if (!S.com || !navigator.onLine) { if (!silencioso) avisar('Sin señal', 'Conéctate para traer lo capturado en otros equipos.'); return Promise.resolve(); }
   if (S.pantalla === 'paso') vaciarGuardado(S.paso);
-  return leerRemoto(S.com.id).then(function(Rm){
+  return conTiempo(leerRemoto(S.com.id), 15000).then(function(Rm){
+    if (agotado(Rm)) { if (!silencioso) avisar('Señal débil', 'El servidor no respondió a tiempo. Lo del dispositivo sigue intacto; se intentará de nuevo.'); return; }
+    if (!S.com || S.com.id !== Rm.id) return;
     var c = combinar(S.com, Rm); c.revisado = new Date().toISOString(); S.com = c;
     return idbPut('cms', c).then(function(){ if (!silencioso) toast('Actualizado desde el servidor'); if (S.pantalla !== 'paso') render(); else pintarLado(); });
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v1.9 · 01/10/2026';
+var VERSION = 'v2.1 · 01/10/2026';
 
 function abrirCom(id, m){
-  toast('Abriendo…');
-  var local = m && m.local;
-  var pr = (navigator.onLine && !(m && !m.remoto && local && local.creado_local && colaDe(id).some(function(x){ return x.rpc === 'dp_cm_q_crear'; })))
-    ? leerRemoto(id).then(function(Rm){ var c = combinar(local, Rm); c.revisado = new Date().toISOString(); return idbPut('cms', c).then(function(){ return c; }); }, function(){ if (local) return local; throw new Error('No se pudo leer el comisionamiento del servidor.'); })
-    : Promise.resolve(local || null);
-  pr.then(function(c){ if (!c) { avisar('Sin datos', 'Este comisionamiento no está en el dispositivo y no hay señal para traerlo.'); return; }
+  /* Si está en el dispositivo, abre al instante y trae lo del servidor por
+     detrás. Solo espera a la red si nunca se ha abierto en este equipo. */
+  var local = m && m.local, enServidor = !(local && local.creado_local && colaDe(id).some(function(x){ return x.rpc === 'dp_cm_q_crear'; }));
+  var pr;
+  if (local) pr = Promise.resolve(local);
+  else if (!navigator.onLine) pr = Promise.resolve(null);
+  else { toast('Descargando del servidor…'); pr = conTiempo(leerRemoto(id), 20000).then(function(Rm){ if (agotado(Rm)) throw new Error('El servidor no respondió a tiempo (señal débil). Intenta de nuevo con mejor cobertura.'); return idbPut('cms', Rm).then(function(){ return Rm; }); }); }
+  pr.then(function(c){
+    if (c && local && enServidor && navigator.onLine) setTimeout(function(){ if (S.com && S.com.id === c.id) refrescar(true); }, 300); if (!c) { avisar('Sin datos', 'Este comisionamiento no está en el dispositivo y no hay señal para traerlo.'); return; }
     return cargarPlantilla(c.plantilla_id, c.plantilla_version).then(function(def){
       if (!def) { avisar('Sin plantilla', 'La plantilla de este comisionamiento no está en el dispositivo. Ábrelo con señal una vez.'); return; }
       usarPlantilla(def); S.com = c; ir('ruta');
@@ -664,7 +716,8 @@ function leerRemoto(id){
     (x.pasos || []).forEach(function(p){
       var pre = {}; ['a','o'].forEach(function(t){ ((p.textos || {})[t] || []).forEach(function(k){ pre[t + '.' + k] = true; }); });
       com.d[p.paso_id] = { vals: {}, enc: p.encontrado || {}, campos: p.campos || {}, checks: p.checks || {}, tabla: p.tabla || {}, obs: p.observacion || '',
-        fotos: [], unit: p.unidad, tens: p.tension_v != null ? +p.tension_v : null, na: p.no_aplica, fecha: deISO(p.fecha), pre: pre, ts: p.cliente_ts };
+        fotos: [], unit: p.unidad, tens: p.tension_v != null ? +p.tension_v : null, na: p.no_aplica, fecha: deISO(p.fecha), pre: pre, ts: p.cliente_ts,
+        pend: (p.textos || {}).pend || {}, pendiente: (p.textos || {}).pendiente_paso || null };
     });
     (x.valores || []).forEach(function(v){ var d = com.d[v.paso_id]; if (!d || v.momento !== 'final') return;
       d.vals[v.punto_id] = v.valor_enum ? { e: v.valor_enum } : { v: v.valor_ingresado, u: v.unidad && v.unidad !== d.unit ? v.unidad : null }; });
@@ -673,9 +726,18 @@ function leerRemoto(id){
   });
 }
 function cargarPlantilla(id, ver){
+  /* Una versión de plantilla no cambia después de publicada: si ya está en el
+     dispositivo se usa esa, sin esperar a la red. */
   var clave = id + '@' + ver;
-  var remota = navigator.onLine ? sb.from('cm_plantillas').select('id,version,titulo,estado,pendientes,definicion').eq('id', id).eq('version', ver).maybeSingle()
-    .then(function(r){ if (r.error || !r.data) return null; var o = r.data; o.clave = clave; return idbPut('plantillas', o).then(function(){ return o; }); }).catch(function(){ return null; }) : Promise.resolve(null);
+  return idbGet('plantillas', clave).then(function(o){
+    if (o && o.estado === 'vigente') return o.definicion;
+    return cargarPlantillaRed(id, ver).then(function(def){ return def || (o ? o.definicion : null); });
+  });
+}
+function cargarPlantillaRed(id, ver){
+  var clave = id + '@' + ver;
+  var remota = navigator.onLine ? conTiempo(sb.from('cm_plantillas').select('id,version,titulo,estado,pendientes,definicion').eq('id', id).eq('version', ver).maybeSingle(), 15000)
+    .then(function(r){ if (agotado(r) || r.error || !r.data) return null; var o = r.data; o.clave = clave; return idbPut('plantillas', o).then(function(){ return o; }); }).catch(function(){ return null; }) : Promise.resolve(null);
   return remota.then(function(o){ return o || idbGet('plantillas', clave); }).then(function(o){ return o ? o.definicion : null; });
 }
 
@@ -685,11 +747,22 @@ function vNuevo(){
   enc('Nuevo comisionamiento', 'Equipos de superficie BES');
   NUEVO = NUEVO || { pozo: '', orden: '', ejec: [(S.perfil && S.perfil.nombre) || ''], revisa: '', tpl: null, prueba: false };
   $('cuerpo').innerHTML = '<p class="nota">Cargando unidades y plantillas…</p>'; accion('');
-  var pz = navigator.onLine ? sb.rpc('dp_cm_pozos').then(function(r){ if (!r.error && r.data) { idbPut('cache', { clave: 'pozos', v: r.data }); return r.data; } return null; }).catch(function(){ return null; }) : Promise.resolve(null);
-  var tp = navigator.onLine ? sb.from('cm_plantillas').select('id,version,titulo,estado,pendientes').neq('estado', 'retirada').then(function(r){ if (!r.error && r.data) { idbPut('cache', { clave: 'plantillas', v: r.data }); return r.data; } return null; }).catch(function(){ return null; }) : Promise.resolve(null);
-  Promise.all([pz, tp]).then(function(x){
-    return Promise.all([x[0] || idbGet('cache', 'pozos').then(function(c){ return c ? c.v : []; }), x[1] || idbGet('cache', 'plantillas').then(function(c){ return c ? c.v : []; })]);
-  }).then(function(x){ S.pozos = x[0]; pintarNuevo(x[1]); });
+  /* Lo guardado se muestra de inmediato; con señal se actualiza por detrás
+     y solo se repinta si la lista cambió. */
+  Promise.all([idbGet('cache', 'pozos'), idbGet('cache', 'plantillas')]).then(function(c){
+    var pozos = c[0] ? c[0].v : [], tpls = c[1] ? c[1].v : [], firma = JSON.stringify([pozos, tpls]);
+    if (pozos.length || tpls.length) { S.pozos = pozos; pintarNuevo(tpls); }
+    if (!navigator.onLine) { if (!pozos.length && !tpls.length) { S.pozos = []; pintarNuevo([]); } return; }
+    Promise.all([
+      conTiempo(sb.rpc('dp_cm_pozos'), T_LECTURA).then(function(r){ return agotado(r) || r.error ? null : r.data; }).catch(function(){ return null; }),
+      conTiempo(sb.from('cm_plantillas').select('id,version,titulo,estado,pendientes').neq('estado', 'retirada'), T_LECTURA).then(function(r){ return agotado(r) || r.error ? null : r.data; }).catch(function(){ return null; })
+    ]).then(function(x){
+      if (x[0]) idbPut('cache', { clave: 'pozos', v: x[0] }); if (x[1]) idbPut('cache', { clave: 'plantillas', v: x[1] });
+      var p2 = x[0] || pozos, t2 = x[1] || tpls;
+      if (S.pantalla !== 'nuevo') return;
+      if (JSON.stringify([p2, t2]) !== firma || (!pozos.length && !tpls.length)) { S.pozos = p2; pintarNuevo(t2); }
+    });
+  });
 }
 function pintarNuevo(tpls){
   var N = NUEVO, rol = S.perfil && S.perfil.rol, admin = rol === 'admin';
@@ -728,9 +801,9 @@ function crear(sel){
     if (!def) { avisar('Sin plantilla', 'No se pudo descargar la plantilla. Intenta con señal.'); return; }
     usarPlantilla(def); S.com = com;
     return guardarLocal().then(function(){
-      return enviar('dp_cm_q_crear', { id: com.id, pozo_id: com.pozo_id, plantilla_id: com.plantilla_id, plantilla_version: com.plantilla_version, orden: com.orden,
+      return enviarDirecto('dp_cm_q_crear', { id: com.id, pozo_id: com.pozo_id, plantilla_id: com.plantilla_id, plantilla_version: com.plantilla_version, orden: com.orden,
         ejecutantes: com.ejecutantes.map(function(n){ return { nombre: n }; }), revisa: com.revisa, prueba: com.es_prueba },
-        'Comisionamiento ' + com.pozo_nombre + ': creación', 'cm-crear-' + com.id, com.id);
+        'Comisionamiento ' + com.pozo_nombre + ': creación', 'cm-crear-' + com.id, com.id, 8000);
     }).then(function(r){
       if (r.rechazo) { idbDel('cms', com.id); guardarCola(leerCola().filter(function(x){ return x.clave !== 'cm-crear-' + com.id; })); avisar('No se pudo crear', r.rechazo); return; }
       if (r.ok && r.data.codigo) { com.codigo = r.data.codigo; guardarLocal(); }
@@ -802,7 +875,9 @@ function vPaso(){
       (tactil ? '' : '<p class="nota solta">También puedes arrastrar las fotos hasta aquí.</p>') +
       '<div class="miniaturas" id="minis"></div></div>';
   }
-  h += '<label class="na"><input type="checkbox" id="na"' + (d.na ? ' checked' : '') + '> Este paso no aplica en esta instalación</label></div></div>';
+  h += '<label class="na"><input type="checkbox" id="na"' + (d.na ? ' checked' : '') + '> Este paso no aplica en esta instalación</label>';
+  h += '<label class="na"><input type="checkbox" id="pendp"' + (d.pendiente ? ' checked' : '') + '> Este paso queda pendiente</label>' +
+    (d.pendiente ? '<div class="pend-nota"><b>Pendiente:</b> ' + esc(d.pendiente) + ' <button class="alterna" id="pendp-e">Cambiar motivo</button></div>' : '') + '</div></div>';
   $('cuerpo').innerHTML = h;
   $('cuerpo').classList.toggle('ro', !editable());
   $('cuerpo').querySelector('details').ontoggle = function(){ S.guia = this.open; };
@@ -834,7 +909,11 @@ function vPaso(){
     zona.ondragleave = function(){ zona.classList.remove('encima'); };
     zona.ondrop = function(e){ e.preventDefault(); zona.classList.remove('encima'); agregarFotos(e.dataTransfer && e.dataTransfer.files); };
   }
-  $('na').onchange = function(){ d.na = this.checked; toque(d); refila(); };
+  $('na').onchange = function(){ d.na = this.checked; if (d.na) d.pendiente = null; toque(d); refila(); };
+  $('pendp').onchange = function(){ var cb = this;
+    if (!cb.checked) { d.pendiente = null; toque(d); refila(); return; }
+    pedirMotivo('Paso pendiente: ' + p.t).then(function(m){ if (!m) { cb.checked = false; return; } d.pendiente = m; d.na = false; toque(d); refila(); }); };
+  if ($('pendp-e')) $('pendp-e').onclick = function(){ pedirMotivo('Paso pendiente: ' + p.t, d.pendiente).then(function(m){ if (!m) return; d.pendiente = m; toque(d); refila(); }); };
   pie(p);
 }
 function refila(){ var y = $('cuerpo').scrollTop; vPaso(); pintarLado(); $('cuerpo').scrollTop = y; if (S.pantalla === 'paso') autoguardar(paso(S.paso)); }
@@ -866,7 +945,7 @@ function pintarMinis(d){
 }
 function fotoURL(id){ return idbGet('fotos', id).then(function(f){ if (!f) return null; if (f.url) return f.url;
   if (!f.ruta || !navigator.onLine) return null;
-  return sb.storage.from(BUCKET).download(f.ruta).then(function(r){ if (r.error) return null; return new Promise(function(ok){ var fr = new FileReader(); fr.onload = function(){ f.url = fr.result; idbPut('fotos', f); ok(f.url); }; fr.readAsDataURL(r.data); }); }); }); }
+  return conTiempo(sb.storage.from(BUCKET).download(f.ruta), 15000).then(function(r){ if (agotado(r) || r.error) return null; return new Promise(function(ok){ var fr = new FileReader(); fr.onload = function(){ f.url = fr.result; idbPut('fotos', f); ok(f.url); }; fr.readAsDataURL(r.data); }); }); }); }
 function toque(d){ if (!d.fecha) d.fecha = hoy(); d.ts = new Date().toISOString(); }
 function preH(p, d){
   var T = p.textos; if (!T || (!T.a.length && !T.o.length)) return '';
@@ -891,16 +970,29 @@ function pie(p){
   else if (s.e === 'N' && !d.obs.trim() && !preSel(p, d, 'o').length) falta = 'Elige o escribe la observación';
   else if (p.tipo === 'med' && p.unidades && p.unidades.length > 1 && s.ok && !d.unit && p.pts.some(function(pt){ var r = d.vals[pt.id]; return r && r.v != null && !r.u; })) falta = 'Elige la unidad del instrumento';
   else if (p.tens && p.tens.length > 1 && s.ok && !d.tens && !d.na) falta = 'Elige la tensión de prueba';
-  else if (p.fotos && !d.fotos.length && s.ok && !d.na) falta = 'Toma la foto de evidencia';
+  else if (p.fotos && !d.fotos.length && s.ok && !d.na && !d.pendiente && hayLecturas(p, d)) falta = 'Toma la foto de evidencia';
   accion('<button class="btn sec" id="ant" aria-label="Paso anterior">‹</button><button class="btn pri" id="guardar"' + (falta ? ' disabled' : '') + '>' + esc(falta || (sig ? 'Guardar y seguir' : 'Guardar y ver informe')) + '</button>');
   $('ant').disabled = idx === 0; $('ant').onclick = function(){ S.paso = PASOS[idx - 1].id; vPaso(); pintarLado(); $('cuerpo').scrollTop = 0; };
   $('guardar').onclick = function(){ guardarPaso(p).then(function(ok){ if (!ok) return; if (sig) { S.paso = sig.id; vPaso(); pintarLado(); $('cuerpo').scrollTop = 0; } else { S.pantalla = 'cierre'; render(); } }); };
 }
+function hayLecturas(p, d){
+  if (p.tipo !== 'med') return true;
+  var pg = d.pend || {};
+  return p.pts.some(function(pt){ var r = d.vals[pt.id]; return !pg[pt.g] && r && (r.e || (r.v != null && r.v !== '')); });
+}
+var MOTIVOS_PEND = ['Equipo de workover (WO) en locación: se ejecuta al retirarlo.', 'Equipo energizado: no hay ventana para desenergizar.',
+  'No se cuenta con el instrumento requerido en campo.', 'Sin acceso seguro al equipo.', 'Se ejecuta durante el arranque.'];
+function pedirMotivo(titulo, actual){
+  return dialogo(titulo, 'Indica por qué queda pendiente; sale así en el informe.', { campo: 'Motivo', valor: actual || '', opciones: MOTIVOS_PEND,
+    lista: [{ t: 'Cancelar' }, { t: 'Marcar pendiente', pri: true }] }).then(function(r){ return r.i === 1 && r.texto && r.texto.trim() ? r.texto.trim() : null; });
+}
 function datosPaso(p, d){
   var s = estadoPaso(p), unitFija = p.unidades && p.unidades.length === 1 ? p.unidades[0] : null;
   var tx = { a: [], o: [] }; Object.keys(d.pre || {}).forEach(function(k){ if (d.pre[k]) { var q = k.split('.'); tx[q[0]].push(q.slice(1).join('.')); } });
+  if (d.pend && Object.keys(d.pend).length) tx.pend = d.pend;
+  if (d.pendiente) tx.pendiente_paso = d.pendiente;
   var valores = [];
-  if (p.tipo === 'med') p.pts.forEach(function(pt){ var r = d.vals[pt.id]; if (!r || (!r.e && (r.v == null || r.v === ''))) return;
+  if (p.tipo === 'med') p.pts.forEach(function(pt){ var r = d.vals[pt.id]; if (!r || (!r.e && (r.v == null || r.v === ''))) return; if (d.pend && d.pend[pt.g]) return;
     valores.push({ punto_id: pt.id, momento: 'final', valor: r.e ? null : String(r.v), unidad: r.e ? null : (r.u || d.unit || unitFija), enum: r.e || null,
       /* sin unidad elegida el resultado no se puede afirmar todavía */
       resultado: (!r.e && !(r.u || d.unit || unitFija)) ? 'P' : evalPt(p, pt, r, d.unit), criterio: pt.c }); });
@@ -925,6 +1017,11 @@ function autoguardar(p){
   AG.estado = 'guardando'; pintarEstG();
   clearTimeout(AG.tLocal); AG.tLocal = setTimeout(function(){ guardarLocal().then(function(){ if (AG.estado === 'guardando') { AG.estado = 'local'; AG.hora = horaCorta(); pintarEstG(); } }); }, 500);
   clearTimeout(AG.tNube); AG.tNube = setTimeout(function(){ subirPaso(p); }, 15000);
+}
+function actualizarEstadoGuardado(){
+  if (S.pantalla !== 'paso' || !S.com || !S.paso) return;
+  var clave = 'cm-paso-' + S.com.id + '-' + S.paso, it = leerCola().filter(function(x){ return x.clave === clave; })[0];
+  if (AG.estado === 'cola' || AG.estado === 'nube') { AG.estado = it ? (it.error ? 'local' : 'cola') : 'nube'; AG.hora = horaCorta(); pintarEstG(); }
 }
 function subirPaso(p){
   clearTimeout(AG.tNube); AG.tNube = null;
@@ -965,7 +1062,7 @@ function guardarPaso(p){
     if (S.com.estado === 'borrador') { S.com.estado = 'en_campo'; guardarLocal(); }
     AG.firmas[S.com.id + '/' + p.id] = JSON.stringify(Object.assign({}, datosPaso(p, D(p.id)), { cliente_ts: null }));
     AG.estado = r.cola ? 'cola' : 'nube'; AG.hora = horaCorta();
-    toast(r.cola ? 'Guardado en el dispositivo; se enviará con señal' : 'Guardado');
+    toast(navigator.onLine ? 'Guardado' : 'Guardado en el dispositivo; se enviará con señal');
     return true;
   });
 }
@@ -979,7 +1076,12 @@ function capMed(p, d){
   var g = null;
   p.pts.forEach(function(pt){
     if (pt.vis && !S.com.d[p.id].checks[pt.vis]) { /* punto condicionado */ }
-    if (pt.g !== g) { if (g !== null) h += '</div>'; g = pt.g; var ptsG = p.pts.filter(function(x){ return x.g === g; }); h += '<div class="grp"><div class="grph"><b>' + esc(g) + '</b><span>' + esc(ptsG[0].c.txt) + '</span></div>'; }
+    var pg = d.pend || {};
+    if (pt.g !== g) { if (g !== null) h += '</div>'; g = pt.g; var ptsG = p.pts.filter(function(x){ return x.g === g; });
+      h += '<div class="grp' + (pg[g] ? ' grp-pend' : '') + '"><div class="grph"><b>' + esc(g) + '</b><span>' + esc(ptsG[0].c.txt) + '</span>' +
+        '<button class="pend-b" data-pg="' + esc(g) + '">' + (pg[g] ? 'Quitar pendiente' : 'Pendiente') + '</button></div>' +
+        (pg[g] ? '<div class="pend-nota"><b>Pendiente:</b> ' + esc(pg[g]) + ' <button class="alterna" data-pge="' + esc(g) + '">Cambiar motivo</button></div>' : ''); }
+    if (pg[pt.g]) return;
     var r = d.vals[pt.id] || {}, e = evalPt(p, pt, d.vals[pt.id], d.unit);
     var ptsG2 = p.pts.filter(function(x){ return x.g === pt.g; }), difCrit = ptsG2.some(function(x){ return x.c.txt !== ptsG2[0].c.txt; });
     h += '<div class="fila"><div class="fl"><b>' + esc(pt.l) + '</b>' + (pt.r ? '<small><i class="pr"></i>' + esc(pt.r) + ' <i class="pn"></i>' + esc(pt.n) + '</small>' : '') + (difCrit ? '<small>' + esc(pt.c.txt) + '</small>' : '') + '</div>';
@@ -1022,6 +1124,11 @@ function bindCaptura(p, d){
   function on(sel, fn){ [].forEach.call(root.querySelectorAll(sel), fn); }
   if ($('unit')) on('#unit button', function(b){ b.onclick = function(){ d.unit = b.getAttribute('data-v'); Object.keys(d.vals).forEach(function(k){ if (d.vals[k].v != null) d.vals[k].u = null; }); toque(d); refila(); }; });
   if ($('tens')) on('#tens button', function(b){ b.onclick = function(){ d.tens = +b.getAttribute('data-v'); refila(); }; });
+  on('[data-pg]', function(b){ b.onclick = function(){ var g = b.getAttribute('data-pg'); d.pend = d.pend || {};
+    if (d.pend[g]) { delete d.pend[g]; toque(d); refila(); return; }
+    pedirMotivo('Pendiente: ' + g).then(function(m){ if (!m) return; d.pend[g] = m; toque(d); refila(); }); }; });
+  on('[data-pge]', function(b){ b.onclick = function(){ var g = b.getAttribute('data-pge');
+    pedirMotivo('Pendiente: ' + g, d.pend[g]).then(function(m){ if (!m) return; d.pend[g] = m; toque(d); refila(); }); }; });
   if ($('bulk')) $('bulk').onclick = function(){ p.pts.forEach(function(pt){ if (pt.c.t === 'enum' && pt.c.e === 'OL' && !d.vals[pt.id]) d.vals[pt.id] = { e: 'OL' }; }); toque(d); refila(); };
   on('input[data-v]', function(i){ i.oninput = function(){ var k = i.getAttribute('data-v'), r = d.vals[k]; d.vals[k] = { v: i.value, u: r && r.u || null }; toque(d); autoguardar(p); }; i.onchange = function(){ d.vals[i.getAttribute('data-v')] = { v: i.value, u: (d.vals[i.getAttribute('data-v')] || {}).u || null }; toque(d); refilaDiferido(); }; });
   on('[data-ol]', function(b){ b.onclick = function(){ var id = b.getAttribute('data-ol'), r = d.vals[id]; d.vals[id] = r && r.e === 'OL' ? {} : { e: 'OL' }; toque(d); refila(); }; });
@@ -1055,6 +1162,10 @@ function hallazgos(){
       if (p.tens && d.tens && p.tens.indexOf(d.tens) < 0) H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Tensión de prueba ' + d.tens + ' VDC distinta de la indicada (' + p.tens.join(' o ') + ' VDC).', acc: 'Repetir a la tensión indicada.' });
     }
     if (p.id === 'vent' && d.checks.existe === 'NO') H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Sin caja de venteo entre cabezal y tablero.', acc: 'Evaluar el venteo indicado en API RP 11S3 §4.3.3.' });
+  });
+  PASOS.forEach(function(p){ var d = S.com.d[p.id]; if (!d || d.na) return; var eqT = EQUIPOS.filter(function(e){ return e.id === p.eq; })[0].t;
+    if (d.pendiente) H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Pendiente: ' + d.pendiente, acc: 'Ejecutar y registrar cuando se cumpla la condición indicada.' });
+    else Object.keys(d.pend || {}).forEach(function(g){ H.push({ eq: eqT, p: p.t + ' · ' + g, sev: 'Media', txt: 'Pendiente: ' + d.pend[g], acc: 'Ejecutar y registrar cuando se cumpla la condición indicada.' }); });
   });
   var faltan = PASOS.filter(function(p){ return !estadoPaso(p).ok; });
   if (faltan.length) H.push({ eq: 'General', p: '', sev: 'Alta', txt: faltan.length + ' pasos sin registrar: ' + faltan.map(function(p){ return p.t; }).join(', ') + '.', acc: 'Completar antes de liberar la unidad.' });
@@ -1094,7 +1205,9 @@ function transicion(a, motivo){
   if (!navigator.onLine) { avisar('Sin señal', 'Este paso necesita conexión.'); return; }
   sincronizar().then(function(){
     if (colaDe(S.com.id).some(function(x){ return !x.error; })) { avisar('Envíos pendientes', 'Aún hay datos por enviar. Intenta de nuevo en un momento.'); return; }
-    return sb.rpc('dp_cm_transicion', { p_com: S.com.id, p_a: a, p_motivo: motivo || null }).then(function(r){
+    toast('Enviando…');
+    return conTiempo(sb.rpc('dp_cm_transicion', { p_com: S.com.id, p_a: a, p_motivo: motivo || null }), 20000).then(function(r){
+      if (agotado(r)) { avisar('Señal débil', 'El servidor no respondió a tiempo. Intenta de nuevo con mejor cobertura.'); return; }
       var b = r.data || {};
       if (r.error || !b.ok) { avisar('No se pudo cambiar el estado', (b && b.error) || (r.error && r.error.message) || ''); return; }
       S.com.estado = b.estado; guardarLocal(); toast('Estado: ' + EST_COM[b.estado]); render();
@@ -1165,9 +1278,12 @@ function armarPdf(FOTOS){
     if (desc) { T(8.6, true); cabe(8); doc.text('Descripción de actividades', M, y + 3.2); y += 5; par(desc, 8.6); }
     PASOS.filter(function(p){ return p.eq === eq.id; }).forEach(function(p){ var d = c.d[p.id], s = estadoPaso(p);
       cabe(18); T(8.6, true); doc.text(p.t, M, y + 3.2); T(7.6); doc.setTextColor(85, 85, 85); doc.text((d && d.fecha ? 'Fecha: ' + d.fecha : '') + (p.tens ? '   Tensión de prueba: ' + ((d && d.tens) || p.tens.join('/')) + ' VDC' : '') + (d && d.unit ? '   Unidad: ' + d.unit : ''), W - M, y + 3.2, { align: 'right' }); y += 5.5;
+      if (d && d.pendiente) { tabla(['Estado','Motivo'], [[['Pe'], d.pendiente]], [30, CW - 30], 0); var obp = textoObs(p, d); if (obp) par('Observaciones: ' + obp, 7.8); return; }
       if (!d || !s.ok) { if (d && d.na) par('No aplica. ' + textoObs(p, d), 8); else par('No realizado en este periodo.', 8); return; }
       if (p.tipo === 'med') { var grupos = []; p.pts.forEach(function(pt){ var g = grupos.filter(function(x){ return x.g === pt.g; })[0]; if (!g) { g = { g: pt.g, pts: [] }; grupos.push(g); } g.pts.push(pt); });
-        tabla(['Componente','Lecturas','Criterio','Referencia','Estado'], grupos.map(function(g){ var es = g.pts.map(function(pt){ return evalPt(p, pt, d.vals[pt.id], d.unit); });
+        tabla(['Componente','Lecturas','Criterio','Referencia','Estado'], grupos.map(function(g){
+          if (d.pend && d.pend[g.g]) return [g.g, 'Pendiente: ' + d.pend[g.g], g.pts[0].c.txt, g.pts[0].c.src || '', ['Pe']];
+          var es = g.pts.map(function(pt){ return evalPt(p, pt, d.vals[pt.id], d.unit); });
           var lec = g.pts.map(function(pt){ var r = d.vals[pt.id]; return pt.l + ': ' + (r && (r.e || r.v) ? (r.e ? ENUMTXT[r.e] : r.v + (r.u ? ' ' + r.u : '')) : '—') + (p.encontrado && d.enc[pt.id] === 'ABIERTO' ? ' (encontrado abierto)' : ''); }).join(' · ');
           var e = agg(es) || 'R'; if (e === 'C' && p.encontrado && g.pts.some(function(pt){ return d.enc[pt.id] === 'ABIERTO'; })) e = 'A';
           return [g.g, lec, g.pts[0].c.txt, g.pts[0].c.src || '', [e]]; }), [34, CW - 34 - 30 - 30 - 26, 30, 30, 26], 4);
@@ -1210,28 +1326,51 @@ function armarPdf(FOTOS){
 
 /* ---------------- arranque ---------------- */
 $('volver').onclick = volver;
+/* La sesión se lee del dispositivo. getSession() puede intentar renovar el
+   token por la red y, con señal débil, dejar la app en blanco: se le da un
+   tiempo máximo y, si no responde, se usa la sesión guardada. */
+function sesionGuardada(){
+  try {
+    var k = Object.keys(localStorage).filter(function(x){ return /^sb-.*-auth-token$/.test(x); })[0];
+    var s = k && JSON.parse(localStorage.getItem(k));
+    s = s && (s.currentSession || s);
+    return s && s.user ? s : null;
+  } catch(e){ return null; }
+}
 function iniciar(){
   pintarRed();
   if (!sb) { S.pantalla = 'sesion'; render(); return; }
-  sb.auth.getSession().then(function(r){
-    var ses = r && r.data && r.data.session;
+  var guardadoCaptura = null; try { guardadoCaptura = JSON.parse(dpAlmacen.getItem('dp_perfil_cache') || 'null'); } catch(e){}
+  /* Con sesión guardada se entra de inmediato; la renovación del token va
+     por detrás. Solo sin sesión guardada se espera (hasta 4 s) a la red. */
+  var guardada = sesionGuardada();
+  (guardada ? (sb.auth.getSession().catch(function(){}), Promise.resolve({ data: { session: guardada } })) : conTiempo(sb.auth.getSession(), 4000)).then(function(r){
+    var ses = (!agotado(r) && r && r.data && r.data.session) || sesionGuardada();
     if (!ses) { S.pantalla = 'sesion'; render(); return; }
-    var uid = ses.user.id;
-    /* Mismo origen del perfil que usa Captura (dp_perfil) y el rol tal como
-       lo ve la base (mi_rol), que es lo que deciden las RPC. */
-    var perf = navigator.onLine ? Promise.all([
-        sb.rpc('dp_perfil').then(function(x){ return x.error ? null : x.data; }).catch(function(){ return null; }),
-        sb.rpc('mi_rol').then(function(x){ return x.error ? null : x.data; }).catch(function(){ return null; })
-      ]).then(function(x){ var p = x[0] || null; if (!p && !x[1]) return null; p = Object.assign({}, p || {}); if (x[1]) p.rol = x[1];
-        idbPut('cache', { clave: 'perfil', v: p }); return p; }) : Promise.resolve(null);
-    var guardadoCaptura = null; try { guardadoCaptura = JSON.parse(dpAlmacen.getItem('dp_perfil_cache') || 'null'); } catch(e){}
-    var apr = navigator.onLine ? sb.rpc('puedo_aprobar_comisionamiento').then(function(x){ return !x.error && x.data === true; }).catch(function(){ return false; }) : Promise.resolve(false);
-    return Promise.all([perf.then(function(p){ return p || idbGet('cache', 'perfil').then(function(c){ return c ? c.v : guardadoCaptura; }); }), apr]).then(function(x){
-      S.perfil = x[0]; S.aprueba = x[1]; S.pantalla = 'inicio'; render(); sincronizar();
+    return Promise.all([idbGet('cache', 'perfil'), idbGet('cache', 'aprueba')]).then(function(c){
+      S.perfil = (c[0] && c[0].v) || guardadoCaptura; S.aprueba = !!(c[1] && c[1].v);
+      S.pantalla = 'inicio'; render(); setTimeout(sincronizar, 300);
+      if (!navigator.onLine) return;
+      /* Perfil y permiso se actualizan por detrás (mismo origen que Captura). */
+      Promise.all([
+        conTiempo(sb.rpc('dp_perfil'), T_LECTURA).then(function(x){ return agotado(x) || x.error ? null : x.data; }).catch(function(){ return null; }),
+        conTiempo(sb.rpc('mi_rol'), T_LECTURA).then(function(x){ return agotado(x) || x.error ? null : x.data; }).catch(function(){ return null; }),
+        conTiempo(sb.rpc('puedo_aprobar_comisionamiento'), T_LECTURA).then(function(x){ return agotado(x) || x.error ? null : x.data === true; }).catch(function(){ return null; })
+      ]).then(function(x){
+        if (x[0] || x[1]) { var p = Object.assign({}, x[0] || S.perfil || {}); if (x[1]) p.rol = x[1]; S.perfil = p; idbPut('cache', { clave: 'perfil', v: p }); }
+        if (x[2] !== null) { S.aprueba = x[2]; idbPut('cache', { clave: 'aprueba', v: x[2] }); }
+        if (S.pantalla === 'cierre') render();
+      });
     });
-  }).catch(function(){ S.pantalla = 'sesion'; render(); });
+  }).catch(function(){ var s = sesionGuardada(); if (s) { S.perfil = guardadoCaptura; S.pantalla = 'inicio'; render(); } else { S.pantalla = 'sesion'; render(); } });
 }
 iniciar();
+/* El módulo también registra el service worker de Captura: quien entra
+   directo al comisionamiento (por ejemplo desde Kronos-M) sin haber abierto
+   Captura antes, igual queda con la app guardada para usarla sin señal. */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', function(){ navigator.serviceWorker.register('./service-worker.js').catch(function(){}); });
+}
 })();
 
 </script>

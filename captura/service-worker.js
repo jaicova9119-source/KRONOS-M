@@ -17,7 +17,7 @@
 
 /* Al subir este numero, el navegador descarta el cache anterior y
    vuelve a bajar todo. Es la palanca para forzar actualizacion. */
-const CACHE_NAME = "captura-v5";
+const CACHE_NAME = "captura-v6";
 
 /* Sin estos archivos la app no abre sin señal. Van con addAll, que
    es todo o nada: solo deben ir rutas que existan con certeza. Una
@@ -91,21 +91,30 @@ self.addEventListener("fetch", (event) => {
      define la identidad de la app instalada, asi que una copia vieja
      puede hacer que el navegador la confunda con otra. */
   if (req.mode === "navigate" || url.endsWith("manifest.json")) {
-    event.respondWith(
-      fetch(req)
-        .then((respuesta) => {
-          if (respuesta && respuesta.ok) {
-            const copia = respuesta.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put(req, copia));
-          }
-          return respuesta;
-        })
-        .catch(() =>
-          /* ignoreSearch: el modulo de comisionamiento puede abrirse con
-             parametros en la URL y sin esto no encontraria su copia. */
-          caches.match(req, { ignoreSearch: true }).then((g) => g || caches.match("./index.html"))
-        )
-    );
+    /* Con señal debil la red puede tardar minutos en responder o fallar.
+       Si en 3,5 s no llega, se sirve la copia guardada; la respuesta de la
+       red, si llega despues, igual actualiza el cache para la proxima vez. */
+    const deRed = fetch(req).then((respuesta) => {
+      if (respuesta && respuesta.ok) {
+        const copia = respuesta.clone();
+        caches.open(CACHE_NAME).then((cache) => cache.put(req, copia));
+      }
+      return respuesta;
+    });
+    const guardada = () => caches.match(req, { ignoreSearch: true })
+      .then((g) => g || caches.match("./index.html"));
+    event.respondWith(new Promise((resolver) => {
+      let listo = false;
+      const usarCache = () => guardada().then((g) => {
+        if (listo) return;
+        if (g) { listo = true; resolver(g); }
+      });
+      const t = setTimeout(usarCache, 3500);
+      deRed.then((r) => { if (!listo) { listo = true; clearTimeout(t); resolver(r); } })
+        .catch(() => { clearTimeout(t); guardada().then((g) => {
+          if (!listo) { listo = true; resolver(g || Response.error()); } }); });
+    }));
+    event.waitUntil(deRed.catch(() => null));
     return;
   }
 
