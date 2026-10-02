@@ -787,7 +787,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v2.5 · 01/10/2026';
+var VERSION = 'v2.6 · 01/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -1461,8 +1461,6 @@ function armarPdf(FOTOS){
   T(13, true); doc.text('POZO ' + c.pozo_nombre, W / 2, 122, { align: 'center' }); if (c.campo) { T(12); doc.setTextColor(85, 85, 85); doc.text('Campo ' + c.campo, W / 2, 129, { align: 'center' }); }
   var fechas = PASOS.map(function(p){ return c.d[p.id] && c.d[p.id].fecha; }).filter(Boolean).sort(function(a, b){ var k = function(x){ return x.split('/').reverse().join(''); }; return k(a) < k(b) ? -1 : 1; });
   y = 150; kv([['Cliente','Gran Tierra Energy'],['Ejecutor','Confipetrol'],['Pozo',c.pozo_nombre],['Campo',c.campo || '—'],['Sistema','Bombeo electrosumergible (BES)'],['Periodo de ejecución', fechas.length ? fechas[0] + ' al ' + fechas[fechas.length - 1] : '—'],['Orden de trabajo',c.orden],['Ejecutado por',c.ejecutantes.join(', ')],['Revisado por',firmaTxt(firmas(c).revisa) || '—'],['Código',codigo],['Fecha de emisión',em],['Aprobado por',firmaTxt(firmas(c).aprueba) || '—'],['Estado',(c.estado === 'aprobado' ? 'Aprobado' : 'Emitido para firma') + (c.es_prueba ? ' (prueba)' : '')]]);
-  y += 4; T(9.6, true); doc.text('Control de versiones', M, y + 3); y += 6;
-  tabla(['Versión','Fecha','Descripción','Elaboró','Revisó','Aprobó'], [['0', em, 'Emisión para firma', firmas(c).realiza.nombre || '', firmas(c).revisa.nombre || '', firmas(c).aprueba.nombre || '']], [16,22,CW-16-22-84,28,28,28]);
   doc.setFontSize(7); doc.setTextColor(85, 85, 85); doc.text('Equipos instalados en sistemas y procesos operados por Gran Tierra Energy.', M, Hh - 9);
   /* cuerpo */
   nueva();
@@ -1557,7 +1555,7 @@ function armarPdf(FOTOS){
   var n = doc.internal.getNumberOfPages();
   /* Encabezado: código, versión y emisión, ajustado al ancho de la celda
      central para que no pise los logos. La página va solo al pie. */
-  var lineaCod = 'Código: ' + codigo + '   ·   Versión: 0   ·   Emisión: ' + em, anchoCelda = CW - HW.wr - 6;
+  var lineaCod = 'Código: ' + codigo + '   ·   Emisión: ' + em, anchoCelda = CW - HW.wr - 6;
   for (var pg = 1; pg <= n; pg++) {
     doc.setPage(pg);
     if (pg > 1) { var fs = 7.2; T(fs); while (fs > 5.6 && doc.getTextWidth(lineaCod) > anchoCelda) { fs -= 0.2; doc.setFontSize(fs); }
