@@ -438,6 +438,17 @@ html[data-tema="oscuro"] .tema-btn .ico-oscuro{display:none;}
    con guantes y ruido, hay que poder saber de un vistazo si esta escuchando. */
 .dic-fila{display:flex;gap:8px;margin-top:6px;flex-wrap:wrap}
 .dic-fila button{flex:1 1 170px;margin-top:0}
+/* En Programación, un Dictar solo no se estira a todo el ancho */
+#panel-prog-actividad .dic-fila button:only-child,
+#panel-prog-np .dic-fila button:only-child{flex:0 0 auto;width:auto;min-width:150px;padding-left:22px;padding-right:22px}
+/* Pie de acciones de la actividad */
+.prog-acciones{margin-top:22px;padding-top:16px;border-top:1px solid var(--line);margin-bottom:56px}
+.pa-grupo{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-top:10px}
+.pa-grupo .btn-secondary{margin-top:0}
+.pa-peligro{display:flex;justify-content:center;margin-top:20px;padding-top:12px;border-top:1px dashed var(--line)}
+.pa-peligro button{width:auto;background:none;border:none;color:var(--danger);font-size:13.5px;
+  padding:8px 16px;border-radius:8px;cursor:pointer}
+.pa-peligro button:hover{background:var(--danger-bg)}
 .dic-btn.grabando{border-color:var(--danger);color:var(--danger);
   background:var(--danger-bg)}
 .dic-punto{display:inline-block;width:9px;height:9px;border-radius:50%;
@@ -3128,8 +3139,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <label>Motivo de no ejecución</label>
       <textarea id="prog-e-motivo" rows="2" placeholder="Obligatorio si la actividad no se ejecutó"></textarea>
     </div>
-    <button class="btn-primary" id="prog-btn-guardar" onclick="progGuardarEjecucion()">Guardar registro</button>
-    <div id="prog-acciones-extra" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap"></div>
+    <div class="prog-acciones">
+      <button class="btn-primary" id="prog-btn-guardar" onclick="progGuardarEjecucion()">Guardar registro</button>
+      <div id="prog-acciones-extra"></div>
+    </div>
   </div>
 </div>
 
@@ -15136,16 +15149,20 @@ async function progAbrirActividad(id) {
      aparecer en la próxima carga. Solo se limpia su ejecución.
      Una no programada sí, porque solo existe aquí. */
   const extra = document.getElementById("prog-acciones-extra");
+  /* Herramientas lado a lado; lo que borra va aparte, abajo y discreto,
+     para que no quede al alcance del dedo junto a Guardar. */
   const btnOT = '<button class="btn-secondary" onclick="otAbrir()">Reporte FO-016</button>';
+  const peligro = t => '<div class="pa-peligro">' + t + '</div>';
   if (a.no_programada) {
-    extra.innerHTML = btnOT +
-      '<button class="btn-secondary" onclick="progEditarNP()">Editar datos</button>' +
-      '<button class="btn-secondary" style="color:var(--danger)" onclick="progEliminarNP()">Eliminar actividad</button>';
+    extra.innerHTML =
+      '<div class="pa-grupo">' + btnOT +
+        '<button class="btn-secondary" onclick="progEditarNP()">Editar datos</button></div>' +
+      peligro('<button type="button" onclick="progEliminarNP()">Eliminar actividad</button>');
   } else if (a.estado !== "programada") {
-    extra.innerHTML = btnOT +
-      '<button class="btn-secondary" onclick="progLimpiarEjecucion()">Limpiar registro de ejecución</button>';
+    extra.innerHTML = '<div class="pa-grupo">' + btnOT + '</div>' +
+      peligro('<button type="button" onclick="progLimpiarEjecucion()">Limpiar registro de ejecución</button>');
   } else {
-    extra.innerHTML = btnOT;
+    extra.innerHTML = '<div class="pa-grupo">' + btnOT + '</div>';
   }
 
   /* Los paneles no se apilan: abrir uno cierra el anterior. Se recuerda cual
