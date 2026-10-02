@@ -83,6 +83,10 @@ textarea{min-height:90px;resize:vertical}
 .giro .gp-l{font-weight:700;font-size:14px;align-self:center}
 .giro .gp-t{margin:12px 0 4px;font-size:13px;font-weight:700;color:var(--ink-soft)}
 @media (max-width:520px){.giro .giro-par{grid-template-columns:1fr 1fr}.giro .gp-l{grid-column:1/-1}.giro .giro-par .mini-chip{grid-column:1/-1;justify-self:start}}
+.firma-fila{border-top:1px solid var(--surface-2);padding-top:10px;margin-top:10px}
+.firma-t{display:block;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:6px}
+.firma-c{display:grid;grid-template-columns:1fr 1fr;gap:10px}.firma-c .campo{margin:0}
+@media (max-width:520px){.firma-c{grid-template-columns:1fr}}
 .errores{border-color:var(--danger);background:var(--danger-bg)}.errores b{color:var(--danger)}.errores ul{margin:6px 0 12px;padding-left:18px;font-size:14px}.errores li{margin-bottom:4px}.errores li b{color:var(--texto)}
 .aviso{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14.5px;margin:0 0 12px}
 .prueba{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;vertical-align:2px}
@@ -757,7 +761,7 @@ function combinar(L, Rm){
   Object.keys(Rm.d).forEach(function(pid){ Rm.d[pid].fotos = Rm.d[pid].fotos.filter(function(f){ return quitadas.indexOf(f) < 0; }); });
   ['codigo','estado','es_prueba','aprobado_en'].forEach(function(k){ if (Rm[k] != null) c[k] = Rm[k]; });
   /* Firmantes: manda el servidor salvo que aquí haya un cambio aún sin enviar. */
-  if (!leerCola().some(function(x){ return x.clave === 'cm-firm-' + L.id; })) { c.revisa = Rm.revisa; c.aprueba = Rm.aprueba; }
+  if (!leerCola().some(function(x){ return x.clave === 'cm-firm-' + L.id; })) { c.revisa = Rm.revisa; c.aprueba = Rm.aprueba; if (Rm.firmas && Object.keys(Rm.firmas).length) c.firmas = Rm.firmas; }
   if (Rm.conclusion != null && L.conclusion == null) c.conclusion = Rm.conclusion;
   Object.keys(Rm.d).forEach(function(pid){
     var l = c.d[pid], r = Rm.d[pid];
@@ -783,7 +787,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v2.4 · 01/10/2026';
+var VERSION = 'v2.5 · 01/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -807,7 +811,7 @@ function leerRemoto(id){
     if (r.error || !r.data) throw new Error('No se pudo leer el comisionamiento del servidor.');
     var x = r.data, c = x.comisionamiento;
     var com = { id: c.id, codigo: c.codigo, pozo_id: c.pozo_id, pozo_nombre: c.pozo_nombre, campo: c.campo, orden: c.orden,
-      ejecutantes: (c.ejecutantes || []).map(function(e){ return e.nombre || e; }), revisa: c.revisa || '', aprueba: c.aprueba || '', aprobado_en: c.aprobado_en || null, plantilla_id: c.plantilla_id,
+      ejecutantes: (c.ejecutantes || []).map(function(e){ return e.nombre || e; }), revisa: c.revisa || '', aprueba: c.aprueba || '', firmas: c.firmas || {}, aprobado_en: c.aprobado_en || null, plantilla_id: c.plantilla_id,
       plantilla_version: c.plantilla_version, estado: c.estado, es_prueba: c.es_prueba, conclusion: c.conclusion, creado_por: c.creado_por, d: {}, actualizado: c.actualizado_en };
     (x.pasos || []).forEach(function(p){
       var pre = {}; ['a','o'].forEach(function(t){ ((p.textos || {})[t] || []).forEach(function(k){ pre[t + '.' + k] = true; }); });
@@ -1333,6 +1337,14 @@ function hallazgos(){
   if (faltan.length) H.push({ eq: 'General', p: '', sev: 'Alta', txt: faltan.length + ' pasos sin registrar: ' + faltan.map(function(p){ return p.t; }).join(', ') + '.', acc: 'Completar antes de liberar la unidad.' });
   return H;
 }
+/* Firmas del informe: nombre y cargo por separado. Lo guardado antes como un
+   solo texto ("Nombre, cargo") pasa al nombre. */
+function firmas(c){
+  var f = c.firmas || {};
+  function uno(k, txt, defNombre){ var x = f[k] || {}; return { nombre: x.nombre != null ? x.nombre : (txt || defNombre || ''), cargo: x.cargo || '' }; }
+  return { realiza: uno('realiza', '', c.ejecutantes && c.ejecutantes[0]), revisa: uno('revisa', c.revisa), aprueba: uno('aprueba', c.aprueba) };
+}
+function firmaTxt(x){ return [x.nombre, x.cargo].filter(function(v){ return v && v.trim(); }).join(', '); }
 function conclusion(H){
   function lista(a){ return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' y ' + a[a.length - 1]; }
   function min1(t){ return t.charAt(0).toLowerCase() + t.slice(1); }      // conserva PST, SUT, SCADA
@@ -1359,19 +1371,25 @@ function vCierre(){
   h += '</div><div>';
   h += '<h2>Conclusión</h2><textarea id="concl" style="min-height:120px"' + (editable() ? '' : ' readonly') + '>' + esc(c.conclusion != null ? c.conclusion : conclusion(H)) + '</textarea>';
   var edF = c.estado !== 'aprobado' && c.estado !== 'anulado';
+  var F = firmas(c);
+  function filaF(k, titulo, phN, phC){ var x = F[k];
+    return '<div class="firma-fila"><span class="firma-t">' + titulo + '</span><div class="firma-c">' +
+      '<label class="campo"><span>Nombre</span><input data-fn="' + k + '|nombre" value="' + esc(x.nombre) + '" placeholder="' + phN + '"' + (edF ? '' : ' readonly') + '></label>' +
+      '<label class="campo"><span>Cargo</span><input data-fn="' + k + '|cargo" value="' + esc(x.cargo) + '" placeholder="' + phC + '"' + (edF ? '' : ' readonly') + '></label></div></div>'; }
   h += '<div class="panel"><b>Firmas del informe</b>' +
-    '<div class="campo" style="margin-top:10px"><span>Realizó</span><div class="ro">' + esc(c.ejecutantes[0] || '—') + '<small>responsable de la ejecución</small></div></div>' +
-    '<label class="campo"><span>Revisó (nombre y cargo)</span><input id="f-revisa" value="' + esc(c.revisa || '') + '" placeholder="Ej.: Edwin Ibarra, Supervisor"' + (edF ? '' : ' readonly') + '></label>' +
-    '<label class="campo" style="margin:0"><span>Aprobó (nombre y cargo)</span><input id="f-aprueba" value="' + esc(c.aprueba || '') + '" placeholder="Ej.: Ingeniero de producción"' + (edF ? '' : ' readonly') + '></label></div>';
-  h += '<p class="nota">El PDF sale listo para firmar: impreso o con firma digital sobre el mismo archivo. Los nombres de Revisó y Aprobó se imprimen bajo el espacio de firma. La aprobación dentro del sistema sigue disponible, pero no es necesaria para el PDF.</p>';
+    filaF('realiza', 'Realizó', 'Líder de la ejecución', 'Ej.: Especialista Electricista VFD') +
+    filaF('revisa', 'Revisó', 'Nombre de quien revisa', 'Ej.: Supervisor eléctrico') +
+    filaF('aprueba', 'Aprobó', 'Nombre de quien aprueba', 'Ej.: Ingeniero de producción') + '</div>';
+  h += '<p class="nota">El PDF sale listo para firmar: impreso o con firma digital sobre el mismo archivo. Nombre y cargo de cada firma se imprimen bajo su espacio de firma. La aprobación dentro del sistema sigue disponible, pero no es necesaria para el PDF.</p>';
   h += '<div class="panel suave"><b>Informe PDF</b><p class="nota">Encabezado con el logo de Confipetrol, secciones numeradas, resultados por equipo con criterio y referencia, hallazgos, casillas de firma y anexo fotográfico.</p><button class="btn ancho" id="pdf">Generar informe PDF</button><p class="nota" id="msg"></p></div></div></div>';
   $('cuerpo').innerHTML = h;
   $('cuerpo').classList.remove('ro');
   if (editable()) $('concl').onchange = function(){ c.conclusion = this.value; guardarLocal(); enviar('dp_cm_q_conclusion', { comisionamiento_id: c.id, texto: c.conclusion }, 'Comisionamiento ' + c.pozo_nombre + ': conclusión', 'cm-concl-' + c.id, c.id); };
   $('pdf').onclick = exportar;
-  ['revisa','aprueba'].forEach(function(k){ var el = $('f-' + k); if (!el || el.readOnly) return;
-    el.onchange = function(){ c[k] = el.value.trim(); guardarLocal();
-      enviar('dp_cm_q_firmantes', { comisionamiento_id: c.id, revisa: c.revisa || '', aprueba: c.aprueba || '' }, 'Comisionamiento ' + c.pozo_nombre + ': firmantes', 'cm-firm-' + c.id, c.id); toast('Firmantes guardados'); }; });
+  [].forEach.call($('cuerpo').querySelectorAll('[data-fn]'), function(el){ if (el.readOnly) return;
+    el.onchange = function(){ var k = el.getAttribute('data-fn').split('|'), F2 = firmas(c);
+      F2[k[0]][k[1]] = el.value.trim(); c.firmas = F2; c.revisa = firmaTxt(F2.revisa); c.aprueba = firmaTxt(F2.aprueba); guardarLocal();
+      enviar('dp_cm_q_firmantes', { comisionamiento_id: c.id, firmas: F2 }, 'Comisionamiento ' + c.pozo_nombre + ': firmantes', 'cm-firm-' + c.id, c.id); toast('Firmas guardadas'); }; });
   var b = '<button class="btn sec" id="rt" aria-label="Volver al recorrido">‹</button>';
   var libres = S.tpl.revision_permite_pendientes || [], faltan = PASOS.filter(function(p){ return libres.indexOf(p.eq) < 0 && !estadoPaso(p).ok; }).length;
   if (editable()) b += '<button class="btn pri" id="env"' + (cola || faltan ? ' disabled' : '') + '>' + (faltan ? 'Faltan ' + faltan + ' pasos para enviar' : cola ? cola + ' envíos pendientes' : 'Enviar a revisión') + '</button>';
@@ -1442,9 +1460,9 @@ function armarPdf(FOTOS){
   T(20, true); doc.text('INFORME DE COMISIONAMIENTO', W / 2, 95, { align: 'center' }); T(12); doc.setTextColor(85, 85, 85); doc.text('Equipos de superficie del sistema de bombeo electrosumergible', W / 2, 103, { align: 'center' });
   T(13, true); doc.text('POZO ' + c.pozo_nombre, W / 2, 122, { align: 'center' }); if (c.campo) { T(12); doc.setTextColor(85, 85, 85); doc.text('Campo ' + c.campo, W / 2, 129, { align: 'center' }); }
   var fechas = PASOS.map(function(p){ return c.d[p.id] && c.d[p.id].fecha; }).filter(Boolean).sort(function(a, b){ var k = function(x){ return x.split('/').reverse().join(''); }; return k(a) < k(b) ? -1 : 1; });
-  y = 150; kv([['Cliente','Gran Tierra Energy'],['Ejecutor','Confipetrol'],['Pozo',c.pozo_nombre],['Campo',c.campo || '—'],['Sistema','Bombeo electrosumergible (BES)'],['Periodo de ejecución', fechas.length ? fechas[0] + ' al ' + fechas[fechas.length - 1] : '—'],['Orden de trabajo',c.orden],['Ejecutado por',c.ejecutantes.join(', ')],['Revisado por',c.revisa || '—'],['Código',codigo],['Fecha de emisión',em],['Aprobado por',c.aprueba || '—'],['Estado',(c.estado === 'aprobado' ? 'Aprobado' : 'Emitido para firma') + (c.es_prueba ? ' (prueba)' : '')]]);
+  y = 150; kv([['Cliente','Gran Tierra Energy'],['Ejecutor','Confipetrol'],['Pozo',c.pozo_nombre],['Campo',c.campo || '—'],['Sistema','Bombeo electrosumergible (BES)'],['Periodo de ejecución', fechas.length ? fechas[0] + ' al ' + fechas[fechas.length - 1] : '—'],['Orden de trabajo',c.orden],['Ejecutado por',c.ejecutantes.join(', ')],['Revisado por',firmaTxt(firmas(c).revisa) || '—'],['Código',codigo],['Fecha de emisión',em],['Aprobado por',firmaTxt(firmas(c).aprueba) || '—'],['Estado',(c.estado === 'aprobado' ? 'Aprobado' : 'Emitido para firma') + (c.es_prueba ? ' (prueba)' : '')]]);
   y += 4; T(9.6, true); doc.text('Control de versiones', M, y + 3); y += 6;
-  tabla(['Versión','Fecha','Descripción','Elaboró','Revisó','Aprobó'], [['0', em, 'Emisión para firma', c.ejecutantes[0] || '', c.revisa || '', c.aprueba || '']], [16,22,CW-16-22-84,28,28,28]);
+  tabla(['Versión','Fecha','Descripción','Elaboró','Revisó','Aprobó'], [['0', em, 'Emisión para firma', firmas(c).realiza.nombre || '', firmas(c).revisa.nombre || '', firmas(c).aprueba.nombre || '']], [16,22,CW-16-22-84,28,28,28]);
   doc.setFontSize(7); doc.setTextColor(85, 85, 85); doc.text('Equipos instalados en sistemas y procesos operados por Gran Tierra Energy.', M, Hh - 9);
   /* cuerpo */
   nueva();
@@ -1515,16 +1533,19 @@ function armarPdf(FOTOS){
      mismo PDF), nombre y cargo, y fecha. */
   (function(){
     cabe(58);
-    var col = (CW - 8) / 3, alto = 50, firmas = [['Realizó', c.ejecutantes[0] || '', 'Confipetrol'], ['Revisó', c.revisa || '', ''], ['Aprobó', c.aprueba || '', '']];
-    firmas.forEach(function(f, i){
+    var FF = firmas(c), col = (CW - 8) / 3, alto = 54;
+    var lista = [['Realizó', FF.realiza.nombre, FF.realiza.cargo, 'Confipetrol'], ['Revisó', FF.revisa.nombre, FF.revisa.cargo, ''], ['Aprobó', FF.aprueba.nombre, FF.aprueba.cargo, '']];
+    lista.forEach(function(f, i){
       var x = M + i * (col + 4);
       doc.setFillColor(228, 228, 228); doc.rect(x, y, col, 7, 'F');
       doc.setDrawColor(189, 189, 189); doc.setLineWidth(0.25); doc.rect(x, y, col, alto); doc.line(x, y + 7, x + col, y + 7);
       T(8.4, true); doc.text(f[0], x + 3, y + 4.8);
       doc.setDrawColor(90, 90, 90); doc.line(x + 4, y + 31, x + col - 4, y + 31);
       T(6.6); doc.setTextColor(120, 120, 120); doc.text('Firma', x + col / 2, y + 34, { align: 'center' });
-      T(8); var nl = doc.splitTextToSize(f[1] || 'Nombre:', col - 8); doc.text(nl.slice(0, 2), x + 4, y + 39);
-      if (f[2]) { T(7.4); doc.setTextColor(85, 85, 85); doc.text(f[2], x + 4, y + 39 + Math.min(nl.length, 2) * 3.6); }
+      var yy = y + 39;
+      T(8.2, true); doc.splitTextToSize(f[1] || 'Nombre:', col - 8).slice(0, 2).forEach(function(l){ doc.text(l, x + 4, yy); yy += 3.6; });
+      T(7.6); doc.setTextColor(60, 60, 60); doc.splitTextToSize(f[2] || 'Cargo:', col - 8).slice(0, 2).forEach(function(l){ doc.text(l, x + 4, yy); yy += 3.4; });
+      if (f[3]) { doc.setTextColor(85, 85, 85); doc.text(f[3], x + 4, yy); }
       T(7.4); doc.setTextColor(85, 85, 85); doc.text('Fecha: ____ / ____ / ________', x + 4, y + alto - 3);
     });
     y += alto + 6;
