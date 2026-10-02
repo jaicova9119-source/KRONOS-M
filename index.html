@@ -882,6 +882,13 @@ html,body{height:100%;margin:0;}
 /* Para impresora monocromática: una foto a color sale oscura y plana. */
 #ee-informe.inf-bn .inf-foto img{filter:grayscale(1) contrast(1.25) brightness(1.06)}
 /* Captura de fotos en el formulario del ensayo */
+.prog-formato{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:8px;background:var(--card,#fff)}
+.prog-formato .pf-t{font-weight:600;color:var(--text-0);font-size:14px}
+.prog-formato .pf-d{font-size:12.5px;color:var(--text-2);margin:2px 0 8px}
+.prog-formato .pf-estado{font-size:12.5px;margin-bottom:8px}
+.prog-formato .pf-estado b{color:var(--ok,#2E7D32)}
+.prog-formato .pf-btns{display:flex;gap:8px;flex-wrap:wrap}
+.prog-formato .pf-btns .btn-secondary,.prog-formato .pf-btns .btn-primary{margin:0;padding:8px 12px;flex:0 0 auto}
 .ee-fotos-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .ee-fotos-btns .btn-secondary{flex:1 1 140px}
 .ee-fotos-zona{border:2px dashed transparent;border-radius:10px;padding:2px}
@@ -3035,6 +3042,11 @@ input,select,textarea{font-family:inherit;font-size:15px;}
   <div class="panel-body">
     <div class="section-label">PROGRAMADO POR PLANEACIÓN</div>
     <table class="tabla-ficha" id="prog-act-tabla"></table>
+
+    <div id="prog-formatos-wrap" style="display:none">
+      <div class="section-label" style="margin-top:18px">FORMATOS DE ESTA ACTIVIDAD</div>
+      <div id="prog-formatos"></div>
+    </div>
 
     <div class="section-label" style="margin-top:18px">JORNADAS REGISTRADAS</div>
     <div id="prog-jornadas"></div>
@@ -9113,6 +9125,11 @@ async function guardarMaquina() {
     }
     toast("Máquina guardada");
     await cargarMaquinas();
+    if (eeVolver && eeVolver.crear) {
+      eeVolver.crear = false;
+      const sapV = g("sap"), nueva = (eeMaquinas || []).find(x => sapV && String(x.sap_efectivo || "") === sapV) || (eeMaquinas || []).find(x => x.serial_efectivo && x.serial_efectivo === g("serial"));
+      if (nueva) { await abrirMaquina(nueva.id); nuevoEnsayo(); return; }
+    }
     abrirPanel("panel-ee-maquinas");
   } catch (e) {
     console.error(e);
@@ -9310,6 +9327,7 @@ function nuevoEnsayo() {
   eeEnsayoEditando = null;
   abrirPanel("panel-ee-ensayo");
   eeFotosBloqueadas = false; eeFotosCargar(null);
+  eeBannerVolver();
   document.getElementById("ee-ens-titulo").textContent = "Nuevo ensayo";
   document.getElementById("ee-ens-maquina").textContent = eeMaquinaActual.nombre_efectivo || "";
   document.getElementById("ee-e-fecha").value = new Date().toISOString().slice(0, 10);
@@ -9801,6 +9819,7 @@ async function guardarEnsayo() {
     toast(errFotos.length ? "Ensayo guardado; " + errFotos.length + " foto(s) no se pudieron guardar: " + errFotos[0] : "Ensayo guardado");
     await cargarMaquinas();
     eeMaquinaActual = eeMaquinas.find(x => x.id === m.id);
+    if (eeVolver && !eeEnsayoEditando) { await eeAdjuntarYVolver(ensayoId); return; }
     abrirMaquina(m.id);
   } catch (e) {
     console.error(e);
@@ -9815,6 +9834,7 @@ function editarEnsayo(id) {
   if (!e) return;
   eeEnsayoEditando = id;
   abrirPanel("panel-ee-ensayo");
+  eeVolver = null; eeBannerVolver();
   document.getElementById("ee-ens-titulo").textContent = "Editar ensayo";
   document.getElementById("ee-ens-maquina").textContent = eeMaquinaActual.nombre_efectivo || "";
   eePintarTablas();
@@ -15108,6 +15128,7 @@ async function progAbrirActividad(id) {
   const rj = await sb.rpc("programa_avances_actividad", { p_actividad_id: a.id });
   progJornadas = rj.data || [];
   progRenderJornadas();
+  progFormatosRender(a);
   progPrecargarJornada();
 
   /* Una programada no se borra: viene de Planeación y volvería a
@@ -15139,6 +15160,122 @@ async function progAbrirActividad(id) {
 
 /* Tabla de lo ya registrado día por día. Es el histórico que antes se
    perdía al sobrescribir el registro plano. */
+/* ============================================================
+   FORMATOS POR ACTIVIDAD
+   Según lo programado (texto del trabajo, equipo, disciplina) la actividad
+   propone los formatos que le corresponden. Piloto: ensayo eléctrico. Los
+   demás (lista de engrase, inspección de motores…) entran como nuevas
+   entradas de este catálogo cuando existan sus formularios.
+   ============================================================ */
+const OT_FORMATOS = [
+  { clave: "ensayo_electrico", nombre: "Ensayo eléctrico de aislamiento", tipo: "ensayo",
+    descripcion: "Aislamiento a tierra (IEEE 43), DAR, PI y resistencia de bobinas. Queda adjunto al FO-016 de la jornada.",
+    aplica: a => {
+      const disc = (a.disciplinas || []).map(d => String(d).toUpperCase());
+      if (disc.length && !disc.some(d => /ELE/.test(d))) return false;
+      const t = [a.descripcion_trabajo, a.descripcion_equipo, a.descripcion].filter(Boolean).join(" ").toUpperCase();
+      return /MOTOR|GENERADOR|ALTERNADOR|BOMBA\s*ELEC|UBH|UBO|BES|UTA|DEVANADO|AISLAMIENTO|MEGAD|EMBOBINAD/.test(t);
+    } },
+];
+let eeVolver = null;   // { actividad_id, fecha, numero_ot, crear } mientras se hace un ensayo desde una actividad
+
+async function progFormatosRender(a) {
+  const wrap = document.getElementById("prog-formatos-wrap"), cont = document.getElementById("prog-formatos");
+  if (!wrap || !cont) return;
+  const lista = OT_FORMATOS.filter(f => { try { return f.aplica(a); } catch (e) { return false; } });
+  if (!lista.length) { wrap.style.display = "none"; return; }
+  wrap.style.display = "";
+  cont.innerHTML = lista.map(f => `<div class="prog-formato" data-f="${f.clave}"><div class="pf-t">${f.nombre}</div><div class="pf-d">${f.descripcion}</div><div class="pf-estado">Buscando…</div></div>`).join("");
+
+  /* Ensayos ya adjuntos a esta actividad (cualquier jornada) */
+  let anexos = [];
+  try {
+    const r = await sb.from("programa_ot_anexos").select("id, fecha, ensayo_id").eq("actividad_id", a.id).order("fecha");
+    anexos = r.data || [];
+    if (anexos.length) {
+      const re = await sb.from("ensayos_electricos").select("id, fecha, estado, tecnico, ejecutante_nombre").in("id", anexos.map(x => x.ensayo_id));
+      const por = new Map((re.data || []).map(e => [e.id, e]));
+      anexos = anexos.map(x => ({ ...x, ensayo: por.get(x.ensayo_id) }));
+    }
+  } catch (e) { /* sin anexos */ }
+  if (progActual !== a) return;
+
+  const card = cont.querySelector('[data-f="ensayo_electrico"]');
+  if (!card) return;
+  const est = card.querySelector(".pf-estado");
+  est.innerHTML = anexos.length
+    ? anexos.map(x => `<div><b>&#10003; Adjunto</b> a la jornada del ${progFmtFecha(x.fecha)} · ensayo del ${x.ensayo ? x.ensayo.fecha : "?"}`
+        + (x.ensayo && x.ensayo.estado !== "firmado" ? ' <span style="color:var(--warn)">· sin firmar</span>' : "") + "</div>").join("")
+    : "Sin ensayo adjunto todavía.";
+  const btns = document.createElement("div"); btns.className = "pf-btns";
+  btns.innerHTML = `<button type="button" class="btn-primary" onclick="progEnsayoDesdeActividad()">${anexos.length ? "Hacer otro ensayo" : "Hacer el ensayo"}</button>`
+    + `<button type="button" class="btn-secondary" onclick="progAdjuntarEnsayoExistente()">Adjuntar uno existente</button>`;
+  card.appendChild(btns);
+}
+
+/* Abre Ensayos eléctricos en la máquina de la actividad y deja listo un
+   ensayo nuevo. Al guardarlo queda adjunto a la jornada y se vuelve aquí. */
+async function progEnsayoDesdeActividad() {
+  const a = progActual; if (!a) return;
+  if (!eeMaquinas || !eeMaquinas.length) { try { await cargarMaquinas(); } catch (e) { toast("No se pudo cargar el catálogo de máquinas"); return; } }
+  const sap = String(a.codigo_equipo || "").trim(), serie = String(a.serie || "").trim();
+  const maq = (eeMaquinas || []).find(m => (sap && String(m.sap_efectivo || "") === sap) || (serie && String(m.serial_efectivo || "") === serie));
+  eeVolver = { actividad_id: a.id, fecha: progJornadaFecha || progFecha, numero_ot: a.numero_ot || "", equipo: a.descripcion_equipo || a.codigo_equipo || "", tipo: a.tipo_mantenimiento || a.tipo_orden || "" };
+  if (maq) {
+    aplicarModulo("ensayos");
+    await abrirMaquina(maq.id);
+    nuevoEnsayo();
+    return;
+  }
+  /* La máquina no está en Ensayos: se crea desde los datos de la actividad y
+     después se sigue con el ensayo. */
+  if (!confirm("El equipo " + (a.descripcion_equipo || sap) + " no está en el catálogo de máquinas eléctricas. ¿Crearlo ahora con los datos de la actividad?")) { eeVolver = null; return; }
+  eeVolver.crear = true;
+  aplicarModulo("ensayos");
+  nuevaMaquina();
+  const v = (k, val) => { const el = document.getElementById("ee-f-" + k); if (el && val) el.value = val; };
+  v("sap", sap); v("serial", serie); v("marca", a.marca); v("modelo", a.modelo); v("ubicacion", a.ubicacion_tecnica || a.estacion);
+  const txt = [a.descripcion_equipo, a.descripcion_trabajo].filter(Boolean).join(" ").toUpperCase();
+  const tipoSel = document.getElementById("ee-f-tipo");
+  if (tipoSel) tipoSel.value = /GENERADOR|ALTERNADOR/.test(txt) ? "GENERADOR" : "MOTOR";
+  if (typeof eeToggleGenerador === "function") eeToggleGenerador();
+  const bus = document.getElementById("ee-eq-buscar");
+  if (bus && sap) { bus.value = sap; if (typeof buscarEquipoActivos === "function") buscarEquipoActivos(); }
+  toast("Completa la tensión nominal y guarda la máquina; después sigue el ensayo.");
+}
+
+function progAdjuntarEnsayoExistente() {
+  if (!progActual) return;
+  /* El selector vive en el FO-016 de la jornada: se abre y se lanza. */
+  otAbrir(progJornadaFecha || progFecha).then(() => { if (typeof otAbrirSelectorEnsayo === "function") otAbrirSelectorEnsayo(); });
+}
+
+function eeBannerVolver() {
+  let b = document.getElementById("ee-banner-volver");
+  const anc = document.getElementById("ee-ens-maquina");
+  if (!anc) return;
+  if (!b) { b = document.createElement("div"); b.id = "ee-banner-volver"; b.className = "hint-box"; anc.parentNode.insertBefore(b, anc.nextSibling); }
+  if (!eeVolver) { b.style.display = "none"; return; }
+  b.style.display = "";
+  b.innerHTML = "&#128206; Al guardar, este ensayo queda <b>adjunto a la actividad " + otEsc(eeVolver.numero_ot || "sin OT") + "</b> (" + otEsc(eeVolver.equipo) + "), jornada del " + progFmtFecha(eeVolver.fecha)
+    + ', y vuelves a la actividad. <a href="#" onclick="eeVolver=null;eeBannerVolver();return false">No adjuntar</a>';
+}
+
+async function eeAdjuntarYVolver(ensayoId) {
+  const v = eeVolver; eeVolver = null;
+  try {
+    const r = await sb.from("programa_ot_anexos").select("orden").eq("actividad_id", v.actividad_id).eq("fecha", v.fecha);
+    const orden = ((r.data || []).length ? Math.max(...(r.data || []).map(x => x.orden || 1)) : 0) + 1;
+    const { error } = await sb.from("programa_ot_anexos").insert({ actividad_id: v.actividad_id, fecha: v.fecha, ensayo_id: ensayoId, orden });
+    if (error) throw error;
+    toast("Ensayo guardado y adjunto a la actividad " + (v.numero_ot || ""));
+  } catch (e) {
+    toast("Ensayo guardado, pero no se pudo adjuntar: " + e.message);
+  }
+  aplicarModulo("programacion");
+  if ((progLista || []).some(x => String(x.id) === String(v.actividad_id))) progAbrirActividad(v.actividad_id);
+}
+
 function progRenderJornadas() {
   const cont = document.getElementById("prog-jornadas");
   if (!cont) return;
