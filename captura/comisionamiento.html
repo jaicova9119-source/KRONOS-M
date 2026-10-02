@@ -756,6 +756,8 @@ function combinar(L, Rm){
   var c = JSON.parse(JSON.stringify(L)), quitadas = L.fotos_quitadas || [];
   Object.keys(Rm.d).forEach(function(pid){ Rm.d[pid].fotos = Rm.d[pid].fotos.filter(function(f){ return quitadas.indexOf(f) < 0; }); });
   ['codigo','estado','es_prueba','aprobado_en'].forEach(function(k){ if (Rm[k] != null) c[k] = Rm[k]; });
+  /* Firmantes: manda el servidor salvo que aquí haya un cambio aún sin enviar. */
+  if (!leerCola().some(function(x){ return x.clave === 'cm-firm-' + L.id; })) { c.revisa = Rm.revisa; c.aprueba = Rm.aprueba; }
   if (Rm.conclusion != null && L.conclusion == null) c.conclusion = Rm.conclusion;
   Object.keys(Rm.d).forEach(function(pid){
     var l = c.d[pid], r = Rm.d[pid];
@@ -781,7 +783,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v2.2 · 01/10/2026';
+var VERSION = 'v2.4 · 01/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -805,7 +807,7 @@ function leerRemoto(id){
     if (r.error || !r.data) throw new Error('No se pudo leer el comisionamiento del servidor.');
     var x = r.data, c = x.comisionamiento;
     var com = { id: c.id, codigo: c.codigo, pozo_id: c.pozo_id, pozo_nombre: c.pozo_nombre, campo: c.campo, orden: c.orden,
-      ejecutantes: (c.ejecutantes || []).map(function(e){ return e.nombre || e; }), revisa: c.revisa || '', plantilla_id: c.plantilla_id,
+      ejecutantes: (c.ejecutantes || []).map(function(e){ return e.nombre || e; }), revisa: c.revisa || '', aprueba: c.aprueba || '', aprobado_en: c.aprobado_en || null, plantilla_id: c.plantilla_id,
       plantilla_version: c.plantilla_version, estado: c.estado, es_prueba: c.es_prueba, conclusion: c.conclusion, creado_por: c.creado_por, d: {}, actualizado: c.actualizado_en };
     (x.pasos || []).forEach(function(p){
       var pre = {}; ['a','o'].forEach(function(t){ ((p.textos || {})[t] || []).forEach(function(k){ pre[t + '.' + k] = true; }); });
@@ -1332,9 +1334,19 @@ function hallazgos(){
   return H;
 }
 function conclusion(H){
+  function lista(a){ return a.length < 2 ? a.join('') : a.slice(0, -1).join(', ') + ' y ' + a[a.length - 1]; }
+  function min1(t){ return t.charAt(0).toLowerCase() + t.slice(1); }      // conserva PST, SUT, SCADA
   var n = H.filter(function(h){ return h.sev === 'Alta'; }).length;
-  var ok = EQUIPOS.filter(function(e){ return e.id !== 'prep' && estadoEq(e.id) === 'C'; }).map(function(e){ return e.t.toLowerCase(); });
-  return (ok.length ? 'Los equipos ' + ok.join(', ') + ' quedaron probados con resultados dentro de criterio. ' : '') + (n ? 'La unidad queda pendiente de liberación para arranque con carga hasta cerrar ' + (n === 1 ? 'el hallazgo de prioridad alta.' : 'los ' + n + ' hallazgos de prioridad alta.') : 'La unidad queda liberada para arranque con carga.');
+  var ok = EQUIPOS.filter(function(e){ return e.id !== 'prep' && estadoEq(e.id) === 'C'; }).map(function(e){ return min1(e.t); });
+  var pend = [];
+  PASOS.forEach(function(p){ var d = S.com.d[p.id]; if (!d || d.na) return;
+    if (d.pendiente) pend.push(min1(p.t) + ' (' + d.pendiente.replace(/\.$/, '') + ')');
+    else Object.keys(d.pend || {}).forEach(function(g){ pend.push(min1(p.t) + ', ' + g + ' (' + d.pend[g].replace(/\.$/, '') + ')'); }); });
+  var t = ok.length ? (ok.length === 1 ? 'El ' + ok[0] + ' quedó probado' : 'Los equipos ' + lista(ok) + ' quedaron probados') + ' con resultados dentro de criterio. ' : '';
+  t += n ? 'La unidad queda pendiente de liberación para arranque con carga hasta cerrar ' + (n === 1 ? 'el hallazgo de prioridad alta.' : 'los ' + n + ' hallazgos de prioridad alta.')
+         : 'La unidad queda liberada para arranque con carga.';
+  if (pend.length) t += ' Queda' + (pend.length > 1 ? 'n' : '') + ' pendiente' + (pend.length > 1 ? 's' : '') + ': ' + lista(pend) + '.';
+  return t;
 }
 function vCierre(){
   var c = S.com; enc(c.pozo_nombre, 'Informe · ' + (EST_COM[c.estado] || c.estado));
@@ -1346,11 +1358,20 @@ function vCierre(){
   h += '<h2>Hallazgos</h2>' + (H.length ? H.map(function(x){ return '<div class="hall s' + x.sev + '"><b>' + esc(x.eq) + (x.p ? ': ' + esc(x.p) : '') + '</b><div>' + esc(x.txt) + '</div><small>' + esc(x.acc) + '</small></div>'; }).join('') : '<p class="nota">Sin hallazgos.</p>');
   h += '</div><div>';
   h += '<h2>Conclusión</h2><textarea id="concl" style="min-height:120px"' + (editable() ? '' : ' readonly') + '>' + esc(c.conclusion != null ? c.conclusion : conclusion(H)) + '</textarea>';
-  h += '<div class="panel suave"><b>Informe PDF</b><p class="nota">Encabezado con logos, secciones numeradas, resultados por equipo con criterio y referencia, hallazgos y anexo fotográfico.' + (c.estado !== 'aprobado' ? ' Mientras no esté aprobado sale marcado como borrador.' : '') + '</p><button class="btn ancho" id="pdf">Generar informe PDF</button><p class="nota" id="msg"></p></div></div></div>';
+  var edF = c.estado !== 'aprobado' && c.estado !== 'anulado';
+  h += '<div class="panel"><b>Firmas del informe</b>' +
+    '<div class="campo" style="margin-top:10px"><span>Realizó</span><div class="ro">' + esc(c.ejecutantes[0] || '—') + '<small>responsable de la ejecución</small></div></div>' +
+    '<label class="campo"><span>Revisó (nombre y cargo)</span><input id="f-revisa" value="' + esc(c.revisa || '') + '" placeholder="Ej.: Edwin Ibarra, Supervisor"' + (edF ? '' : ' readonly') + '></label>' +
+    '<label class="campo" style="margin:0"><span>Aprobó (nombre y cargo)</span><input id="f-aprueba" value="' + esc(c.aprueba || '') + '" placeholder="Ej.: Ingeniero de producción"' + (edF ? '' : ' readonly') + '></label></div>';
+  h += '<p class="nota">El PDF sale listo para firmar: impreso o con firma digital sobre el mismo archivo. Los nombres de Revisó y Aprobó se imprimen bajo el espacio de firma. La aprobación dentro del sistema sigue disponible, pero no es necesaria para el PDF.</p>';
+  h += '<div class="panel suave"><b>Informe PDF</b><p class="nota">Encabezado con el logo de Confipetrol, secciones numeradas, resultados por equipo con criterio y referencia, hallazgos, casillas de firma y anexo fotográfico.</p><button class="btn ancho" id="pdf">Generar informe PDF</button><p class="nota" id="msg"></p></div></div></div>';
   $('cuerpo').innerHTML = h;
   $('cuerpo').classList.remove('ro');
   if (editable()) $('concl').onchange = function(){ c.conclusion = this.value; guardarLocal(); enviar('dp_cm_q_conclusion', { comisionamiento_id: c.id, texto: c.conclusion }, 'Comisionamiento ' + c.pozo_nombre + ': conclusión', 'cm-concl-' + c.id, c.id); };
   $('pdf').onclick = exportar;
+  ['revisa','aprueba'].forEach(function(k){ var el = $('f-' + k); if (!el || el.readOnly) return;
+    el.onchange = function(){ c[k] = el.value.trim(); guardarLocal();
+      enviar('dp_cm_q_firmantes', { comisionamiento_id: c.id, revisa: c.revisa || '', aprueba: c.aprueba || '' }, 'Comisionamiento ' + c.pozo_nombre + ': firmantes', 'cm-firm-' + c.id, c.id); toast('Firmantes guardados'); }; });
   var b = '<button class="btn sec" id="rt" aria-label="Volver al recorrido">‹</button>';
   var libres = S.tpl.revision_permite_pendientes || [], faltan = PASOS.filter(function(p){ return libres.indexOf(p.eq) < 0 && !estadoPaso(p).ok; }).length;
   if (editable()) b += '<button class="btn pri" id="env"' + (cola || faltan ? ' disabled' : '') + '>' + (faltan ? 'Faltan ' + faltan + ' pasos para enviar' : cola ? cola + ' envíos pendientes' : 'Enviar a revisión') + '</button>';
@@ -1380,7 +1401,7 @@ function cargar(src){ return new Promise(function(ok, ko){ var s = document.crea
 var LIBS = null;
 function libs(){ return LIBS || (LIBS = cargar('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js').then(function(){ return cargar('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js'); }).then(function(){ return window.CM_RECURSOS ? null : cargar('cm-recursos.js'); })); }
 function exportar(){ var m = $('msg'); m.textContent = 'Generando el informe…';
-  libs().then(fotosInforme).then(armarPdf).then(function(b){ var n = 'Informe_Comisionamiento_BES_' + S.com.pozo_nombre + (S.com.estado === 'aprobado' ? '' : '_BORRADOR') + '.pdf';
+  libs().then(fotosInforme).then(armarPdf).then(function(b){ var n = 'Informe_Comisionamiento_BES_' + S.com.pozo_nombre + '.pdf';
     var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = n; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 4000); m.textContent = 'Informe generado: ' + n; })
   .catch(function(e){ LIBS = null; m.textContent = e.message || 'No se pudo generar el informe.'; }); }
 function fotosInforme(){ var ids = []; PASOS.forEach(function(p){ var d = S.com.d[p.id]; if (d) d.fotos.forEach(function(f){ ids.push(f); }); });
@@ -1391,12 +1412,16 @@ function armarPdf(FOTOS){
   if (A.font) { doc.addFileToVFS('LS.ttf', A.font); doc.addFont('LS.ttf', 'LS', 'normal'); doc.addFileToVFS('LSB.ttf', A.fontb); doc.addFont('LSB.ttf', 'LS', 'bold'); }
   var F = A.font ? 'LS' : 'helvetica', W = 215.9, Hh = 279.4, M = 18, CW = W - 2 * M, y = 0, foto = [], c = S.com, em = hoy();
   /* El código es el del comisionamiento (COMISIONAMIENTO-<POZO>-<NNN>), lo asigna la base al crearlo. */
-  var codigo = c.codigo || 'Pendiente de sincronizar', borrador = c.estado !== 'aprobado';
+  /* El PDF sale listo para firma (digital o impresa) aunque el
+     comisionamiento no esté aprobado en el sistema: revisor y aprobador
+     firman sobre el documento. La aprobación en Kronos queda disponible. */
+  var codigo = c.codigo || 'Pendiente de sincronizar', borrador = false;
   function T(sz, b){ doc.setFont(F, b ? 'bold' : 'normal'); doc.setFontSize(sz); doc.setTextColor(34, 34, 34); }
   function logo(k, x, yy, w, h){ try { if (A[k]) doc.addImage('data:image/png;base64,' + A[k], 'PNG', x, yy, w, h); } catch(e){} }
-  function header(){ var top = 10, hh = 17, wl = 38, wr = 38, wc = CW - wl - wr; doc.setDrawColor(58, 58, 58); doc.setLineWidth(0.25); doc.rect(M, top, CW, hh); doc.line(M + wl, top, M + wl, top + hh); doc.line(M + wl + wc, top, M + wl + wc, top + hh);
-    logo('gte', M + 4, top + 3.2, 30, 9.7); logo('cfp', M + wl + wc + 5, top + 3.5, 28, 8.7);
-    T(9.2, true); doc.text('INFORME DE COMISIONAMIENTO' + (borrador ? '  (BORRADOR)' : ''), M + wl + wc / 2, top + 6.2, { align: 'center' }); T(8); doc.text('Equipos de superficie sistema BES  |  Pozo ' + c.pozo_nombre, M + wl + wc / 2, top + 10.2, { align: 'center' });
+  var HW = { wr: 42 };
+  function header(){ var top = 10, hh = 17, wr = HW.wr, wc = CW - wr; doc.setDrawColor(58, 58, 58); doc.setLineWidth(0.25); doc.rect(M, top, CW, hh); doc.line(M + wc, top, M + wc, top + hh);
+    logo('cfp', M + wc + 6, top + 3.6, 30, 9.3);
+    T(9.2, true); doc.text('INFORME DE COMISIONAMIENTO', M + wc / 2, top + 6.2, { align: 'center' }); T(8); doc.text('Equipos de superficie sistema BES  |  Pozo ' + c.pozo_nombre, M + wc / 2, top + 10.2, { align: 'center' });
   }
   function nueva(){ doc.addPage(); header(); y = 33; }
   function cabe(h){ if (y + h > Hh - 16) nueva(); }
@@ -1413,13 +1438,13 @@ function armarPdf(FOTOS){
       columnStyles: { 0: { fontStyle: 'bold', fillColor: [244,244,244], cellWidth: 34 }, 1: { cellWidth: CW / 2 - 34 }, 2: { fontStyle: 'bold', fillColor: [244,244,244], cellWidth: 34 }, 3: { cellWidth: CW / 2 - 34 } }, didDrawPage: function(dd){ if (dd.pageNumber > 1) header(); } }); y = doc.lastAutoTable.finalY + 4; }
   function refFotos(d, t){ var fs = d.fotos.filter(function(id){ return FOTOS[id]; }); if (!fs.length) return; var a = foto.length + 1; fs.forEach(function(id){ foto.push([FOTOS[id], t]); }); var b = foto.length; par('Registro fotográfico: ' + (a === b ? 'Foto ' + a : 'Fotos ' + a + ' a ' + b) + ' (Anexo A).', 7.8); }
   /* portada */
-  logo('gte', M, 14, 45, 14.6); logo('cfp', W - M - 42, 14, 42, 13); doc.setDrawColor(58, 58, 58); doc.setLineWidth(0.4); doc.line(M, 33, W - M, 33);
+  logo('cfp', W - M - 46, 13, 46, 14.3); doc.setDrawColor(58, 58, 58); doc.setLineWidth(0.4); doc.line(M, 33, W - M, 33);
   T(20, true); doc.text('INFORME DE COMISIONAMIENTO', W / 2, 95, { align: 'center' }); T(12); doc.setTextColor(85, 85, 85); doc.text('Equipos de superficie del sistema de bombeo electrosumergible', W / 2, 103, { align: 'center' });
   T(13, true); doc.text('POZO ' + c.pozo_nombre, W / 2, 122, { align: 'center' }); if (c.campo) { T(12); doc.setTextColor(85, 85, 85); doc.text('Campo ' + c.campo, W / 2, 129, { align: 'center' }); }
   var fechas = PASOS.map(function(p){ return c.d[p.id] && c.d[p.id].fecha; }).filter(Boolean).sort(function(a, b){ var k = function(x){ return x.split('/').reverse().join(''); }; return k(a) < k(b) ? -1 : 1; });
-  y = 150; kv([['Cliente','Gran Tierra Energy'],['Ejecutor','Confipetrol'],['Pozo',c.pozo_nombre],['Campo',c.campo || '—'],['Sistema','Bombeo electrosumergible (BES)'],['Periodo de ejecución', fechas.length ? fechas[0] + ' al ' + fechas[fechas.length - 1] : '—'],['Orden de trabajo',c.orden],['Ejecutado por',c.ejecutantes.join(', ')],['Revisado por',c.revisa || '—'],['Código',codigo],['Fecha de emisión',em],['Estado',EST_COM[c.estado] + (c.es_prueba ? ' (prueba)' : '')]]);
+  y = 150; kv([['Cliente','Gran Tierra Energy'],['Ejecutor','Confipetrol'],['Pozo',c.pozo_nombre],['Campo',c.campo || '—'],['Sistema','Bombeo electrosumergible (BES)'],['Periodo de ejecución', fechas.length ? fechas[0] + ' al ' + fechas[fechas.length - 1] : '—'],['Orden de trabajo',c.orden],['Ejecutado por',c.ejecutantes.join(', ')],['Revisado por',c.revisa || '—'],['Código',codigo],['Fecha de emisión',em],['Aprobado por',c.aprueba || '—'],['Estado',(c.estado === 'aprobado' ? 'Aprobado' : 'Emitido para firma') + (c.es_prueba ? ' (prueba)' : '')]]);
   y += 4; T(9.6, true); doc.text('Control de versiones', M, y + 3); y += 6;
-  tabla(['Versión','Fecha','Descripción','Elaboró','Revisó','Aprobó'], [['0', em, borrador ? 'Emisión para revisión' : 'Emisión aprobada', c.ejecutantes[0] || '', c.revisa || '', '']], [16,22,CW-16-22-84,28,28,28]);
+  tabla(['Versión','Fecha','Descripción','Elaboró','Revisó','Aprobó'], [['0', em, 'Emisión para firma', c.ejecutantes[0] || '', c.revisa || '', c.aprueba || '']], [16,22,CW-16-22-84,28,28,28]);
   doc.setFontSize(7); doc.setTextColor(85, 85, 85); doc.text('Equipos instalados en sistemas y procesos operados por Gran Tierra Energy.', M, Hh - 9);
   /* cuerpo */
   nueva();
@@ -1486,7 +1511,24 @@ function armarPdf(FOTOS){
   tabla(['N.º','Equipo','Hallazgo','Recomendación','Prioridad'], H.map(function(x, i){ return ['R' + (i + 1), x.eq, x.txt, x.acc, x.sev]; }), [11, 30, (CW - 11 - 30 - 18) / 2, (CW - 11 - 30 - 18) / 2, 18]);
   h1('7. Conclusiones'); par(c.conclusion != null ? c.conclusion : conclusion(H));
   h1('8. Aprobación');
-  doc.autoTable({ startY: y, head: [['Realizó','Revisó','Aprobó']], body: [['\n\n\n' + (c.ejecutantes[0] || '') + '\nConfipetrol', '\n\n\n' + (c.revisa || 'Nombre:') + '\nConfipetrol', '\n\n\nNombre:\nGran Tierra Energy']], margin: { left: M, right: M, top: 33 }, styles: { font: F, fontSize: 7.8, lineColor: [189,189,189], lineWidth: 0.12, textColor: [34,34,34] }, headStyles: { fillColor: [228,228,228], textColor: [34,34,34], fontStyle: 'bold' }, didDrawPage: function(dd){ if (dd.pageNumber > 1) header(); } }); y = doc.lastAutoTable.finalY + 4;
+  /* Tres casillas con espacio para la firma (manuscrita o digital sobre el
+     mismo PDF), nombre y cargo, y fecha. */
+  (function(){
+    cabe(58);
+    var col = (CW - 8) / 3, alto = 50, firmas = [['Realizó', c.ejecutantes[0] || '', 'Confipetrol'], ['Revisó', c.revisa || '', ''], ['Aprobó', c.aprueba || '', '']];
+    firmas.forEach(function(f, i){
+      var x = M + i * (col + 4);
+      doc.setFillColor(228, 228, 228); doc.rect(x, y, col, 7, 'F');
+      doc.setDrawColor(189, 189, 189); doc.setLineWidth(0.25); doc.rect(x, y, col, alto); doc.line(x, y + 7, x + col, y + 7);
+      T(8.4, true); doc.text(f[0], x + 3, y + 4.8);
+      doc.setDrawColor(90, 90, 90); doc.line(x + 4, y + 31, x + col - 4, y + 31);
+      T(6.6); doc.setTextColor(120, 120, 120); doc.text('Firma', x + col / 2, y + 34, { align: 'center' });
+      T(8); var nl = doc.splitTextToSize(f[1] || 'Nombre:', col - 8); doc.text(nl.slice(0, 2), x + 4, y + 39);
+      if (f[2]) { T(7.4); doc.setTextColor(85, 85, 85); doc.text(f[2], x + 4, y + 39 + Math.min(nl.length, 2) * 3.6); }
+      T(7.4); doc.setTextColor(85, 85, 85); doc.text('Fecha: ____ / ____ / ________', x + 4, y + alto - 3);
+    });
+    y += alto + 6;
+  })();
   if (foto.length) { nueva(); h1('Anexo A. Registro fotográfico'); var w = (CW - 6) / 2, hh = 60, col = 0;
     foto.forEach(function(f, i){ if (col === 0) cabe(hh + 10); var x = M + col * (w + 6), pr = doc.getImageProperties(f[0]), k = Math.min(w / pr.width, hh / pr.height), iw = pr.width * k, ih = pr.height * k;
       doc.setDrawColor(189, 189, 189); doc.rect(x, y, w, hh + 8); doc.addImage(f[0], 'JPEG', x + (w - iw) / 2, y + 1 + (hh - ih) / 2, iw, ih); T(7.4); doc.setTextColor(85, 85, 85); doc.text(doc.splitTextToSize('Foto ' + (i + 1) + '. ' + f[1], w - 4), x + w / 2, y + hh + 4.5, { align: 'center' });
@@ -1494,11 +1536,11 @@ function armarPdf(FOTOS){
   var n = doc.internal.getNumberOfPages();
   /* Encabezado: código, versión y emisión, ajustado al ancho de la celda
      central para que no pise los logos. La página va solo al pie. */
-  var lineaCod = 'Código: ' + codigo + '   ·   Versión: 0   ·   Emisión: ' + em, anchoCelda = CW - 76 - 6;
+  var lineaCod = 'Código: ' + codigo + '   ·   Versión: 0   ·   Emisión: ' + em, anchoCelda = CW - HW.wr - 6;
   for (var pg = 1; pg <= n; pg++) {
     doc.setPage(pg);
     if (pg > 1) { var fs = 7.2; T(fs); while (fs > 5.6 && doc.getTextWidth(lineaCod) > anchoCelda) { fs -= 0.2; doc.setFontSize(fs); }
-      doc.setTextColor(85, 85, 85); doc.text(lineaCod, M + 38 + (CW - 76) / 2, 24.2, { align: 'center' }); }
+      doc.setTextColor(85, 85, 85); doc.text(lineaCod, M + (CW - HW.wr) / 2, 24.2, { align: 'center' }); }
     T(7.2); doc.setTextColor(85, 85, 85); doc.text('Página ' + pg + ' de ' + n, W - M, Hh - 9, { align: 'right' });
     if (pg > 1) doc.text(c.codigo || '', M, Hh - 9);
   }
