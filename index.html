@@ -868,6 +868,29 @@ html,body{height:100%;margin:0;}
 #ee-informe .inf-firmas td{width:50%;padding-top:6px;vertical-align:bottom}
 #ee-informe .inf-espacio{height:34px}
 #ee-informe .inf-piepag{margin-top:18px;border-top:1px solid #ccc;padding-top:5px}
+/* Registro fotográfico: el cuerpo del informe solo lo menciona; las fotos van
+   en un anexo que empieza en hoja nueva y que se puede dejar por fuera. */
+#ee-informe .inf-ref-fotos{font-size:11px;color:#333;margin-top:10px;padding:5px 8px;border:1px dashed #999}
+#ee-informe .inf-anexo{break-before:page;page-break-before:always;margin-top:20px}
+#ee-informe .inf-anexo-tabla{width:100%;border-collapse:separate;border-spacing:0 8px;table-layout:fixed}
+#ee-informe .inf-foto{border:1px solid #bbb;padding:6px;text-align:center;vertical-align:top;width:50%}
+#ee-informe .inf-foto-sep{width:8px;border:0;padding:0}
+#ee-informe .inf-foto img{max-width:100%;max-height:8.2cm;height:auto;display:block;margin:0 auto}
+#ee-informe .inf-foto-pie{font-size:10px;color:#222;margin-top:4px;text-align:left}
+#ee-informe .inf-foto-pie b{font-weight:700}
+/* Para impresora monocromática: una foto a color sale oscura y plana. */
+#ee-informe.inf-bn .inf-foto img{filter:grayscale(1) contrast(1.25) brightness(1.06)}
+/* Captura de fotos en el formulario del ensayo */
+.ee-fotos-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ee-fotos-btns .btn-secondary{flex:1 1 140px}
+.ee-fotos-zona{border:2px dashed transparent;border-radius:10px;padding:2px}
+.ee-fotos-zona.encima{border-color:var(--accent,#1B8E9E);background:var(--surface-2,#eef2f4)}
+.ee-fotos-lista{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+.ee-foto{border:1px solid var(--line);border-radius:10px;padding:8px;background:var(--card,#fff)}
+.ee-foto img{width:100%;height:120px;object-fit:cover;border-radius:6px;display:block;background:#eee}
+.ee-foto select,.ee-foto input{width:100%;margin-top:6px;padding:6px;border:1px solid var(--line);border-radius:6px;font-size:13px}
+.ee-foto .ee-foto-quitar{margin-top:6px;width:100%}
+.ee-foto.nueva{outline:2px solid var(--accent,#1B8E9E)}
 /* Contenedor temporal: eeImprimirInforme() mueve aqui el informe justo antes
    de llamar a window.print() y lo devuelve al terminar. Es la unica forma de
    sacarlo de .panel-body (overflow:auto) y de .panel (max-width:520px), que
@@ -956,6 +979,7 @@ html,body{height:100%;margin:0;}
   #print-root .inf-cab td{padding-bottom:5pt!important}
   #print-root .inf-cab-logo{padding-right:10pt!important}
   #print-root .inf-dictamen{padding:6pt!important;margin-top:2pt!important}
+  #print-root .inf-foto,#print-root .inf-anexo-tabla tr{break-inside:avoid;page-break-inside:avoid}
   #print-root .inf-datos .inf-tabla{font-size:8pt!important}
   #print-root .inf-datos .inf-tabla td{padding:1.5pt 4pt!important}
   /* Identificacion, descargo y firmas son un solo bloque indivisible: si el
@@ -2867,6 +2891,10 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
     <div class="field" style="margin-top:12px"><label>Observaciones</label><textarea id="ee-e-obs" rows="3"></textarea></div>
 
+    <div class="section-label">Registro fotográfico</div>
+    <p class="hint-box">Evidencia del ensayo: placa del equipo, conexión de la prueba, lectura del instrumento, condición encontrada. Las fotos no van dentro del informe: salen en un anexo aparte y al imprimir eliges si incluirlo. Se guardan al guardar el ensayo.</p>
+    <div id="ee-fotos" class="ee-fotos-zona"></div>
+
     <div class="section-label">Firma del ejecutante · Realizó</div>
     <p class="hint-box">Opcional. Es la firma de quien hizo el ensayo y sale en la casilla "Realizó" del informe. Si prefieres firmar en papel, déjalo vacío. La firma de revisión ("Revisó") no va aquí: se hace con el botón <b>Firmar</b> de la tarjeta del ensayo, después de guardarlo.</p>
     <div id="ee-firma-ejec-vista" style="margin-bottom:8px"></div>
@@ -2946,6 +2974,12 @@ input,select,textarea{font-family:inherit;font-size:15px;}
          pantalla en el móvil para un ajuste que el navegador recuerda
          después de la primera impresión. Ahora el informe se imprime desde
          un marco propio, así que tampoco hace falta. -->
+    <div class="no-print field" id="ee-inf-opciones" style="display:none">
+      <label>Registro fotográfico · <span class="ee-inf-n"></span></label>
+      <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="ee-inf-anexo" checked style="width:auto"/> Incluir el anexo fotográfico al imprimir o guardar PDF</label>
+      <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="ee-inf-bn" style="width:auto"/> Fotos optimizadas para impresión en blanco y negro</label>
+      <div class="mat-stock">Sin el anexo, el informe queda en sus hojas de siempre e indica que el registro fotográfico existe. El anexo empieza en hoja nueva.</div>
+    </div>
     <div class="no-print field">
       <label>Logo del informe (opcional)</label>
       <input type="file" accept="image/*" onchange="eeCargarLogo(this)"/>
@@ -9270,6 +9304,7 @@ function nuevoEnsayo() {
   }
   eeEnsayoEditando = null;
   abrirPanel("panel-ee-ensayo");
+  eeFotosBloqueadas = false; eeFotosCargar(null);
   document.getElementById("ee-ens-titulo").textContent = "Nuevo ensayo";
   document.getElementById("ee-ens-maquina").textContent = eeMaquinaActual.nombre_efectivo || "";
   document.getElementById("ee-e-fecha").value = new Date().toISOString().slice(0, 10);
@@ -9523,6 +9558,150 @@ function eeRestaurarBorrador() {
   } catch (e) { /* borrador corrupto */ }
 }
 
+/* ============================================================
+   REGISTRO FOTOGRÁFICO DEL ENSAYO
+   Las fotos viven en Storage (bucket "ensayos") y en ensayo_fotos; nunca
+   dentro de la fila del ensayo. En el formulario se agregan, se clasifican
+   y se quitan en memoria, y todo se aplica al guardar el ensayo: así un
+   ensayo nuevo, que aún no tiene id, también puede llevar fotos.
+   ============================================================ */
+const EE_FOTO_CAT = { placa: "Placa del equipo", conexion: "Conexión de la prueba", lectura: "Lectura del instrumento", condicion: "Condición encontrada", otra: "Otra" };
+let eeFotos = [];            // { id, url, storage_path, categoria, pie, orden, nueva, borrar, cambio, blob }
+let eeFotosBloqueadas = false;
+
+function eeNuevoId() {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === "x" ? r : (r & 3 | 8)).toString(16); });
+}
+/* Misma compresión del comisionamiento: 1280 px y JPEG 0,72. */
+function eeComprimirFoto(file) {
+  return new Promise((ok, ko) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      try {
+        const k = Math.min(1, 1280 / Math.max(img.width, img.height)), cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        const g = cv.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        cv.toBlob(b => b ? ok({ blob: b, url: URL.createObjectURL(b) }) : ko(new Error("formato")), "image/jpeg", 0.72);
+      } catch (e) { URL.revokeObjectURL(url); ko(e); }
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); ko(new Error("formato")); };
+    img.src = url;
+  });
+}
+async function eeFotosCargar(ensayoId) {
+  eeFotos = [];
+  if (!ensayoId) { eeFotosPintar(); return; }
+  try {
+    const { data, error } = await sb.from("ensayo_fotos").select("*").eq("ensayo_id", ensayoId).order("orden");
+    if (error) throw error;
+    const filas = data || [];
+    const firmadas = filas.length ? await sb.storage.from("ensayos").createSignedUrls(filas.map(f => f.storage_path), 3600) : { data: [] };
+    const urls = {}; (firmadas.data || []).forEach(x => { if (x && x.path) urls[x.path] = x.signedUrl; });
+    eeFotos = filas.map(f => ({ ...f, url: urls[f.storage_path] || "" }));
+  } catch (e) {
+    console.warn("Fotos del ensayo no disponibles:", e);
+  }
+  eeFotosPintar();
+}
+function eeFotosPintar() {
+  const c = document.getElementById("ee-fotos");
+  if (!c) return;
+  const vivas = eeFotos.filter(f => !f.borrar);
+  const tactil = window.matchMedia && matchMedia("(pointer: coarse)").matches;
+  let html = "";
+  if (!eeFotosBloqueadas) {
+    html += '<div class="ee-fotos-btns">' + (tactil
+      ? '<button type="button" class="btn-secondary" id="ee-foto-cam">Tomar foto</button><button type="button" class="btn-secondary" id="ee-foto-gal">Desde la galería</button>'
+      : '<button type="button" class="btn-secondary" id="ee-foto-gal">Cargar fotos</button>') + '</div>'
+      + '<input type="file" id="ee-foto-in-cam" accept="image/*" capture="environment" style="display:none"/>'
+      + '<input type="file" id="ee-foto-in-gal" accept="image/*" multiple style="display:none"/>'
+      + (tactil ? "" : '<p class="mat-stock" style="margin:0 0 8px">También puedes arrastrar las fotos hasta aquí.</p>');
+  } else if (!vivas.length) {
+    html += '<p class="mat-stock">Sin registro fotográfico.</p>';
+  }
+  html += '<div class="ee-fotos-lista">' + vivas.map(f => {
+    const i = eeFotos.indexOf(f);
+    return '<div class="ee-foto' + (f.nueva ? " nueva" : "") + '">'
+      + (f.url ? '<img src="' + f.url + '" alt=""/>' : '<img alt=""/>')
+      + '<select data-ef="' + i + '" data-k="categoria"' + (eeFotosBloqueadas ? " disabled" : "") + '>'
+      + Object.entries(EE_FOTO_CAT).map(([k, v]) => '<option value="' + k + '"' + (f.categoria === k ? " selected" : "") + '>' + v + '</option>').join("") + '</select>'
+      + '<input data-ef="' + i + '" data-k="pie" placeholder="Pie de foto (opcional)" value="' + String(f.pie || "").replace(/"/g, "&quot;") + '"' + (eeFotosBloqueadas ? " readonly" : "") + '/>'
+      + (eeFotosBloqueadas ? "" : '<button type="button" class="btn-secondary ee-foto-quitar" data-eq="' + i + '">Quitar</button>')
+      + '</div>';
+  }).join("") + '</div>';
+  if (vivas.length) html += '<p class="mat-stock" style="margin-top:6px">' + vivas.length + (vivas.length === 1 ? " foto" : " fotos")
+    + (eeFotos.some(f => f.nueva || f.borrar || f.cambio) ? " · los cambios se aplican al guardar el ensayo" : "") + '</p>';
+  c.innerHTML = html;
+
+  const abrir = id => { const el = document.getElementById(id); if (el) el.click(); };
+  const bc = document.getElementById("ee-foto-cam"), bg = document.getElementById("ee-foto-gal");
+  if (bc) bc.onclick = () => abrir("ee-foto-in-cam");
+  if (bg) bg.onclick = () => abrir("ee-foto-in-gal");
+  ["ee-foto-in-cam", "ee-foto-in-gal"].forEach(id => { const el = document.getElementById(id); if (el) el.onchange = () => { eeFotosAgregar(el.files); el.value = ""; }; });
+  c.querySelectorAll("[data-ef]").forEach(el => {
+    el.onchange = () => { const f = eeFotos[+el.dataset.ef]; f[el.dataset.k] = el.value; if (!f.nueva) f.cambio = true; };
+  });
+  c.querySelectorAll("[data-eq]").forEach(b => {
+    b.onclick = () => { const f = eeFotos[+b.dataset.eq]; if (f.nueva) eeFotos.splice(+b.dataset.eq, 1); else f.borrar = true; eeFotosPintar(); };
+  });
+  if (!eeFotosBloqueadas) {
+    c.ondragover = ev => { ev.preventDefault(); c.classList.add("encima"); };
+    c.ondragleave = () => c.classList.remove("encima");
+    c.ondrop = ev => { ev.preventDefault(); c.classList.remove("encima"); eeFotosAgregar(ev.dataTransfer && ev.dataTransfer.files); };
+  } else { c.ondragover = c.ondrop = c.ondragleave = null; }
+}
+async function eeFotosAgregar(lista) {
+  const archivos = Array.from(lista || []).filter(f => /^image\//.test(f.type) || /\.(heic|heif)$/i.test(f.name));
+  if (!archivos.length) return;
+  const malas = [];
+  toast(archivos.length === 1 ? "Procesando la foto…" : "Procesando " + archivos.length + " fotos…");
+  for (const f of archivos) {
+    try {
+      const r = await eeComprimirFoto(f);
+      eeFotos.push({ id: eeNuevoId(), url: r.url, blob: r.blob, categoria: "lectura", pie: "", orden: eeFotos.length,
+                     tomada_en: new Date(f.lastModified || Date.now()).toISOString(), nueva: true });
+    } catch (e) { malas.push(f.name); }
+  }
+  eeFotosPintar();
+  if (malas.length) toast("No se pudo leer: " + malas.join(", ") + ". Ese formato (por ejemplo HEIC de iPhone) no lo abre el navegador; guárdala como JPG o PNG.");
+}
+/* Se llama al guardar el ensayo, ya con su id. */
+async function eeFotosGuardar(ensayoId) {
+  const errores = [];
+  for (const f of eeFotos.filter(x => x.borrar && !x.nueva)) {
+    const { error } = await sb.from("ensayo_fotos").delete().eq("id", f.id);
+    if (error) { errores.push(error.message); continue; }
+    await sb.storage.from("ensayos").remove([f.storage_path]).catch(() => {});
+  }
+  let orden = 0;
+  for (const f of eeFotos.filter(x => !x.borrar)) {
+    f.orden = orden++;
+    if (f.nueva) {
+      const ruta = ensayoId + "/" + f.id + ".jpg";
+      const up = await sb.storage.from("ensayos").upload(ruta, f.blob, { contentType: "image/jpeg", upsert: false });
+      if (up.error && !/exist|duplicate/i.test(up.error.message || "")) { errores.push(up.error.message); continue; }
+      const { error } = await sb.from("ensayo_fotos").insert({ id: f.id, ensayo_id: ensayoId, categoria: f.categoria, pie: f.pie || "", orden: f.orden, storage_path: ruta, tomada_en: f.tomada_en });
+      if (error) errores.push(error.message);
+    } else {   // también las existentes: se renumera el orden
+      const { error } = await sb.from("ensayo_fotos").update({ categoria: f.categoria, pie: f.pie || "", orden: f.orden }).eq("id", f.id);
+      if (error) errores.push(error.message);
+    }
+  }
+  return errores;
+}
+/* Fotos con enlace temporal, para el informe y el anexo de la actividad. */
+async function eeFotosDeEnsayo(ensayoId) {
+  try {
+    const { data, error } = await sb.from("ensayo_fotos").select("*").eq("ensayo_id", ensayoId).order("orden");
+    if (error || !data || !data.length) return [];
+    const r = await sb.storage.from("ensayos").createSignedUrls(data.map(f => f.storage_path), 3600);
+    const urls = {}; ((r && r.data) || []).forEach(x => { if (x && x.path) urls[x.path] = x.signedUrl; });
+    return data.map(f => ({ ...f, url: urls[f.storage_path] || "" })).filter(f => f.url);
+  } catch (e) { return []; }
+}
+
 async function guardarEnsayo() {
   const m = eeMaquinaActual;
   const g = k => (document.getElementById("ee-e-" + k)?.value || "").trim();
@@ -9587,8 +9766,9 @@ async function guardarEnsayo() {
       if (e3) throw e3;
     }
 
+    const errFotos = await eeFotosGuardar(ensayoId);
     localStorage.removeItem(EE_BORRADOR);
-    toast("Ensayo guardado");
+    toast(errFotos.length ? "Ensayo guardado; " + errFotos.length + " foto(s) no se pudieron guardar: " + errFotos[0] : "Ensayo guardado");
     await cargarMaquinas();
     eeMaquinaActual = eeMaquinas.find(x => x.id === m.id);
     abrirMaquina(m.id);
@@ -9645,6 +9825,7 @@ function editarEnsayo(id) {
   });
   eeSellarTecnico(e);
   eeBloquearSiFirmado(e);
+  eeFotosCargar(id);
   eeFirmaEjec = e.firma_ejecutante || "";
   eeFirmaPintarVista();
   eeRecalcular();
@@ -9659,6 +9840,7 @@ function eeBloquearSiFirmado(ensayo) {
   const firmado = !!ensayo && ensayo.estado === "firmado";
   const esAdmin = usuarioActual && usuarioActual.rol === "admin";
   const bloquear = firmado && !esAdmin;
+  eeFotosBloqueadas = bloquear; eeFotosPintar();
 
   panel.querySelectorAll("input, select, textarea").forEach(el => {
     if (el.id === "ee-e-tecnico") return;      // ya quedo sellado aparte
@@ -9700,6 +9882,12 @@ function eeBloquearSiFirmado(ensayo) {
 async function borrarEnsayo(id) {
   if (!confirm("Se elimina el ensayo con todas sus mediciones. ¿Continuar?")) return;
   try {
+    /* Las filas de fotos se borran en cascada, pero los archivos de Storage no:
+       se quitan antes para no dejarlos huérfanos. */
+    try {
+      const { data: fs } = await sb.from("ensayo_fotos").select("storage_path").eq("ensayo_id", id);
+      if (fs && fs.length) await sb.storage.from("ensayos").remove(fs.map(f => f.storage_path));
+    } catch (e) { /* sin fotos o sin tabla aún */ }
     const { error } = await sb.from("ensayos_electricos").delete().eq("id", id);
     if (error) throw error;
     toast("Ensayo eliminado");
@@ -10038,7 +10226,23 @@ async function verInforme(ensayoId) {
   eeInformeActual = ensayoId;
   abrirPanel("panel-ee-informe");
 
-  document.getElementById("ee-informe").innerHTML = eeInformeHTML(e, m, eeEnsayos);
+  const inf = document.getElementById("ee-informe");
+  inf.innerHTML = eeInformeHTML(e, m, eeEnsayos);
+  const fotos = await eeFotosDeEnsayo(ensayoId);
+  if (eeInformeActual !== ensayoId) return;
+  const ops = document.getElementById("ee-inf-opciones");
+  if (ops) {
+    ops.style.display = fotos.length ? "" : "none";
+    ops.querySelector(".ee-inf-n").textContent = fotos.length + (fotos.length === 1 ? " foto" : " fotos");
+  }
+  const pintar = () => {
+    const anexo = !!(document.getElementById("ee-inf-anexo") || {}).checked;
+    const bn = !!(document.getElementById("ee-inf-bn") || {}).checked;
+    inf.innerHTML = eeInformeHTML(e, m, eeEnsayos, { fotos, anexo });
+    inf.classList.toggle("inf-bn", bn && anexo);
+  };
+  ["ee-inf-anexo", "ee-inf-bn"].forEach(id => { const el = document.getElementById(id); if (el) el.onchange = pintar; });
+  pintar();
 
   const hayLogo = localStorage.getItem(EE_LOGO);
   document.getElementById("ee-logo-estado").innerHTML = hayLogo
@@ -10049,7 +10253,18 @@ async function verInforme(ensayoId) {
 /* Arma el informe y lo devuelve como texto, sin tocar la pantalla. Se
    separo de verInforme para poder anexarlo al FO-016 de una orden sin
    abrir el panel del informe. El contenido es exactamente el mismo. */
-function eeInformeHTML(e, m, historia) {
+function eeAnexoFotosHTML(fotos) {
+  const celda = (f, i) => f ? '<td class="inf-foto"><img src="' + f.url + '" alt=""/><div class="inf-foto-pie"><b>Foto ' + (i + 1) + '.</b> '
+    + (EE_FOTO_CAT[f.categoria] || "") + (f.pie ? ": " + String(f.pie).replace(/[<>&]/g, "") : "") + '</div></td>' : '<td class="inf-foto" style="border:0"></td>';
+  let filas = "";
+  for (let i = 0; i < fotos.length; i += 2) filas += "<tr>" + celda(fotos[i], i) + '<td class="inf-foto-sep"></td>' + celda(fotos[i + 1], i + 1) + "</tr>";
+  return '<section class="inf-anexo"><h3>Anexo fotográfico</h3><table class="inf-anexo-tabla"><tbody>' + filas + "</tbody></table></section>";
+}
+/* opts.fotos: fotos con enlace; opts.anexo: incluir las imágenes. Sin anexo, el
+   cuerpo igual deja constancia de que el registro existe. */
+function eeInformeHTML(e, m, historia, opts) {
+  opts = opts || {};
+  const fotos = opts.fotos || [];
   // El dictamen mira toda la historia hasta este ensayo, no solo este
   // El ensayo del informe va siempre al final: con dos ensayos el mismo día,
   // el dictamen evaluaba el que quedara último al ordenar, no este.
@@ -10152,6 +10367,8 @@ function eeInformeHTML(e, m, historia) {
 
     ${e.observaciones ? `<h3>Observaciones del técnico</h3><p class="inf-obs">${e.observaciones}</p>` : ""}
 
+    ${fotos.length ? `<div class="inf-ref-fotos">Registro fotográfico: ${fotos.length} ${fotos.length === 1 ? "foto" : "fotos"} (${fotos.map(f => EE_FOTO_CAT[f.categoria] || "").filter((v, i, a) => v && a.indexOf(v) === i).join(", ").toLowerCase()})${opts.anexo ? ", en el anexo fotográfico de este informe." : ", disponibles en el anexo fotográfico digital del ensayo."}</div>` : ""}
+
     <div class="inf-cierre">
       ${eeBloqueFirmas(e)}
     </div>
@@ -10160,7 +10377,8 @@ function eeInformeHTML(e, m, historia) {
       <div class="inf-pie">
         El dictamen es un apoyo al diagnóstico generado a partir de los datos registrados y no reemplaza el criterio del ingeniero responsable.
       </div>
-    </div>`;
+    </div>
+    ${opts.anexo && fotos.length ? eeAnexoFotosHTML(fotos) : ""}`;
 }
 
 /* Bloque de firmas del informe. El ejecutante y el revisor salen del
@@ -10329,7 +10547,7 @@ function eeImprimirInforme() {
             i.addEventListener("load", ok, { once: true });
             i.addEventListener("error", ok, { once: true });
           }))),
-          new Promise(ok => setTimeout(ok, 3000)),
+          new Promise(ok => setTimeout(ok, 15000)),
         ])
       : Promise.resolve();
 
@@ -10362,7 +10580,10 @@ function eeImprimirInforme() {
 // colapsa. Los saltos de linea si los honra, asi que se sustituyen solo en
 // la exportacion, sin tocar la version de pantalla ni la de impresion.
 function eeCuerpoParaWord() {
+  /* El anexo fotográfico no va en Word: sus imágenes son enlaces temporales
+     que el documento no conservaría. Para las fotos se usa el PDF. */
   return document.getElementById("ee-informe").innerHTML
+    .replace(/<section class="inf-anexo">[\s\S]*?<\/section>/g, "")
     .replace(/<div[^>]*class="inf-espacio"[^>]*><\/div>/g, "<br><br><br>");
 }
 
@@ -18833,8 +19054,11 @@ async function otHtmlDeAnexos() {
         .select("*, ensayo_devanados(*), ensayo_bobinas(*)")
         .eq("maquina_id", e.maquina_id).order("fecha", { ascending: false });
 
+      /* En el reporte de la actividad el ensayo va sin fotos, para no
+         inflarlo: el cuerpo deja la referencia al registro fotográfico. */
+      const fotosE = await eeFotosDeEnsayo(e.id);
       partes.push('<div class="ee-anexo-pag">'
-        + '<div class="ee-informe">' + eeInformeHTML(e, m, h.data || [e]) + "</div></div>");
+        + '<div class="ee-informe">' + eeInformeHTML(e, m, h.data || [e], { fotos: fotosE, anexo: false }) + "</div></div>");
     } catch (err) {
       console.error("Anexo no incluido:", err);
     }
