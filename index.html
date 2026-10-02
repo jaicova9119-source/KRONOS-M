@@ -3212,7 +3212,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
 
     <div class="prog-grid">
       <div class="field corto"><label># OT</label><input id="np-ot" placeholder="Ej. 100032508"/></div>
-      <div class="field corto"><label># Tarea</label><input id="np-tarea" placeholder="Opcional"/></div>
+      <div class="field corto"><label># Aviso</label><input id="np-aviso" placeholder="Opcional" inputmode="numeric"/></div>
       <div class="field corto"><label>HH ejecutadas</label><input id="np-hh" type="number" step="0.5"/></div>
       <div class="field corto"><label>Avance (%)</label><input id="np-avance" type="number" min="0" max="100" step="5" value="100"/></div>
     </div>
@@ -15107,6 +15107,7 @@ async function progAbrirActividad(id) {
     ["Estación", a.estacion],
     ["Tipo", a.tipo_mantenimiento || a.tipo_orden],
     ["Tipo tarea", a.tipo_tarea],
+    ["Aviso", a.numero_aviso],
     ["HH ejecutadas", a.hh_ele],
     ["HH totales programadas", a.hh_prog],
     ["Disciplinas", (a.disciplinas || []).join(", ")],
@@ -16522,7 +16523,7 @@ async function progNuevaNoProgramada() {
   document.getElementById("np-fecha").value = progFecha || progISO(new Date());
   fechaEnLetra("np-fecha");
   ["np-buscar-equipo","np-codigo-equipo","np-desc-equipo","np-estacion","np-ot",
-   "np-tarea","np-desc-trabajo","np-hh","np-actividades","np-observaciones"]
+   "np-aviso","np-desc-trabajo","np-hh","np-actividades","np-observaciones"]
     .forEach(id => { const el = document.getElementById(id); if (el) el.value = ""; });
   document.getElementById("np-avance").value = 100;
   /* Sin nombre por defecto. Antes se precargaba el personal guardado del
@@ -16632,7 +16633,7 @@ async function progGuardarNoProgramada() {
     p_estacion: document.getElementById("np-estacion").value.trim() || null,
     p_tipo_orden: document.getElementById("np-tipo").value,
     p_numero_ot: document.getElementById("np-ot").value.trim() || null,
-    p_numero_tarea: document.getElementById("np-tarea").value.trim() || null,
+    p_numero_aviso: document.getElementById("np-aviso").value.trim() || null,
     p_descripcion_trabajo: document.getElementById("np-desc-trabajo").value.trim() || null,
     p_especialidad: document.getElementById("np-especialidad").value,
     p_hh_ele: document.getElementById("np-hh").value !== ""
@@ -16847,7 +16848,7 @@ async function progEditarNP() {
     document.getElementById("np-tipo").value = a.tipo_orden || "ZCO";
     document.getElementById("np-especialidad").value = a.especialidad || "ELE";
     document.getElementById("np-ot").value = a.numero_ot || "";
-    document.getElementById("np-tarea").value = a.numero_tarea || "";
+    document.getElementById("np-aviso").value = a.numero_aviso || "";
     document.getElementById("np-desc-trabajo").value = a.descripcion_trabajo || "";
     document.getElementById("np-hh").value = a.hh_ejec_ele != null ? a.hh_ejec_ele : "";
     document.getElementById("np-avance").value = a.avance_pct != null ? a.avance_pct : 100;
@@ -16875,7 +16876,7 @@ async function progGuardarEdicionNP() {
     p_estacion: document.getElementById("np-estacion").value.trim(),
     p_tipo_orden: document.getElementById("np-tipo").value,
     p_numero_ot: document.getElementById("np-ot").value.trim(),
-    p_numero_tarea: document.getElementById("np-tarea").value.trim(),
+    p_numero_aviso: document.getElementById("np-aviso").value.trim(),
     p_descripcion_trabajo: document.getElementById("np-desc-trabajo").value.trim(),
     p_especialidad: document.getElementById("np-especialidad").value,
   });
@@ -17076,7 +17077,8 @@ function otRender() {
     if (r) r.innerHTML = "";
   });
 
-  document.getElementById("ot-aviso").value = o.numero_aviso || "";
+  /* Si el FO-016 aun no tiene aviso, se propone el registrado en la actividad. */
+  document.getElementById("ot-aviso").value = o.numero_aviso || a.numero_aviso || "";
   document.getElementById("ot-autor").value = o.autor_aviso || "";
   document.getElementById("ot-fecha-inicio").value = o.fecha_inicio || otFecha || "";
   document.getElementById("ot-tag").value = o.tag_equipo || "";
