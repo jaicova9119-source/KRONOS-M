@@ -871,11 +871,12 @@ html,body{height:100%;margin:0;}
 /* Registro fotográfico: el cuerpo del informe solo lo menciona; las fotos van
    en un anexo que empieza en hoja nueva y que se puede dejar por fuera. */
 #ee-informe .inf-ref-fotos{font-size:11px;color:#333;margin-top:10px;padding:5px 8px;border:1px dashed #999}
-#ee-informe .inf-anexo{break-before:page;page-break-before:always;margin-top:20px}
+#ee-informe .inf-anexo{margin-top:18px}
+#ee-informe .inf-anexo h3{break-after:avoid;page-break-after:avoid}
 #ee-informe .inf-anexo-tabla{width:100%;border-collapse:separate;border-spacing:0 8px;table-layout:fixed}
 #ee-informe .inf-foto{border:1px solid #bbb;padding:6px;text-align:center;vertical-align:top;width:50%}
 #ee-informe .inf-foto-sep{width:8px;border:0;padding:0}
-#ee-informe .inf-foto img{max-width:100%;max-height:8.2cm;height:auto;display:block;margin:0 auto}
+#ee-informe .inf-foto img{max-width:100%;max-height:7cm;height:auto;display:block;margin:0 auto}
 #ee-informe .inf-foto-pie{font-size:10px;color:#222;margin-top:4px;text-align:left}
 #ee-informe .inf-foto-pie b{font-weight:700}
 /* Para impresora monocromática: una foto a color sale oscura y plana. */
@@ -2978,7 +2979,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
       <label>Registro fotográfico · <span class="ee-inf-n"></span></label>
       <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="ee-inf-anexo" checked style="width:auto"/> Incluir el anexo fotográfico al imprimir o guardar PDF</label>
       <label style="display:flex;gap:8px;align-items:center;font-weight:400"><input type="checkbox" id="ee-inf-bn" style="width:auto"/> Fotos optimizadas para impresión en blanco y negro</label>
-      <div class="mat-stock">Sin el anexo, el informe queda en sus hojas de siempre e indica que el registro fotográfico existe. El anexo empieza en hoja nueva.</div>
+      <div class="mat-stock">Sin el anexo, el informe queda en sus hojas de siempre e indica que el registro fotográfico existe. Con el anexo, las fotos siguen a continuación de las firmas, tres filas por hoja.</div>
     </div>
     <div class="no-print field">
       <label>Logo del informe (opcional)</label>
@@ -9123,7 +9124,7 @@ async function guardarMaquina() {
 function eeGruposDeMaquina(m) {
   const g = [{ clave: "ESTATOR", etiqueta: "Aislamiento a tierra · estator", fases: EE_FASES(m.marcacion) }];
   if (m.tipo_maquina === "GENERADOR") {
-    g.push({ clave: "CAMPO", etiqueta: "Aislamiento a tierra · devanado de campo", fases: ["F"] });
+    g.push({ clave: "CAMPO", etiqueta: "Aislamiento a tierra · rotor principal (devanado de campo)", fases: ["F"] });
   }
   return g;
 }
@@ -9519,7 +9520,7 @@ function eeAvisoComponente() {
              + "rango de la curva de corrección: el valor a 40 °C es extrapolado." : ""),
     CABLE: "Solo el cable, con el motor desconectado.",
     SUT: "Devanados del transformador elevador.",
-    GENERADOR: "Estator y devanado de campo."
+    GENERADOR: "Estator y rotor principal (devanado de campo)."
   };
   n.textContent = notas[c.value] || "";
 }
@@ -10147,6 +10148,10 @@ function eeQuitarLogo() {
 /* ---------- Informe ---------- */
 let eeInformeActual = null;
 
+/* Nombre del grupo en el informe. La clave CAMPO se conserva en los datos;
+   en el texto se dice rotor, que es donde está el devanado de campo de un
+   generador sincrónico, para no confundirlo con el campo de la excitatriz. */
+const EE_GRUPO_TXT = { ESTATOR: "estator", CAMPO: "rotor principal (devanado de campo)" };
 function eeTablaInforme(e, m) {
   const devs = e.ensayo_devanados || [];
   const porGrupo = {};
@@ -10154,7 +10159,7 @@ function eeTablaInforme(e, m) {
   return Object.entries(porGrupo).map(([g, ds]) => {
     const min = EE_minimoGrupo(m, g);
     return `
-      <h3>Aislamiento a tierra · ${g.toLowerCase()} <span class="inf-min">mínimo IEEE 43: ${min} MΩ</span></h3>
+      <h3>Aislamiento a tierra · ${EE_GRUPO_TXT[g] || g.toLowerCase()} <span class="inf-min">mínimo IEEE 43: ${min} MΩ</span></h3>
       <table class="inf-tabla">
         <tr><th>Fase</th><th>IR 30 s (MΩ)</th><th>IR 1 min (MΩ)</th><th>IR 10 min (MΩ)</th><th>IR @40 °C (MΩ)</th><th>DAR</th><th>PI</th><th>Evaluación</th></tr>
         ${ds.map(d => {
@@ -10494,8 +10499,13 @@ function eeImprimirInforme() {
   const estilos = Array.from(document.querySelectorAll("style"))
     .map(e => e.textContent).join("\n");
 
-  const titulo = (document.querySelector("#ee-informe .inf-titulo")?.textContent
-                  || "Informe de ensayo").trim().slice(0, 90);
+  /* El navegador nombra el PDF con el título del documento. Sin esto salía
+     "KRONOS_M.pdf"; ahora sale con el equipo, el SAP y la fecha. */
+  const mq = eeMaquinaActual || {}, en = (eeEnsayos || []).find(x => x.id === eeInformeActual) || {};
+  const titulo = ["Ensayo de aislamiento", mq.nombre_efectivo, mq.sap_efectivo && "SAP " + mq.sap_efectivo, en.fecha]
+    .filter(Boolean).join(" - ").replace(/[\\/:*?"<>|#]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
+  const tituloApp = document.title;
+  document.title = titulo;
 
   const html = '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">'
     + '<title>' + titulo.replace(/[<>&]/g, "") + '</title>'
@@ -10557,6 +10567,7 @@ function eeImprimirInforme() {
   const retirar = () => {
     const m = document.getElementById("ee-marco-impresion");
     if (m) m.remove();
+    document.title = tituloApp;
   };
 
   const lanzar = () => {
