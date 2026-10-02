@@ -981,6 +981,10 @@ html,body{height:100%;margin:0;}
   #print-root .inf-cab-logo{padding-right:10pt!important}
   #print-root .inf-dictamen{padding:6pt!important;margin-top:2pt!important}
   #print-root .inf-foto,#print-root .inf-anexo-tabla tr{break-inside:avoid;page-break-inside:avoid}
+  /* La regla general no deja partir tablas; la del anexo sí debe partirse
+     (por filas), o saltaba completa a una hoja nueva dejando la anterior
+     casi en blanco. */
+  #print-root table.inf-anexo-tabla{break-inside:auto!important;page-break-inside:auto!important}
   #print-root .inf-datos .inf-tabla{font-size:8pt!important}
   #print-root .inf-datos .inf-tabla td{padding:1.5pt 4pt!important}
   /* Identificacion, descargo y firmas son un solo bloque indivisible: si el
