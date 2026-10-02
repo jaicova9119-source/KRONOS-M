@@ -787,7 +787,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v2.6 · 01/10/2026';
+var VERSION = 'v2.7 · 01/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -1423,7 +1423,26 @@ function exportar(){ var m = $('msg'); m.textContent = 'Generando el informe…'
     var a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = n; document.body.appendChild(a); a.click(); setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 4000); m.textContent = 'Informe generado: ' + n; })
   .catch(function(e){ LIBS = null; m.textContent = e.message || 'No se pudo generar el informe.'; }); }
 function fotosInforme(){ var ids = []; PASOS.forEach(function(p){ var d = S.com.d[p.id]; if (d) d.fotos.forEach(function(f){ ids.push(f); }); });
-  var mapa = {}; return ids.reduce(function(pr, id){ return pr.then(function(){ return fotoURL(id).then(function(u){ if (u) mapa[id] = u; }); }); }, Promise.resolve()).then(function(){ return mapa; }); }
+  var mapa = {}, msg = $('msg'), n = 0;
+  return ids.reduce(function(pr, id){ return pr.then(function(){ return fotoURL(id).then(function(u){ if (!u) return; n++; if (msg) msg.textContent = 'Preparando fotos ' + n + ' de ' + ids.length + '…';
+    return fotoParaPdf(u).then(function(v){ mapa[id] = v; }); }); }); }, Promise.resolve()).then(function(){ return mapa; }); }
+/* En el anexo cada foto ocupa unos 87 × 60 mm: a 800 px de lado mayor queda
+   cerca de 230 ppp, suficiente para imprimir con buena nitidez. Se recomprime solo para el PDF;
+   la foto guardada como evidencia no cambia. */
+var PDF_FOTO_LADO = 800, PDF_FOTO_CALIDAD = 0.65;
+function fotoParaPdf(url){
+  return new Promise(function(ok){
+    var img = new Image();
+    img.onload = function(){ try {
+        var k = Math.min(1, PDF_FOTO_LADO / Math.max(img.width, img.height)), cv = document.createElement('canvas');
+        cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        var g = cv.getContext('2d'); g.fillStyle = '#fff'; g.fillRect(0, 0, cv.width, cv.height); g.drawImage(img, 0, 0, cv.width, cv.height);
+        var r = cv.toDataURL('image/jpeg', PDF_FOTO_CALIDAD); ok(r.length < url.length ? r : url);
+      } catch(e){ ok(url); } };
+    img.onerror = function(){ ok(url); };
+    img.src = url;
+  });
+}
 var ESTPDF = { C:['Cumple',[221,239,227],[28,107,58]], A:['Cumple con observación',[251,239,201],[122,90,0]], N:['No cumple',[246,214,217],[156,27,43]], P:['Por confirmar',[220,230,241],[31,78,121]], R:['No realizado',[235,235,235],[85,85,85]], X:['No aplica',[245,245,245],[119,119,119]], I:['No concluyente',[230,230,230],[68,68,68]], Pe:['Pendiente',[235,235,235],[85,85,85]] };
 function armarPdf(FOTOS){
   var A = window.CM_RECURSOS || {}, J = window.jspdf.jsPDF, doc = new J({ unit: 'mm', format: 'letter' });
@@ -1468,6 +1487,8 @@ function armarPdf(FOTOS){
   h1('2. Alcance'); par('Interruptor principal, transformador desfasador (PST), variador de frecuencia, transformador elevador (SUT) y cables de superficie, comunicación SCADA y equipos de superficie del sensor de fondo, más las verificaciones y registros de arranque.');
   var prep = PASOS.filter(function(p){ return p.eq === 'prep' && c.d[p.id]; }).map(function(p){ return textoAct(p, c.d[p.id]); }).filter(Boolean).join(' ');
   if (prep) { T(9.6, true); cabe(10); doc.text('Condiciones de ejecución', M, y + 3.5); y += 6; par(prep); }
+  /* Las fotos de los pasos de preparación (bloqueo, calibración) también van al anexo. */
+  PASOS.filter(function(p){ return p.eq === 'prep' && c.d[p.id] && c.d[p.id].fotos.length; }).forEach(function(p){ refFotos(c.d[p.id], 'Preparación: ' + p.t); });
   h1('3. Referencias');
   tabla(['Referencia','Aplicación'], [['API RP 11S3','Verificaciones previas al arranque (§7.1), registro del arranque (§7.2) y venteo (§4.3.3).'],['IEEE 43-2013','Índice de polarización mínimo 2,0; IP no representativo con R1 mayor a 5 GΩ.'],['ANSI/NETA ATS Tabla 100.1','Equipos y cables: 600 V a 1000 VDC, 100 MΩ; 5 kV a 2500 VDC, 1500 MΩ.'],['ANSI/NETA ATS Tabla 100.5','Transformadores en aceite: hasta 600 V, 100 MΩ; 601 a 5000 V, 1000 MΩ.'],['ANSI/NETA ATS 7.6.1','Interruptores: aislamiento por polo, resistencia de contactos e inyección.'],['Procedimiento Baker Hughes','Valores de referencia de semiconductores, capacitores e inductores del variador.']], [46, CW - 46]);
   h1('4. Resumen de resultados');
