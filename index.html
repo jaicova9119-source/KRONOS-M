@@ -9590,19 +9590,39 @@ function eeComprimirFoto(file) {
     img.src = url;
   });
 }
+/* Lee las filas de ensayo_fotos y, además, los archivos del ensayo en
+   Storage. Un archivo sin fila (la subida funcionó pero el registro falló)
+   se muestra igual y su fila se crea en el próximo guardado. */
+async function eeFotosLeer(ensayoId) {
+  let filas = [];
+  try {
+    /* La tabla viene de MotorTrack: la ruta va en archivo_path y el pie en
+       descripcion; las fotos migradas traen url_externa. */
+    const r = await sb.from("ensayo_fotos").select("*").eq("ensayo_id", ensayoId).order("orden");
+    if (!r.error) filas = (r.data || []).map(f => ({ ...f, storage_path: f.archivo_path || null, pie: f.descripcion || "", categoria: f.categoria || "otra" }));
+  } catch (e) { /* tabla aún no visible para la API */ }
+  try {
+    const l = await sb.storage.from("ensayos").list(String(ensayoId), { limit: 200, sortBy: { column: "created_at", order: "asc" } });
+    const conFila = new Set(filas.map(f => f.storage_path).filter(Boolean));
+    (l.data || []).filter(o => /\.jpg$/i.test(o.name)).forEach(o => {
+      const ruta = ensayoId + "/" + o.name;
+      if (conFila.has(ruta)) return;
+      const id = (o.name.match(/([0-9a-f-]{36})\.jpg$/i) || [])[1];
+      if (!id) return;
+      filas.push({ id, ensayo_id: ensayoId, categoria: "otra", pie: "", orden: filas.length, storage_path: ruta, tomada_en: o.created_at, huerfana: true });
+    });
+  } catch (e) { /* sin acceso al bucket */ }
+  if (!filas.length) return [];
+  const rutas = filas.map(f => f.storage_path).filter(Boolean);
+  const r2 = rutas.length ? await sb.storage.from("ensayos").createSignedUrls(rutas, 3600).catch(() => ({ data: [] })) : { data: [] };
+  const urls = {}; ((r2 && r2.data) || []).forEach(x => { if (x && x.path) urls[x.path] = x.signedUrl; });
+  return filas.map(f => ({ ...f, url: (f.storage_path && urls[f.storage_path]) || f.url_externa || "" }));
+}
 async function eeFotosCargar(ensayoId) {
   eeFotos = [];
   if (!ensayoId) { eeFotosPintar(); return; }
-  try {
-    const { data, error } = await sb.from("ensayo_fotos").select("*").eq("ensayo_id", ensayoId).order("orden");
-    if (error) throw error;
-    const filas = data || [];
-    const firmadas = filas.length ? await sb.storage.from("ensayos").createSignedUrls(filas.map(f => f.storage_path), 3600) : { data: [] };
-    const urls = {}; (firmadas.data || []).forEach(x => { if (x && x.path) urls[x.path] = x.signedUrl; });
-    eeFotos = filas.map(f => ({ ...f, url: urls[f.storage_path] || "" }));
-  } catch (e) {
-    console.warn("Fotos del ensayo no disponibles:", e);
-  }
+  try { eeFotos = await eeFotosLeer(ensayoId); }
+  catch (e) { console.warn("Fotos del ensayo no disponibles:", e); }
   eeFotosPintar();
 }
 function eeFotosPintar() {
@@ -9673,19 +9693,29 @@ async function eeFotosGuardar(ensayoId) {
   for (const f of eeFotos.filter(x => x.borrar && !x.nueva)) {
     const { error } = await sb.from("ensayo_fotos").delete().eq("id", f.id);
     if (error) { errores.push(error.message); continue; }
-    await sb.storage.from("ensayos").remove([f.storage_path]).catch(() => {});
+    if (f.storage_path) await sb.storage.from("ensayos").remove([f.storage_path]).catch(() => {});
   }
   let orden = 0;
   for (const f of eeFotos.filter(x => !x.borrar)) {
     f.orden = orden++;
-    if (f.nueva) {
-      const ruta = ensayoId + "/" + f.id + ".jpg";
-      const up = await sb.storage.from("ensayos").upload(ruta, f.blob, { contentType: "image/jpeg", upsert: false });
-      if (up.error && !/exist|duplicate/i.test(up.error.message || "")) { errores.push(up.error.message); continue; }
-      const { error } = await sb.from("ensayo_fotos").insert({ id: f.id, ensayo_id: ensayoId, categoria: f.categoria, pie: f.pie || "", orden: f.orden, storage_path: ruta, tomada_en: f.tomada_en });
-      if (error) errores.push(error.message);
+    if (f.nueva || f.huerfana) {
+      const ruta = f.huerfana ? f.storage_path : ensayoId + "/" + f.id + ".jpg";
+      if (f.nueva) {
+        const up = await sb.storage.from("ensayos").upload(ruta, f.blob, { contentType: "image/jpeg", upsert: false });
+        if (up.error && !/exist|duplicate/i.test(up.error.message || "")) { errores.push(up.error.message); continue; }
+      }
+      const fila = { id: f.id, ensayo_id: ensayoId, categoria: f.categoria, descripcion: f.pie || "", orden: f.orden, archivo_path: ruta, tomada_en: f.tomada_en };
+      let { error } = await sb.from("ensayo_fotos").insert(fila);
+      if (error && !/duplicate|exist/i.test(error.message || "")) {
+        await new Promise(r => setTimeout(r, 1500));            // un reintento
+        ({ error } = await sb.from("ensayo_fotos").insert(fila));
+      }
+      /* Si el registro sigue fallando, el archivo queda en Storage y se
+         vuelve a mostrar (y a registrar) la próxima vez que se abra. */
+      if (error && !/duplicate|exist/i.test(error.message || "")) errores.push(error.message);
+      else { f.nueva = false; f.huerfana = false; }
     } else {   // también las existentes: se renumera el orden
-      const { error } = await sb.from("ensayo_fotos").update({ categoria: f.categoria, pie: f.pie || "", orden: f.orden }).eq("id", f.id);
+      const { error } = await sb.from("ensayo_fotos").update({ categoria: f.categoria, descripcion: f.pie || "", orden: f.orden }).eq("id", f.id);
       if (error) errores.push(error.message);
     }
   }
@@ -9693,13 +9723,8 @@ async function eeFotosGuardar(ensayoId) {
 }
 /* Fotos con enlace temporal, para el informe y el anexo de la actividad. */
 async function eeFotosDeEnsayo(ensayoId) {
-  try {
-    const { data, error } = await sb.from("ensayo_fotos").select("*").eq("ensayo_id", ensayoId).order("orden");
-    if (error || !data || !data.length) return [];
-    const r = await sb.storage.from("ensayos").createSignedUrls(data.map(f => f.storage_path), 3600);
-    const urls = {}; ((r && r.data) || []).forEach(x => { if (x && x.path) urls[x.path] = x.signedUrl; });
-    return data.map(f => ({ ...f, url: urls[f.storage_path] || "" })).filter(f => f.url);
-  } catch (e) { return []; }
+  try { return (await eeFotosLeer(ensayoId)).filter(f => f.url); }
+  catch (e) { return []; }
 }
 
 async function guardarEnsayo() {
@@ -9885,8 +9910,9 @@ async function borrarEnsayo(id) {
     /* Las filas de fotos se borran en cascada, pero los archivos de Storage no:
        se quitan antes para no dejarlos huérfanos. */
     try {
-      const { data: fs } = await sb.from("ensayo_fotos").select("storage_path").eq("ensayo_id", id);
-      if (fs && fs.length) await sb.storage.from("ensayos").remove(fs.map(f => f.storage_path));
+      const { data: fs } = await sb.from("ensayo_fotos").select("archivo_path").eq("ensayo_id", id);
+      const rutas = (fs || []).map(f => f.archivo_path).filter(Boolean);
+      if (rutas.length) await sb.storage.from("ensayos").remove(rutas);
     } catch (e) { /* sin fotos o sin tabla aún */ }
     const { error } = await sb.from("ensayos_electricos").delete().eq("id", id);
     if (error) throw error;
