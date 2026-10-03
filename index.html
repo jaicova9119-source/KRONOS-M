@@ -4147,13 +4147,9 @@ async function abrirHub() {
 /* Abre una máquina de Ensayos desde el inicio. aplicarModulo dispara la
    carga sin esperarla, así que se espera a que la máquina esté en la lista. */
 async function hubIrAMaquina(id, ensayoId) {
-  /* Desde el inicio se va directo a la firma: se trae el ensayo y su máquina
-     y se abre la ventana de revisión encima del inicio, sin pasar por la
-     lista de máquinas. Al firmar, la app abre la máquina como siempre. */
-  if (ensayoId) {
-    const abierto = await hubFirmaDirecta(ensayoId, id);
-    if (abierto) return;
-  }
+  /* Desde el inicio se llega a la máquina con el ensayo a la vista: la
+     tarjeta con sus lecturas, resaltada, y los botones Informe y Firmar
+     revisión. No se abre la firma sola: nadie firma lo que no ha leído. */
   try { await hubIrAMaquinaInterno(id, ensayoId); }
   catch (e) { toast("No se pudo abrir el ensayo: " + (e.message || e)); }
 }
@@ -4199,19 +4195,9 @@ async function hubIrAMaquinaInterno(id, ensayoId) {
     card.style.boxShadow = "0 0 0 3px var(--acento, #1f5f99)";
     setTimeout(() => { card.style.boxShadow = ""; }, 2500);
   }
-  /* Desde "Ensayos por firmar" se abre directamente la ventana de revisión y
-     firma de ese ensayo; la tarjeta queda detrás, resaltada. Si el ensayo no
-     vino en la carga de la máquina, se trae solo: el objetivo es llegar a la
-     firma, no a la lista. */
-  let ens = (eeEnsayos || []).find(x => x.id === ensayoId);
-  if (!ens) {
-    try {
-      const re = await sb.from("ensayos_electricos").select("*, ensayo_devanados(*), ensayo_bobinas(*)").eq("id", ensayoId).maybeSingle();
-      if (re.data) { ens = re.data; eeEnsayos = (eeEnsayos || []).concat([ens]); }
-    } catch (e) { /* se avisa abajo */ }
-  }
-  if (!ens) { toast("No se encontró el ensayo por firmar"); return; }
-  if (ens.estado === "pendiente_firma" && typeof eeFirmar === "function") eeFirmar(ensayoId);
+  const ens = (eeEnsayos || []).find(x => x.id === ensayoId);
+  if (!card || !ens) toast("El ensayo no aparece en la lista de esta máquina; revisa el historial");
+  else if (ens.estado === "pendiente_firma") toast("Revisa las lecturas y el informe; luego usa «Firmar revisión» o «Devolver»");
   else toast("Ese ensayo ya no está pendiente de firma (" + (ens.estado || "sin estado") + ")");
 }
 
@@ -8592,7 +8578,7 @@ const EE_BORRADOR = "kronos_ensayo_borrador";
 /* Versión visible en el pie del inicio. Con un service worker de por medio,
    subir un archivo nuevo no garantiza que el navegador lo esté usando: esta
    marca permite comprobarlo sin abrir herramientas de desarrollo. */
-const KM_VERSION = "2026-10-03 · firma-directa c";
+const KM_VERSION = "2026-10-03 · revisión d";
 
 /* Promesa de la carga en curso: quien necesita la lista ya cargada (por
    ejemplo, entrar a una máquina desde el inicio) espera esta, en vez de
