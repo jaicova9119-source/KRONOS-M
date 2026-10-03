@@ -87,6 +87,7 @@ textarea{min-height:90px;resize:vertical}
 .firma-t{display:block;font-weight:700;font-size:14px;color:var(--ink);margin-bottom:6px}
 .firma-c{display:grid;grid-template-columns:1fr 1fr;gap:10px}.firma-c .campo{margin:0}
 @media (max-width:520px){.firma-c{grid-template-columns:1fr}}
+.equipo .eq-maestro{margin:0 0 10px;font-size:14px;color:var(--ink-soft)}.equipo .eq-maestro b{color:var(--texto)}
 .errores{border-color:var(--danger);background:var(--danger-bg)}.errores b{color:var(--danger)}.errores ul{margin:6px 0 12px;padding-left:18px;font-size:14px}.errores li{margin-bottom:4px}.errores li b{color:var(--texto)}
 .aviso{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:14.5px;margin:0 0 12px}
 .prueba{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:1px 6px;font-size:11px;font-weight:700;vertical-align:2px}
@@ -652,7 +653,7 @@ function giroWhatsApp(){
   if (g.cierre) out.push('', g.cierre);
   return out.join('\n');
 }
-function tot(p){ return p.tipo === 'med' ? p.pts.length + (p.checks ? p.checks.length : 0) : p.tipo === 'check' ? p.items.length : p.tipo === 'kv' ? p.campos.length : p.tipo === 'tabla' ? p.hz.length * p.cols.length : p.tipo === 'ipdar' ? 12 : p.tipo === 'giro' ? (GIRO_CAMPOS.length + 1) * 2 + 1 : p.tipo === 'calc' ? (p.calculos || []).length : 0; }
+function tot(p){ return p.tipo === 'med' ? p.pts.length + (p.checks ? p.checks.length : 0) : p.tipo === 'check' ? p.items.length : p.tipo === 'kv' ? p.campos.length : p.tipo === 'tabla' ? p.hz.length * p.cols.length : p.tipo === 'ipdar' ? 12 : p.tipo === 'giro' ? (GIRO_CAMPOS.length + 1) * 2 + 1 : p.tipo === 'calc' ? (p.calculos || []).length : p.tipo === 'equipos' ? (p.roles || []).length : 0; }
 function estadoPaso(p){
   var d = S.com.d[p.id]; if (!d) return { e: null, ok: 0, tot: tot(p) };
   if (d.na) return { e: 'X', ok: tot(p), tot: tot(p) };
@@ -678,6 +679,9 @@ function estadoPaso(p){
     if ((d.tabla.gen || {}).sentido_final) ok++;
     if (ok) { var gr = giroRes(), fin = (d.tabla.gen || {}).sentido_final; es.push(!gr.sugerido ? 'C' : (fin && fin !== gr.sugerido) || (gr.contradicciones && gr.contradicciones.length) ? 'A' : 'C'); } }
   else if (p.tipo === 'calc') { var cc = calculos(p, camposCalc(p)); ok = cc.filter(function(x){ return x.v != null; }).length; if (ok) es.push(cc.some(function(x){ return x.v == null; }) ? 'A' : 'C'); }
+  else if (p.tipo === 'equipos') { (p.roles || []).forEach(function(r){ var q = equipoDe(d, r[0]); if (q.estado === 'COINCIDE') { ok++; es.push('C'); }
+      else if (q.estado === 'DIFIERE' || q.estado === 'MANUAL') { if (q.placa.serie || q.placa.modelo || q.placa.marca) { ok++; es.push('A'); } }
+      else if (q.estado === 'NOHAY') { ok++; es.push('X'); } }); }
   return { e: agg(es), ok: ok, tot: tot(p) };
 }
 function estadoEq(eq){ var es = PASOS.filter(function(p){ return p.eq === eq; }).map(function(p){ var s = estadoPaso(p); return s.ok ? s.e : null; }); return es.some(Boolean) ? agg(es) : null; }
@@ -805,7 +809,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v3.2 · 02/10/2026';
+var VERSION = 'v3.3 · 02/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -975,7 +979,7 @@ function vPaso(){
   if (AG.pasoAbierto !== p.id && editable() && S.com.ultimo_paso !== p.id) { S.com.ultimo_paso = p.id; guardarLocal(); }
   AG.pasoAbierto = p.id;
   var h = '<div class="prog"><span>' + esc(eq.t) + ' · Paso ' + (idx + 1) + ' de ' + PASOS.length + '</span><span class="estg" id="estg" aria-live="polite"></span></div><h2>' + esc(p.t) + '</h2><div class="p-split"><div class="p-guia">' + guiaH(p) + '</div><div class="p-cap">';
-  h += '<div class="captura">' + ({ med: capMed, check: capCheck, kv: capKV, tabla: capTabla, ipdar: capIP, calc: capCalc, giro: capGiro })[p.tipo](p, d) + '</div>';
+  h += '<div class="captura">' + ({ med: capMed, check: capCheck, kv: capKV, tabla: capTabla, ipdar: capIP, calc: capCalc, giro: capGiro, equipos: capEquipos })[p.tipo](p, d) + '</div>';
   var rojo = estadoPaso(p).e === 'N';
   h += preH(p, d);
   var faltaObs = (rojo && !preSel(p, d, 'o').length && !d.obs.trim()) || (d.na && !d.obs.trim());
@@ -1244,6 +1248,36 @@ function capIP(p, d){ var res = ipRes();
     '<tr><td>Balance fase-fase</td><td colspan="2" class="e' + (b ? b.e : '') + '">' + (b ? fmt(b.desb, 2) + ' % de desbalance' : '—') + '</td></tr></table></div>';
   return h + '<p class="nota">Criterios: IP ≥ 2,0 (IEEE 43-2013, clases B, F y H; si R1 supera 5 GΩ el IP no es representativo y se evalúa la lectura absoluta). DAR = R1 min / R30 s ≥ ' + fmt(CRIT_DAR, 2) + ' y desbalance fase-fase ≤ ' + CRIT_FF + ' % (criterio de campo).</p>'; }
 function capCalc(p){ return '<div class="calcbox big">' + calculos(p, camposCalc(p)).map(function(c){ return '<div><span>' + esc(c.n) + '<small>' + esc(c.f) + '</small></span><b class="' + (c.v == null ? 'falta' : '') + '">' + (c.v != null ? fmt(c.v, 2) + ' ' + esc(c.u) : 'Falta: ' + esc(c.falta)) + '</b></div>'; }).join('') + '</div><p class="nota">Los datos se toman del paso «Datos del equipo de fondo».</p>'; }
+/* ---------- equipos de la unidad ----------
+   d.campos.equipos = { rol: { maestro: {equipo_id, marca, modelo, serie, sap}, estado, placa: {marca, modelo, serie} } }
+   estado: COINCIDE · DIFIERE (placa distinta) · MANUAL (no estaba en Activos) · NOHAY (la unidad no tiene ese equipo) */
+function equipoDe(d, rol){ d.campos.equipos = d.campos.equipos || {}; var q = d.campos.equipos[rol] = d.campos.equipos[rol] || { maestro: null, estado: '', placa: { marca: '', modelo: '', serie: '' } }; q.placa = q.placa || { marca: '', modelo: '', serie: '' }; return q; }
+function equiposPrecargar(p, d){
+  if (d.campos.equipos_cargados || !navigator.onLine || !sb || !S.com.pozo_id) return Promise.resolve(false);
+  return conTiempo(sb.rpc('dp_cm_equipos_unidad', { p_pozo: S.com.pozo_id }), T_LECTURA).then(function(r){
+    if (agotado(r) || r.error) return false;
+    var hubo = false;
+    (r.data || []).forEach(function(e){ if (!p.roles.some(function(x){ return x[0] === e.rol; })) return;
+      var q = equipoDe(d, e.rol); if (q.maestro) return;
+      q.maestro = { equipo_id: e.equipo_id, marca: e.marca || '', modelo: e.modelo || '', serie: e.numero_serie || '', sap: e.codigo_sap || '', descripcion: e.descripcion || '' }; hubo = true; });
+    d.campos.equipos_cargados = true; guardarLocal(); return hubo;
+  }).catch(function(){ return false; });
+}
+function capEquipos(p, d){
+  var h = '';
+  (p.roles || []).forEach(function(r){ var q = equipoDe(d, r[0]), m = q.maestro;
+    h += '<div class="fila-hz equipo"><div class="hz"><span>' + esc(r[1]) + '</span>' + (m ? '<span class="mini-chip">En Activos</span>' : '<span class="mini-chip eA">No está en Activos</span>') + '</div>';
+    if (m) h += '<p class="eq-maestro">Según Activos: <b>' + esc([m.marca, m.modelo].filter(Boolean).join(' · ')) + '</b> · Serie ' + esc(m.serie || '—') + ' · SAP ' + esc(m.sap || '—') + '</p>';
+    var ops = m ? [['COINCIDE','Coincide con la placa','C'],['DIFIERE','Difiere de la placa','A'],['NOHAY','La unidad no lo tiene','X']] : [['MANUAL','Registrar desde la placa','A'],['NOHAY','La unidad no lo tiene','X']];
+    h += '<div class="seg chk" data-eqe="' + r[0] + '">' + ops.map(function(o){ return '<button data-v="' + o[0] + '" data-est="' + o[2] + '" aria-pressed="' + (q.estado === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div>';
+    if (q.estado === 'DIFIERE' || q.estado === 'MANUAL') h += '<p class="nota" style="margin:8px 0 4px">Transcribe la placa tal como está impresa.</p><div class="celdas">' +
+      [['marca','Marca'],['modelo','Modelo'],['serie','Serie']].map(function(c){ return '<label>' + c[1] + '<input data-eqp="' + r[0] + '|' + c[0] + '" value="' + esc(q.placa[c[0]] || '') + '" autocapitalize="characters"></label>'; }).join('') + '</div>';
+    h += '</div>'; });
+  if (!d.campos.equipos_cargados) h = '<p class="nota" id="eq-aviso">' + (navigator.onLine ? 'Cargando los equipos de la unidad desde Activos…' : 'Sin señal: los equipos de Activos se cargan cuando haya conexión; mientras tanto puedes registrarlos desde la placa.') + '</p>' + h;
+  return h;
+}
+function equipoFinal(q){ if (!q) return null; if (q.estado === 'NOHAY') return null; var m = q.maestro || {}; var usaPlaca = q.estado === 'DIFIERE' || q.estado === 'MANUAL';
+  return { marca: usaPlaca && q.placa.marca ? q.placa.marca : m.marca || '', modelo: usaPlaca && q.placa.modelo ? q.placa.modelo : m.modelo || '', serie: usaPlaca && q.placa.serie ? q.placa.serie : m.serie || '', sap: m.sap || '', estado: q.estado }; }
 function capGiro(p, d){
   var t = d.tabla, g = t.gen || {}, res = giroRes();
   var campoDef = CAMPO_POR_PREFIJO[(S.com.pozo_nombre || '').split('-')[0]] || '';
@@ -1307,6 +1341,9 @@ function bindCaptura(p, d){
   on('[data-enc]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ d.enc[g.getAttribute('data-enc')] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
   on('[data-ck]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ d.checks[g.getAttribute('data-ck')] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
   on('input[data-kv]', function(i){ i.oninput = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); refilaDiferido(); }; });
+  on('[data-eqe]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ equipoDe(d, g.getAttribute('data-eqe')).estado = b.getAttribute('data-v'); toque(d); refila(); }; }); });
+  on('input[data-eqp]', function(i){ i.oninput = function(){ var k = i.getAttribute('data-eqp').split('|'); equipoDe(d, k[0]).placa[k[1]] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ refilaDiferido(); }; });
+  if (p.tipo === 'equipos' && !d.campos.equipos_cargados && editable()) equiposPrecargar(p, d).then(function(){ if (S.pantalla === 'paso' && S.paso === p.id) refila(); });
   on('[data-tsel]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ var k = g.getAttribute('data-tsel').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
   on('textarea[data-ta]', function(i){ i.oninput = function(){ var k = i.getAttribute('data-ta').split('|'); d.tabla[k[0]] = d.tabla[k[0]] || {}; d.tabla[k[0]][k[1]] = i.value; toque(d); autoguardar(p); }; });
   if ($('wa')) $('wa').onclick = function(){ var txt = giroWhatsApp();
@@ -1355,6 +1392,10 @@ function hallazgos(){
     if (d.pendiente) H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Pendiente: ' + d.pendiente, acc: 'Ejecutar y registrar cuando se cumpla la condición indicada.' });
     else Object.keys(d.pend || {}).forEach(function(g){ H.push({ eq: eqT, p: p.t + ' · ' + g, sev: 'Media', txt: 'Pendiente: ' + d.pend[g], acc: 'Ejecutar y registrar cuando se cumpla la condición indicada.' }); });
   });
+  PASOS.filter(function(p){ return p.tipo === 'equipos' && S.com.d[p.id]; }).forEach(function(p){ var d = S.com.d[p.id];
+    (p.roles || []).forEach(function(r){ var q = equipoDe(d, r[0]), m = q.maestro || {}, pl = q.placa;
+      if (q.estado === 'DIFIERE') H.push({ eq: 'Equipos de la unidad', p: r[1], sev: 'Media', txt: 'La placa difiere de Activos. Placa: ' + [pl.marca, pl.modelo, pl.serie].filter(Boolean).join(' · ') + '. Activos: ' + [m.marca, m.modelo, m.serie].filter(Boolean).join(' · ') + '.', acc: 'Corregir el maestro de activos (Captura: actualizar equipos de la unidad).' });
+      else if (q.estado === 'MANUAL') H.push({ eq: 'Equipos de la unidad', p: r[1], sev: 'Baja', txt: 'No estaba registrado en Activos. Placa: ' + [pl.marca, pl.modelo, pl.serie].filter(Boolean).join(' · ') + '.', acc: 'Crear el equipo en Activos e instalarlo en la unidad.' }); }); });
   var faltan = PASOS.filter(function(p){ return !estadoPaso(p).ok; });
   if (faltan.length) H.push({ eq: 'General', p: '', sev: 'Alta', txt: faltan.length + ' pasos sin registrar: ' + faltan.map(function(p){ return p.t; }).join(', ') + '.', acc: 'Completar antes de liberar la unidad.' });
   return H;
@@ -1496,7 +1537,7 @@ function armarPdf(FOTOS){
   /* Un título nunca queda solo al pie de la hoja: antes de escribirlo se
      exige espacio para él y para el comienzo de su contenido. */
   function h1(t){ cabe(42); T(11.5, true); doc.text(t, M, y + 4); y += 8; TOC.push({ t: t, p: pagActual(), n: 1 }); }
-  function h2(t){ cabe(36); T(9.6, true); doc.text(t, M, y + 3.5); y += 6; if (/^5\.\d/.test(t)) TOC.push({ t: t, p: pagActual(), n: 2 }); }
+  function h2(t){ cabe(36); T(9.6, true); doc.text(t, M, y + 3.5); y += 6; if (/^6\.\d/.test(t)) TOC.push({ t: t, p: pagActual(), n: 2 }); }
   function dibujarTOC(){
     doc.setPage(tocPagina); var yy = 36;
     T(11.5, true); doc.text('Contenido', M, yy + 4); yy += 12;
@@ -1541,11 +1582,19 @@ function armarPdf(FOTOS){
   PASOS.filter(function(p){ return p.eq === 'prep' && c.d[p.id] && c.d[p.id].fotos.length; }).forEach(function(p){ refFotos(c.d[p.id], 'Preparación: ' + p.t); });
   h1('3. Referencias');
   tabla(['Referencia','Aplicación'], [['API RP 11S3','Verificaciones previas al arranque (§7.1), registro del arranque (§7.2) y venteo (§4.3.3).'],['IEEE 43-2013','Índice de polarización mínimo 2,0; IP no representativo con R1 mayor a 5 GΩ.'],['ANSI/NETA ATS Tabla 100.1','Equipos y cables: 600 V a 1000 VDC, 100 MΩ; 5 kV a 2500 VDC, 1500 MΩ.'],['ANSI/NETA ATS Tabla 100.5','Transformadores en aceite: hasta 600 V, 100 MΩ; 601 a 5000 V, 1000 MΩ.'],['ANSI/NETA ATS 7.6.1','Interruptores: aislamiento por polo, resistencia de contactos e inyección.'],['Procedimiento Baker Hughes','Valores de referencia de semiconductores, capacitores e inductores del variador.']], [46, CW - 46]);
-  h1('4. Resumen de resultados');
+  h1('4. Equipos ensayados');
+  (function(){
+    var pe = PASOS.filter(function(p){ return p.tipo === 'equipos'; })[0], de = pe && c.d[pe.id];
+    var ESTEQ = { COINCIDE: 'Placa verificada', DIFIERE: 'Placa difiere de Activos', MANUAL: 'Registrado desde la placa', NOHAY: 'No aplica' };
+    if (!pe) { par('Equipos según el maestro de activos y las placas de campo; ver resultados por equipo.', 8.6); return; }
+    tabla(['Equipo','Marca','Modelo','Serie','Código SAP','Verificación'], (pe.roles || []).map(function(r){ var q = de && de.campos.equipos && de.campos.equipos[r[0]], f = equipoFinal(q);
+      return [r[1], f ? f.marca || '—' : '—', f ? f.modelo || '—' : '—', f ? f.serie || '—' : '—', f ? f.sap || '—' : '—', q && q.estado ? ESTEQ[q.estado] : 'Sin verificar']; }), [40, 28, 36, 26, 22, CW - 152]);
+  })();
+  h1('5. Resumen de resultados');
   tabla(['Equipo','Estado'], EQUIPOS.filter(function(e){ return e.id !== 'prep'; }).map(function(e){ return [e.t, [estadoEq(e.id) || 'R']]; }), [CW - 40, 40], 1);
-  h1('5. Resultados por equipo');
+  h1('6. Resultados por equipo');
   var nEq = 0;
-  EQUIPOS.forEach(function(eq){ if (eq.id === 'prep') return; nEq++; h2('5.' + nEq + ' ' + eq.t);
+  EQUIPOS.forEach(function(eq){ if (eq.id === 'prep') return; nEq++; h2('6.' + nEq + ' ' + eq.t);
     var desc = PASOS.filter(function(p){ return p.eq === eq.id && c.d[p.id]; }).map(function(p){ return textoAct(p, c.d[p.id]); }).filter(Boolean).join(' ');
     if (desc) { cabe(24); T(8.6, true); doc.text('Descripción de actividades', M, y + 3.2); y += 5; par(desc, 8.6); }
     PASOS.filter(function(p){ return p.eq === eq.id; }).forEach(function(p){ var d = c.d[p.id], s = estadoPaso(p);
@@ -1595,10 +1644,10 @@ function armarPdf(FOTOS){
     });
   });
   var H = hallazgos();
-  h1('6. Hallazgos y recomendaciones');
+  h1('7. Hallazgos y recomendaciones');
   tabla(['N.º','Equipo','Hallazgo','Recomendación','Prioridad'], H.map(function(x, i){ return ['R' + (i + 1), x.eq, x.txt, x.acc, x.sev]; }), [11, 30, (CW - 11 - 30 - 18) / 2, (CW - 11 - 30 - 18) / 2, 18]);
-  h1('7. Conclusiones'); par(c.conclusion != null ? c.conclusion : conclusion(H));
-  h1('8. Aprobación');
+  h1('8. Conclusiones'); par(c.conclusion != null ? c.conclusion : conclusion(H));
+  h1('9. Aprobación');
   /* Tres casillas con espacio para la firma (manuscrita o digital sobre el
      mismo PDF), nombre y cargo, y fecha. */
   (function(){
