@@ -805,7 +805,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v3.1 · 02/10/2026';
+var VERSION = 'v3.2 · 02/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -1493,8 +1493,10 @@ function armarPdf(FOTOS){
      al final se dibuja en la hoja reservada después de la portada. */
   var TOC = [], tocPagina = 0;
   function pagActual(){ return doc.internal.getCurrentPageInfo().pageNumber; }
-  function h1(t){ cabe(14); T(11.5, true); doc.text(t, M, y + 4); y += 8; TOC.push({ t: t, p: pagActual(), n: 1 }); }
-  function h2(t){ cabe(12); T(9.6, true); doc.text(t, M, y + 3.5); y += 6; if (/^5\.\d/.test(t)) TOC.push({ t: t, p: pagActual(), n: 2 }); }
+  /* Un título nunca queda solo al pie de la hoja: antes de escribirlo se
+     exige espacio para él y para el comienzo de su contenido. */
+  function h1(t){ cabe(42); T(11.5, true); doc.text(t, M, y + 4); y += 8; TOC.push({ t: t, p: pagActual(), n: 1 }); }
+  function h2(t){ cabe(36); T(9.6, true); doc.text(t, M, y + 3.5); y += 6; if (/^5\.\d/.test(t)) TOC.push({ t: t, p: pagActual(), n: 2 }); }
   function dibujarTOC(){
     doc.setPage(tocPagina); var yy = 36;
     T(11.5, true); doc.text('Contenido', M, yy + 4); yy += 12;
@@ -1534,7 +1536,7 @@ function armarPdf(FOTOS){
   h1('1. Objeto'); par('Documentar el comisionamiento de los equipos de superficie de la unidad de bombeo electrosumergible del pozo ' + c.pozo_nombre + ', instalados en sistemas y procesos operados por Gran Tierra Energy: inspección, pruebas eléctricas, configuración y pruebas funcionales previas al arranque, con los criterios de aceptación aplicados.');
   h1('2. Alcance'); par('Interruptor principal, transformador desfasador (PST), variador de frecuencia, transformador elevador (SUT) y cables de superficie, comunicación SCADA y equipos de superficie del sensor de fondo, más las verificaciones y registros de arranque.');
   var prep = PASOS.filter(function(p){ return p.eq === 'prep' && c.d[p.id]; }).map(function(p){ return textoAct(p, c.d[p.id]); }).filter(Boolean).join(' ');
-  if (prep) { T(9.6, true); cabe(10); doc.text('Condiciones de ejecución', M, y + 3.5); y += 6; par(prep); }
+  if (prep) { cabe(24); T(9.6, true); doc.text('Condiciones de ejecución', M, y + 3.5); y += 6; par(prep); }
   /* Las fotos de los pasos de preparación (bloqueo, calibración) también van al anexo. */
   PASOS.filter(function(p){ return p.eq === 'prep' && c.d[p.id] && c.d[p.id].fotos.length; }).forEach(function(p){ refFotos(c.d[p.id], 'Preparación: ' + p.t); });
   h1('3. Referencias');
@@ -1545,9 +1547,9 @@ function armarPdf(FOTOS){
   var nEq = 0;
   EQUIPOS.forEach(function(eq){ if (eq.id === 'prep') return; nEq++; h2('5.' + nEq + ' ' + eq.t);
     var desc = PASOS.filter(function(p){ return p.eq === eq.id && c.d[p.id]; }).map(function(p){ return textoAct(p, c.d[p.id]); }).filter(Boolean).join(' ');
-    if (desc) { T(8.6, true); cabe(8); doc.text('Descripción de actividades', M, y + 3.2); y += 5; par(desc, 8.6); }
+    if (desc) { cabe(24); T(8.6, true); doc.text('Descripción de actividades', M, y + 3.2); y += 5; par(desc, 8.6); }
     PASOS.filter(function(p){ return p.eq === eq.id; }).forEach(function(p){ var d = c.d[p.id], s = estadoPaso(p);
-      cabe(18); T(8.6, true); doc.text(p.t, M, y + 3.2); T(7.6); doc.setTextColor(85, 85, 85); doc.text((d && d.fecha ? 'Fecha: ' + d.fecha : '') + (p.tens ? '   Tensión de prueba: ' + ((d && d.tens) || p.tens.join('/')) + ' VDC' : '') + (d && d.unit ? '   Unidad: ' + d.unit : ''), W - M, y + 3.2, { align: 'right' }); y += 5.5;
+      cabe(30); T(8.6, true); doc.text(p.t, M, y + 3.2); T(7.6); doc.setTextColor(85, 85, 85); doc.text((d && d.fecha ? 'Fecha: ' + d.fecha : '') + (p.tens ? '   Tensión de prueba: ' + ((d && d.tens) || p.tens.join('/')) + ' VDC' : '') + (d && d.unit ? '   Unidad: ' + d.unit : ''), W - M, y + 3.2, { align: 'right' }); y += 5.5;
       if (d && d.pendiente) { tabla(['Estado','Motivo'], [[['Pe'], d.pendiente]], [30, CW - 30], 0); var obp = textoObs(p, d); if (obp) par('Observaciones: ' + obp, 7.8); return; }
       if (!d || !s.ok) { if (d && d.na) par('No aplica. ' + textoObs(p, d), 8); else par('No realizado en este periodo.', 8); return; }
       if (p.tipo === 'med') { var grupos = []; p.pts.forEach(function(pt){ var g = grupos.filter(function(x){ return x.g === pt.g; })[0]; if (!g) { g = { g: pt.g, pts: [] }; grupos.push(g); } g.pts.push(pt); });
