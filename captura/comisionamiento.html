@@ -809,7 +809,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v3.4 · 03/10/2026';
+var VERSION = 'v3.5 · 03/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -1480,10 +1480,12 @@ function vCierre(){
   var libres = S.tpl.revision_permite_pendientes || [], faltan = PASOS.filter(function(p){ return libres.indexOf(p.eq) < 0 && !estadoPaso(p).ok; }).length;
   if (editable()) b += '<button class="btn pri" id="env"' + (cola || faltan ? ' disabled' : '') + '>' + (faltan ? 'Faltan ' + faltan + ' pasos para enviar' : cola ? cola + ' envíos pendientes' : 'Enviar a revisión') + '</button>';
   else if (c.estado === 'en_revision' && S.aprueba) b += '<button class="btn sec2" id="dev">Devolver</button><button class="btn pri" id="apr">Aprobar</button>';
+  else if (c.estado === 'en_revision') b += '<button class="btn sec2" id="ret">Volver a campo para completar</button>';
   accion(b);
   $('rt').onclick = function(){ S.pantalla = 'ruta'; render(); };
   if ($('env')) $('env').onclick = function(){ transicion('en_revision'); };
   if ($('apr')) $('apr').onclick = function(){ dialogo('Aprobar comisionamiento', 'Queda bloqueado y pasa al historial de tendencias del pozo.', { lista: [{ t: 'Cancelar' }, { t: 'Aprobar', pri: true }] }).then(function(r){ if (r.i === 1) transicion('aprobado'); }); };
+  if ($('ret')) $('ret').onclick = function(){ dialogo('Volver a campo', 'El comisionamiento vuelve a estado en campo y podrás seguir registrando. Si lo envió otra persona, solo ella o el admin pueden retirarlo.', { lista: [{ t: 'Cancelar' }, { t: 'Volver a campo', pri: true }] }).then(function(r){ if (r.i === 1) transicion('en_campo', ''); }); };
   if ($('dev')) $('dev').onclick = function(){ dialogo('Devolver a campo', 'Indica qué debe corregirse.', { campo: 'Motivo de la devolución', lista: [{ t: 'Cancelar' }, { t: 'Devolver', pri: true }] }).then(function(r){ if (r.i === 1) transicion('en_campo', r.texto); }); };
 }
 function transicion(a, motivo){
