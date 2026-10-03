@@ -3661,7 +3661,19 @@ function kcPreparar(d){
   };
   const bitPor = new Map(), aisPor = new Map();
   (d.bit || []).forEach(b => { if (!bitPor.has(b.unidad)) bitPor.set(b.unidad, []); bitPor.get(b.unidad).push(b); });
-  (d.ais || []).forEach(a => { const fe = kcISO(a.fecha); if (!fe) return; a = { ...a, fecha: fe }; if (!aisPor.has(a.unidad)) aisPor.set(a.unidad, []); aisPor.get(a.unidad).push(a); });
+  /* dp_aislamiento_unidad entrega fecha_prueba, balance_ab/ac/bc,
+     dictamen_txt y maquina_estado (lo mismo que usa la exportacion
+     tecnica). Aqui se normalizan a los nombres que espera la hoja de pozo;
+     sin esto ningun ensayo tenia fecha y todos se descartaban. */
+  (d.ais || []).forEach(a => {
+    const fe = kcISO(a.fecha_prueba || a.fecha || a.fecha_ensayo); if (!fe) return;
+    const validable = !!a.prueba_id, validado = validable && !!a.validado_en;
+    const provisional = validable ? !validado : (a.estado && a.estado !== 'firmado');
+    a = { ...a, fecha: fe,
+          bal_ab: a.bal_ab != null ? a.bal_ab : a.balance_ab, bal_ac: a.bal_ac != null ? a.bal_ac : a.balance_ac, bal_bc: a.bal_bc != null ? a.bal_bc : a.balance_bc,
+          retirada: a.retirada != null ? a.retirada : (a.maquina_estado === 'RETIRADA' ? 'Si' : null),
+          dictamen: a.dictamen || ((a.dictamen_txt || '') + (provisional ? ' (provisional)' : '')) || null };
+    if (!aisPor.has(a.unidad)) aisPor.set(a.unidad, []); aisPor.get(a.unidad).push(a); });
   return { FUERA, PL, ST, RL, OP, H, capDe, unidades, estado, bitPor, aisPor,
            conHoja: unidades.filter(u => (H.get(u) || []).length) };
 }
@@ -4449,7 +4461,7 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
 /* Version del formato cliente: sale en el aviso de error y en la ayuda del
    boton, para confirmar que el navegador tiene el archivo nuevo y no una
    copia guardada por el service worker. */
-const KC_VERSION = '2026-10-03 overview';
+const KC_VERSION = '2026-10-03 b';
 
 /* ExcelJS propio de este modulo. keExcelJS reutiliza el de la ventana
    principal, pero ese vive en otro contexto de JavaScript: las fechas que
