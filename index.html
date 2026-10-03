@@ -4321,8 +4321,12 @@ async function hubPintar(c) {
   };
 
   if (firmaEnsayos && c.porFirmar) {
+    /* La tarjeta lleva al ensayo pendiente más antiguo y abre su firma; con
+       varios, los demás siguen listados debajo. Antes solo cambiaba al
+       módulo y dejaba al revisor buscando en la lista de máquinas. */
     alertas.push({ n: c.porFirmar, t: "ensayos por firmar", clase: "avisa",
-                   ir: () => aplicarModulo("ensayos") });
+                   ir: () => { const l = Array.isArray(c.porFirmarLista) ? c.porFirmarLista : [];
+                               if (l.length) hubIrAMaquina(l[0].maquina_id, l[0].id); else aplicarModulo("ensayos"); } });
   }
   if (c.devueltos) {
     alertas.push({ n: c.devueltos, t: firmaEnsayos ? "ensayos devueltos" : "ensayos tuyos devueltos",
@@ -8575,7 +8579,7 @@ const EE_BORRADOR = "kronos_ensayo_borrador";
 /* Versión visible en el pie del inicio. Con un service worker de por medio,
    subir un archivo nuevo no garantiza que el navegador lo esté usando: esta
    marca permite comprobarlo sin abrir herramientas de desarrollo. */
-const KM_VERSION = "2026-10-03 · firma-directa";
+const KM_VERSION = "2026-10-03 · firma-directa b";
 
 /* Promesa de la carga en curso: quien necesita la lista ya cargada (por
    ejemplo, entrar a una máquina desde el inicio) espera esta, en vez de
