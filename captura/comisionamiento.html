@@ -809,7 +809,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v3.3 · 02/10/2026';
+var VERSION = 'v3.4 · 03/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -877,7 +877,7 @@ function vNuevo(){
     if (!navigator.onLine) { if (!pozos.length && !tpls.length) { S.pozos = []; pintarNuevo([]); } return; }
     Promise.all([
       conTiempo(sb.rpc('dp_cm_pozos'), T_LECTURA).then(function(r){ return agotado(r) || r.error ? null : r.data; }).catch(function(){ return null; }),
-      conTiempo(sb.from('cm_plantillas').select('id,version,titulo,estado,pendientes').neq('estado', 'retirada'), T_LECTURA).then(function(r){ return agotado(r) || r.error ? null : r.data; }).catch(function(){ return null; })
+      conTiempo(sb.from('cm_plantillas').select('id,version,titulo,estado,pendientes,aplica_a').neq('estado', 'retirada'), T_LECTURA).then(function(r){ return agotado(r) || r.error ? null : r.data; }).catch(function(){ return null; })
     ]).then(function(x){
       if (x[0]) idbPut('cache', { clave: 'pozos', v: x[0] }); if (x[1]) idbPut('cache', { clave: 'plantillas', v: x[1] });
       var p2 = x[0] || pozos, t2 = x[1] || tpls;
@@ -896,13 +896,14 @@ function pintarNuevo(tpls){
     '<label class="campo"><span>Unidad</span><select id="pozo"><option value="">Elige la unidad</option>' + S.pozos.map(function(p){ return '<option value="' + p.id + '"' + (N.pozo === p.id ? ' selected' : '') + '>' + esc(p.nombre) + (p.pad ? ' · ' + esc(p.pad) : (p.campo ? ' · ' + esc(p.campo) : '')) + (p.activo === false ? ' · inactiva' : '') + '</option>'; }).join('') + '</select></label>' +
     (S.pozos.length ? '' : '<p class="aviso ancho">No hay unidades en el dispositivo. Abre esta pantalla una vez con señal.</p>') +
     '<label class="campo dos"><span>Recorrido</span><select id="tpl">' + tpls.map(function(t){ var k = t.id + '@' + t.version; return '<option value="' + k + '"' + (N.tpl === k ? ' selected' : '') + '>' + esc(t.titulo) + ' (v' + t.version + (t.estado !== 'vigente' ? ', borrador' : '') + ')</option>'; }).join('') + '</select></label>' +
+    '<p class="nota ancho" id="tpl-sug">' + esc((N.tplAuto && N.tplAuto.txt) || '') + '</p>' +
     (borr ? '<p class="aviso ancho">Esta plantilla está en borrador' + (sel.pendientes && sel.pendientes.length ? ' (pendiente: ' + esc(sel.pendientes.join('; ')) + ')' : '') + '. ' + (admin ? 'Se usará como comisionamiento de prueba: sirve para ensayar el recorrido y no se aprueba.' : 'Solo el administrador puede usarla, en modo de prueba' + (rol ? ' (tu rol en la base: ' + esc(rol) + ')' : '') + '. Para usarla en un comisionamiento real hay que publicarla.') + '</p>' : '') +
     '<label class="campo"><span>Orden de trabajo</span><input id="orden" inputmode="numeric" value="' + esc(N.orden) + '" placeholder="Número de la orden"></label>' +
     '<label class="campo"><span>Revisa</span><input id="revisa" value="' + esc(N.revisa) + '" placeholder="Supervisor"></label>' +
     '<div class="campo ancho"><span>Ejecutan</span>' + N.ejec.map(function(n, i){ return '<div class="ejec"><input data-ej="' + i + '" value="' + esc(n) + '" placeholder="' + (i ? 'Nombre del ejecutante' : 'Responsable de la ejecución') + '" aria-label="Ejecutante ' + (i + 1) + '">' + (N.ejec.length > 1 ? '<button class="quitar" data-qj="' + i + '" aria-label="Quitar ejecutante ' + (i + 1) + '">×</button>' : '') + '</div>'; }).join('') + '<button class="btn sec2 ancho" id="addej">+ Agregar ejecutante</button></div>' +
     '</div>';
   $('cuerpo').innerHTML = h;
-  $('pozo').onchange = function(){ N.pozo = this.value; chk(); };
+  $('pozo').onchange = function(){ N.pozo = this.value; N.tplAuto = null; chk(); sugerirPlantilla(tpls); };
   $('tpl').onchange = function(){ N.tpl = this.value; N.prueba = false; pintarNuevo(tpls); };
   $('orden').oninput = function(){ N.orden = this.value; chk(); };
   $('revisa').oninput = function(){ N.revisa = this.value; };
@@ -913,6 +914,23 @@ function pintarNuevo(tpls){
   function chk(){ var b = $('crear'); var f = !N.pozo ? 'Elige la unidad' : !sel ? 'No hay plantilla disponible' : (borr && !admin) ? 'Plantilla no disponible' : !N.orden.trim() ? 'Falta la orden de trabajo' : !N.ejec.some(function(x){ return x.trim(); }) ? 'Falta quién ejecuta' : null; b.disabled = !!f; b.textContent = f || 'Crear e iniciar'; }
   chk();
   $('crear').onclick = function(){ crear(sel); };
+}
+/* Con el pozo elegido se consulta su variador en Activos y se propone la
+   plantilla cuyo patrón de modelo coincide. Si no coincide ninguna, se deja
+   la elección manual y se dice por qué. */
+function sugerirPlantilla(tpls){
+  var N = NUEVO, cont = $('tpl-sug'); if (!N.pozo || !navigator.onLine) { if (cont) cont.textContent = ''; return; }
+  if (cont) cont.textContent = 'Consultando el variador de la unidad en Activos…';
+  conTiempo(sb.rpc('dp_cm_equipos_unidad', { p_pozo: N.pozo }), T_LECTURA).then(function(r){
+    if (N.pozo !== $('pozo').value) return;
+    var eqs = (!agotado(r) && !r.error && r.data) || [], vdf = eqs.filter(function(e){ return e.rol === 'vdf'; })[0];
+    if (!vdf) { N.tplAuto = { txt: 'La unidad no tiene variador registrado en Activos: elige el recorrido según el variador instalado.' }; pintarNuevo(tpls); return; }
+    var modelo = (vdf.modelo || '') + ' ' + (vdf.descripcion || ''), hit = null;
+    tpls.forEach(function(t){ var a = t.aplica_a || {}; if (!hit && a.modelo_regex) { try { if (new RegExp(a.modelo_regex, 'i').test(modelo)) hit = t; } catch(e){} } });
+    if (hit) { N.tpl = hit.id + '@' + hit.version; N.tplAuto = { txt: 'Variador según Activos: ' + [vdf.marca, vdf.modelo].filter(Boolean).join(' ') + ' → recorrido ' + hit.titulo.replace(/^Comisionamiento de equipos de superficie BES, /, '') + '.', ok: true }; }
+    else N.tplAuto = { txt: 'Variador según Activos: ' + [vdf.marca, vdf.modelo].filter(Boolean).join(' ') + ', sin recorrido específico. Elige el que corresponda.' };
+    pintarNuevo(tpls);
+  });
 }
 function crear(sel){
   var N = NUEVO, pz = S.pozos.filter(function(p){ return p.id === N.pozo; })[0];
@@ -1271,7 +1289,9 @@ function capEquipos(p, d){
     var ops = m ? [['COINCIDE','Coincide con la placa','C'],['DIFIERE','Difiere de la placa','A'],['NOHAY','La unidad no lo tiene','X']] : [['MANUAL','Registrar desde la placa','A'],['NOHAY','La unidad no lo tiene','X']];
     h += '<div class="seg chk" data-eqe="' + r[0] + '">' + ops.map(function(o){ return '<button data-v="' + o[0] + '" data-est="' + o[2] + '" aria-pressed="' + (q.estado === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div>';
     if (q.estado === 'DIFIERE' || q.estado === 'MANUAL') h += '<p class="nota" style="margin:8px 0 4px">Transcribe la placa tal como está impresa.</p><div class="celdas">' +
-      [['marca','Marca'],['modelo','Modelo'],['serie','Serie']].map(function(c){ return '<label>' + c[1] + '<input data-eqp="' + r[0] + '|' + c[0] + '" value="' + esc(q.placa[c[0]] || '') + '" autocapitalize="characters"></label>'; }).join('') + '</div>';
+      [['marca','Marca'],['modelo','Modelo'],['serie','Serie']].map(function(c){ return '<label>' + c[1] + '<input data-eqp="' + r[0] + '|' + c[0] + '" value="' + esc(q.placa[c[0]] || '') + '" autocapitalize="characters"></label>'; }).join('') + '</div>' +
+      '<button type="button" class="btn sec2 ancho" style="margin-top:8px" data-eqa="' + r[0] + '">' + (q.estado === 'DIFIERE' ? 'Corregir en Activos' : 'Registrar en Activos') + '</button>' +
+      '<p class="nota">Abre «Actualizar equipos de la unidad» de Captura con estos datos; el cambio sigue su aprobación normal.</p>';
     h += '</div>'; });
   if (!d.campos.equipos_cargados) h = '<p class="nota" id="eq-aviso">' + (navigator.onLine ? 'Cargando los equipos de la unidad desde Activos…' : 'Sin señal: los equipos de Activos se cargan cuando haya conexión; mientras tanto puedes registrarlos desde la placa.') + '</p>' + h;
   return h;
@@ -1341,6 +1361,9 @@ function bindCaptura(p, d){
   on('[data-enc]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ d.enc[g.getAttribute('data-enc')] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
   on('[data-ck]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ d.checks[g.getAttribute('data-ck')] = b.getAttribute('data-v'); toque(d); refila(); }; }); });
   on('input[data-kv]', function(i){ i.oninput = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ d.campos[i.getAttribute('data-kv')] = i.value; toque(d); refilaDiferido(); }; });
+  on('[data-eqa]', function(b){ b.onclick = function(){ var rol = b.getAttribute('data-eqa'), q = equipoDe(d, rol), pl = q.placa;
+    var qs = new URLSearchParams({ pozo: S.com.pozo_id, rol: rol, accion: q.estado === 'DIFIERE' ? 'corregir' : 'nuevo', serial: pl.serie || '', marca: pl.marca || '', modelo: pl.modelo || '' });
+    window.open('unidad.html?' + qs.toString(), '_blank'); }; });
   on('[data-eqe]', function(g){ [].forEach.call(g.querySelectorAll('button'), function(b){ b.onclick = function(){ equipoDe(d, g.getAttribute('data-eqe')).estado = b.getAttribute('data-v'); toque(d); refila(); }; }); });
   on('input[data-eqp]', function(i){ i.oninput = function(){ var k = i.getAttribute('data-eqp').split('|'); equipoDe(d, k[0]).placa[k[1]] = i.value; toque(d); autoguardar(p); }; i.onchange = function(){ refilaDiferido(); }; });
   if (p.tipo === 'equipos' && !d.campos.equipos_cargados && editable()) equiposPrecargar(p, d).then(function(){ if (S.pantalla === 'paso' && S.paso === p.id) refila(); });

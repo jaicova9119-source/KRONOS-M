@@ -1457,6 +1457,42 @@ pintarEspejo();
 
 /* Se llama solo cuando ya hay sesion: sin token, dp_snapshot_unidades
    responde vacio y el espejo quedaria sobrescrito con nada. */
+/* Enlace directo desde el comisionamiento: unidad.html?pozo=<id>&rol=vdf|pst|sut|int
+   &accion=nuevo|corregir&serial=&marca=&modelo=. Abre la unidad, ubica el rol
+   y deja la hoja de registro o de correccion con los datos de la placa ya
+   escritos. El guardado sigue siendo el de siempre (cola, aprobacion). */
+var ENLACE = (function(){
+  try {
+    var q = new URLSearchParams(location.search);
+    if(!q.get('pozo')) return null;
+    return { pozo:q.get('pozo'), rol:(q.get('rol')||'').toLowerCase(), accion:q.get('accion')||'nuevo',
+             serial:q.get('serial')||'', marca:q.get('marca')||'', modelo:q.get('modelo')||'' };
+  } catch(e){ return null; }
+})();
+var ROL_RE = { vdf:/VARIADOR|VDF|VSD|DRIVE/i, pst:/PST|DESFASADOR/i, sut:/SUT|ELEVADOR/i, int:/INTERRUPTOR|BREAKER|TOTALIZADOR/i };
+function atenderEnlace(){
+  if(!ENLACE) return false;
+  var esp = leerEspejo(); if(!esp) return false;
+  var u = null;
+  for(var i=0;i<esp.unidades.length;i++){ if(String(esp.unidades[i].id) === ENLACE.pozo){ u = esp.unidades[i]; break; } }
+  if(!u){ aviso($('aviso-inicio'), 'La unidad del enlace no esta en la lista descargada.', 'err'); ENLACE = null; return false; }
+  abrirUnidad(u);
+  var re = ROL_RE[ENLACE.rol], eqs = u.equipos || [];
+  filaActual = re ? eqs.filter(function(e){ return re.test(e.nombre_rol || '') || re.test(e.rol || ''); })[0] : null;
+  var datos = ENLACE; ENLACE = null;
+  if(!filaActual){ aviso($('msg'), 'Esta unidad no tiene el rol indicado en el enlace; registra el equipo desde la tarjeta que corresponda.', 'warn'); return true; }
+  if(datos.accion === 'corregir' && filaActual.instalacion_id){
+    abrirCorregir();
+    if(datos.serial) $('c-serial').value = datos.serial; if(datos.marca) $('c-marca').value = datos.marca; if(datos.modelo) $('c-modelo').value = datos.modelo;
+    $('c-nota').value = 'Diferencia detectada en comisionamiento: la placa no coincide con Activos.';
+  } else {
+    abrirReemplazo(!!filaActual.instalacion_id);
+    $('r-serial').value = datos.serial; $('r-marca').value = datos.marca; $('r-modelo').value = datos.modelo;
+    $('r-nota').value = 'Registrado desde el comisionamiento de la unidad.';
+  }
+  return true;
+}
+
 function arrancarDatos(){
   var esp = leerEspejo();
   if(!esp){
@@ -1466,12 +1502,14 @@ function arrancarDatos(){
         aviso($('aviso-inicio'),
           ok ? '' : 'No se pudo descargar la lista. Intenta de nuevo con señal.',
           ok ? '' : 'err');
+        if(ok) atenderEnlace();
       });
     } else {
       aviso($('aviso-inicio'), 'Sin conexion y sin unidades descargadas. Abre esta pagina una vez con señal para poder usarla en campo.', 'err');
     }
   } else {
     descargarEspejo();  /* refresco silencioso en segundo plano */
+    atenderEnlace();
   }
 }
 
