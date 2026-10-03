@@ -876,15 +876,20 @@
                  lo mismo, uno con explicacion y otro sin ella, y en pantalla se
                  veian igual de cerrados. Ahora cerrar es un solo acto y lleva
                  nota siempre. -->
-            <select id="evt-status">
+            <select id="evt-status" onchange="evtAlternarCierre()">
               <option>Pendiente</option>
               <option>En proceso</option>
               <option>Requiere seguimiento</option>
               <option>No aplica</option>
+              <option value="Ejecutado">Ejecutado (ya se hizo)</option>
             </select>
+            <div id="evt-cierre-wrap" style="display:none;margin-top:8px">
+              <label>Qu&eacute; se hizo <span style="opacity:.7">(obligatorio para cerrar)</span></label>
+              <textarea id="evt-cierre" rows="2" placeholder="Ej.: se reemplazaron los fusibles del choke y se verific&oacute; lectura del sensor"></textarea>
+            </div>
             <div class="hint" style="font-size:11.5px;opacity:.75;margin-top:4px">
-              Para cerrarlo, us&aacute; <b>Marcar ejecutado</b> en Monitoreo de condici&oacute;n:
-              ah&iacute; queda anotado qu&eacute; se hizo.
+              Un evento se cierra siempre con la nota de qu&eacute; se hizo: aqu&iacute; con <b>Ejecutado</b>, o despu&eacute;s con
+              <b>Marcar ejecutado</b> en Monitoreo de condici&oacute;n.
             </div>
           </div>
         </div>
@@ -4226,6 +4231,7 @@ function abrirBitacora(){
   document.getElementById('evt-categoria').value = 'Mantenimiento';
   document.getElementById('evt-severidad').value = 'Informativo';
   document.getElementById('evt-status').value    = 'Pendiente';
+  var ec = document.getElementById('evt-cierre'); if (ec) ec.value = ''; evtAlternarCierre();
   document.getElementById('evt-obs').value = '';
   document.getElementById('evt-rec').value = '';
   ir('bitacora-form');
@@ -4340,6 +4346,9 @@ function guardarBitacora(){
      abrirBitacora, se genera aqui una sola vez. */
   if(!evtIdActual) evtIdActual = dpNuevoId();
 
+  var ejecutado = document.getElementById('evt-status').value === 'Ejecutado';
+  var cierre = (document.getElementById('evt-cierre') || {}).value || '';
+  if (ejecutado && !cierre.trim()) { alert('Para registrarlo como ejecutado escribe qué se hizo.'); return; }
   var payload = {
     id: evtIdActual,
     pozo: pozo,
@@ -4349,13 +4358,16 @@ function guardarBitacora(){
     severidad: document.getElementById('evt-severidad').value,
     observaciones: document.getElementById('evt-obs').value,
     recomendaciones: document.getElementById('evt-rec').value,
-    estado: document.getElementById('evt-status').value
+    /* "Ejecutado" no es un estado del evento: se guarda y se cierra con la
+       nota en la misma llamada, igual que "Marcar ejecutado" en Monitoreo. */
+    estado: ejecutado ? 'Pendiente' : document.getElementById('evt-status').value
     /* creado_por lo sella la base con el correo de la sesion. */
   };
+  if (ejecutado) payload.cierre_nota = cierre.trim();
 
   var boton = event.target.closest('button');
-  guardarOEncolar('dp_guardar_bitacora', payload, boton,
-    'Evento guardado.', 'Evento ' + pozo,
+  guardarOEncolar(ejecutado ? 'dp_captura_bitacora_ejecutada' : 'dp_guardar_bitacora', payload, boton,
+    ejecutado ? 'Evento guardado y cerrado.' : 'Evento guardado.', 'Evento ' + pozo,
     function(){ evtIdActual = null; });
 }
 
@@ -4773,6 +4785,11 @@ function guardarPozoNuevo(){
     alert('Unidad ' + body.nombre + ' creada. Ahora se registran sus equipos con los datos de placa que escribiste.');
     location.href = 'unidad.html?pozo=' + encodeURIComponent(body.id) + '&cargar=1';
   }).catch(function(e){ mostrarGuardando(boton, false); alert('No se pudo crear la unidad: ' + (e.message || e)); });
+}
+
+function evtAlternarCierre(){
+  var w = document.getElementById('evt-cierre-wrap'), s = document.getElementById('evt-status');
+  if (w && s) w.style.display = s.value === 'Ejecutado' ? '' : 'none';
 }
 
 function guardarPozoNuevoAnterior(){
