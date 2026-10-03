@@ -696,7 +696,7 @@
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
         </div>
 
-        <div class="action-card card-nuevo" data-sistemas="BES" onclick="ir('nuevo-paso1')">
+        <div class="action-card card-nuevo" id="card-unidad-nueva" data-sistemas="BES" onclick="ir('nuevo-paso1')" style="display:none">
           <div class="ic"><svg viewBox="0 0 24 24" fill="none"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></div>
           <div class="body"><div class="ttl">Registrar unidad nueva</div><div class="sub">Catalogo completo con datos de placa &middot; 5 pasos</div></div>
           <div class="chev"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
@@ -4719,8 +4719,63 @@ function verificarPozoExistente(){
   });
 }
 
+/* "Registrar unidad nueva" lo usan los ingenieros de monitoreo y seguimiento
+   (permiso crea_unidades, delegado desde Kronos-M). La tarjeta solo se
+   muestra a quien lo tiene; el servidor lo vuelve a comprobar al guardar. */
+var CLAVE_PUEDE_UNIDAD = 'dp_puedo_crear_unidad';
+function revisarPermisoUnidades(){
+  var card = document.getElementById('card-unidad-nueva');
+  var cache = dpAlmacen.getItem(CLAVE_PUEDE_UNIDAD);
+  if (card && cache === '1') card.style.display = '';
+  if (!sb || !navigator.onLine) return;
+  sb.rpc('dp_puedo_crear_unidad').then(function(r){
+    var puede = !r.error && r.data === true;
+    dpAlmacen.setItem(CLAVE_PUEDE_UNIDAD, puede ? '1' : '0');
+    if (card) card.style.display = puede ? '' : 'none';
+  }).catch(function(){});
+}
+
 function guardarPozoNuevo(){
-  alert('Este formulario todavia no esta conectado a Kronos-M.\n\nNo guardes datos aqui: se perderian. Por ahora usa Medicion, Aislamiento y Bitacora, que si estan conectados.');
+  if (!navigator.onLine || !sb) {
+    alert('Crear una unidad nueva necesita señal: la base asigna su identificador y los equipos se registran sobre él. Intenta con conexión.');
+    return;
+  }
+  var pozo = normalizarNombrePozo(document.getElementById('nc-pozo').value.trim());
+  document.getElementById('nc-pozo').value = pozo;
+  if(!pozo){ alert('Falta el nombre del pozo (paso 1).'); ir('nuevo-paso1'); return; }
+  var boton = event.target.closest('button');
+  var unidadNueva = {
+    nombre: pozo,
+    pad: document.getElementById('nc-pad').value.trim(),
+    area: document.getElementById('nc-campo').value,
+    operador: document.getElementById('nc-operador').value.trim(),
+    estado: document.getElementById('nc-estado').value,
+    fecha: document.getElementById('nc-fecha').value,
+    notas: document.getElementById('nc-notas').value.trim(),
+    sistema: 'BES'
+  };
+  /* Los equipos de los pasos 2 a 5 se entregan al flujo de instalacion de
+     "Actualizar equipos de la unidad", que conoce los roles del sistema y
+     deja cada uno con su historial. Aqui solo se guardan para prellenarlo. */
+  var g = function(id){ var e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  var equipos = {
+    motor: { serial: g('nm-serial'), marca: g('nm-marca'), modelo: g('nm-modelo'), fecha: g('nm-fecha'), nota: g('nm-obs') },
+    vdf:   { serial: g('nv-serial'), marca: g('nv-marca'), modelo: g('nv-modelo'), fecha: g('nv-fecha'), nota: g('nv-obs') },
+    pst:   { serial: g('np-serial'), marca: g('np-marca'), modelo: g('np-tipo') || '', fecha: g('np-fecha'), nota: g('np-obs') },
+    sut:   { serial: g('ns-serial'), marca: g('ns-marca'), modelo: '', fecha: g('ns-fecha'), nota: g('ns-obs') }
+  };
+  mostrarGuardando(boton, true);
+  sb.rpc('dp_captura_crear_unidad', { p: unidadNueva }).then(function(r){
+    mostrarGuardando(boton, false);
+    var body = r.data || {};
+    if (r.error || !body.ok) { alert('No se pudo crear la unidad: ' + ((body && body.error) || (r.error && r.error.message) || 'sin respuesta')); return; }
+    try { dpAlmacen.setItem('dp_unidad_nueva_equipos', JSON.stringify({ pozo_id: body.id, nombre: body.nombre, equipos: equipos, ts: new Date().toISOString() })); } catch(e){}
+    alert('Unidad ' + body.nombre + ' creada. Ahora se registran sus equipos con los datos de placa que escribiste.');
+    location.href = 'unidad.html?pozo=' + encodeURIComponent(body.id) + '&cargar=1';
+  }).catch(function(e){ mostrarGuardando(boton, false); alert('No se pudo crear la unidad: ' + (e.message || e)); });
+}
+
+function guardarPozoNuevoAnterior(){
   return;
 
   var pozo = normalizarNombrePozo(document.getElementById('nc-pozo').value.trim());
@@ -4902,6 +4957,7 @@ function dpEntrar(user){
   try { guardado = JSON.parse(dpAlmacen.getItem(CLAVE_PERFIL) || 'null'); } catch(e){}
   if (guardado){
     perfilActual = guardado;
+    revisarPermisoUnidades();
     tecnicoActual = guardado.nombre || tecnicoActual;
     dpEtiquetaTecnico();
   }
@@ -4935,6 +4991,7 @@ function dpEntrar(user){
     try { dpAlmacen.setItem(CLAVE_PERFIL, JSON.stringify(r.data)); } catch(e){}
     tecnicoActual = perfilActual.nombre || tecnicoActual;
     dpEtiquetaTecnico();
+    revisarPermisoUnidades();
     /* Si el formulario ya estaba abierto mostrando el correo, se
        corrige en pantalla en cuanto llega el nombre. */
     ['med-realizo','evt-realizo','ais-realizo'].forEach(function(id){

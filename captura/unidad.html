@@ -727,6 +727,7 @@ $('btn-otra').onclick = function(){
 
 function pintarEquipos(){
   var caja = $('equipos'), eqs = unidad.equipos || [];
+  if (typeof pintarEquiposNueva === 'function') setTimeout(pintarEquiposNueva, 0);
   if(!eqs.length){
     caja.innerHTML = '';
     aviso($('msg'), 'Esta unidad no tiene sistema definido, o su sistema no tiene roles en el catalogo.', 'err');
@@ -1469,14 +1470,45 @@ var ENLACE = (function(){
              serial:q.get('serial')||'', marca:q.get('marca')||'', modelo:q.get('modelo')||'' };
   } catch(e){ return null; }
 })();
-var ROL_RE = { vdf:/VARIADOR|VDF|VSD|DRIVE/i, pst:/PST|DESFASADOR/i, sut:/SUT|ELEVADOR/i, int:/INTERRUPTOR|BREAKER|TOTALIZADOR/i };
+var ROL_RE = { vdf:/VARIADOR|VDF|VSD|DRIVE/i, pst:/PST|DESFASADOR/i, sut:/SUT|ELEVADOR/i, int:/INTERRUPTOR|BREAKER|TOTALIZADOR/i, motor:/MOTOR/i };
+var ENLACE_REINTENTO = false;
+/* Equipos escritos en "Registrar unidad nueva": se registran uno a uno con
+   el flujo de instalacion normal, prellenando la hoja. */
+function equiposPendientesNueva(){
+  try { var x = JSON.parse(almacen.getItem('dp_unidad_nueva_equipos') || 'null'); return (x && unidad && String(x.pozo_id) === String(unidad.id)) ? x : null; } catch(e){ return null; }
+}
+function pintarEquiposNueva(){
+  var caja = $('msg'), pend = equiposPendientesNueva();
+  var viejo = document.getElementById('nueva-pend'); if (viejo) viejo.remove();
+  if (!pend) return;
+  var eqs = unidad.equipos || [], falt = [];
+  Object.keys(pend.equipos).forEach(function(k){ var e = pend.equipos[k]; if (!e || !e.serial) return;
+    var re = ROL_RE[k], fila = re ? eqs.filter(function(x){ return re.test(x.nombre_rol || '') || re.test(x.rol || ''); })[0] : null;
+    if (fila && !fila.instalacion_id) falt.push({ k:k, e:e, fila:fila }); });
+  if (!falt.length) { almacen.removeItem('dp_unidad_nueva_equipos'); return; }
+  var div = document.createElement('div'); div.id = 'nueva-pend'; div.className = 'aviso warn';
+  div.innerHTML = '<b>Equipos escritos al crear la unidad, por registrar:</b><div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
+    + falt.map(function(f){ return '<button class="b pri" data-nk="'+f.k+'">'+esc(f.fila.nombre_rol)+' · serie '+esc(f.e.serial)+'</button>'; }).join('') + '</div>';
+  caja.parentNode.insertBefore(div, caja.nextSibling);
+  Array.prototype.forEach.call(div.querySelectorAll('[data-nk]'), function(b){ b.onclick = function(){
+    var f = falt.filter(function(x){ return x.k === b.getAttribute('data-nk'); })[0]; if (!f) return;
+    filaActual = f.fila; abrirReemplazo(false);
+    $('r-serial').value = f.e.serial; $('r-marca').value = f.e.marca || ''; $('r-modelo').value = f.e.modelo || '';
+    if (f.e.fecha) $('r-fecha').value = f.e.fecha; $('r-nota').value = (f.e.nota || '') + (f.e.nota ? ' · ' : '') + 'Registrado al crear la unidad.';
+  }; });
+}
 function atenderEnlace(){
   if(!ENLACE) return false;
   var esp = leerEspejo(); if(!esp) return false;
   var u = null;
   for(var i=0;i<esp.unidades.length;i++){ if(String(esp.unidades[i].id) === ENLACE.pozo){ u = esp.unidades[i]; break; } }
-  if(!u){ aviso($('aviso-inicio'), 'La unidad del enlace no esta en la lista descargada.', 'err'); ENLACE = null; return false; }
+  if(!u){
+    /* Una unidad recien creada no esta en el espejo: se refresca una vez. */
+    if(!ENLACE_REINTENTO && navigator.onLine){ ENLACE_REINTENTO = true; descargarEspejo().then(function(ok){ if(ok) atenderEnlace(); else aviso($('aviso-inicio'), 'La unidad del enlace no esta en la lista descargada.', 'err'); }); return false; }
+    aviso($('aviso-inicio'), 'La unidad del enlace no esta en la lista descargada.', 'err'); ENLACE = null; return false;
+  }
   abrirUnidad(u);
+  if(ENLACE.accion === 'cargar' || new URLSearchParams(location.search).get('cargar')){ ENLACE = null; pintarEquiposNueva(); return true; }
   var re = ROL_RE[ENLACE.rol], eqs = u.equipos || [];
   filaActual = re ? eqs.filter(function(e){ return re.test(e.nombre_rol || '') || re.test(e.rol || ''); })[0] : null;
   var datos = ENLACE; ENLACE = null;
