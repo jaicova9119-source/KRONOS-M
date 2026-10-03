@@ -768,7 +768,7 @@ function combinar(L, Rm){
   if (!L) return Rm;
   var c = JSON.parse(JSON.stringify(L)), quitadas = L.fotos_quitadas || [];
   Object.keys(Rm.d).forEach(function(pid){ Rm.d[pid].fotos = Rm.d[pid].fotos.filter(function(f){ return quitadas.indexOf(f) < 0; }); });
-  ['codigo','estado','es_prueba','aprobado_en'].forEach(function(k){ if (Rm[k] != null) c[k] = Rm[k]; });
+  ['codigo','estado','es_prueba','aprobado_en','plantilla_version'].forEach(function(k){ if (Rm[k] != null) c[k] = Rm[k]; });
   /* Firmantes: manda el servidor salvo que aquí haya un cambio aún sin enviar. */
   if (!leerCola().some(function(x){ return x.clave === 'cm-firm-' + L.id; })) { c.revisa = Rm.revisa; c.aprueba = Rm.aprueba; if (Rm.firmas && Object.keys(Rm.firmas).length) c.firmas = Rm.firmas; }
   if (Rm.conclusion != null && L.conclusion == null) c.conclusion = Rm.conclusion;
