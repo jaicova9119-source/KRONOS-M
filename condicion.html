@@ -6066,7 +6066,10 @@ async function kpVerPozo(codigo){
   }
 
   if (ctx){
-    sec.push(kpSeccion('contexto', 'Contexto y calidad del dato', null,
+    /* La seccion solo contiene la bitacora (el aislamiento tiene la suya):
+       se titula por lo que es. */
+    const nBit = (ctx.bitacora || []).length;
+    sec.push(kpSeccion('contexto', 'Bit\u00e1cora', nBit ? nBit + (nBit === 1 ? ' registro' : ' registros') : null,
       kpRenderContexto(ctx), { cerrada:true }));
   }
 
@@ -6453,7 +6456,7 @@ function kpRenderResumen(med, bal, ctx){
   });
   if (bitAb.length > 5){
     nota('warn', (bitAb.length - 5) + ' registro(s) abierto(s) m\u00e1s en bit\u00e1cora',
-         'Ver la secci\u00f3n Contexto y calidad del dato');
+         'Ver la secci\u00f3n Bit\u00e1cora');
   }
 
   av.sort((x, y) => (x.nivel === 'crit' ? 0 : 1) - (y.nivel === 'crit' ? 0 : 1));
@@ -7888,8 +7891,7 @@ function kpRenderContexto(ctx){
     /* Configuracion son 21 de 37 registros en el historico y taparian
        los eventos de operacion y falla, que son los que interesan al
        diagnosticar. Por eso el filtro. */
-    h += '<h2 style="margin-top:22px">Bit&aacute;cora</h2>';
-    h += '<p class="hint">' + bit.length + ' registros &middot; toca una categor&iacute;a para filtrar</p>';
+    h += '<p class="hint">Toca una categor&iacute;a para filtrar</p>';
 
     const cats = [];
     bit.forEach(b => {
