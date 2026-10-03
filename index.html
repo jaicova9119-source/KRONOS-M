@@ -4169,9 +4169,19 @@ async function hubIrAMaquina(id, ensayoId) {
     setTimeout(() => { card.style.boxShadow = ""; }, 2500);
   }
   /* Desde "Ensayos por firmar" se abre directamente la ventana de revisión y
-     firma de ese ensayo; la tarjeta queda detrás, resaltada. */
-  const ens = (eeEnsayos || []).find(x => x.id === ensayoId);
-  if (ens && ens.estado === "pendiente_firma" && typeof eeFirmar === "function") eeFirmar(ensayoId);
+     firma de ese ensayo; la tarjeta queda detrás, resaltada. Si el ensayo no
+     vino en la carga de la máquina, se trae solo: el objetivo es llegar a la
+     firma, no a la lista. */
+  let ens = (eeEnsayos || []).find(x => x.id === ensayoId);
+  if (!ens) {
+    try {
+      const re = await sb.from("ensayos_electricos").select("*, ensayo_devanados(*), ensayo_bobinas(*)").eq("id", ensayoId).maybeSingle();
+      if (re.data) { ens = re.data; eeEnsayos = (eeEnsayos || []).concat([ens]); }
+    } catch (e) { /* se avisa abajo */ }
+  }
+  if (!ens) { toast("No se encontró el ensayo por firmar"); return; }
+  if (ens.estado === "pendiente_firma" && typeof eeFirmar === "function") eeFirmar(ensayoId);
+  else toast("Ese ensayo ya no está pendiente de firma (" + (ens.estado || "sin estado") + ")");
 }
 
 /* Cada entrada devuelve un numero o null. allSettled evita que una
