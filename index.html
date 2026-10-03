@@ -4152,16 +4152,26 @@ async function hubIrAMaquina(id, ensayoId) {
   // vieja en memoria, la máquina se abría y la carga terminaba encima.
   try { await eeMaquinasPromesa; } catch (e) { /* cargarMaquinas ya lo muestra */ }
   if (!eeMaquinas.some(m => m.id === id)) {
-    toast("Esa máquina no está en el listado de Ensayos eléctricos");
-    return;
+    /* La máquina puede estar fuera del listado cargado (filtro, retirada o
+       sin vincular): se trae sola para poder llegar al ensayo. */
+    try {
+      const rm = await sb.from("v_maquinas_electricas").select("*").eq("id", id).maybeSingle();
+      if (rm.data) eeMaquinas = (eeMaquinas || []).concat([rm.data]);
+    } catch (e) { /* se avisa abajo */ }
+    if (!eeMaquinas.some(m => m.id === id)) { toast("Esa máquina no está en el listado de Ensayos eléctricos"); return; }
   }
   await abrirMaquina(id);
   if (!ensayoId) return;
   const card = document.getElementById("ee-card-" + ensayoId);
-  if (!card) return;
-  card.scrollIntoView({ behavior: "smooth", block: "center" });
-  card.style.boxShadow = "0 0 0 3px var(--acento, #1f5f99)";
-  setTimeout(() => { card.style.boxShadow = ""; }, 2500);
+  if (card) {
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.style.boxShadow = "0 0 0 3px var(--acento, #1f5f99)";
+    setTimeout(() => { card.style.boxShadow = ""; }, 2500);
+  }
+  /* Desde "Ensayos por firmar" se abre directamente la ventana de revisión y
+     firma de ese ensayo; la tarjeta queda detrás, resaltada. */
+  const ens = (eeEnsayos || []).find(x => x.id === ensayoId);
+  if (ens && ens.estado === "pendiente_firma" && typeof eeFirmar === "function") eeFirmar(ensayoId);
 }
 
 /* Cada entrada devuelve un numero o null. allSettled evita que una
