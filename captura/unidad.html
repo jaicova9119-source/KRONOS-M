@@ -276,6 +276,11 @@
   <input id="c-marca" class="campo" autocomplete="off">
   <label for="c-modelo">Modelo</label>
   <input id="c-modelo" class="campo mono" autocomplete="off">
+  <div id="c-run-wrap" class="oculto">
+    <label for="c-run">Numero de corrida actual</label>
+    <input id="c-run" class="campo mono" type="number" min="1" step="1" inputmode="numeric" autocomplete="off">
+    <p class="sub">Corrida en la que esta este motor. La anterior queda numerada automaticamente con el numero previo.</p>
+  </div>
   <label for="c-nota">Nota (opcional)</label>
   <input id="c-nota" class="campo" placeholder="Verificado en placa el…" autocomplete="off">
   <div id="corr-msg"></div>
@@ -295,6 +300,11 @@
   <input id="r-modelo" class="campo mono" autocomplete="off">
   <label for="r-fecha">Fecha de instalacion</label>
   <input id="r-fecha" class="campo" type="date">
+  <div id="r-run-wrap" class="oculto">
+    <label for="r-run">Numero de corrida de este motor</label>
+    <input id="r-run" class="campo mono" type="number" min="1" step="1" inputmode="numeric" autocomplete="off">
+    <p class="sub">Si lo dejas vacio y el motor anterior tenia corrida, se asigna la siguiente.</p>
+  </div>
   <div id="reem-motivo-wrap">
     <label for="r-motivo">Motivo de retiro del equipo anterior</label>
     <select id="r-motivo" class="campo">
@@ -740,6 +750,7 @@ function pintarEquipos(){
         + '<dt>Marca</dt><dd>'+esc(e.marca||'—')+'</dd>'
         + '<dt>Modelo</dt><dd>'+esc(e.modelo||'—')+'</dd>'
         + '<dt>Desde</dt><dd>'+esc(e.instalado_el||'sin fecha')+'</dd>'
+        + (esMotor(e) ? '<dt>Corrida</dt><dd>'+(e.run_number!=null ? esc(e.run_number) : '<span style="color:#B45309">sin numero</span>')+'</dd>' : '')
         + '<dt>SAP</dt><dd>'+esc(e.codigo_sap||e.estado_catalogacion||'—')+'</dd></dl>'
       : '<p class="vacio">Sin equipo registrado'+(e.obligatorio?' · obligatorio en este sistema':' · opcional')+'</p>';
     var pend = e._pendiente ? '<div class="aviso warn">Cambio guardado en el dispositivo, sin enviar.</div>' : '';
@@ -783,12 +794,28 @@ function abrirQue(){
 $('op-corregir').onclick  = function(){ $('hoja-que').close(); abrirCorregir(); };
 $('op-reemplazo').onclick = function(){ $('hoja-que').close(); abrirReemplazo(true); };
 
+function esMotor(e){ return /MOTOR/i.test((e && (e.rol || '')) + ' ' + (e && (e.nombre_rol || ''))); }
+/* Corrida: va aparte del registro de placa, por la cola si no hay señal.
+   La funcion de la base la pone en el motor vigente y numera hacia atras. */
+function enviarCorrida(run, instalacionId){
+  var n = parseInt(run, 10); if(!(n >= 1)) return;
+  var pl = { pozo_id: unidad.id, rol: 'MOTOR', run_number: n }; if(instalacionId && instalacionId !== 'local') pl.instalacion_id = instalacionId;
+  var et = 'Corrida ' + n + ' ' + unidad.nombre;
+  if(filaActual){ filaActual.run_number = n; }
+  if(!navigator.onLine || !sb){ encolar('dp_captura_set_corrida', pl, et); return; }
+  sb.rpc('dp_captura_set_corrida', { p: pl }).then(function(r){
+    if(r.error) { encolar('dp_captura_set_corrida', pl, et); return; }
+    if(r.data && r.data.ok === false) aviso($('msg'), 'La corrida no se guardo: ' + r.data.error, 'err');
+  }).catch(function(){ encolar('dp_captura_set_corrida', pl, et); });
+}
 function abrirCorregir(){
   $('corr-rol').textContent = filaActual.nombre_rol + ' · ' + unidad.nombre;
   $('c-serial').value = filaActual.serial || '';
   $('c-marca').value  = filaActual.marca  || '';
   $('c-modelo').value = filaActual.modelo || '';
   $('c-nota').value   = '';
+  $('c-run-wrap').classList.toggle('oculto', !esMotor(filaActual));
+  $('c-run').value = filaActual.run_number != null ? filaActual.run_number : '';
   aviso($('corr-msg'), '');
   $('hoja-corregir').showModal();
 }
@@ -804,6 +831,8 @@ function abrirReemplazo(hayAnterior){
   $('r-serial').value=''; $('r-marca').value=''; $('r-modelo').value='';
   $('r-nota').value=''; $('r-motivo').value='';
   $('r-fecha').value = hoy; $('r-fecha').max = hoy;
+  $('r-run-wrap').classList.toggle('oculto', !esMotor(filaActual));
+  $('r-run').value = (esMotor(filaActual) && hayAnterior && filaActual.run_number != null) ? (filaActual.run_number + 1) : '';
   aviso($('reem-msg'), '');
   $('hoja-reemplazo').setAttribute('data-anterior', hayAnterior ? '1' : '');
   $('hoja-reemplazo').showModal();
@@ -1404,6 +1433,13 @@ function reflejarEnEspejo(){
 $('corr-guardar').onclick = function(ev){
   var s  = $('c-serial').value.trim(), m  = $('c-marca').value.trim(),
       mo = $('c-modelo').value.trim(), nt = $('c-nota').value.trim();
+  /* Solo cambio la corrida: no se reescribe la placa, se envia la corrida y listo. */
+  if(esMotor(filaActual) && s === (filaActual.serial||'') && m === (filaActual.marca||'') && mo === (filaActual.modelo||'') && !nt && $('c-run').value){
+    enviarCorrida($('c-run').value, filaActual.instalacion_id);
+    reflejarEnEspejo(); $('hoja-corregir').close(); pintarEquipos();
+    aviso($('msg'), 'Corrida ' + $('c-run').value + ' registrada para el motor.' + (navigator.onLine ? '' : ' Se enviara con señal.'), 'ok');
+    return;
+  }
   enviarOEncolar(
     'dp_captura_corregir_placa',
     { instalacion_id: filaActual.instalacion_id, serial:s, marca:m, modelo:mo, nota:nt },
@@ -1413,6 +1449,7 @@ $('corr-guardar').onclick = function(ev){
       if(m)  filaActual.marca  = m;
       if(mo) filaActual.modelo = mo;
       filaActual._pendiente = pendiente;
+      if(esMotor(filaActual) && $('c-run').value && String(filaActual.run_number) !== String($('c-run').value)) enviarCorrida($('c-run').value, filaActual.instalacion_id);
     },
     $('hoja-corregir'), $('corr-msg'), ev.currentTarget, 'Guardar correccion');
 };
@@ -1444,6 +1481,11 @@ $('reem-guardar').onclick = function(ev){
         filaActual.estado_catalogacion = (resp && resp.estado) || 'PENDIENTE_SAP';
       }
       filaActual._pendiente = pendiente;
+      if(esMotor(filaActual)){
+        var runNuevo = $('r-run').value;
+        if(runNuevo) enviarCorrida(runNuevo, filaActual.instalacion_id);
+        else filaActual.run_number = null;
+      }
     },
     $('hoja-reemplazo'), $('reem-msg'), ev.currentTarget, 'Registrar instalacion');
 };
