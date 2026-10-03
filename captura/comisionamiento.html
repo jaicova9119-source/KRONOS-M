@@ -106,6 +106,9 @@ html[data-tema="oscuro"] .seg button[aria-pressed="true"]{background:var(--acent
 .seg.chk button[data-v="SI"][aria-pressed="true"],.seg.chk button[data-v="B"][aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:#fff}
 .seg.chk button[data-v="NO"][aria-pressed="true"],.seg.chk button[data-v="M"][aria-pressed="true"]{background:var(--danger);border-color:var(--danger);color:#fff}
 .seg.chk button[data-v="R"][aria-pressed="true"]{background:#E3A300;border-color:#E3A300;color:#141C24}
+.seg.chk button[data-est="C"][aria-pressed="true"]{background:var(--ok);border-color:var(--ok);color:#fff}
+.seg.chk button[data-est="A"][aria-pressed="true"]{background:#E3A300;border-color:#E3A300;color:#141C24}
+.seg.chk button[data-est="N"][aria-pressed="true"]{background:var(--danger);border-color:var(--danger);color:#fff}
 .eqblk{margin-bottom:14px}
 .eqh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 2px 8px;padding-bottom:6px;border-bottom:1.5px solid var(--line)}.eqh b{font-size:15.5px;color:var(--ink)}
 .est{font-size:12px;font-weight:700;padding:4px 8px;border-radius:999px;white-space:nowrap}
@@ -494,6 +497,11 @@ function editable(){ return S.com && (S.com.estado === 'borrador' || S.com.estad
 function guardarLocal(){ return idbPut('cms', S.com); }
 
 var FACT = { 'µΩ':1e-6, 'mΩ':1e-3, 'Ω':1, 'kΩ':1e3, 'MΩ':1e6, 'GΩ':1e9, 'µF':1, 'VDC':1, 'V':1, 'A':1 };
+/* Verificaciones con opciones propias de la plantilla (p. ej. resistencias de
+   sangría por módulo): cada opción trae su etiqueta y el estado que aporta. */
+function opcionesCheck(p){ return p.checks_opciones || [['SI','Sí','C'],['NO','No','A'],['NA','NA','C']]; }
+function estadoCheck(p, v){ var o = opcionesCheck(p).filter(function(x){ return x[0] === v; })[0]; return o ? (o[2] || 'C') : (v === 'SI' ? 'C' : 'A'); }
+function textoCheck(p, v){ var o = opcionesCheck(p).filter(function(x){ return x[0] === v; })[0]; return o ? o[1] : (ENUMTXT[v] || v || '—'); }
 var ENUMTXT = { OL:'OL', EC:'Efecto capacitivo', CORTO:'Corto', ABIERTO:'Abierto', SI:'Sí', NO:'No', NA:'NA', B:'Bueno', R:'Regular', M:'Malo' };
 var EST = { C:'Cumple', A:'Cumple con observación', N:'No cumple', P:'Por confirmar', R:'No realizado', X:'No aplica', I:'No concluyente', Pe:'Pendiente' };
 
@@ -635,7 +643,7 @@ function giroWhatsApp(){
   if (g.cierre) out.push('', g.cierre);
   return out.join('\n');
 }
-function tot(p){ return p.tipo === 'med' ? p.pts.length : p.tipo === 'check' ? p.items.length : p.tipo === 'kv' ? p.campos.length : p.tipo === 'tabla' ? p.hz.length * p.cols.length : p.tipo === 'ipdar' ? 12 : p.tipo === 'giro' ? (GIRO_CAMPOS.length + 1) * 2 + 1 : p.tipo === 'calc' ? (p.calculos || []).length : 0; }
+function tot(p){ return p.tipo === 'med' ? p.pts.length + (p.checks ? p.checks.length : 0) : p.tipo === 'check' ? p.items.length : p.tipo === 'kv' ? p.campos.length : p.tipo === 'tabla' ? p.hz.length * p.cols.length : p.tipo === 'ipdar' ? 12 : p.tipo === 'giro' ? (GIRO_CAMPOS.length + 1) * 2 + 1 : p.tipo === 'calc' ? (p.calculos || []).length : 0; }
 function estadoPaso(p){
   var d = S.com.d[p.id]; if (!d) return { e: null, ok: 0, tot: tot(p) };
   if (d.na) return { e: 'X', ok: tot(p), tot: tot(p) };
@@ -648,7 +656,8 @@ function estadoPaso(p){
       if (pg[pt.g]) { ok++; if (!vistos[pt.g]) { vistos[pt.g] = 1; es.push('Pe'); } return; }
       var e = evalPt(p, pt, d.vals[pt.id], d.unit); if (e) { ok++; es.push(e); } });
     var rr = regla(p, d.vals); if (rr) es.push(rr.e);
-    if (p.encontrado && p.encontrado.some(function(k){ return d.enc[k] === 'ABIERTO'; })) es.push('A'); }
+    if (p.encontrado && p.encontrado.some(function(k){ return d.enc[k] === 'ABIERTO'; })) es.push('A');
+    if (p.checks) p.checks.forEach(function(it){ var v = d.checks[it[0]]; if (v) { ok++; es.push(estadoCheck(p, v)); } }); }
   else if (p.tipo === 'check') { p.items.forEach(function(it){ var v = d.checks[it[0]]; if (v) { ok++; es.push(p.id === 'vent' && v === 'NO' ? 'X' : (v === 'SI' || v === 'B' || v === 'NA') ? 'C' : v === 'M' ? 'N' : 'A'); } }); }
   else if (p.tipo === 'kv') { p.campos.forEach(function(c){ if (String(d.campos[c[0]] != null ? d.campos[c[0]] : '').trim()) ok++; }); if (ok) es.push('C');
     if (p.checks) p.checks.forEach(function(it){ var v = d.checks[it[0]]; if (v) es.push(v === 'SI' ? 'C' : 'A'); }); }
@@ -787,7 +796,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v2.7 · 01/10/2026';
+var VERSION = 'v2.8 · 02/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -1192,6 +1201,9 @@ function capMed(p, d){
   });
   if (g !== null) h += '</div>';
   var rr = regla(p, d.vals); if (rr) h += '<p class="regla e' + rr.e + '">' + esc(rr.txt) + '</p>';
+  if (p.checks) h += '<h3>' + esc(p.checks_titulo || 'Verificaciones') + '</h3>' + (p.checks_nota ? '<p class="nota">' + esc(p.checks_nota) + '</p>' : '') +
+    p.checks.map(function(it){ var v = d.checks[it[0]]; return '<div class="item"><p>' + esc(it[1]) + '</p><div class="seg chk" data-ck="' + it[0] + '">' +
+      opcionesCheck(p).map(function(o){ return '<button data-v="' + o[0] + '" data-est="' + (o[2] || 'C') + '" aria-pressed="' + (v === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div></div>'; }).join('');
   return h;
 }
 function capCheck(p, d){ var es_ = p.escala === 'BRM' ? [['B','Bueno'],['R','Regular'],['M','Malo']] : [['SI','Sí'],['NO','No'],['NA','NA']];
@@ -1327,6 +1339,9 @@ function hallazgos(){
     if (p.tipo === 'giro') { var gr3 = giroRes(), fin3 = (d.tabla.gen || {}).sentido_final;
       if (gr3.sugerido && fin3 && fin3 !== gr3.sugerido) H.push({ eq: eqT, p: p.t, sev: 'Alta', txt: 'El sentido que quedó en operación no coincide con el que indican las lecturas.', acc: textoObs(p, d) || 'Verificar la secuencia de fases y repetir la prueba.' });
       else if (gr3.contradicciones && gr3.contradicciones.length) H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Indicadores contradictorios en la prueba de giro: ' + gr3.contradicciones.map(function(x){ return x.n.toLowerCase(); }).join(', ') + '.', acc: 'Revisar las lecturas registradas.' }); }
+    if (p.tipo === 'med' && p.checks) p.checks.forEach(function(it){ var v = d.checks[it[0]], e = v && estadoCheck(p, v);
+      if (e === 'N') H.push({ eq: eqT, p: p.t, sev: 'Alta', txt: it[1] + ': ' + textoCheck(p, v) + '.', acc: textoObs(p, d) || 'Reemplazar antes de energizar el equipo.' });
+      else if (e === 'A') H.push({ eq: eqT, p: p.t, sev: 'Baja', txt: it[1] + ': ' + textoCheck(p, v) + '.', acc: 'Registrado; verificar en la próxima intervención.' }); });
     if (p.id === 'vent' && d.checks.existe === 'NO') H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Sin caja de venteo entre cabezal y tablero.', acc: 'Evaluar el venteo indicado en API RP 11S3 §4.3.3.' });
   });
   PASOS.forEach(function(p){ var d = S.com.d[p.id]; if (!d || d.na) return; var eqT = EQUIPOS.filter(function(e){ return e.id === p.eq; })[0].t;
@@ -1510,7 +1525,8 @@ function armarPdf(FOTOS){
           var e = agg(es) || 'R'; if (e === 'C' && p.encontrado && g.pts.some(function(pt){ return d.enc[pt.id] === 'ABIERTO'; })) e = 'A';
           return [g.g, lec, g.pts[0].c.txt, g.pts[0].c.src || '', [e]]; }), [34, CW - 34 - 30 - 30 - 26, 30, 30, 26], 4);
         var rr = regla(p, d.vals); if (rr) par(rr.txt + '.', 7.8);
-        if (p.unidades && p.unidades.length > 1 && !d.unit && agg(p.pts.map(function(pt){ return evalPt(p, pt, d.vals[pt.id], null); })) === 'P') par('Unidad de lectura no registrada en campo: el resultado se confirma con la memoria del instrumento.', 7.8); }
+        if (p.unidades && p.unidades.length > 1 && !d.unit && agg(p.pts.map(function(pt){ return evalPt(p, pt, d.vals[pt.id], null); })) === 'P') par('Unidad de lectura no registrada en campo: el resultado se confirma con la memoria del instrumento.', 7.8);
+        if (p.checks) tabla([p.checks_titulo || 'Verificación','Resultado','Estado'], p.checks.map(function(it){ var v = d.checks[it[0]]; return [it[1], v ? textoCheck(p, v) : '—', [v ? estadoCheck(p, v) : 'R']]; }), [CW - 60 - 26, 60, 26], 2); }
       else if (p.tipo === 'check') tabla(['Verificación','Resultado'], p.items.map(function(it){ return [it[1], ENUMTXT[d.checks[it[0]]] || '—']; }), [CW - 40, 40]);
       else if (p.tipo === 'kv') { kv(p.campos.map(function(cc){ return [cc[1], (d.campos[cc[0]] || '—') + (cc[2] && d.campos[cc[0]] ? ' ' + cc[2] : '')]; })); if (p.calculos) kv(calculos(p, d.campos).map(function(x){ return [x.n, x.v != null ? fmt(x.v, 2) + ' ' + x.u : 'Falta: ' + x.falta]; })); if (p.checks) tabla(['Verificación','Resultado'], p.checks.map(function(it){ return [it[1], ENUMTXT[d.checks[it[0]]] || '—']; }), [CW - 40, 40]); }
       else if (p.tipo === 'tabla') { tabla(['Hz'].concat(p.cols.map(function(cc){ return cc[1]; })).concat(['Desbal. V (%)','V/Hz']), p.hz.map(function(hz){ var r = d.tabla[hz] || {}, dv = desb(r); return [String(hz)].concat(p.cols.map(function(cc){ return r[cc[0]] != null ? String(r[cc[0]]) : ''; })).concat([dv != null ? fmt(dv, 1) : '—', r.vab ? fmt(num(r.vab) / hz, 2) : '—']); }), null);
