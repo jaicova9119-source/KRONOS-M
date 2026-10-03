@@ -4342,40 +4342,43 @@ function kcEquipos(ws, P, d){
   ws.getCell(n + 2, 1).font = { name: KC.AR, size: 9, color: { argb: KC.TXTG } };
 }
 
-/* ══════════════ OVERVIEW ══════════════ */
+/* ══════════════ OVERVIEW ══════════════
+   Dos columnas alineadas por arriba. Izquierda (A:H): tabla de pozos, la
+   grafica de demanda y, al pie, enlaces y leyenda. Derecha (J:M): indicadores
+   de energia y el esquema BES reducido. Nada queda flotando ni separado del
+   bloque al que pertenece. */
 function kcOverview(wb, ws, P, REF, meta, lienzo){
-  ws.getCell('A1').value = (meta.titulo || 'ESP PREDICTIVE DATA'); ws.getCell('A1').font = { name: KC.AR, size: 14, bold: true };
-  ws.getCell('A2').value = 'Issued ' + kcDiaTxt(kcFecha(meta.fecha)); ws.getCell('A2').font = { name: KC.AR, size: 10 };
-  ['WELL', 'PAD', 'STATUS', 'LAST READING', 'DAYS SINCE READING', 'RUN LIFE (days)', 'INSTALLED', 'SHEET'].forEach((h, j) => kcHdr(ws, 4, j + 1, h));
+  const NAVY = 'FF134B70', TEAL = 'FF1B8E9E', GRISTX = 'FF4D7089';
+  const FILA_PX = 20;                         /* alto estandar de fila en pixeles (15 pt) */
+  const EC = 10, SEP = 9, H0 = 4;             /* columna de la derecha, separador y fila de encabezados */
+  /* ── titulo ── */
+  const t1 = ws.getCell('A1'); t1.value = (meta.titulo || 'ESP PREDICTIVE DATA'); t1.font = { name: KC.AR, size: 16, bold: true, color: { argb: NAVY } };
+  const enMon = P.unidades.filter(u => P.estado(u).startsWith('In')).length;
+  const t2 = ws.getCell('A2'); t2.value = 'Issued ' + kcDiaTxt(kcFecha(meta.fecha)) + '   ·   ' + P.unidades.length + ' units in scope, ' + enMon + ' in monitoring';
+  t2.font = { name: KC.AR, size: 10, color: { argb: GRISTX } };
+  for (let c = 1; c <= EC + 3; c++) { ws.getCell(3, c).fill = kcRelleno(TEAL); }
+  ws.getRow(3).height = 4;
+  /* ── tabla de pozos (izquierda) ── */
+  ['WELL', 'PAD', 'STATUS', 'LAST READING', 'DAYS SINCE READING', 'RUN LIFE (days)', 'INSTALLED', 'SHEET'].forEach((hd, j) => kcHdr(ws, H0, j + 1, hd, NAVY));
+  ws.getRow(H0).height = 30;
   P.unidades.forEach((u, i) => {
-    const r = 5 + i, X = REF[u], op = P.OP.get(u) || {}, pl = P.PL.get(u) || {}, rl = P.RL.get(u) || {};
+    const r = H0 + 1 + i, X = REF[u], op = P.OP.get(u) || {}, pl = P.PL.get(u) || {}, rl = P.RL.get(u) || {};
     const ld = X ? X.filas[X.filas.length - 1]._fecha : null, est = P.estado(u);
     const v = [kcHoja(u), op.pad || '—', est, ld ? kcFecha(ld) : 'No readings', ld ? kcDias(meta.fecha, ld) : '—', kcN(rl.run_dias) != null ? kcN(rl.run_dias) : '—',
                kcFecha(pl.motor_desde) || '—', X ? kcHV('Open ►', kcHoja(u)) : '—'];
     v.forEach((x, j) => kcDat(ws, r, j + 1, x, x instanceof Date ? 'dd-mmm-yy' : null));
     ws.getCell(r, 3).alignment = { horizontal: 'left', vertical: 'middle', wrapText: true };
-    ws.getCell(r, 1).font = { name: KC.AR, size: 10, bold: true };
+    ws.getCell(r, 1).font = { name: KC.AR, size: 10, bold: true, color: { argb: NAVY } };
     if (X) ws.getCell(r, 8).font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.LINK }, underline: true };
-    if (!est.startsWith('In')) for (let k = 1; k <= 7; k++) ws.getCell(r, k).font = { name: KC.AR, size: 10, bold: k === 1, color: { argb: 'FF808080' } };
+    if (!est.startsWith('In')) { for (let k = 1; k <= 8; k++) { ws.getCell(r, k).font = { name: KC.AR, size: 10, bold: k === 1, color: { argb: 'FF808080' }, underline: k === 8 && !!X }; ws.getCell(r, k).fill = kcRelleno(KC.FUERA); } }
+    else if (i % 2) for (let k = 1; k <= 8; k++) ws.getCell(r, k).fill = kcRelleno('FFF7F9FA');
   });
-  let r = 6 + P.unidades.length;
+  let r = H0 + 1 + P.unidades.length + 1;
+  /* ── indicadores de energia (derecha, alineados con la tabla) ── */
   const all = wb.getWorksheet('CONSOLIDATED').__all;
-  [['► CONSOLIDATED', 'CONSOLIDATED', 'A1'], ['► ALL VARIABLES (last reading per well)', 'CONSOLIDATED', 'A' + all.V0], ['► OPTIMIZATION (TAP proposals)', 'OPTIMIZATION', 'A1'], ['► DATA EQUIPMENT', 'DATA EQUIPMENT', 'A1']].forEach(([t, h, a]) => {
-    const x = ws.getCell(r, 1); x.value = kcHV(t, h, a); x.font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.LINK }, underline: true }; r += 1;
-  });
-  r += 1; ws.getCell(r, 1).value = 'Color bands'; ws.getCell(r, 1).font = { name: KC.AR, size: 10, bold: true }; r += 1;
-  [['Load % (VFD, PST, SUT, motor): attention ≥ 90 %, critical ≥ 100 % of nameplate (derated when applicable).', KC.AMAR],
-   ['Current unbalance (NEMA MG-1): attention ≥ 5 %, critical ≥ 10 %. Motor temperature: 250 / 270 °F. Vibration: 0.8 / 1.5 g.', KC.AMAR],
-   ['ND = no data (variable not available on the installed equipment or not recorded in that reading).', KC.GRIS],
-   ['Grey rows / grey sheet tabs = unit out of monitoring. CONSOLIDATED tables can be filtered by STATUS.', KC.FUERA],
-   ['Older rows are grouped: use [+] on the left margin (rows) or on top (columns) to expand the history.', null]].forEach(([t, col]) => {
-    if (col) ws.getCell(r, 1).fill = kcRelleno(col);
-    ws.getCell(r, 2).value = t; ws.getCell(r, 2).font = { name: KC.AR, size: 10 }; r += 1;
-  });
-  /* ── demanda energetica de las unidades en monitoreo ── */
-  const EC = 10, E0 = 6;
-  kcHdr(ws, 4, EC, 'ENERGY DEMAND · UNITS IN MONITORING'); for (let k = 1; k < 4; k++) kcHdr(ws, 4, EC + k, null); ws.mergeCells(4, EC, 4, EC + 3);
-  kcHdr(ws, 5, EC, 'INDICATOR'); kcHdr(ws, 5, EC + 1, null); ws.mergeCells(5, EC, 5, EC + 1); kcHdr(ws, 5, EC + 2, 'VALUE'); kcHdr(ws, 5, EC + 3, 'UNIT');
+  kcHdr(ws, H0, EC, 'ENERGY DEMAND · UNITS IN MONITORING', NAVY); for (let k = 1; k < 4; k++) kcHdr(ws, H0, EC + k, null, NAVY); ws.mergeCells(H0, EC, H0, EC + 3);
+  const E0 = H0 + 2;
+  kcHdr(ws, H0 + 1, EC, 'INDICATOR', TEAL); kcHdr(ws, H0 + 1, EC + 1, null, TEAL); ws.mergeCells(H0 + 1, EC, H0 + 1, EC + 1); kcHdr(ws, H0 + 1, EC + 2, 'VALUE', TEAL); kcHdr(ws, H0 + 1, EC + 3, 'UNIT', TEAL);
   const stR = "CONSOLIDATED!$B$" + (all.V0 + 3) + ":$B$" + all.VL, kwR = "CONSOLIDATED!$" + all.kw + "$" + (all.V0 + 3) + ":$" + all.kw + "$" + all.VL,
         kvR = "CONSOLIDATED!$" + all.kvar + "$" + (all.V0 + 3) + ":$" + all.kvar + "$" + all.VL;
   const mon = P.conHoja.filter(u => P.estado(u).startsWith('In monitoring')).map(u => {
@@ -4394,22 +4397,47 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
     ['Average demand per unit', kcF('=IFERROR(' + L(1) + '/' + L(0) + ',"-")', mon.length ? kw / mon.length : '-'), 'kW', '#,##0'],
     ['Daily energy (continuous operation)', kcF('=' + L(1) + '*24/1000', kw * 24 / 1000), 'MWh/day', '#,##0.0'],
     ['Monthly energy (30 days)', kcF('=' + L(8) + '*30', kw * 24 / 1000 * 30), 'MWh/month', '#,##0']];
+  const DESTACADOS = new Set([1, 3, 4, 6]);
   FILAS.forEach(([lab, f, un, fm], i) => {
     const rr = E0 + i; const x = kcDat(ws, rr, EC, lab); x.alignment = { horizontal: 'left', vertical: 'middle' }; kcDat(ws, rr, EC + 1, null); ws.mergeCells(rr, EC, rr, EC + 1);
-    const y = kcDat(ws, rr, EC + 2, f, fm); y.font = { name: KC.AR, size: 10, bold: true }; kcDat(ws, rr, EC + 3, un);
+    const y = kcDat(ws, rr, EC + 2, f, fm); y.font = { name: KC.AR, size: DESTACADOS.has(i) ? 11 : 10, bold: true, color: { argb: NAVY } }; kcDat(ws, rr, EC + 3, un);
+    ws.getCell(rr, EC + 3).font = { name: KC.AR, size: 9, color: { argb: GRISTX } };
+    if (i % 2) for (let k = 0; k < 4; k++) ws.getCell(rr, EC + k).fill = kcRelleno('FFF7F9FA');
   });
   ws.getCell(E0 + 3, EC).note = 'Recomposed as √(kW² + kVAr²). Adding the kVA of each unit overstates the total when power factors differ.';
   ws.getCell(E0 + 5, EC).note = 'Sum of PST nameplate kVA for the units in monitoring.';
   ws.getCell(E0 + 8, EC).note = 'Last reading × 24 h. Indicative only: assumes every unit runs continuously at the last measured load.';
-  ws.getCell(E0 + FILAS.length + 1, EC).value = 'Source: PST input of each unit, last reading. Updates with CONSOLIDATED.';
-  ws.getCell(E0 + FILAS.length + 1, EC).font = { name: KC.AR, size: 9, color: { argb: KC.TXTG } };
-  let anchoDem = 440;
-  if (lienzo && mon.length){ const g = kcGraficaDemanda(lienzo, mon); kcImagen(wb, ws, g.png, EC, E0 + FILAS.length + 3, g.w, g.h); anchoDem = Math.max(anchoDem, g.w); }
-  /* Esquema BES a la derecha de la demanda: las cuatro columnas de la tabla
-     miden ~440 px y lo que la grafica pase de eso se cubre con columnas de
-     ancho normal (~64 px) mas una de separacion. */
-  if (lienzo){ const g = kcEsquemaBes(lienzo); kcImagen(wb, ws, g.png, EC + 4 + Math.ceil(Math.max(0, anchoDem - 440) / 64) + 1, 2, g.w, g.h); }
-  ws.__fijos = { 3: 40, [EC]: 18, [EC + 1]: 18, [EC + 2]: 12, [EC + 3]: 12 };
+  const rFuente = E0 + FILAS.length;
+  ws.getCell(rFuente, EC).value = 'Source: PST input of each unit, last reading. Updates with CONSOLIDATED.';
+  ws.getCell(rFuente, EC).font = { name: KC.AR, size: 8, italic: true, color: { argb: KC.TXTG } };
+  /* ── grafica de demanda: debajo de la tabla de pozos, ancho de la tabla ── */
+  if (lienzo && mon.length){
+    const g = kcGraficaDemanda(lienzo, mon); const esc = Math.min(1, 800 / g.w);
+    kcImagen(wb, ws, g.png, 1, r, Math.round(g.w * esc), Math.round(g.h * esc));
+    r += Math.ceil(g.h * esc / FILA_PX) + 1;
+  }
+  /* ── esquema BES reducido, debajo de los indicadores ── */
+  if (lienzo){
+    const g = kcEsquemaBes(lienzo); const esc = 0.5;
+    kcImagen(wb, ws, g.png, EC, rFuente + 2, Math.round(g.w * esc), Math.round(g.h * esc));
+  }
+  /* ── enlaces y leyenda, al pie de la columna izquierda ── */
+  ws.getCell(r, 1).value = 'Go to'; ws.getCell(r, 1).font = { name: KC.AR, size: 10, bold: true, color: { argb: NAVY } }; r += 1;
+  [['► CONSOLIDATED', 'CONSOLIDATED', 'A1'], ['► ALL VARIABLES (last reading per well)', 'CONSOLIDATED', 'A' + all.V0], ['► OPTIMIZATION (TAP proposals)', 'OPTIMIZATION', 'A1'], ['► DATA EQUIPMENT', 'DATA EQUIPMENT', 'A1']].forEach(([t, hj, a]) => {
+    const x = ws.getCell(r, 1); x.value = kcHV(t, hj, a); x.font = { name: KC.AR, size: 10, bold: true, color: { argb: KC.LINK }, underline: true }; r += 1;
+  });
+  r += 1; ws.getCell(r, 1).value = 'Color bands'; ws.getCell(r, 1).font = { name: KC.AR, size: 10, bold: true, color: { argb: NAVY } }; r += 1;
+  [['Load % (VFD, PST, SUT, motor): attention ≥ 90 %, critical ≥ 100 % of nameplate (derated when applicable).', KC.AMAR],
+   ['Current unbalance (NEMA MG-1): attention ≥ 5 %, critical ≥ 10 %. Motor temperature: 250 / 270 °F. Vibration: 0.8 / 1.5 g.', KC.AMAR],
+   ['ND = no data (variable not available on the installed equipment or not recorded in that reading).', KC.GRIS],
+   ['Grey rows / grey sheet tabs = unit out of monitoring. CONSOLIDATED tables can be filtered by STATUS.', KC.FUERA],
+   ['Older rows are grouped: use [+] on the left margin (rows) or on top (columns) to expand the history.', null]].forEach(([t, col]) => {
+    if (col) ws.getCell(r, 1).fill = kcRelleno(col);
+    ws.getCell(r, 2).value = t; ws.getCell(r, 2).font = { name: KC.AR, size: 9, color: { argb: GRISTX } }; r += 1;
+  });
+  ws.__fijos = { 1: 10, 2: 14, 3: 36, 4: 13, 5: 11, 6: 10, 7: 12, 8: 9, [SEP]: 3, [EC]: 18, [EC + 1]: 18, [EC + 2]: 12, [EC + 3]: 12 };
+  /* Impresa, la hoja cabe a lo ancho en una pagina horizontal. */
+  ws.pageSetup = { orientation: 'landscape', fitToPage: true, fitToWidth: 1, fitToHeight: 0, margins: { left: 0.4, right: 0.4, top: 0.5, bottom: 0.5, header: 0.2, footer: 0.2 } };
 }
 
 
@@ -4421,7 +4449,7 @@ function kcOverview(wb, ws, P, REF, meta, lienzo){
 /* Version del formato cliente: sale en el aviso de error y en la ayuda del
    boton, para confirmar que el navegador tiene el archivo nuevo y no una
    copia guardada por el service worker. */
-const KC_VERSION = '2026-09-28 b';
+const KC_VERSION = '2026-10-03 overview';
 
 /* ExcelJS propio de este modulo. keExcelJS reutiliza el de la ventana
    principal, pero ese vive en otro contexto de JavaScript: las fechas que
