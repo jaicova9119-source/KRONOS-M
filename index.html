@@ -4147,6 +4147,24 @@ async function abrirHub() {
 /* Abre una máquina de Ensayos desde el inicio. aplicarModulo dispara la
    carga sin esperarla, así que se espera a que la máquina esté en la lista. */
 async function hubIrAMaquina(id, ensayoId) {
+  try { await hubIrAMaquinaInterno(id, ensayoId); }
+  catch (e) {
+    /* Antes un error aquí dejaba al usuario en la lista sin explicación. */
+    toast("No se pudo abrir el ensayo: " + (e.message || e));
+    if (ensayoId) hubFirmaDirecta(ensayoId);
+  }
+}
+/* Último recurso: abrir la ventana de firma con el ensayo traído por su id,
+   aunque la máquina no se haya podido abrir. */
+async function hubFirmaDirecta(ensayoId) {
+  try {
+    const re = await sb.from("ensayos_electricos").select("*, ensayo_devanados(*), ensayo_bobinas(*)").eq("id", ensayoId).maybeSingle();
+    if (!re.data) return;
+    if (!(eeEnsayos || []).some(x => x.id === ensayoId)) eeEnsayos = (eeEnsayos || []).concat([re.data]);
+    if (re.data.estado === "pendiente_firma" && typeof eeFirmar === "function") eeFirmar(ensayoId);
+  } catch (e) { /* ya se avisó */ }
+}
+async function hubIrAMaquinaInterno(id, ensayoId) {
   aplicarModulo("ensayos");
   // Se espera la carga que acaba de disparar aplicarModulo: con la lista
   // vieja en memoria, la máquina se abría y la carga terminaba encima.
@@ -8557,7 +8575,7 @@ const EE_BORRADOR = "kronos_ensayo_borrador";
 /* Versión visible en el pie del inicio. Con un service worker de por medio,
    subir un archivo nuevo no garantiza que el navegador lo esté usando: esta
    marca permite comprobarlo sin abrir herramientas de desarrollo. */
-const KM_VERSION = "2026-09-26 · aprobaciones-delegadas";
+const KM_VERSION = "2026-10-03 · firma-directa";
 
 /* Promesa de la carga en curso: quien necesita la lista ya cargada (por
    ejemplo, entrar a una máquina desde el inicio) espera esta, en vez de
