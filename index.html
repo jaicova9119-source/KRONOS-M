@@ -900,6 +900,9 @@ html,body{height:100%;margin:0;}
 .prog-formato .pf-estado b{color:var(--ok,#2E7D32)}
 .prog-formato .pf-btns{display:flex;gap:8px;flex-wrap:wrap}
 .prog-formato .pf-btns .btn-secondary,.prog-formato .pf-btns .btn-primary{margin:0;padding:8px 12px;flex:0 0 auto}
+.orto-fila{display:flex;justify-content:flex-end;gap:10px;margin-top:3px}
+.orto-btn{background:none;border:0;color:var(--accent,#1B8E9E);font-size:12.5px;font-weight:600;cursor:pointer;padding:3px 6px}
+.orto-btn:disabled{opacity:.6;cursor:default}
 .ee-fotos-btns{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
 .ee-fotos-btns .btn-secondary{flex:1 1 140px}
 .ee-fotos-zona{border:2px dashed transparent;border-radius:10px;padding:2px}
@@ -3893,6 +3896,70 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
    almacenamiento producen el aviso "Multiple GoTrueClient instances"
    y pueden dejar el inicio de sesion esperando. */
 window.sb = sb;
+
+/* ============================================================
+   CORRECTOR ORTOGRÁFICO
+   Un enlace "Corregir ortografía" debajo de cada área de texto de la app
+   (programación, FO-016, ensayos, máquinas, documentos…). Usa el asistente
+   con una instrucción cerrada: solo tildes, letras, mayúsculas y
+   puntuación; no cambia términos técnicos, siglas, números ni unidades ni
+   agrega nada. El texto original queda para deshacer.
+   Se excluyen la caja del chat del asistente y lo marcado data-no-orto.
+   ============================================================ */
+const ORTO_EXCLUIR = new Set(["asis-texto"]);
+const ortoPrevio = {};
+function ortoInstalar(raiz) {
+  (raiz || document).querySelectorAll("textarea").forEach(ta => {
+    if (ta.dataset.ortoListo || ORTO_EXCLUIR.has(ta.id) || ta.hasAttribute("data-no-orto")) return;
+    ta.dataset.ortoListo = "1";
+    ta.setAttribute("spellcheck", "true"); ta.setAttribute("lang", "es");
+    const fila = document.createElement("div"); fila.className = "orto-fila";
+    const b = document.createElement("button"); b.type = "button"; b.className = "orto-btn"; b.textContent = "Corregir ortografía";
+    b.onclick = () => ortoCorregir(ta, b);
+    fila.appendChild(b); ta.insertAdjacentElement("afterend", fila);
+  });
+}
+async function ortoCorregir(ta, boton) {
+  const texto = (ta.value || "").trim();
+  if (!texto) { toast("No hay texto para corregir"); return; }
+  if (ta.readOnly || ta.disabled) { toast("Este campo no se puede editar"); return; }
+  if (!navigator.onLine) { toast("La corrección necesita conexión; el subrayado del navegador sigue funcionando"); return; }
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { toast("Inicia sesión para usar el corrector"); return; }
+  const txt = boton.textContent; boton.disabled = true; boton.textContent = "Corrigiendo…";
+  try {
+    const r = await fetch(ASIS_URL, {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + session.access_token },
+      body: JSON.stringify({
+        pregunta: "Corrige SOLO la ortografía del siguiente texto en español: tildes, letras cambiadas o faltantes, mayúsculas al inicio de oración y puntuación básica. "
+          + "No cambies el sentido, no reordenes, no resumas, no agregues ni quites información, no cambies términos técnicos, siglas, códigos, números, unidades ni símbolos. "
+          + "Conserva los saltos de línea. Responde ÚNICAMENTE con el texto corregido, sin comillas, sin explicaciones ni encabezados.\n\nTEXTO:\n" + texto,
+        contexto_app: "Kronos-M · corrector ortográfico", historial: []
+      })
+    });
+    const out = await r.json();
+    if (!r.ok || out.error || !out.respuesta) throw new Error(out.error || "sin respuesta");
+    const nuevo = String(out.respuesta).replace(/^\s*(texto corregido\s*:?)?\s*/i, "").replace(/^["«]|["»]$/g, "").trim();
+    if (!nuevo) throw new Error("respuesta vacía");
+    ortoPrevio[ta.id || ta] = ta.value;
+    ta.value = nuevo; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.dispatchEvent(new Event("change", { bubbles: true }));
+    const fila = boton.parentNode;
+    if (!fila.querySelector(".orto-deshacer")) {
+      const d = document.createElement("button"); d.type = "button"; d.className = "orto-btn orto-deshacer"; d.textContent = "Deshacer";
+      d.onclick = () => { const p = ortoPrevio[ta.id || ta]; if (p != null) { ta.value = p; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.dispatchEvent(new Event("change", { bubbles: true })); } d.remove(); };
+      fila.insertBefore(d, boton);
+    }
+    toast("Ortografía corregida; revisa el texto antes de guardar");
+  } catch (e) {
+    toast("No se pudo corregir ahora: " + (e.message || e));
+  } finally {
+    boton.disabled = false; boton.textContent = txt;
+  }
+}
+(function () {
+  const arrancar = () => { ortoInstalar(document); new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(n => { if (n.nodeType === 1) ortoInstalar(n); }))).observe(document.body, { childList: true, subtree: true }); };
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", arrancar); else arrancar();
+})();
 
 /* El manifest ahora vive en un archivo real: ./manifest.json
    (antes se generaba aquí como data URI, pero eso impedía que
