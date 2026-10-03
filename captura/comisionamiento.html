@@ -501,9 +501,13 @@ function guardarLocal(){ return idbPut('cms', S.com); }
 var FACT = { 'µΩ':1e-6, 'mΩ':1e-3, 'Ω':1, 'kΩ':1e3, 'MΩ':1e6, 'GΩ':1e9, 'µF':1, 'VDC':1, 'V':1, 'A':1 };
 /* Verificaciones con opciones propias de la plantilla (p. ej. resistencias de
    sangría por módulo): cada opción trae su etiqueta y el estado que aporta. */
-function opcionesCheck(p){ return p.checks_opciones || [['SI','Sí','C'],['NO','No','A'],['NA','NA','C']]; }
-function estadoCheck(p, v){ var o = opcionesCheck(p).filter(function(x){ return x[0] === v; })[0]; return o ? (o[2] || 'C') : (v === 'SI' ? 'C' : 'A'); }
-function textoCheck(p, v){ var o = opcionesCheck(p).filter(function(x){ return x[0] === v; })[0]; return o ? o[1] : (ENUMTXT[v] || v || '—'); }
+var OPC_SNA = [['SI','Sí','C'],['NO','No','A'],['NA','NA','C']], OPC_BRM = [['B','Bueno','C'],['R','Regular','A'],['M','Malo','N']];
+function opcionesCheck(p, it){ return (it && it[2]) || p.checks_opciones || (p.escala === 'BRM' ? OPC_BRM : OPC_SNA); }
+function estadoCheck(p, v, it){ var o = opcionesCheck(p, it).filter(function(x){ return x[0] === v; })[0]; return o ? (o[2] || 'C') : (v === 'SI' || v === 'B' || v === 'NA' ? 'C' : v === 'M' ? 'N' : 'A'); }
+function textoCheck(p, v, it){ var o = opcionesCheck(p, it).filter(function(x){ return x[0] === v; })[0]; return o ? o[1] : (ENUMTXT[v] || v || '—'); }
+/* Un ítem de verificación, con sus opciones (por ítem, por paso o la escala). */
+function itemCheckH(p, it, v){ return '<div class="item"><p>' + esc(it[1]) + '</p><div class="seg chk" data-ck="' + it[0] + '">' +
+  opcionesCheck(p, it).map(function(o){ return '<button data-v="' + o[0] + '" data-est="' + (o[2] || 'C') + '" aria-pressed="' + (v === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div></div>'; }
 var ENUMTXT = { OL:'OL', EC:'Efecto capacitivo', CORTO:'Corto', ABIERTO:'Abierto', SI:'Sí', NO:'No', NA:'NA', B:'Bueno', R:'Regular', M:'Malo' };
 var EST = { C:'Cumple', A:'Cumple con observación', N:'No cumple', P:'Por confirmar', R:'No realizado', X:'No aplica', I:'No concluyente', Pe:'Pendiente' };
 
@@ -514,7 +518,7 @@ function evalPt(p, pt, rec, unitStep){
   var v = num(rec.v); if (v == null) return null;
   if (c.t === 'enum') return 'N';
   if (c.t === 'none') return 'C';
-  var u = rec.u || unitStep || (p.unidades && p.unidades.length === 1 ? p.unidades[0] : null), cand = u ? [u] : (p.unidades || []);
+  var u = rec.u || pt.u || unitStep || (p.unidades && p.unidades.length === 1 ? p.unidades[0] : null), cand = u ? [u] : (p.unidades || []);
   function ok(uu){ var x = v * FACT[uu] / FACT[c.u];
     if (c.t === 'min') return x >= c.v; if (c.t === 'max') return x < c.v; if (c.t === 'rng') return x >= c.a && x <= c.b;
     if (c.t === 'nom') return c.tol == null ? null : Math.abs(100 * (x - c.v) / c.v) <= c.tol; return true; }
@@ -528,14 +532,17 @@ function agg(es){
   es = es.filter(function(x){ return x !== 'X'; });
   if (es.indexOf('N') >= 0) return 'N'; if (es.indexOf('P') >= 0) return 'P'; if (es.indexOf('A') >= 0) return 'A'; if (es.indexOf('Pe') >= 0) return 'Pe'; if (es.indexOf('I') >= 0) return 'I'; return 'C';
 }
-function regla(p, vals){
-  var r = p.regla; if (!r) return null;
-  var x = r.puntos.map(function(k){ return vals[k] ? num(vals[k].v) : null; });
-  if (x.some(function(y){ return y == null; })) return null;
-  if (r.tipo === 'desviacion_max_pct'){ var mn = Math.min.apply(null, x), mx = Math.max.apply(null, x), d = mn ? 100 * (mx - mn) / mn : 0; return { txt: 'Desviación entre polos: ' + fmt(d, 1) + ' %', e: d > r.max ? r.sev : 'C' }; }
-  if (r.tipo === 'desbalance_pct'){ var pr = x.reduce(function(a, b){ return a + b; }, 0) / x.length, db_ = pr ? 100 * Math.max.apply(null, x.map(function(y){ return Math.abs(y - pr); })) / pr : 0; return { txt: 'Desbalance: ' + fmt(db_, 2) + ' %', e: db_ > r.max ? r.sev : 'C' }; }
-  return null;
+function reglas(p, vals){
+  var lista = (p.reglas || (p.regla ? [p.regla] : [])), out = [];
+  lista.forEach(function(r){
+    var x = r.puntos.map(function(k){ return vals[k] ? num(vals[k].v) : null; });
+    if (x.some(function(y){ return y == null; })) return;
+    if (r.tipo === 'desviacion_max_pct'){ var mn = Math.min.apply(null, x), mx = Math.max.apply(null, x), d = mn ? 100 * (mx - mn) / mn : 0; out.push({ txt: (r.titulo || 'Desviación entre polos') + ': ' + fmt(d, 1) + ' %', e: d > r.max ? r.sev : 'C' }); }
+    else if (r.tipo === 'desbalance_pct'){ var pr = x.reduce(function(a, b){ return a + b; }, 0) / x.length, db_ = pr ? 100 * Math.max.apply(null, x.map(function(y){ return Math.abs(y - pr); })) / pr : 0; out.push({ txt: (r.titulo || 'Desbalance') + ': ' + fmt(db_, 2) + ' %' + (db_ > r.max ? ' (máximo ' + r.max + ' %)' : ''), e: db_ > r.max ? r.sev : 'C' }); }
+  });
+  return out;
 }
+function regla(p, vals){ var l = reglas(p, vals); return l.length ? l[0] : null; }
 /* Expresiones de la plantilla: + - * / ( ) y sqrt(). Sin eval. */
 function calcExpr(expr, vars){
   var t = expr.match(/\s*([A-Za-z_][A-Za-z_0-9]*|\d+(?:\.\d+)?|[-+*\/(),])/g) || [], i = 0, falta = [];
@@ -657,12 +664,12 @@ function estadoPaso(p){
     p.pts.forEach(function(pt){
       if (pg[pt.g]) { ok++; if (!vistos[pt.g]) { vistos[pt.g] = 1; es.push('Pe'); } return; }
       var e = evalPt(p, pt, d.vals[pt.id], d.unit); if (e) { ok++; es.push(e); } });
-    var rr = regla(p, d.vals); if (rr) es.push(rr.e);
+    reglas(p, d.vals).forEach(function(rr){ es.push(rr.e); });
     if (p.encontrado && p.encontrado.some(function(k){ return d.enc[k] === 'ABIERTO'; })) es.push('A');
-    if (p.checks) p.checks.forEach(function(it){ var v = d.checks[it[0]]; if (v) { ok++; es.push(estadoCheck(p, v)); } }); }
-  else if (p.tipo === 'check') { p.items.forEach(function(it){ var v = d.checks[it[0]]; if (v) { ok++; es.push(p.id === 'vent' && v === 'NO' ? 'X' : (v === 'SI' || v === 'B' || v === 'NA') ? 'C' : v === 'M' ? 'N' : 'A'); } }); }
+    if (p.checks) p.checks.forEach(function(it){ var v = d.checks[it[0]]; if (v) { ok++; es.push(estadoCheck(p, v, it)); } }); }
+  else if (p.tipo === 'check') { p.items.forEach(function(it){ var v = d.checks[it[0]]; if (v) { ok++; es.push(p.id === 'vent' && v === 'NO' ? 'X' : estadoCheck(p, v, it)); } }); }
   else if (p.tipo === 'kv') { p.campos.forEach(function(c){ if (String(d.campos[c[0]] != null ? d.campos[c[0]] : '').trim()) ok++; }); if (ok) es.push('C');
-    if (p.checks) p.checks.forEach(function(it){ var v = d.checks[it[0]]; if (v) es.push(v === 'SI' ? 'C' : 'A'); }); }
+    if (p.checks) p.checks.forEach(function(it){ var v = d.checks[it[0]]; if (v) es.push(estadoCheck(p, v, it)); }); }
   else if (p.tipo === 'tabla') { p.hz.forEach(function(h){ p.cols.forEach(function(c){ if (num((d.tabla[h] || {})[c[0]]) != null) ok++; }); });
     if (ok) es.push(p.hz.every(function(h){ var dv = desb(d.tabla[h]); return dv == null || dv <= 2; }) ? 'C' : 'A'); }
   else if (p.tipo === 'ipdar') { ['A','B','C'].forEach(function(f){ ['r30','r1','r10'].forEach(function(k){ if (num((d.tabla[f] || {})[k]) != null) ok++; }); });
@@ -798,7 +805,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v3.0 · 02/10/2026';
+var VERSION = 'v3.1 · 02/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -1079,7 +1086,7 @@ function pie(p){
   }
   if (d.na && !d.obs.trim()) falta = 'Indica por qué no aplica';
   else if (s.e === 'N' && !d.obs.trim() && !preSel(p, d, 'o').length) falta = 'Elige o escribe la observación';
-  else if (p.tipo === 'med' && p.unidades && p.unidades.length > 1 && s.ok && !d.unit && p.pts.some(function(pt){ var r = d.vals[pt.id]; return r && r.v != null && !r.u; })) falta = 'Elige la unidad del instrumento';
+  else if (p.tipo === 'med' && p.unidades && p.unidades.length > 1 && s.ok && !d.unit && p.pts.some(function(pt){ var r = d.vals[pt.id]; return !pt.u && r && r.v != null && !r.u; })) falta = 'Elige la unidad del instrumento';
   else if (p.tens && p.tens.length > 1 && s.ok && !d.tens && !d.na) falta = 'Elige la tensión de prueba';
   else if (p.fotos && !d.fotos.length && s.ok && !d.na && !d.pendiente && hayLecturas(p, d)) falta = 'Toma la foto de evidencia';
   accion('<button class="btn sec" id="ant" aria-label="Paso anterior">‹</button><button class="btn pri" id="guardar"' + (falta ? ' disabled' : '') + '>' + esc(falta || (sig ? 'Guardar y seguir' : 'Guardar y ver informe')) + '</button>');
@@ -1104,9 +1111,9 @@ function datosPaso(p, d){
   if (d.pendiente) tx.pendiente_paso = d.pendiente;
   var valores = [];
   if (p.tipo === 'med') p.pts.forEach(function(pt){ var r = d.vals[pt.id]; if (!r || (!r.e && (r.v == null || r.v === ''))) return; if (d.pend && d.pend[pt.g]) return;
-    valores.push({ punto_id: pt.id, momento: 'final', valor: r.e ? null : String(r.v), unidad: r.e ? null : (r.u || d.unit || unitFija), enum: r.e || null,
+    valores.push({ punto_id: pt.id, momento: 'final', valor: r.e ? null : String(r.v), unidad: r.e ? null : (r.u || pt.u || d.unit || unitFija), enum: r.e || null,
       /* sin unidad elegida el resultado no se puede afirmar todavía */
-      resultado: (!r.e && !(r.u || d.unit || unitFija)) ? 'P' : evalPt(p, pt, r, d.unit), criterio: pt.c }); });
+      resultado: (!r.e && !(r.u || pt.u || d.unit || unitFija)) ? 'P' : evalPt(p, pt, r, d.unit), criterio: pt.c }); });
   return { cliente_ts: d.ts || new Date().toISOString(), fecha: aISO(d.fecha), no_aplica: !!d.na, unidad: d.unit || unitFija, tension_v: d.tens, campos: d.campos, checks: d.checks,
     tabla: d.tabla, encontrado: d.enc, textos: tx, observacion: d.obs || '', estado: s.ok ? s.e : null, valores: valores };
 }
@@ -1198,28 +1205,26 @@ function capMed(p, d){
     h += '<div class="fila"><div class="fl"><b>' + esc(pt.l) + '</b>' + (pt.r ? '<small><i class="pr"></i>' + esc(pt.r) + ' <i class="pn"></i>' + esc(pt.n) + '</small>' : '') + (difCrit ? '<small>' + esc(pt.c.txt) + '</small>' : '') + '</div>';
     if (p.encontrado && p.encontrado.indexOf(pt.id) >= 0) h += '<div class="encontrado"><span>Encontrado</span><div class="seg mini" data-enc="' + pt.id + '">' + ['OK','ABIERTO'].map(function(o){ return '<button data-v="' + o + '" aria-pressed="' + (d.enc[pt.id] === o) + '">' + (o === 'OK' ? 'Bien' : 'Abierto') + '</button>'; }).join('') + '</div></div>';
     if (pt.c.t === 'enum' && pt.c.e === 'EC') h += '<div class="seg mini" data-e="' + pt.id + '">' + ['EC','CORTO','ABIERTO'].map(function(o){ return '<button data-v="' + o + '" aria-pressed="' + (r.e === o) + '">' + (o === 'EC' ? 'Capacitivo' : ENUMTXT[o]) + '</button>'; }).join('') + '</div>';
-    else h += '<div class="inp"><input inputmode="decimal" data-v="' + pt.id + '" value="' + esc(r.e === 'OL' ? '' : (r.v || '')) + '"' + (r.e === 'OL' ? ' placeholder="OL" disabled' : '') + ' aria-label="' + esc(pt.g + ' ' + pt.l) + '"><span class="u">' + esc(unitTxt) + '</span>' + (p.permiteOL || pt.c.t === 'enum' ? '<button class="olb" data-ol="' + pt.id + '" aria-pressed="' + (r.e === 'OL') + '">OL</button>' : '') + '</div>';
+    else h += '<div class="inp"><input inputmode="decimal" data-v="' + pt.id + '" value="' + esc(r.e === 'OL' ? '' : (r.v || '')) + '"' + (r.e === 'OL' ? ' placeholder="OL" disabled' : '') + ' aria-label="' + esc(pt.g + ' ' + pt.l) + '"><span class="u">' + esc(pt.u || unitTxt) + '</span>' + (p.permiteOL || pt.c.t === 'enum' ? '<button class="olb" data-ol="' + pt.id + '" aria-pressed="' + (r.e === 'OL') + '">OL</button>' : '') + '</div>';
     h += '<span class="dot e' + (e || '') + '" title="' + (e ? EST[e] : '') + '"></span></div>';
   });
   if (g !== null) h += '</div>';
-  var rr = regla(p, d.vals); if (rr) h += '<p class="regla e' + rr.e + '">' + esc(rr.txt) + '</p>';
+  reglas(p, d.vals).forEach(function(rr){ h += '<p class="regla e' + rr.e + '">' + esc(rr.txt) + '</p>'; });
   if (p.checks) h += '<h3>' + esc(p.checks_titulo || 'Verificaciones') + '</h3>' + (p.checks_nota ? '<p class="nota">' + esc(p.checks_nota) + '</p>' : '') +
-    p.checks.map(function(it){ var v = d.checks[it[0]]; return '<div class="item"><p>' + esc(it[1]) + '</p><div class="seg chk" data-ck="' + it[0] + '">' +
-      opcionesCheck(p).map(function(o){ return '<button data-v="' + o[0] + '" data-est="' + (o[2] || 'C') + '" aria-pressed="' + (v === o[0]) + '">' + esc(o[1]) + '</button>'; }).join('') + '</div></div>'; }).join('');
+    p.checks.map(function(it){ return itemCheckH(p, it, d.checks[it[0]]); }).join('');
   return h;
 }
-function capCheck(p, d){ var es_ = p.escala === 'BRM' ? [['B','Bueno'],['R','Regular'],['M','Malo']] : [['SI','Sí'],['NO','No'],['NA','NA']];
-  return p.items.map(function(it){ var v = d.checks[it[0]]; return '<div class="item"><p>' + esc(it[1]) + '</p><div class="seg chk" data-ck="' + it[0] + '">' + es_.map(function(o){ return '<button data-v="' + o[0] + '" aria-pressed="' + (v === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>'; }).join(''); }
+function capCheck(p, d){ return p.items.map(function(it){ return itemCheckH(p, it, d.checks[it[0]]); }).join(''); }
 function capKV(p, d){
   var h = '<div class="panel">' + p.campos.map(function(c){ var v = d.campos[c[0]] != null ? d.campos[c[0]] : (c[3] || ''); return '<label class="campo"><span>' + esc(c[1]) + (c[2] ? ' (' + esc(c[2]) + ')' : '') + '</span><input data-kv="' + c[0] + '" value="' + esc(v) + '" autocapitalize="off"></label>'; }).join('') + '</div>';
   if (p.calculos) h += '<div class="calcbox">' + calculos(p, d.campos).map(function(x){ return '<div><span>' + esc(x.n) + '</span><b class="' + (x.v == null ? 'falta' : '') + '">' + (x.v != null ? fmt(x.v, 2) + ' ' + esc(x.u) : 'Falta: ' + esc(x.falta)) + '</b></div>'; }).join('') + '</div>';
-  if (p.checks) h += p.checks.map(function(it){ var v = d.checks[it[0]]; return '<div class="item"><p>' + esc(it[1]) + '</p><div class="seg chk" data-ck="' + it[0] + '">' + [['SI','Sí'],['NO','No'],['NA','NA']].map(function(o){ return '<button data-v="' + o[0] + '" aria-pressed="' + (v === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>'; }).join('');
+  if (p.checks) h += (p.checks_titulo ? '<h3>' + esc(p.checks_titulo) + '</h3>' : '') + p.checks.map(function(it){ return itemCheckH(p, it, d.checks[it[0]]); }).join('');
   return h;
 }
 function capTabla(p, d){
   var h = p.hz.map(function(hz){ var r = d.tabla[hz] || {}, dv = desb(r), vp = r.vab ? num(r.vab) : null;
     return '<div class="fila-hz"><div class="hz"><span>' + hz + ' Hz</span>' + (dv != null ? '<span class="mini-chip e' + (dv > 2 ? 'A' : 'C') + '">Desbalance ' + fmt(dv, 1) + ' %</span>' : '') + (vp ? '<span class="mini-chip">V/Hz ' + fmt(vp / hz, 2) + '</span>' : '') + '</div><div class="celdas">' + p.cols.map(function(c){ return '<label>' + c[1] + '<input inputmode="decimal" data-t="' + hz + '|' + c[0] + '" value="' + esc(r[c[0]] != null ? r[c[0]] : '') + '"></label>'; }).join('') + '</div></div>'; }).join('');
-  if (p.checks) h += '<h3>Protecciones</h3>' + p.checks.map(function(it){ var v = d.checks[it[0]]; return '<div class="item"><p>' + esc(it[1]) + '</p><div class="seg chk" data-ck="' + it[0] + '">' + [['SI','Sí'],['NO','No'],['NA','NA']].map(function(o){ return '<button data-v="' + o[0] + '" aria-pressed="' + (v === o[0]) + '">' + o[1] + '</button>'; }).join('') + '</div></div>'; }).join('');
+  if (p.checks) h += '<h3>' + esc(p.checks_titulo || 'Protecciones') + '</h3>' + p.checks.map(function(it){ return itemCheckH(p, it, d.checks[it[0]]); }).join('');
   return h;
 }
 function capIP(p, d){ var res = ipRes();
@@ -1341,9 +1346,9 @@ function hallazgos(){
     if (p.tipo === 'giro') { var gr3 = giroRes(), fin3 = (d.tabla.gen || {}).sentido_final;
       if (gr3.sugerido && fin3 && fin3 !== gr3.sugerido) H.push({ eq: eqT, p: p.t, sev: 'Alta', txt: 'El sentido que quedó en operación no coincide con el que indican las lecturas.', acc: textoObs(p, d) || 'Verificar la secuencia de fases y repetir la prueba.' });
       else if (gr3.contradicciones && gr3.contradicciones.length) H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Indicadores contradictorios en la prueba de giro: ' + gr3.contradicciones.map(function(x){ return x.n.toLowerCase(); }).join(', ') + '.', acc: 'Revisar las lecturas registradas.' }); }
-    if (p.tipo === 'med' && p.checks) p.checks.forEach(function(it){ var v = d.checks[it[0]], e = v && estadoCheck(p, v);
-      if (e === 'N') H.push({ eq: eqT, p: p.t, sev: 'Alta', txt: it[1] + ': ' + textoCheck(p, v) + '.', acc: textoObs(p, d) || 'Reemplazar antes de energizar el equipo.' });
-      else if (e === 'A') H.push({ eq: eqT, p: p.t, sev: 'Baja', txt: it[1] + ': ' + textoCheck(p, v) + '.', acc: 'Registrado; verificar en la próxima intervención.' }); });
+    if (p.checks || p.tipo === 'check') (p.checks || p.items).forEach(function(it){ var v = d.checks[it[0]], e = v && estadoCheck(p, v, it); if (p.id === 'vent') return;
+      if (e === 'N') H.push({ eq: eqT, p: p.t, sev: 'Alta', txt: it[1] + ': ' + textoCheck(p, v, it) + '.', acc: textoObs(p, d) || 'Corregir antes de energizar el equipo.' });
+      else if (e === 'A' && (it[2] || p.checks_opciones)) H.push({ eq: eqT, p: p.t, sev: 'Baja', txt: it[1] + ': ' + textoCheck(p, v, it) + '.', acc: 'Registrado; verificar en la próxima intervención.' }); });
     if (p.id === 'vent' && d.checks.existe === 'NO') H.push({ eq: eqT, p: p.t, sev: 'Media', txt: 'Sin caja de venteo entre cabezal y tablero.', acc: 'Evaluar el venteo indicado en API RP 11S3 §4.3.3.' });
   });
   PASOS.forEach(function(p){ var d = S.com.d[p.id]; if (!d || d.na) return; var eqT = EQUIPOS.filter(function(e){ return e.id === p.eq; })[0].t;
@@ -1552,13 +1557,13 @@ function armarPdf(FOTOS){
           var lec = g.pts.map(function(pt){ var r = d.vals[pt.id]; return pt.l + ': ' + (r && (r.e || r.v) ? (r.e ? ENUMTXT[r.e] : r.v + (r.u ? ' ' + r.u : '')) : '—') + (p.encontrado && d.enc[pt.id] === 'ABIERTO' ? ' (encontrado abierto)' : ''); }).join(' · ');
           var e = agg(es) || 'R'; if (e === 'C' && p.encontrado && g.pts.some(function(pt){ return d.enc[pt.id] === 'ABIERTO'; })) e = 'A';
           return [g.g, lec, g.pts[0].c.txt, g.pts[0].c.src || '', [e]]; }), [34, CW - 34 - 30 - 30 - 26, 30, 30, 26], 4);
-        var rr = regla(p, d.vals); if (rr) par(rr.txt + '.', 7.8);
+        reglas(p, d.vals).forEach(function(rr){ par(rr.txt + '.', 7.8); });
         if (p.unidades && p.unidades.length > 1 && !d.unit && agg(p.pts.map(function(pt){ return evalPt(p, pt, d.vals[pt.id], null); })) === 'P') par('Unidad de lectura no registrada en campo: el resultado se confirma con la memoria del instrumento.', 7.8);
-        if (p.checks) tabla([p.checks_titulo || 'Verificación','Resultado','Estado'], p.checks.map(function(it){ var v = d.checks[it[0]]; return [it[1], v ? textoCheck(p, v) : '—', [v ? estadoCheck(p, v) : 'R']]; }), [CW - 60 - 26, 60, 26], 2); }
-      else if (p.tipo === 'check') tabla(['Verificación','Resultado'], p.items.map(function(it){ return [it[1], ENUMTXT[d.checks[it[0]]] || '—']; }), [CW - 40, 40]);
-      else if (p.tipo === 'kv') { kv(p.campos.map(function(cc){ return [cc[1], (d.campos[cc[0]] || '—') + (cc[2] && d.campos[cc[0]] ? ' ' + cc[2] : '')]; })); if (p.calculos) kv(calculos(p, d.campos).map(function(x){ return [x.n, x.v != null ? fmt(x.v, 2) + ' ' + x.u : 'Falta: ' + x.falta]; })); if (p.checks) tabla(['Verificación','Resultado'], p.checks.map(function(it){ return [it[1], ENUMTXT[d.checks[it[0]]] || '—']; }), [CW - 40, 40]); }
+        if (p.checks) tabla([p.checks_titulo || 'Verificación','Resultado','Estado'], p.checks.map(function(it){ var v = d.checks[it[0]]; return [it[1], v ? textoCheck(p, v, it) : '—', [v ? estadoCheck(p, v, it) : 'R']]; }), [CW - 60 - 26, 60, 26], 2); }
+      else if (p.tipo === 'check') tabla(['Verificación','Resultado'], p.items.map(function(it){ var v = d.checks[it[0]]; return [it[1], v ? textoCheck(p, v, it) : '—']; }), [CW - 60, 60]);
+      else if (p.tipo === 'kv') { kv(p.campos.map(function(cc){ return [cc[1], (d.campos[cc[0]] || '—') + (cc[2] && d.campos[cc[0]] ? ' ' + cc[2] : '')]; })); if (p.calculos) kv(calculos(p, d.campos).map(function(x){ return [x.n, x.v != null ? fmt(x.v, 2) + ' ' + x.u : 'Falta: ' + x.falta]; })); if (p.checks) tabla([p.checks_titulo || 'Verificación','Resultado'], p.checks.map(function(it){ var v = d.checks[it[0]]; return [it[1], v ? textoCheck(p, v, it) : '—']; }), [CW - 60, 60]); }
       else if (p.tipo === 'tabla') { tabla(['Hz'].concat(p.cols.map(function(cc){ return cc[1]; })).concat(['Desbal. V (%)','V/Hz']), p.hz.map(function(hz){ var r = d.tabla[hz] || {}, dv = desb(r); return [String(hz)].concat(p.cols.map(function(cc){ return r[cc[0]] != null ? String(r[cc[0]]) : ''; })).concat([dv != null ? fmt(dv, 1) : '—', r.vab ? fmt(num(r.vab) / hz, 2) : '—']); }), null);
-        if (p.checks) tabla(['Protección','Resultado'], p.checks.map(function(it){ return [it[1], ENUMTXT[d.checks[it[0]]] || '—']; }), [CW - 40, 40]); }
+        if (p.checks) tabla([p.checks_titulo || 'Protección','Resultado'], p.checks.map(function(it){ var v = d.checks[it[0]]; return [it[1], v ? textoCheck(p, v, it) : '—']; }), [CW - 60, 60]); }
       else if (p.tipo === 'ipdar') { var ir_ = ipRes(), uu = d.unit ? ' (' + d.unit + ')' : '';
         tabla(['Fase','30 s' + uu,'1 min' + uu,'10 min' + uu,'DAR','IP','Estado'], ['A','B','C'].map(function(f){ var r = d.tabla[f] || {}, o = ir_.f[f] || {}; return ['Fase ' + f + ' a tierra', r.r30 || '', r.r1 || '', r.r10 || '', o.dar != null ? fmt(o.dar, 2) : '—', o.ip != null ? fmt(o.ip, 2) + (o.ipValido ? '' : '*') : '—', [o.e || 'R']]; }), [34, 22, 22, 22, 20, 20, CW - 140], 6);
         var ffp = d.tabla.ff || {}, bb = ir_.ff;
