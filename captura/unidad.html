@@ -725,6 +725,23 @@ function abrirUnidad(u){
   pintarEquipos();
   cargarEstado().then(pintarEstado);   /* refresco con el dato de la base */
   cargarPlaca().then(pintarEquipos);   /* repinta con el estado de placa */
+  cargarCorridas().then(pintarEquipos);
+}
+
+/* El espejo no trae la corrida: se lee aparte al abrir la unidad y se deja
+   en la copia local, para que sin señal tambien se vea la ultima guardada. */
+function cargarCorridas(){
+  if(!navigator.onLine || !sb || !unidad) return Promise.resolve();
+  var u = unidad;
+  return sb.rpc('dp_captura_corridas', { p_pozo_id: u.id }).then(function(r){
+    if(r.error || !r.data || unidad !== u) return;
+    var por = {}; r.data.forEach(function(x){ por[String(x.rol||'').toUpperCase()] = x; });
+    (u.equipos || []).forEach(function(e){
+      var x = por[String(e.rol||'').toUpperCase()] || (esMotor(e) ? por['MOTOR'] : null);
+      if(x && x.run_number != null && !e._pendiente) e.run_number = x.run_number;
+    });
+    reflejarEnEspejo();
+  }).catch(function(){});
 }
 
 $('btn-otra').onclick = function(){
