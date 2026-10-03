@@ -64,7 +64,7 @@ textarea{min-height:90px;resize:vertical}
 .sincro{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;color:var(--ink-soft)}
 .sincro .btn{flex:0 0 auto;min-height:46px;font-size:14px}
 .version{text-align:center;font-size:12px;color:var(--ink-soft);margin-top:18px}
-.dot.ePe{background:var(--info-bg);border-color:var(--info);border-style:dashed}
+.dot.ePe{background:#E9E0F5;border-color:#5E388C;border-style:dashed}
 .pend-b{margin-left:10px;min-height:38px;padding:0 12px;border-radius:8px;border:1.5px solid var(--ink-soft);background:var(--card);font-weight:700;font-size:13px;flex:0 0 auto}
 .grp-pend .pend-b{border-color:var(--info);color:var(--info)}
 .grph{align-items:center}.grph span{flex:1}
@@ -113,7 +113,9 @@ html[data-tema="oscuro"] .seg button[aria-pressed="true"]{background:var(--acent
 .eqh{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:0 2px 8px;padding-bottom:6px;border-bottom:1.5px solid var(--line)}.eqh b{font-size:15.5px;color:var(--ink)}
 .est{font-size:12px;font-weight:700;padding:4px 8px;border-radius:999px;white-space:nowrap}
 .est.vacio{color:var(--ink-soft);border:1.5px solid var(--line)}
-.est.eC{background:var(--ok-bg);color:var(--ok)}.est.eA{background:var(--warn-bg);color:var(--warn)}.est.eN{background:var(--danger-bg);color:var(--danger)}.est.eP{background:var(--info-bg);color:var(--info)}.est.eX,.est.eR,.est.ePe,.est.eI{background:var(--surface-2);color:var(--gris)}
+.est.eC{background:var(--ok-bg);color:var(--ok)}.est.eA{background:var(--warn-bg);color:var(--warn)}.est.eN{background:var(--danger-bg);color:var(--danger)}.est.eP{background:var(--info-bg);color:var(--info)}
+.est.ePe{background:#E9E0F5;color:#5E388C}html[data-tema="oscuro"] .est.ePe{background:#2A2238;color:#C9B3EC}
+.est.eX{background:var(--surface-2);color:var(--gris)}.est.eR,.est.eI{background:#DEDEDE;color:#444}html[data-tema="oscuro"] .est.eR,html[data-tema="oscuro"] .est.eI{background:#3A4049;color:#D8DEE3}
 .pasoItem{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);border:1.5px solid var(--line);border-radius:var(--radius);padding:11px 12px;margin-bottom:8px;min-height:66px}
 .pasoItem .n{font-weight:700;color:var(--ink-soft);width:24px;font-size:14.5px}
 .pasoItem .x{flex:1;min-width:0}.pasoItem .x b{display:block;font-size:16px;line-height:1.25}.pasoItem .x small{display:block;color:var(--ink-soft);font-size:13px}
@@ -796,7 +798,7 @@ function refrescar(silencioso){
   }).catch(function(){ if (!silencioso) avisar('No se pudo actualizar', 'El servidor no respondió. Lo del dispositivo sigue intacto.'); });
 }
 document.addEventListener('visibilitychange', function(){ if (document.visibilityState === 'visible' && S.com && S.pantalla !== 'paso') refrescar(true); });
-var VERSION = 'v2.9 · 02/10/2026';
+var VERSION = 'v3.0 · 02/10/2026';
 
 function abrirCom(id, m){
   /* Si está en el dispositivo, abre al instante y trae lo del servidor por
@@ -1458,7 +1460,12 @@ function fotoParaPdf(url){
     img.src = url;
   });
 }
-var ESTPDF = { C:['Cumple',[221,239,227],[28,107,58]], A:['Cumple con observación',[251,239,201],[122,90,0]], N:['No cumple',[246,214,217],[156,27,43]], P:['Por confirmar',[220,230,241],[31,78,121]], R:['No realizado',[235,235,235],[85,85,85]], X:['No aplica',[245,245,245],[119,119,119]], I:['No concluyente',[230,230,230],[68,68,68]], Pe:['Pendiente',[235,235,235],[85,85,85]] };
+/* Semáforo del informe. Cada estado con un color propio y distinguible:
+   verde cumple, ámbar con observación, rojo no cumple, azul por confirmar,
+   violeta pendiente, gris claro no aplica, gris medio no realizado. */
+var ESTPDF = { C:['Cumple',[221,239,227],[28,107,58]], A:['Cumple con observación',[251,239,201],[122,90,0]], N:['No cumple',[246,214,217],[156,27,43]],
+  P:['Por confirmar',[220,230,241],[31,78,121]], Pe:['Pendiente',[233,224,245],[94,56,140]], X:['No aplica',[242,242,242],[140,140,140]],
+  R:['No realizado',[222,222,222],[70,70,70]], I:['No concluyente',[230,230,230],[68,68,68]] };
 function armarPdf(FOTOS){
   var A = window.CM_RECURSOS || {}, J = window.jspdf.jsPDF, doc = new J({ unit: 'mm', format: 'letter' });
   if (A.font) { doc.addFileToVFS('LS.ttf', A.font); doc.addFont('LS.ttf', 'LS', 'normal'); doc.addFileToVFS('LSB.ttf', A.fontb); doc.addFont('LSB.ttf', 'LS', 'bold'); }
