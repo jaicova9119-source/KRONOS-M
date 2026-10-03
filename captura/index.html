@@ -487,6 +487,9 @@
   .tema-btn svg{width:19px;height:19px;}
   html[data-tema="claro"]  .tema-btn .ico-sol{display:none;}
   html[data-tema="oscuro"] .tema-btn .ico-luna{display:none;}
+  .dp-orto{display:flex;justify-content:flex-end;gap:10px;margin-top:4px;font-size:12.5px}
+  .dp-orto .btn-link{background:none;border:0;color:var(--accent,#1B8E9E);font-weight:600;cursor:pointer;padding:4px 6px}
+  .dp-orto .btn-link:disabled{opacity:.6;cursor:default}
 </style>
 </head>
 <body>
@@ -867,8 +870,10 @@
               <select id="evt-severidad"><option>Informativo</option><option>Advertencia</option><option>Critico</option></select>
             </div>
           </div>
-          <div class="field"><label>Observaciones</label><textarea id="evt-obs" rows="3" placeholder="Que se observo..."></textarea></div>
-          <div class="field"><label>Recomendaciones</label><textarea id="evt-rec" rows="2" placeholder="Accion sugerida..."></textarea></div>
+          <div class="field"><label>Observaciones</label><textarea id="evt-obs" rows="3" placeholder="Que se observo..." spellcheck="true" lang="es"></textarea>
+            <div class="dp-orto"><button type="button" class="btn-link" onclick="dpCorregirOrtografia('evt-obs', this)">Corregir ortograf&iacute;a</button></div></div>
+          <div class="field"><label>Recomendaciones</label><textarea id="evt-rec" rows="2" placeholder="Accion sugerida..." spellcheck="true" lang="es"></textarea>
+            <div class="dp-orto"><button type="button" class="btn-link" onclick="dpCorregirOrtografia('evt-rec', this)">Corregir ortograf&iacute;a</button></div></div>
           <div class="field"><label>Status</label>
             <!-- Sin "Resuelto" ni "Cerrado". Eran una puerta lateral: dejaban
                  cerrar un pendiente sin decir que se hizo, mientras que el
@@ -885,7 +890,8 @@
             </select>
             <div id="evt-cierre-wrap" style="display:none;margin-top:8px">
               <label>Qu&eacute; se hizo <span style="opacity:.7">(obligatorio para cerrar)</span></label>
-              <textarea id="evt-cierre" rows="2" placeholder="Ej.: se reemplazaron los fusibles del choke y se verific&oacute; lectura del sensor"></textarea>
+              <textarea id="evt-cierre" rows="2" placeholder="Ej.: se reemplazaron los fusibles del choke y se verific&oacute; lectura del sensor" spellcheck="true" lang="es"></textarea>
+              <div class="dp-orto"><button type="button" class="btn-link" onclick="dpCorregirOrtografia('evt-cierre', this)">Corregir ortograf&iacute;a</button></div>
             </div>
             <div class="hint" style="font-size:11.5px;opacity:.75;margin-top:4px">
               Un evento se cierra siempre con la nota de qu&eacute; se hizo: aqu&iacute; con <b>Ejecutado</b>, o despu&eacute;s con
@@ -1134,7 +1140,8 @@
           <div class="field"><label>Realizo</label><input id="ais-realizo" readonly
                style="background:var(--bg);color:var(--ink-soft);cursor:not-allowed;"></div>
           <div class="field"><label>Observaciones</label><textarea id="ais-obs" rows="3"
-               placeholder="Condiciones de la prueba, hallazgos..."></textarea></div>
+               placeholder="Condiciones de la prueba, hallazgos..."></textarea>
+            <div class="dp-orto"><button type="button" class="btn-link" onclick="dpCorregirOrtografia('ais-obs', this)">Corregir ortograf&iacute;a</button></div></div>
         </div>
       </form>
       <div class="submit-bar">
@@ -4785,6 +4792,49 @@ function guardarPozoNuevo(){
     alert('Unidad ' + body.nombre + ' creada. Ahora se registran sus equipos con los datos de placa que escribiste.');
     location.href = 'unidad.html?pozo=' + encodeURIComponent(body.id) + '&cargar=1';
   }).catch(function(e){ mostrarGuardando(boton, false); alert('No se pudo crear la unidad: ' + (e.message || e)); });
+}
+
+/* ---------- Corrector ortográfico ----------
+   Usa el mismo asistente de Kronos-M (función asistente-tecnico-v2) con una
+   instrucción cerrada: solo ortografía, tildes, mayúsculas y puntuación.
+   No cambia términos técnicos, números ni unidades, y no agrega nada. El
+   texto original se conserva para deshacer. Necesita señal y sesión. */
+var DP_ORTO_PREVIO = {};
+async function dpCorregirOrtografia(id, boton){
+  var ta = document.getElementById(id); if (!ta) return;
+  var texto = ta.value.trim();
+  if (!texto) { alert('No hay texto para corregir.'); return; }
+  if (!navigator.onLine || !sb) { alert('La corrección ortográfica necesita señal. El subrayado rojo del navegador sigue funcionando sin conexión.'); return; }
+  var ses = (await sb.auth.getSession()).data.session;
+  if (!ses) { alert('Inicia sesión para usar el corrector.'); return; }
+  var txtBoton = boton.textContent; boton.disabled = true; boton.textContent = 'Corrigiendo…';
+  try {
+    var r = await fetch(DP.SUPABASE_URL + '/functions/v1/asistente-tecnico-v2', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + ses.access_token },
+      body: JSON.stringify({
+        pregunta: 'Corrige SOLO la ortografía del siguiente texto en español: tildes, letras cambiadas o faltantes, mayúsculas al inicio de oración y puntuación básica. '
+          + 'No cambies el sentido, no reordenes, no resumas, no agregues ni quites información, no cambies términos técnicos, siglas (VFD, SD, CNV, SUT, PST), códigos, números, unidades ni símbolos. '
+          + 'Conserva los saltos de línea. Responde ÚNICAMENTE con el texto corregido, sin comillas, sin explicaciones ni encabezados.\n\nTEXTO:\n' + texto,
+        contexto_app: 'Captura de datos de campo · corrector ortográfico', historial: []
+      })
+    });
+    var out = await r.json();
+    if (!r.ok || out.error || !out.respuesta) throw new Error(out.error || 'sin respuesta');
+    var nuevo = String(out.respuesta).replace(/^\s*(texto corregido\s*:?)?\s*/i, '').replace(/^["«]|["»]$/g, '').trim();
+    if (!nuevo) throw new Error('respuesta vacía');
+    DP_ORTO_PREVIO[id] = ta.value;
+    ta.value = nuevo; ta.dispatchEvent(new Event('input', { bubbles: true }));
+    var cont = boton.parentNode;
+    if (!cont.querySelector('[data-deshacer]')) {
+      var d = document.createElement('button'); d.type = 'button'; d.className = 'btn-link'; d.setAttribute('data-deshacer', id); d.textContent = 'Deshacer';
+      d.onclick = function(){ if (DP_ORTO_PREVIO[id] != null) { ta.value = DP_ORTO_PREVIO[id]; delete DP_ORTO_PREVIO[id]; ta.dispatchEvent(new Event('input', { bubbles: true })); } d.remove(); };
+      cont.insertBefore(d, boton);
+    }
+  } catch (e) {
+    alert('No se pudo corregir ahora: ' + (e.message || e));
+  } finally {
+    boton.disabled = false; boton.textContent = txtBoton;
+  }
 }
 
 function evtAlternarCierre(){
