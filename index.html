@@ -3107,7 +3107,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
          aqui evita que el orden en que se escribieron decida quien firma. -->
     <div class="field">
       <label>Líder de la actividad</label>
-      <input id="prog-e-lider" placeholder="Quien firma el reporte"/>
+      <input id="prog-e-lider" placeholder="Quien firma el reporte · obligatorio"/>
     </div>
     <div class="field">
       <label>Técnicos que acompañaron</label>
@@ -3236,7 +3236,7 @@ input,select,textarea{font-family:inherit;font-size:15px;}
     <div class="field"><label>Descripción del trabajo</label><input id="np-desc-trabajo" placeholder="Qué se solicitó o qué originó la intervención"/></div>
     <div class="field">
       <label>Ejecutor l&iacute;der</label>
-      <input id="np-lider" placeholder="Quien firma el reporte"/>
+      <input id="np-lider" placeholder="Quien firma el reporte · obligatorio"/>
     </div>
     <div class="field">
       <label>T&eacute;cnicos que acompa&ntilde;aron</label>
@@ -15483,6 +15483,7 @@ function progAgregarTecnico(nombre, contId) {
   if (!inp.value) inp.focus();
 }
 
+function progLiderDe(liderId) { const el = document.getElementById(liderId); return el ? el.value.trim() : ""; }
 function progComponerPersonal(liderId, contId) {
   const el = document.getElementById(liderId || "prog-e-lider");
   const lider = el ? el.value.trim() : "";
@@ -15617,6 +15618,14 @@ async function progGuardarEjecucion() {
     }
   }
 
+  /* Un reporte sin ejecutor no identifica quién respondió por el trabajo:
+     el FO-016 saldría sin firma. Toda jornada trabajada lleva al menos el
+     líder. Una no ejecutada puede ir sin él: nadie la trabajó. */
+  if (estado !== "no_ejecutada" && !progLiderDe("prog-e-lider")) {
+    toast("Indica el líder de la actividad: quien firma el reporte");
+    document.getElementById("prog-e-lider").focus();
+    return;
+  }
   const personal = progComponerPersonal();
   // Se recuerda el personal para no volver a digitarlo en cada actividad
   if (personal) { const c = progCfg(); c.personal = personal; progGuardarCfg(c); }
@@ -16707,6 +16716,11 @@ async function progGuardarNoProgramada() {
      que hacia aparecer una cuadrilla electrica en una actividad de otra
      disciplina. Los nombres quedan en la memoria del campo, que sugiere sin
      imponer. */
+  if (!progLiderDe("np-lider")) {
+    toast("Indica el líder de la actividad: quien firma el reporte");
+    document.getElementById("np-lider").focus();
+    return;
+  }
   const personal = progComponerPersonal("np-lider", "np-tecnicos");
 
   const btn = document.getElementById("np-btn-guardar");
@@ -16950,6 +16964,11 @@ async function progEditarNP() {
 }
 
 async function progGuardarEdicionNP() {
+  if (!progLiderDe("np-lider")) {
+    toast("Indica el líder de la actividad: quien firma el reporte");
+    document.getElementById("np-lider").focus();
+    return;
+  }
   diccAprenderDeCampos(["np-actividades", "np-observaciones"]);
   const btn = document.getElementById("np-btn-guardar");
   btn.disabled = true; btn.textContent = "Guardando...";
